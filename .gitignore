@@ -1,7 +1,18 @@
+# Exclure tout par défaut
 *
 
+# Garder explicitement ces fichiers/dossiers
 !.gitignore
 !pubspec.yaml
 !README.md
+
+# Inclure dossier lib et son contenu
 !lib/
 !lib/**
+
+# Inclure AndroidManifest.xml spécifiquement
+!android/
+!android/app/
+!android/app/src/
+!android/app/src/main/
+!android/app/src/main/AndroidManifest.xml
