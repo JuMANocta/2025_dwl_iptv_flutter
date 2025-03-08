@@ -1,0 +1,6 @@
+*
+
+!.gitignore
+!pubspec.yaml
+!lib/
+!README.md
