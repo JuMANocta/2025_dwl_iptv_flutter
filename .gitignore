@@ -2,7 +2,6 @@
 *
 
 # Garder explicitement ces fichiers/dossiers
-!.gitignore
 !pubspec.yaml
 !README.md
 
