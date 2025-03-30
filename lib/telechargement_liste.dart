@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:path_provider/path_provider.dart';
 import 'secure_storage_service.dart';
 
@@ -32,25 +33,43 @@ class _TelechargementPageState extends State<TelechargementPage> {
 
     try {
       final dio = Dio(BaseOptions(
-        headers: {'User-Agent': 'Mozilla/5.0'},
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+          'Connection': 'keep-alive',
+        },
         validateStatus: (status) => status != null && status < 500,
       ));
 
+      (dio.httpClientAdapter as IOHttpClientAdapter).onHttpClientCreate = (client) {
+        client.badCertificateCallback = (cert, host, port) => true;
+        return client;
+      };
+
       final url = await _getDownloadUrl();
-      await dio.download(url, _filePath);
+
+      if (await File(_filePath).exists()) {
+        debugPrint("📄 Fichier existant détecté, suppression...");
+        await File(_filePath).delete();
+      }
+
+      await dio.download(url, _filePath, deleteOnError: true);
       debugPrint("✅ Téléchargement terminé");
+      debugPrint("📥 Fichier enregistré à : $_filePath");
+
+
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Téléchargement terminé 🎉')),
+          const SnackBar(content: Text('✅ Téléchargement terminé 🎉')),
         );
-        Navigator.pop(context, true); // retour à la page précédente avec succès
+        Navigator.pop(context, true);
       }
     } catch (e) {
-      debugPrint("❌ Erreur : $e");
+      debugPrint("❌ Erreur téléchargement : $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur lors du téléchargement : $e')),
+          SnackBar(content: Text('❌ Erreur lors du téléchargement : $e')),
         );
       }
     } finally {
@@ -61,13 +80,14 @@ class _TelechargementPageState extends State<TelechargementPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Téléchargement IPTV')),
+      appBar: AppBar(title: const Text('📥 Téléchargement IPTV')),
       body: Center(
         child: _isDownloading
             ? const CircularProgressIndicator()
-            : ElevatedButton(
+            : ElevatedButton.icon(
           onPressed: _downloadFile,
-          child: const Text("Télécharger le fichier IPTV"),
+          icon: const Icon(Icons.download),
+          label: const Text("⬇️ Télécharger le fichier IPTV"),
         ),
       ),
     );

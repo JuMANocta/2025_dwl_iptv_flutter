@@ -52,8 +52,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     }
 
     final content = await file.readAsString(encoding: utf8);
-    final lines = content.split('\n');
-    debugPrint("📄 Nombre de lignes lues : ${lines.length}");
+    final lines = LineSplitter.split(content).toList();
 
     List<FilmEntry> parsed = [];
 
@@ -62,7 +61,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
       if (line.startsWith("#EXTINF")) {
         final title = line.split(',').last.trim();
         final url = lines[i + 1].trim();
-        debugPrint("🎬 Détecté : $title\n🔗 URL : $url");
 
         final isSerie = RegExp(r"S\d{2} E\d{2}", caseSensitive: false).hasMatch(title);
         String? saison;
@@ -73,7 +71,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
           if (match != null) {
             saison = match.group(1);
             episode = match.group(2);
-            debugPrint("📺 Série détectée - Saison $saison Épisode $episode");
           }
         }
 
@@ -87,8 +84,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
       }
     }
 
-    debugPrint("✅ Total d'éléments parsés : ${parsed.length}");
-
     setState(() {
       _entries = parsed;
       _filterResults(_searchQuery);
@@ -98,14 +93,13 @@ class _RechercheM3UState extends State<RechercheM3U> {
   void _filterResults(String query) {
     query = query.toLowerCase();
     final filtered = _entries.where((entry) => entry.nom.toLowerCase().contains(query)).toList();
-    debugPrint("🔎 Résultats après filtrage pour '\$query' : \${filtered.length}");
 
     final Map<String, List<FilmEntry>> grouped = {};
     for (var entry in filtered) {
       if (entry.isSerie) {
         final baseName = entry.nom.split(RegExp(r"S\d{2} E\d{2}")).first.trim();
-        final saisonLabel = entry.saison != null ? "📺 Saison \${entry.saison}" : "📺 Autre";
-        final groupKey = "\$baseName - \$saisonLabel";
+        final saisonLabel = entry.saison != null ? "📺 Saison ${entry.saison}" : "📺 Autre";
+        final groupKey = "$baseName - $saisonLabel";
         grouped.putIfAbsent(groupKey, () => []).add(entry);
       }
     }
@@ -119,10 +113,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   void _onEntrySelected(FilmEntry entry) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("📥 URL détectée : \${entry.url} 🌐")),
+      SnackBar(content: Text("📥 URL détectée : ${entry.url} 🌐")),
     );
-    debugPrint("📦 Sélectionné : \${entry.nom} => \${entry.url}");
-    // widget.onDownloadSelected(entry); <-- à activer pour le téléchargement réel
   }
 
   @override
@@ -140,6 +132,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
             onChanged: _filterResults,
           ),
         ),
+        const SizedBox(height: 8),
         Expanded(
           child: (_filteredFlatList.isEmpty && _groupedSeries.isEmpty)
               ? const Center(child: Text('🔎 Aucun résultat trouvé'))
@@ -149,7 +142,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                 title: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.bold)),
                 children: entry.value
                     .map((ep) => ListTile(
-                  title: Text("🎞️ Episode \${ep.episode} - \${ep.nom}"),
+                  title: Text("🎞️ Épisode ${ep.episode} - ${ep.nom}"),
                   subtitle: Text(ep.url, style: const TextStyle(fontSize: 12)),
                   onTap: () => _onEntrySelected(ep),
                   trailing: const Icon(Icons.download),
@@ -157,7 +150,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                     .toList(),
               )),
               ..._filteredFlatList.map((entry) => ListTile(
-                title: Text("🎬 \${entry.nom}"),
+                title: Text("🎬 ${entry.nom}"),
                 subtitle: Text(entry.url, style: const TextStyle(fontSize: 12)),
                 onTap: () => _onEntrySelected(entry),
                 trailing: const Icon(Icons.download),
