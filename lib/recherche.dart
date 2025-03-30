@@ -1,53 +1,8 @@
 import 'dart:io';
-import 'dart:async';
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart';
-import 'secure_storage_service.dart';
-
-class ConnectivityBanner extends StatefulWidget {
-  final Widget child;
-  const ConnectivityBanner({required this.child, Key? key}) : super(key: key);
-
-  @override
-  _ConnectivityBannerState createState() => _ConnectivityBannerState();
-}
-
-class _ConnectivityBannerState extends State<ConnectivityBanner> {
-  late StreamSubscription<List<ConnectivityResult>> _subscription;
-  bool _hasInternet = true;
-
-  @override
-  void initState() {
-    super.initState();
-    Connectivity().checkConnectivity().then(_updateConnectionStatus);
-    _subscription = Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
-  }
-
-  void _updateConnectionStatus(List<ConnectivityResult> results) {
-    setState(() {
-      _hasInternet = !results.contains(ConnectivityResult.none);
-      debugPrint("📶 État internet : $_hasInternet");
-    });
-  }
-
-  @override
-  void dispose() {
-    _subscription.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      if (!_hasInternet)
-        Container(color: Colors.red, padding: const EdgeInsets.all(8.0), child: const Text("Pas de connexion Internet", style: TextStyle(color: Colors.white))),
-      Expanded(child: widget.child),
-    ],
-  );
-}
+import 'telechargement_liste.dart';
+import 'recherche_m3u.dart';
 
 class Recherche extends StatefulWidget {
   const Recherche({super.key});
@@ -57,10 +12,8 @@ class Recherche extends StatefulWidget {
 }
 
 class _RechercheState extends State<Recherche> {
-  final SecureStorageService _storageService = SecureStorageService();
   String _filePath = "";
   bool _fileExists = false;
-  bool _isDownloading = false;
 
   @override
   void initState() {
@@ -70,46 +23,70 @@ class _RechercheState extends State<Recherche> {
 
   Future<void> _initializeFile() async {
     Directory appDocDir = await getApplicationDocumentsDirectory();
-    String filePath = "${appDocDir.path}/iptv_links.txt";
+    String filePath = "${appDocDir.path}/iptv_links.m3u";
     bool exists = await File(filePath).exists();
     setState(() {
       _filePath = filePath;
       _fileExists = exists;
     });
-    debugPrint("📂 Fichier existant : $_fileExists, chemin : $_filePath");
   }
 
-  Future<String> _getDownloadUrl() async {
-    var creds = await _storageService.getCredentials();
-    return "${creds['baseUrl']}?username=${creds['login']}&password=${creds['password']}&type=m3u&output=ts";
-  }
-
-  Future<void> _downloadFile() async {
-    String url = await _getDownloadUrl();
-    setState(() => _isDownloading = true);
-    try {
-      await Dio().download(url, _filePath);
-      debugPrint("✅ Fichier téléchargé : $_filePath");
-    } catch (e) {
-      debugPrint("❌ Erreur téléchargement : $e");
-    } finally {
-      setState(() => _isDownloading = false);
-      _initializeFile();
+  void _goToTelechargement() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const TelechargementPage()),
+    );
+    if (result == true) {
+      _initializeFile(); // re-check après retour
     }
+  }
+
+  Future<void> _supprimerEtTelecharger() async {
+    final file = File(_filePath);
+    if (await file.exists()) {
+      await file.delete();
+      debugPrint("🗑️ Fichier supprimé");
+    }
+    setState(() {
+      _fileExists = false;
+    });
+    _goToTelechargement();
+  }
+
+  void _onDownloadSelected(FilmEntry entry) {
+    // Pour l'instant, on affiche juste un toast avec l'URL
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("📥 Téléchargement prévu pour : ${entry.url}")),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return ConnectivityBanner(
-      child: Scaffold(
-        appBar: AppBar(title: const Text("Recherche IPTV")),
-        body: Center(
-          child: _isDownloading
-              ? const CircularProgressIndicator()
-              : ElevatedButton(
-            onPressed: _downloadFile,
-            child: const Text("Télécharger le fichier IPTV"),
+    return Scaffold(
+      appBar: AppBar(title: const Text("Recherche IPTV")),
+      body: _fileExists
+          ? Column(
+        children: [
+          Expanded(
+            child: RechercheM3U(
+              filePath: _filePath,
+              onDownloadSelected: _onDownloadSelected,
+            ),
           ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: ElevatedButton.icon(
+              onPressed: _supprimerEtTelecharger,
+              icon: const Icon(Icons.refresh),
+              label: const Text("🔄 Mettre à jour la liste IPTV"),
+            ),
+          ),
+        ],
+      )
+          : Center(
+        child: ElevatedButton(
+          onPressed: _goToTelechargement,
+          child: const Text("📥 Télécharger d'abord le fichier IPTV"),
         ),
       ),
     );
