@@ -35,6 +35,7 @@ dependencies:
   path_provider: ^2.1.5             # accéder aux répertoires locaux
   flutter_secure_storage: ^9.2.4    # stockage sécurisé
   connectivity_plus: ^6.1.3         # vérifier la connectivité réseau
+  device_info_plus: ^11.3.3         # informations sur l'appareil
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
