@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'telechargement_fichier.dart';
 
 class FilmEntry {
   final String nom;
@@ -121,6 +122,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("📥 URL détectée : ${entry.url} 🌐")),
     );
+    telechargerFichierVideo(entry.url, context);
   }
 
   @override
