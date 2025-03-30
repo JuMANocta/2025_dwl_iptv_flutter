@@ -53,6 +53,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
     final content = await file.readAsString(encoding: utf8);
     final lines = LineSplitter.split(content).toList();
+    debugPrint("📄 Nombre de lignes lues : ${lines.length}");
 
     List<FilmEntry> parsed = [];
 
@@ -83,6 +84,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
         ));
       }
     }
+
+    debugPrint("✅ Total d'éléments parsés : ${parsed.length}");
 
     setState(() {
       _entries = parsed;
@@ -131,6 +134,60 @@ class _RechercheM3UState extends State<RechercheM3U> {
             ),
             onChanged: _filterResults,
           ),
+        ),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.info_outline),
+          label: const Text("📄 Infos sur le fichier"),
+          onPressed: () async {
+            final file = File(widget.filePath);
+            if (await file.exists()) {
+              final content = await file.readAsString(encoding: utf8);
+              final lines = LineSplitter.split(content).toList();
+              final extinfLines = lines.where((line) => line.trim().startsWith("#EXTINF")).toList();
+              final urls = lines.where((line) => line.startsWith("http")).toList();
+              int tvCount = 0;
+              int serieCount = 0;
+              int filmCount = 0;
+
+              for (int i = 0; i < extinfLines.length && i < urls.length; i++) {
+                final title = extinfLines[i].split(',').last.trim();
+                final url = urls[i];
+                if (url.contains("/series/")) {
+                  serieCount++;
+                } else if (url.contains("/movie/")) {
+                  filmCount++;
+                } else {
+                  tvCount++;
+                }
+              }
+
+              final fileSize = await file.length();
+              final fileSizeKB = (fileSize / 1024).toStringAsFixed(2);
+              final preview = lines.take(20).join("\n");
+
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text("📄 Informations sur le fichier M3U"),
+                  content: SingleChildScrollView(
+                    child: Text(
+                      "Taille : $fileSizeKB KB\n"
+                          "Nombre de lignes : ${lines.length}\n"
+                          "🎬 Films : $filmCount\n"
+                          "📺 Séries : $serieCount\n"
+                          "📡 Chaînes TV : $tvCount\n\n",
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Fermer"),
+                    ),
+                  ],
+                ),
+              );
+            }
+          },
         ),
         const SizedBox(height: 8),
         Expanded(
