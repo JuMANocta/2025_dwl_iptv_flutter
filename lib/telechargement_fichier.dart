@@ -106,7 +106,7 @@ class _ScanLineState extends State<ScanLine> with SingleTickerProviderStateMixin
             alignment: Alignment(0, _animation.value * 2 - 1),
             child: Container(
               height: 2,
-              color: Colors.greenAccent.withOpacity(0.3),
+              color: Colors.greenAccent.withValues(),
             ),
           );
         },
@@ -120,7 +120,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
 
   final fileName = Uri.parse(url).pathSegments.last;
   final savePath = "${await _getDownloadDirectory()}/$fileName";
-  final ffmpegPath = await FFmpegLoader.prepareFFmpeg();
+  final ffmpegPath = await FFmpegLoader.prepareFFmpeg(context);
 
   bool isDownloadComplete = false;
   bool isCancelled = false;
@@ -160,7 +160,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
                             color: Colors.black,
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: [
-                              BoxShadow(color: Colors.greenAccent.withOpacity(0.3), blurRadius: 5)
+                              BoxShadow(color: Colors.greenAccent.withValues(), blurRadius: 5)
                             ],
                           ),
                           child: ListView.builder(
