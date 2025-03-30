@@ -33,6 +33,9 @@ class RechercheM3U extends StatefulWidget {
 }
 
 class _RechercheM3UState extends State<RechercheM3U> {
+  bool _showFilms = true;
+  bool _showSeries = true;
+  bool _showTv = true;
   List<FilmEntry> _entries = [];
   Map<String, List<FilmEntry>> _groupedSeries = {};
   List<FilmEntry> _filteredFlatList = [];
@@ -46,14 +49,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   Future<void> _loadM3U() async {
     final file = File(widget.filePath);
-    if (!await file.exists()) {
-      debugPrint("❌ Fichier M3U introuvable : ${widget.filePath}");
-      return;
-    }
-
+    if (!await file.exists()) return;
     final content = await file.readAsString(encoding: utf8);
     final lines = LineSplitter.split(content).toList();
-    debugPrint("📄 Nombre de lignes lues : ${lines.length}");
 
     List<FilmEntry> parsed = [];
 
@@ -85,8 +83,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
       }
     }
 
-    debugPrint("✅ Total d'éléments parsés : ${parsed.length}");
-
     setState(() {
       _entries = parsed;
       _filterResults(_searchQuery);
@@ -94,8 +90,15 @@ class _RechercheM3UState extends State<RechercheM3U> {
   }
 
   void _filterResults(String query) {
+    final isAllowed = (FilmEntry entry) {
+      if (entry.url.contains('/series/')) return _showSeries;
+      if (entry.url.contains('/movie/')) return _showFilms;
+      return _showTv;
+    };
     query = query.toLowerCase();
-    final filtered = _entries.where((entry) => entry.nom.toLowerCase().contains(query)).toList();
+    final filtered = _entries
+        .where((entry) => entry.nom.toLowerCase().contains(query) && isAllowed(entry))
+        .toList();
 
     final Map<String, List<FilmEntry>> grouped = {};
     for (var entry in filtered) {
@@ -124,6 +127,40 @@ class _RechercheM3UState extends State<RechercheM3U> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            children: [
+              FilterChip(
+                label: const Text('🎬 Films'),
+                selected: _showFilms,
+                onSelected: (val) => setState(() {
+                  _showFilms = val;
+                  _filterResults(_searchQuery);
+                }),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('📺 Séries'),
+                selected: _showSeries,
+                onSelected: (val) => setState(() {
+                  _showSeries = val;
+                  _filterResults(_searchQuery);
+                }),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('📡 Chaînes TV'),
+                selected: _showTv,
+                onSelected: (val) => setState(() {
+                  _showTv = val;
+                  _filterResults(_searchQuery);
+                }),
+              ),
+            ],
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.all(8.0),
           child: TextField(
@@ -150,7 +187,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
               int filmCount = 0;
 
               for (int i = 0; i < extinfLines.length && i < urls.length; i++) {
-                final title = extinfLines[i].split(',').last.trim();
                 final url = urls[i];
                 if (url.contains("/series/")) {
                   serieCount++;
