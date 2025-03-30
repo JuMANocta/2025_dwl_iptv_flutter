@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'infos_fichier_button.dart';
 import 'telechargement_liste.dart';
 import 'recherche_m3u.dart';
 
@@ -37,7 +38,7 @@ class _RechercheState extends State<Recherche> {
       MaterialPageRoute(builder: (context) => const TelechargementPage()),
     );
     if (result == true) {
-      _initializeFile(); // re-check après retour
+      _initializeFile();
     }
   }
 
@@ -54,7 +55,6 @@ class _RechercheState extends State<Recherche> {
   }
 
   void _onDownloadSelected(FilmEntry entry) {
-    // Pour l'instant, on affiche juste un toast avec l'URL
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("📥 Téléchargement prévu pour : ${entry.url}")),
     );
@@ -75,10 +75,17 @@ class _RechercheState extends State<Recherche> {
           ),
           Padding(
             padding: const EdgeInsets.all(8.0),
-            child: ElevatedButton.icon(
-              onPressed: _supprimerEtTelecharger,
-              icon: const Icon(Icons.refresh),
-              label: const Text("🔄 Mettre à jour la liste IPTV"),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                InfosFichierButton(filePath: _filePath),
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  onPressed: _supprimerEtTelecharger,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text("MAJ liste IPTV"),
+                ),
+              ],
             ),
           ),
         ],
