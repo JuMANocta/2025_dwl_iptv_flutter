@@ -218,7 +218,14 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
       return StatefulBuilder(
         builder: (context, setState) {
           void addLog(String msg, String type) {
-            logs.add({'message': msg, 'type': type});
+            if (type == "stats" && logs.isNotEmpty && logs.last["type"] == "stats") {
+              // ⚡️ on remplace la dernière ligne si c'est déjà une progression
+              logs[logs.length - 1] = {"message": msg, "type": type};
+            } else {
+              // sinon on ajoute une nouvelle ligne (erreur, info, etc.)
+              logs.add({"message": msg, "type": type});
+            }
+
             setState(() {});
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (scrollController.hasClients) {
