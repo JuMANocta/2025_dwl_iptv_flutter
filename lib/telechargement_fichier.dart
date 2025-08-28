@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math' as Math;
 import 'dart:async';
+import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -78,7 +79,22 @@ class _ScanLineState extends State<ScanLine>
 
 /// 🚀 Vérifie la taille avant téléchargement et demande confirmation
 Future<void> verifierEtTelecharger(String url, BuildContext context) async {
-  final dio = Dio();
+  final dio = Dio(BaseOptions(
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Accept': '*/*',
+      'Connection': 'keep-alive',
+      'Referer': Uri.parse(url).origin + "/", // dynamique
+      'Origin': Uri.parse(url).origin,        // dynamique
+    },
+    validateStatus: (status) => status != null && status < 500,
+  ));
+
+  (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+    final client = HttpClient();
+    client.badCertificateCallback = (cert, host, port) => true;
+    return client;
+  };
 
   try {
     final referer = Uri.parse(url).origin + "/";
@@ -137,7 +153,22 @@ Future<void> verifierEtTelecharger(String url, BuildContext context) async {
 /// 📥 Téléchargement avec reprise + progression détaillée
 Future<void> telechargerFichierVideo(String url, BuildContext context,
     {int? totalSize}) async {
-  final dio = Dio();
+  final dio = Dio(BaseOptions(
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Accept': '*/*',
+      'Connection': 'keep-alive',
+      'Referer': Uri.parse(url).origin + "/", // dynamique
+      'Origin': Uri.parse(url).origin,        // dynamique
+    },
+    validateStatus: (status) => status != null && status < 500,
+  ));
+
+  (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+    final client = HttpClient();
+    client.badCertificateCallback = (cert, host, port) => true;
+    return client;
+  };
 
   final rawFileName = Uri.parse(url).pathSegments.last;
   final fileName = sanitizeFilename(rawFileName);
@@ -238,7 +269,24 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                   throw Exception("Code HTTP ${response.statusCode}");
                 }
               } catch (e) {
-                addLog("⚠️ Erreur : $e", "error");
+                if (e is DioException) {
+                  // log complet en console
+                  print("❌ DioException");
+                  print("Type: ${e.type}");
+                  print("Message: ${e.message}");
+                  print("StatusCode: ${e.response?.statusCode}");
+                  print("Data: ${e.response?.data}");
+                  print("Headers: ${e.response?.headers}");
+                  print("Request: ${e.requestOptions}");
+
+                  // log résumé dans ton UI
+                  addLog("⚠️ Erreur HTTP ${e.response?.statusCode} : ${e.message}", "error");
+                } else {
+                  // autre erreur Dart
+                  print("❌ Erreur: $e");
+                  addLog("⚠️ Erreur : $e", "error");
+                }
+
                 if (attempt >= maxRetries) {
                   addLog("❌ Abandon après $maxRetries tentatives", "error");
                 }
