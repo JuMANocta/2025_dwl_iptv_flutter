@@ -1,22 +1,35 @@
 import 'dart:io';
+import 'dart:math' as Math;
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'ffmpeg_loader.dart';
 
+/// 📂 Récupère ou crée le dossier de téléchargement "Videos"
 Future<String> _getDownloadDirectory() async {
-  final directory = await getExternalStorageDirectory();
-  if (directory == null) {
-    throw Exception("📁 Impossible d'accéder au répertoire de téléchargement.");
-  }
-  final downloadDir = Directory("${directory.path}/Videos");
+  final dir = await getExternalStorageDirectory();
+  final downloadDir = Directory("${dir!.path}/Videos");
   if (!await downloadDir.exists()) {
     await downloadDir.create(recursive: true);
   }
   return downloadDir.path;
 }
 
+/// 🔧 Nettoie le nom du fichier pour éviter les caractères interdits
+String sanitizeFilename(String filename) {
+  return filename.replaceAll(RegExp(r'[\\/*?:"<>|]'), "_");
+}
+
+/// 🔧 Formatage taille lisible (B, KB, MB, GB...)
+String formatFileSize(int bytes) {
+  if (bytes <= 0) return "0 B";
+  const suffixes = ["B", "KB", "MB", "GB", "TB"];
+  int i = (bytes == 0) ? 0 : (Math.log(bytes) / Math.log(1024)).floor();
+  double size = bytes / (1 << (10 * i));
+  return "${size.toStringAsFixed(2)} ${suffixes[i]}";
+}
+
+/// Effet scanline vert
 class ScanLine extends StatefulWidget {
   const ScanLine({super.key});
 
@@ -24,17 +37,17 @@ class ScanLine extends StatefulWidget {
   State<ScanLine> createState() => _ScanLineState();
 }
 
-class _ScanLineState extends State<ScanLine> with SingleTickerProviderStateMixin {
+class _ScanLineState extends State<ScanLine>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
+    _controller =
+    AnimationController(vsync: this, duration: const Duration(seconds: 2))
+      ..repeat(reverse: true);
     _animation = Tween<double>(begin: 0, end: 1).animate(_controller);
   }
 
@@ -63,34 +76,88 @@ class _ScanLineState extends State<ScanLine> with SingleTickerProviderStateMixin
   }
 }
 
-Future<void> telechargerFichierVideo(String url, BuildContext context) async {
-  final fileName = Uri.parse(url).pathSegments.last;
+/// 🚀 Vérifie la taille avant téléchargement et demande confirmation
+Future<void> verifierEtTelecharger(String url, BuildContext context) async {
+  final dio = Dio();
+
+  try {
+    final response = await dio.head(
+      url,
+      options: Options(
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          "Referer": "https://tonsite.com/",
+        },
+      ),
+    );
+
+    final contentLength =
+        int.tryParse(response.headers.value("content-length") ?? "0") ?? 0;
+    final sizeFormatted = formatFileSize(contentLength);
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("⚠️ Confirmation"),
+        content: Text(contentLength > 0
+            ? "Le fichier fait $sizeFormatted.\nVoulez-vous lancer le téléchargement ?"
+            : "Taille inconnue.\nVoulez-vous lancer le téléchargement ?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text("❌ Annuler"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text("✅ Télécharger"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await telechargerFichierVideo(url, context,
+          totalSize: contentLength > 0 ? contentLength : null);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("❌ Téléchargement annulé")),
+      );
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("❌ Erreur HEAD request : $e")),
+    );
+  }
+}
+
+/// 📥 Téléchargement avec reprise + progression détaillée
+Future<void> telechargerFichierVideo(String url, BuildContext context,
+    {int? totalSize}) async {
+  final dio = Dio();
+
+  final rawFileName = Uri.parse(url).pathSegments.last;
+  final fileName = sanitizeFilename(rawFileName);
   final savePath = "${await _getDownloadDirectory()}/$fileName";
-  final ffmpegPath = await FFmpegLoader.prepareFFmpeg(context);
 
   bool isDownloadComplete = false;
   bool isCancelled = false;
   List<Map<String, dynamic>> logs = [];
   final scrollController = ScrollController();
-  final logStream = StreamController<void>();
+  final logStream = StreamController<void>.broadcast();
+  final cancelToken = CancelToken();
 
-  print("🛰️ Lancement de FFmpeg pour : $url");
-  print("📂 Destination : $savePath");
-  print("🔧 Binaire FFmpeg utilisé : $ffmpegPath");
+  int maxRetries = 3;
+  int attempt = 0;
 
-  final command = ['-user_agent', 'Mozilla/5.0', '-i', url, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', savePath];
-
-  final process = await Process.start(ffmpegPath, command);
-
-  process.stdout.transform(utf8.decoder).listen((data) {
-    logs.add({'message': data.trim(), 'type': 'log'});
-    logStream.add(null);
-  });
-
-  process.stderr.transform(utf8.decoder).listen((data) {
-    logs.add({'message': data.trim(), 'type': 'error'});
-    logStream.add(null);
-  });
+  logs.add(
+      {'message': "🚀 Lancement du téléchargement : $fileName", 'type': 'log'});
+  if (totalSize != null) {
+    logs.add({
+      'message': "📦 Taille du fichier : ${formatFileSize(totalSize)}",
+      'type': 'log'
+    });
+  }
+  logStream.add(null);
 
   unawaited(showDialog(
     context: context,
@@ -103,7 +170,8 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
             setState(() {});
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (scrollController.hasClients) {
-                scrollController.jumpTo(scrollController.position.maxScrollExtent);
+                scrollController
+                    .jumpTo(scrollController.position.maxScrollExtent);
               }
             });
           });
@@ -111,8 +179,11 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
           return AlertDialog(
             backgroundColor: Colors.black,
             title: Text(
-              isDownloadComplete ? "✅ Téléchargement terminé" : "🎬 Téléchargement via FFmpeg...",
-              style: const TextStyle(color: Colors.greenAccent, fontFamily: 'Courier New'),
+              isDownloadComplete
+                  ? "✅ Téléchargement terminé"
+                  : "🎬 Téléchargement en cours...",
+              style: const TextStyle(
+                  color: Colors.greenAccent, fontFamily: 'Courier New'),
             ),
             content: Stack(
               children: [
@@ -120,10 +191,10 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
                   width: double.maxFinite,
                   height: 300,
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       if (!isDownloadComplete)
-                        const CircularProgressIndicator(color: Colors.greenAccent),
+                        const CircularProgressIndicator(
+                            color: Colors.greenAccent),
                       const SizedBox(height: 16),
                       Expanded(
                         child: Container(
@@ -132,7 +203,9 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
                             color: Colors.black,
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: [
-                              BoxShadow(color: Colors.greenAccent.withOpacity(0.3), blurRadius: 5)
+                              BoxShadow(
+                                  color: Colors.greenAccent.withOpacity(0.3),
+                                  blurRadius: 5)
                             ],
                           ),
                           child: ListView.builder(
@@ -174,17 +247,17 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
                 TextButton(
                   onPressed: () {
                     isCancelled = true;
-                    process.kill();
+                    cancelToken.cancel();
                     Navigator.of(context).pop();
                   },
-                  child: const Text("❌ Annuler", style: TextStyle(color: Colors.redAccent)),
+                  child: const Text("❌ Annuler",
+                      style: TextStyle(color: Colors.redAccent)),
                 ),
               if (isDownloadComplete)
                 TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text("✅ Terminer", style: TextStyle(color: Colors.greenAccent)),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text("✅ Terminer",
+                      style: TextStyle(color: Colors.greenAccent)),
                 ),
             ],
           );
@@ -193,22 +266,72 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
     },
   ));
 
-  final exitCode = await process.exitCode;
+  while (attempt < maxRetries && !isDownloadComplete && !isCancelled) {
+    try {
+      attempt++;
 
-  isDownloadComplete = exitCode == 0;
-  logStream.add(null);
+      final file = File(savePath);
+      int downloadedLength = 0;
+      if (await file.exists()) {
+        downloadedLength = await file.length();
+        logs.add({
+          'message': "⏩ Reprise à ${formatFileSize(downloadedLength)}",
+          'type': 'log'
+        });
+        logStream.add(null);
+      }
 
-  if (isDownloadComplete) {
-    print("✅ Fichier téléchargé : $savePath");
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("✅ Fichier enregistré : $fileName")),
-    );
-  } else {
-    logs.add({'message': "❌ FFmpeg a échoué avec le code $exitCode", 'type': 'error'});
-    logStream.add(null);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("❌ Échec du téléchargement (code exitCode)")),
-    );
+      final response = await dio.download(
+        url,
+        savePath,
+        cancelToken: cancelToken,
+        options: Options(
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://tonsite.com/",
+            if (downloadedLength > 0) "Range": "bytes=$downloadedLength-",
+          },
+        ),
+        onReceiveProgress: (received, total) {
+          final totalBytes = totalSize ?? total;
+          if (totalBytes > 0) {
+            final downloaded = received + downloadedLength;
+            final progress =
+            (downloaded / totalBytes * 100).toStringAsFixed(1);
+            logs.add({
+              'message':
+              "📥 ${formatFileSize(downloaded)} / ${formatFileSize(totalBytes)} ($progress%)",
+              'type': 'stats'
+            });
+            logStream.add(null);
+          }
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 206) {
+        isDownloadComplete = true;
+        logs.add({'message': "✅ Fichier téléchargé : $savePath", 'type': 'log'});
+        logStream.add(null);
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("✅ Fichier enregistré : $fileName")),
+          );
+        }
+      } else {
+        throw Exception("Code HTTP ${response.statusCode}");
+      }
+    } catch (e) {
+      logs.add({'message': "⚠️ Erreur : $e", 'type': 'error'});
+      logStream.add(null);
+      if (attempt >= maxRetries) {
+        logs.add({
+          'message': "❌ Abandon après $maxRetries tentatives",
+          'type': 'error'
+        });
+        logStream.add(null);
+      }
+    }
   }
 
   await Future.delayed(const Duration(seconds: 1));
