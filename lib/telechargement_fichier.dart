@@ -5,6 +5,7 @@ import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'secure_storage_service.dart';
 
 /// 📂 Récupère ou crée le dossier de téléchargement "Videos"
 Future<String> _getDownloadDirectory() async {
@@ -16,12 +17,12 @@ Future<String> _getDownloadDirectory() async {
   return downloadDir.path;
 }
 
-/// 🔧 Nettoie le nom du fichier pour éviter les caractères interdits
+/// 🔧 Nettoie le nom du fichier
 String sanitizeFilename(String filename) {
   return filename.replaceAll(RegExp(r'[\\/*?:"<>|]'), "_");
 }
 
-/// 🔧 Formatage taille lisible (B, KB, MB, GB...)
+/// 🔧 Taille lisible
 String formatFileSize(int bytes) {
   if (bytes <= 0) return "0 B";
   const suffixes = ["B", "KB", "MB", "GB", "TB"];
@@ -33,7 +34,6 @@ String formatFileSize(int bytes) {
 /// Effet scanline vert
 class ScanLine extends StatefulWidget {
   const ScanLine({super.key});
-
   @override
   State<ScanLine> createState() => _ScanLineState();
 }
@@ -42,7 +42,6 @@ class _ScanLineState extends State<ScanLine>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
-
   @override
   void initState() {
     super.initState();
@@ -51,13 +50,11 @@ class _ScanLineState extends State<ScanLine>
       ..repeat(reverse: true);
     _animation = Tween<double>(begin: 0, end: 1).animate(_controller);
   }
-
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
@@ -77,15 +74,23 @@ class _ScanLineState extends State<ScanLine>
   }
 }
 
-/// 🚀 Vérifie la taille avant téléchargement et demande confirmation
-Future<void> verifierEtTelecharger(String url, BuildContext context) async {
+/// 🔧 Construit Dio configuré avec headers + cookies
+Future<Dio> buildDio(String url) async {
+  final storage = SecureStorageService();
+  final creds = await storage.getCredentials();
+  final cookies = creds["cookies"] ?? "";
+  final referer = Uri.parse(url).origin + "/";
+  final origin = Uri.parse(url).origin;
+
   final dio = Dio(BaseOptions(
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       'Accept': '*/*',
       'Connection': 'keep-alive',
-      'Referer': Uri.parse(url).origin + "/", // dynamique
-      'Origin': Uri.parse(url).origin,        // dynamique
+      'Referer': referer,
+      'Origin': origin,
+      if (cookies.isNotEmpty) 'Cookie': cookies,
     },
     validateStatus: (status) => status != null && status < 500,
   ));
@@ -95,22 +100,55 @@ Future<void> verifierEtTelecharger(String url, BuildContext context) async {
     client.badCertificateCallback = (cert, host, port) => true;
     return client;
   };
+  return dio;
+}
+
+/// 🔄 Rafraîchit les cookies à partir du m3u
+Future<void> refreshCookies() async {
+  final storage = SecureStorageService();
+  final creds = await storage.getCredentials();
+  String? completeUrl = creds["completeUrl"];
+  String? baseUrl = creds["baseUrl"];
+  String? login = creds["login"];
+  String? password = creds["password"];
+
+  final url = completeUrl?.isNotEmpty == true
+      ? completeUrl!
+      : "$baseUrl?username=$login&password=$password&type=m3u&output=ts";
+
+  final dio = Dio();
+  (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+    final client = HttpClient();
+    client.badCertificateCallback = (cert, host, port) => true;
+    return client;
+  };
 
   try {
-    final referer = Uri.parse(url).origin + "/";
+    final response = await dio.get(url,
+        options: Options(
+          responseType: ResponseType.plain,
+          followRedirects: false,
+          validateStatus: (status) => status != null && status < 500,
+        ));
 
-    final response = await dio.head(
-      url,
-      options: Options(
-        headers: {
-          "User-Agent": "Mozilla/5.0",
-          "Accept": "*/*",
-          "Connection": "keep-alive",
-          "Referer": referer,
-        },
-      ),
-    );
+    final cookies = response.headers['set-cookie'];
+    if (cookies != null && cookies.isNotEmpty) {
+      final cookieString = cookies.join("; ");
+      await storage.saveCredentials({"cookies": cookieString});
+      debugPrint("🍪 Cookies rafraîchis : $cookieString");
+    } else {
+      debugPrint("⚠️ Aucun cookie trouvé lors du refresh");
+    }
+  } catch (e) {
+    debugPrint("❌ Erreur refreshCookies : $e");
+  }
+}
 
+/// 🚀 Vérifie la taille avant téléchargement
+Future<void> verifierEtTelecharger(String url, BuildContext context) async {
+  final dio = await buildDio(url);
+  try {
+    final response = await dio.head(url);
     final contentLength =
         int.tryParse(response.headers.value("content-length") ?? "0") ?? 0;
     final sizeFormatted = formatFileSize(contentLength);
@@ -150,30 +188,14 @@ Future<void> verifierEtTelecharger(String url, BuildContext context) async {
   }
 }
 
-/// 📥 Téléchargement avec reprise + progression détaillée
+/// 📥 Téléchargement vidéo avec auto-refresh cookies
 Future<void> telechargerFichierVideo(String url, BuildContext context,
     {int? totalSize}) async {
-  final dio = Dio(BaseOptions(
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-      'Connection': 'keep-alive',
-      'Referer': Uri.parse(url).origin + "/", // dynamique
-      'Origin': Uri.parse(url).origin,        // dynamique
-    },
-    validateStatus: (status) => status != null && status < 500,
-  ));
-
-  (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
-    final client = HttpClient();
-    client.badCertificateCallback = (cert, host, port) => true;
-    return client;
-  };
+  Dio dio = await buildDio(url);
 
   final rawFileName = Uri.parse(url).pathSegments.last;
   final fileName = sanitizeFilename(rawFileName);
   final savePath = "${await _getDownloadDirectory()}/$fileName";
-  final referer = Uri.parse(url).origin + "/";
 
   bool isDownloadComplete = false;
   bool isCancelled = false;
@@ -184,13 +206,9 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
   int maxRetries = 3;
   int attempt = 0;
 
-  logs.add(
-      {'message': "🚀 Lancement du téléchargement : $fileName", 'type': 'log'});
+  logs.add({'message': "🚀 Lancement du téléchargement : $fileName", 'type': 'log'});
   if (totalSize != null) {
-    logs.add({
-      'message': "📦 Taille du fichier : ${formatFileSize(totalSize)}",
-      'type': 'log'
-    });
+    logs.add({'message': "📦 Taille du fichier : ${formatFileSize(totalSize)}", 'type': 'log'});
   }
 
   await showDialog(
@@ -204,8 +222,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
             setState(() {});
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (scrollController.hasClients) {
-                scrollController.jumpTo(
-                    scrollController.position.maxScrollExtent);
+                scrollController.jumpTo(scrollController.position.maxScrollExtent);
               }
             });
           }
@@ -216,13 +233,11 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                 !isCancelled) {
               try {
                 attempt++;
-
                 final file = File(savePath);
                 int downloadedLength = 0;
                 if (await file.exists()) {
                   downloadedLength = await file.length();
-                  addLog("⏩ Reprise à ${formatFileSize(downloadedLength)}",
-                      "log");
+                  addLog("⏩ Reprise à ${formatFileSize(downloadedLength)}", "log");
                 }
 
                 final response = await dio.download(
@@ -231,12 +246,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                   cancelToken: cancelToken,
                   options: Options(
                     headers: {
-                      "User-Agent": "Mozilla/5.0",
-                      "Accept": "*/*",
-                      "Connection": "keep-alive",
-                      "Referer": referer,
-                      if (downloadedLength > 0)
-                        "Range": "bytes=$downloadedLength-",
+                      if (downloadedLength > 0) "Range": "bytes=$downloadedLength-",
                     },
                   ),
                   onReceiveProgress: (received, total) {
@@ -245,24 +255,19 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                       final downloaded = received + downloadedLength;
                       final progress =
                       (downloaded / totalBytes * 100).toStringAsFixed(1);
-                      addLog(
-                          "📥 ${formatFileSize(downloaded)} / ${formatFileSize(totalBytes)} ($progress%)",
-                          "stats");
+                      addLog("📥 ${formatFileSize(downloaded)} / ${formatFileSize(totalBytes)} ($progress%)", "stats");
                     }
                   },
                 );
 
                 addLog("⚠️ HTTP code : ${response.statusCode}", "log");
 
-                if (response.statusCode == 200 ||
-                    response.statusCode == 206) {
+                if (response.statusCode == 200 || response.statusCode == 206) {
                   isDownloadComplete = true;
                   addLog("✅ Fichier téléchargé : $savePath", "log");
-
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text("✅ Fichier enregistré : $fileName")),
+                      SnackBar(content: Text("✅ Fichier enregistré : $fileName")),
                     );
                   }
                 } else {
@@ -270,21 +275,18 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                 }
               } catch (e) {
                 if (e is DioException) {
-                  // log complet en console
-                  print("❌ DioException");
-                  print("Type: ${e.type}");
-                  print("Message: ${e.message}");
-                  print("StatusCode: ${e.response?.statusCode}");
-                  print("Data: ${e.response?.data}");
-                  print("Headers: ${e.response?.headers}");
-                  print("Request: ${e.requestOptions}");
+                  final statusCode = e.response?.statusCode;
+                  addLog("⚠️ Erreur HTTP $statusCode : ${e.message}", "error");
+                  print("❌ DioException: ${e.message}");
 
-                  // log résumé dans ton UI
-                  addLog("⚠️ Erreur HTTP ${e.response?.statusCode} : ${e.message}", "error");
+                  if (statusCode == 461 || statusCode == 403) {
+                    addLog("🔄 Cookies expirés → rafraîchissement...", "log");
+                    await refreshCookies();
+                    dio = await buildDio(url); // recharger avec nouveaux cookies
+                    continue; // retry immédiat
+                  }
                 } else {
-                  // autre erreur Dart
-                  print("❌ Erreur: $e");
-                  addLog("⚠️ Erreur : $e", "error");
+                  addLog("❌ Erreur : $e", "error");
                 }
 
                 if (attempt >= maxRetries) {
@@ -294,7 +296,6 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
             }
           }
 
-          // lancer le téléchargement une fois le dialogue affiché
           Future.microtask(startDownload);
 
           return AlertDialog(
@@ -314,8 +315,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                   child: Column(
                     children: [
                       if (!isDownloadComplete)
-                        const CircularProgressIndicator(
-                            color: Colors.greenAccent),
+                        const CircularProgressIndicator(color: Colors.greenAccent),
                       const SizedBox(height: 16),
                       Expanded(
                         child: Container(
