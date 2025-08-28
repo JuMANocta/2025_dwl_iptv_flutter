@@ -21,6 +21,10 @@ class _CredentialFormState extends State<CredentialForm> {
 
   Future<void> _saveCredentials() async {
     if (_formKey.currentState!.validate()) {
+      // ⚡ Effacer les anciens credentials (cookies inclus)
+      await _storageService.clearCredentials();
+
+      // Sauvegarder les nouveaux credentials
       final credentials = _isCompleteMode
           ? {
         "mode": "complete",

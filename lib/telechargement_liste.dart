@@ -34,34 +34,53 @@ class _TelechargementPageState extends State<TelechargementPage> {
     try {
       final dio = Dio(BaseOptions(
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
           'Accept': '*/*',
           'Connection': 'keep-alive',
         },
         validateStatus: (status) => status != null && status < 500,
       ));
 
-      (dio.httpClientAdapter as IOHttpClientAdapter).onHttpClientCreate = (client) {
+      (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+        final client = HttpClient();
         client.badCertificateCallback = (cert, host, port) => true;
         return client;
       };
 
       final url = await _getDownloadUrl();
 
+      // supprimer l'ancien fichier si déjà présent
       if (await File(_filePath).exists()) {
         debugPrint("📄 Fichier existant détecté, suppression...");
         await File(_filePath).delete();
       }
 
-      await dio.download(url, _filePath, deleteOnError: true);
+      // ⚡ utilisation de get() pour pouvoir lire les headers (cookies)
+      final response = await dio.get(url,
+          options: Options(
+            responseType: ResponseType.bytes,
+            followRedirects: false,
+          ));
+
+      // sauvegarder les cookies si présents
+      final cookies = response.headers['set-cookie'];
+      if (cookies != null && cookies.isNotEmpty) {
+        final cookieString = cookies.join("; ");
+        await _storageService.saveCredentials({"cookies": cookieString});
+        debugPrint("🍪 Cookies sauvegardés : $cookieString");
+      }
+
+      // écrire le fichier en local
+      final file = File(_filePath);
+      await file.writeAsBytes(response.data);
+
       debugPrint("✅ Téléchargement terminé");
       debugPrint("📥 Fichier enregistré à : $_filePath");
 
-
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Téléchargement terminé 🎉')),
+          const SnackBar(content: Text('✅ Playlist téléchargée 🎉')),
         );
         Navigator.pop(context, true);
       }
