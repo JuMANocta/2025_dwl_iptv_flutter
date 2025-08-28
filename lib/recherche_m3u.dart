@@ -39,7 +39,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
   bool _showTv = false;
   List<FilmEntry> _entries = [];
   Map<String, List<FilmEntry>> _groupedSeries = {};
-  List<FilmEntry> _filteredFlatList = [];
+  Map<String, List<FilmEntry>> _groupedFilms = {};
   String _searchQuery = "";
 
   @override
@@ -62,12 +62,14 @@ class _RechercheM3UState extends State<RechercheM3U> {
         final title = line.split(',').last.trim();
         final url = lines[i + 1].trim();
 
-        final isSerie = RegExp(r"S\d{2} E\d{2}", caseSensitive: false).hasMatch(title);
+        final isSerie =
+        RegExp(r"S\d{2} E\d{2}", caseSensitive: false).hasMatch(title);
         String? saison;
         String? episode;
 
         if (isSerie) {
-          final match = RegExp(r"S(\d{2}) E(\d{2})", caseSensitive: false).firstMatch(title);
+          final match = RegExp(r"S(\d{2}) E(\d{2})", caseSensitive: false)
+              .firstMatch(title);
           if (match != null) {
             saison = match.group(1);
             episode = match.group(2);
@@ -90,6 +92,25 @@ class _RechercheM3UState extends State<RechercheM3U> {
     });
   }
 
+  /// 🔧 Nettoie le titre d’un film pour créer un nom de groupe (sans qualité)
+  String cleanBaseName(String title) {
+    var name = title;
+
+    // Supprimer tout ce qui est entre parenthèses
+    name = name.replaceAll(RegExp(r'\(.*?\)', caseSensitive: false), '');
+
+    // Supprimer les tags qualité + audio fréquemment utilisés
+    name = name.replaceAll(
+      RegExp(
+          r'FHD|UHD|4K|2160p|1080p|720p|480p|SD|HDR10\+?|HDR|MULTI|VOSTFR|VF|VO|TRUEHD|DTS|ATMOS|FR',
+          caseSensitive: false),
+      '',
+    );
+
+    // Nettoyer les espaces multiples
+    return name.trim().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
   void _filterResults(String query) {
     final isAllowed = (FilmEntry entry) {
       if (entry.url.contains('/series/')) return _showSeries;
@@ -98,24 +119,80 @@ class _RechercheM3UState extends State<RechercheM3U> {
     };
     query = query.toLowerCase();
     final filtered = _entries
-        .where((entry) => entry.nom.toLowerCase().contains(query) && isAllowed(entry))
+        .where((entry) =>
+    entry.nom.toLowerCase().contains(query) && isAllowed(entry))
         .toList();
 
-    final Map<String, List<FilmEntry>> grouped = {};
+    // --- Grouper les séries par saisons ---
+    final Map<String, List<FilmEntry>> groupedSeries = {};
     for (var entry in filtered) {
       if (entry.isSerie) {
-        final baseName = entry.nom.split(RegExp(r"S\d{2} E\d{2}")).first.trim();
-        final saisonLabel = entry.saison != null ? "📺 Saison ${entry.saison}" : "📺 Autre";
+        final baseName =
+        entry.nom.split(RegExp(r"S\d{2} E\d{2}")).first.trim();
+        final saisonLabel =
+        entry.saison != null ? "📺 Saison ${entry.saison}" : "📺 Autre";
         final groupKey = "$baseName - $saisonLabel";
-        grouped.putIfAbsent(groupKey, () => []).add(entry);
+        groupedSeries.putIfAbsent(groupKey, () => []).add(entry);
       }
     }
 
+    // --- Grouper les films par baseName nettoyé ---
+    final Map<String, List<FilmEntry>> groupedFilms = {};
+    for (var entry in filtered.where((e) => !e.isSerie)) {
+      final baseName = cleanBaseName(entry.nom);
+      groupedFilms.putIfAbsent(baseName, () => []).add(entry);
+    }
+
+    // --- Trier les films par qualité ---
+    int qualityRank(String title) {
+      final lower = title.toLowerCase();
+      if (lower.contains("4k") || lower.contains("2160p")) return 1;
+      if (lower.contains("fhd") || lower.contains("1080p")) return 2;
+      if (lower.contains("hd") || lower.contains("720p")) return 3;
+      if (lower.contains("sd") || lower.contains("480p")) return 4;
+      return 99;
+    }
+
+    groupedFilms.updateAll((key, films) {
+      films.sort((a, b) => qualityRank(a.nom).compareTo(qualityRank(b.nom)));
+      return films;
+    });
+
     setState(() {
-      _filteredFlatList = filtered.where((e) => !e.isSerie).toList();
-      _groupedSeries = grouped;
+      _groupedSeries = groupedSeries;
+      _groupedFilms = groupedFilms;
       _searchQuery = query;
     });
+  }
+
+  /// 🔧 Crée un Chip de qualité
+  Widget getQualityChip(String title) {
+    final lower = title.toLowerCase();
+    if (lower.contains("4k") || lower.contains("2160p")) {
+      return const Chip(
+          label: Text("4K"),
+          backgroundColor: Colors.blueAccent,
+          labelStyle: TextStyle(color: Colors.white));
+    } else if (lower.contains("fhd") || lower.contains("1080p")) {
+      return const Chip(
+          label: Text("FHD"),
+          backgroundColor: Colors.green,
+          labelStyle: TextStyle(color: Colors.white));
+    } else if (lower.contains("hd") || lower.contains("720p")) {
+      return const Chip(
+          label: Text("HD"),
+          backgroundColor: Colors.orange,
+          labelStyle: TextStyle(color: Colors.white));
+    } else if (lower.contains("sd") || lower.contains("480p")) {
+      return const Chip(
+          label: Text("SD"),
+          backgroundColor: Colors.redAccent,
+          labelStyle: TextStyle(color: Colors.white));
+    }
+    return const Chip(
+        label: Text("?"),
+        backgroundColor: Colors.grey,
+        labelStyle: TextStyle(color: Colors.white));
   }
 
   void _onEntrySelected(FilmEntry entry) {
@@ -129,6 +206,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // --- Filtres ---
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.all(8.0),
@@ -165,6 +243,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
             ],
           ),
         ),
+
+        // --- Barre de recherche ---
         Padding(
           padding: const EdgeInsets.all(8.0),
           child: TextField(
@@ -177,27 +257,46 @@ class _RechercheM3UState extends State<RechercheM3U> {
           ),
         ),
         const SizedBox(height: 8),
+
+        // --- Résultats ---
         Expanded(
-          child: (_filteredFlatList.isEmpty && _groupedSeries.isEmpty)
+          child: (_groupedFilms.isEmpty && _groupedSeries.isEmpty)
               ? const Center(child: Text('🔎 Aucun résultat trouvé'))
               : ListView(
             children: [
+              // Séries regroupées
               ..._groupedSeries.entries.map((entry) => ExpansionTile(
-                title: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.bold)),
+                title: Text(entry.key,
+                    style:
+                    const TextStyle(fontWeight: FontWeight.bold)),
                 children: entry.value
                     .map((ep) => ListTile(
-                  title: Text("🎞️ Épisode ${ep.episode} - ${ep.nom}"),
-                  subtitle: Text(ep.url, style: const TextStyle(fontSize: 12)),
+                  title: Text(
+                      "🎞️ Épisode ${ep.episode} - ${ep.nom}"),
+                  subtitle: Text(ep.url,
+                      style:
+                      const TextStyle(fontSize: 12)),
                   onTap: () => _onEntrySelected(ep),
                   trailing: const Icon(Icons.download),
                 ))
                     .toList(),
               )),
-              ..._filteredFlatList.map((entry) => ListTile(
-                title: Text("🎬 ${entry.nom}"),
-                subtitle: Text(entry.url, style: const TextStyle(fontSize: 12)),
-                onTap: () => _onEntrySelected(entry),
-                trailing: const Icon(Icons.download),
+
+              // Films regroupés
+              ..._groupedFilms.entries.map((entry) => ExpansionTile(
+                title: Text("🎬 ${entry.key}",
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold)),
+                children: entry.value
+                    .map((film) => ListTile(
+                  title: Text(film.nom),
+                  subtitle: Text(film.url,
+                      style:
+                      const TextStyle(fontSize: 12)),
+                  onTap: () => _onEntrySelected(film),
+                  trailing: getQualityChip(film.nom),
+                ))
+                    .toList(),
               )),
             ],
           ),
