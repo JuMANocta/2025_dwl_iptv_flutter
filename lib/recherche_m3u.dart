@@ -37,8 +37,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
   bool _showFilms = true;
   bool _showSeries = true;
   bool _showTv = false;
+
   List<FilmEntry> _entries = [];
-  Map<String, List<FilmEntry>> _groupedSeries = {};
+  Map<String, Map<String, List<FilmEntry>>> _groupedSeries = {};
   Map<String, List<FilmEntry>> _groupedFilms = {};
   String _searchQuery = "";
 
@@ -92,22 +93,18 @@ class _RechercheM3UState extends State<RechercheM3U> {
     });
   }
 
-  /// 🔧 Nettoie le titre d’un film pour créer un nom de groupe (sans qualité)
+  /// 🔧 Nettoie le titre pour grouper films/séries
   String cleanBaseName(String title) {
     var name = title;
 
-    // Supprimer tout ce qui est entre parenthèses
     name = name.replaceAll(RegExp(r'\(.*?\)', caseSensitive: false), '');
-
-    // Supprimer les tags qualité + audio fréquemment utilisés
     name = name.replaceAll(
       RegExp(
-          r'FHD|UHD|4K|2160p|1080p|720p|480p|SD|HDR10\+?|HDR|MULTI|VOSTFR|VF|VO|TRUEHD|DTS|ATMOS|FR',
-          caseSensitive: false),
+        r'FHD|UHD|4K|2160p|1080p|720p|480p|SD|HDR10\+?|HDR|MULTI|VOSTFR|VF|VO|TRUEHD|DTS|ATMOS|FR',
+        caseSensitive: false,
+      ),
       '',
     );
-
-    // Nettoyer les espaces multiples
     return name.trim().replaceAll(RegExp(r'\s+'), ' ');
   }
 
@@ -117,33 +114,34 @@ class _RechercheM3UState extends State<RechercheM3U> {
       if (entry.url.contains('/movie/')) return _showFilms;
       return _showTv;
     };
+
     query = query.toLowerCase();
     final filtered = _entries
         .where((entry) =>
     entry.nom.toLowerCase().contains(query) && isAllowed(entry))
         .toList();
 
-    // --- Grouper les séries par saisons ---
-    final Map<String, List<FilmEntry>> groupedSeries = {};
-    for (var entry in filtered) {
-      if (entry.isSerie) {
-        final baseName =
-        entry.nom.split(RegExp(r"S\d{2} E\d{2}")).first.trim();
-        final saisonLabel =
-        entry.saison != null ? "📺 Saison ${entry.saison}" : "📺 Autre";
-        final groupKey = "$baseName - $saisonLabel";
-        groupedSeries.putIfAbsent(groupKey, () => []).add(entry);
-      }
+    // --- Séries : Série > Saison > Épisodes ---
+    final Map<String, Map<String, List<FilmEntry>>> groupedSeries = {};
+    for (var entry in filtered.where((e) => e.isSerie)) {
+      final seriesName =
+      entry.nom.split(RegExp(r"S\d{2} E\d{2}")).first.trim();
+      final saisonLabel =
+      entry.saison != null ? "Saison ${entry.saison}" : "Autre";
+
+      groupedSeries.putIfAbsent(seriesName, () => {});
+      groupedSeries[seriesName]!.putIfAbsent(saisonLabel, () => []);
+      groupedSeries[seriesName]![saisonLabel]!.add(entry);
     }
 
-    // --- Grouper les films par baseName nettoyé ---
+    // --- Films regroupés ---
     final Map<String, List<FilmEntry>> groupedFilms = {};
     for (var entry in filtered.where((e) => !e.isSerie)) {
       final baseName = cleanBaseName(entry.nom);
       groupedFilms.putIfAbsent(baseName, () => []).add(entry);
     }
 
-    // --- Trier les films par qualité ---
+    // --- Trier films par qualité ---
     int qualityRank(String title) {
       final lower = title.toLowerCase();
       if (lower.contains("4k") || lower.contains("2160p")) return 1;
@@ -159,40 +157,55 @@ class _RechercheM3UState extends State<RechercheM3U> {
     });
 
     setState(() {
-      _groupedSeries = groupedSeries;
-      _groupedFilms = groupedFilms;
+      _groupedSeries = groupedSeries; // ✅ type correct
+      _groupedFilms = groupedFilms;   // ✅ type correct
       _searchQuery = query;
     });
   }
 
-  /// 🔧 Crée un Chip de qualité
+  /// 🔧 Badge qualité films
   Widget getQualityChip(String title) {
     final lower = title.toLowerCase();
     if (lower.contains("4k") || lower.contains("2160p")) {
-      return const Chip(
-          label: Text("4K"),
-          backgroundColor: Colors.blueAccent,
-          labelStyle: TextStyle(color: Colors.white));
+      return _chip("4K", Colors.blueAccent);
     } else if (lower.contains("fhd") || lower.contains("1080p")) {
-      return const Chip(
-          label: Text("FHD"),
-          backgroundColor: Colors.green,
-          labelStyle: TextStyle(color: Colors.white));
+      return _chip("FHD", Colors.green);
     } else if (lower.contains("hd") || lower.contains("720p")) {
-      return const Chip(
-          label: Text("HD"),
-          backgroundColor: Colors.orange,
-          labelStyle: TextStyle(color: Colors.white));
+      return _chip("HD", Colors.orange);
     } else if (lower.contains("sd") || lower.contains("480p")) {
-      return const Chip(
-          label: Text("SD"),
-          backgroundColor: Colors.redAccent,
-          labelStyle: TextStyle(color: Colors.white));
+      return _chip("SD", Colors.redAccent);
     }
-    return const Chip(
-        label: Text("?"),
-        backgroundColor: Colors.grey,
-        labelStyle: TextStyle(color: Colors.white));
+    return _chip("?", Colors.grey);
+  }
+
+  /// 🔧 Badge épisode séries
+  Widget getEpisodeChip(FilmEntry ep) {
+    if (ep.saison != null && ep.episode != null) {
+      return _chip("S${ep.saison}E${ep.episode}", Colors.purple);
+    }
+    return const SizedBox.shrink();
+  }
+
+  /// 🔧 Badges langue
+  List<Widget> getLanguageChips(String title) {
+    final lower = title.toLowerCase();
+    List<Widget> chips = [];
+    if (lower.contains("multi")) chips.add(_chip("MULTI", Colors.teal));
+    if (lower.contains("vostfr")) chips.add(_chip("VOSTFR", Colors.deepOrange));
+    if (lower.contains("vf")) chips.add(_chip("VF", Colors.indigo));
+    if (lower.contains("vo")) chips.add(_chip("VO", Colors.brown));
+    return chips;
+  }
+
+  /// 🔧 Fabrique un Chip
+  Widget _chip(String label, Color color) {
+    return Chip(
+      label: Text(label),
+      backgroundColor: color,
+      labelStyle: const TextStyle(color: Colors.white),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
   }
 
   void _onEntrySelected(FilmEntry entry) {
@@ -211,34 +224,38 @@ class _RechercheM3UState extends State<RechercheM3U> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.all(8.0),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(width: 8),
               FilterChip(
                 label: const Text('🎬 Films'),
                 selected: _showFilms,
-                onSelected: (val) => setState(() {
-                  _showFilms = val;
-                  _filterResults(_searchQuery);
-                }),
+                onSelected: (val) {
+                  setState(() {
+                    _showFilms = val;
+                    _filterResults(_searchQuery);
+                  });
+                },
               ),
               const SizedBox(width: 8),
               FilterChip(
                 label: const Text('📺 Séries'),
                 selected: _showSeries,
-                onSelected: (val) => setState(() {
-                  _showSeries = val;
-                  _filterResults(_searchQuery);
-                }),
+                onSelected: (val) {
+                  setState(() {
+                    _showSeries = val;
+                    _filterResults(_searchQuery);
+                  });
+                },
               ),
               const SizedBox(width: 8),
               FilterChip(
                 label: const Text('📡 TV'),
                 selected: _showTv,
-                onSelected: (val) => setState(() {
-                  _showTv = val;
-                  _filterResults(_searchQuery);
-                }),
+                onSelected: (val) {
+                  setState(() {
+                    _showTv = val;
+                    _filterResults(_searchQuery);
+                  });
+                },
               ),
             ],
           ),
@@ -256,7 +273,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
             onChanged: _filterResults,
           ),
         ),
-        const SizedBox(height: 8),
 
         // --- Résultats ---
         Expanded(
@@ -264,39 +280,45 @@ class _RechercheM3UState extends State<RechercheM3U> {
               ? const Center(child: Text('🔎 Aucun résultat trouvé'))
               : ListView(
             children: [
-              // Séries regroupées
-              ..._groupedSeries.entries.map((entry) => ExpansionTile(
-                title: Text(entry.key,
-                    style:
-                    const TextStyle(fontWeight: FontWeight.bold)),
-                children: entry.value
-                    .map((ep) => ListTile(
-                  title: Text(
-                      "🎞️ Épisode ${ep.episode} - ${ep.nom}"),
-                  subtitle: Text(ep.url,
-                      style:
-                      const TextStyle(fontSize: 12)),
-                  onTap: () => _onEntrySelected(ep),
-                  trailing: const Icon(Icons.download),
-                ))
-                    .toList(),
+              // Séries
+              ..._groupedSeries.entries.map((seriesEntry) => ExpansionTile(
+                title: Text("📺 ${seriesEntry.key}",
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                children: seriesEntry.value.entries.map((seasonEntry) =>
+                    ExpansionTile(
+                      title: Text(seasonEntry.key),
+                      children: seasonEntry.value.map((ep) => ListTile(
+                        title: Text(ep.nom),
+                        subtitle: Text(ep.url, style: const TextStyle(fontSize: 12)),
+                        trailing: Wrap(
+                          spacing: 4,
+                          children: [
+                            getEpisodeChip(ep),
+                            ...getLanguageChips(ep.nom),
+                          ],
+                        ),
+                        onTap: () => _onEntrySelected(ep),
+                      )).toList(),
+                    )).toList(),
               )),
 
-              // Films regroupés
+              // Films
               ..._groupedFilms.entries.map((entry) => ExpansionTile(
                 title: Text("🎬 ${entry.key}",
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold)),
-                children: entry.value
-                    .map((film) => ListTile(
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                children: entry.value.map((film) => ListTile(
                   title: Text(film.nom),
                   subtitle: Text(film.url,
-                      style:
-                      const TextStyle(fontSize: 12)),
+                      style: const TextStyle(fontSize: 12)),
+                  trailing: Wrap(
+                    spacing: 4,
+                    children: [
+                      getQualityChip(film.nom),
+                      ...getLanguageChips(film.nom),
+                    ],
+                  ),
                   onTap: () => _onEntrySelected(film),
-                  trailing: getQualityChip(film.nom),
-                ))
-                    .toList(),
+                )).toList(),
               )),
             ],
           ),
