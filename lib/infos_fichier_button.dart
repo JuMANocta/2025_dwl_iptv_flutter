@@ -30,7 +30,8 @@ class InfosFichierButton extends StatelessWidget {
             } else if (url.contains("/movie/")) {
               filmCount++;
             } else {
-              tvCount++;
+              //TODO: affiner le comptage TV
+              //tvCount++;
             }
           }
 

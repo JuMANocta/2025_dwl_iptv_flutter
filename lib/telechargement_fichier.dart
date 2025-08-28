@@ -103,47 +103,6 @@ Future<Dio> buildDio(String url) async {
   return dio;
 }
 
-/// 🔄 Rafraîchit les cookies à partir du m3u
-Future<void> refreshCookies() async {
-  final storage = SecureStorageService();
-  final creds = await storage.getCredentials();
-  String? completeUrl = creds["completeUrl"];
-  String? baseUrl = creds["baseUrl"];
-  String? login = creds["login"];
-  String? password = creds["password"];
-
-  final url = completeUrl?.isNotEmpty == true
-      ? completeUrl!
-      : "$baseUrl?username=$login&password=$password&type=m3u&output=ts";
-
-  final dio = Dio();
-  (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
-    final client = HttpClient();
-    client.badCertificateCallback = (cert, host, port) => true;
-    return client;
-  };
-
-  try {
-    final response = await dio.get(url,
-        options: Options(
-          responseType: ResponseType.plain,
-          followRedirects: false,
-          validateStatus: (status) => status != null && status < 500,
-        ));
-
-    final cookies = response.headers['set-cookie'];
-    if (cookies != null && cookies.isNotEmpty) {
-      final cookieString = cookies.join("; ");
-      await storage.saveCredentials({"cookies": cookieString});
-      debugPrint("🍪 Cookies rafraîchis : $cookieString");
-    } else {
-      debugPrint("⚠️ Aucun cookie trouvé lors du refresh");
-    }
-  } catch (e) {
-    debugPrint("❌ Erreur refreshCookies : $e");
-  }
-}
-
 /// 🚀 Vérifie la taille avant téléchargement
 Future<void> verifierEtTelecharger(String url, BuildContext context) async {
   final dio = await buildDio(url);
@@ -188,7 +147,7 @@ Future<void> verifierEtTelecharger(String url, BuildContext context) async {
   }
 }
 
-/// 📥 Téléchargement vidéo avec auto-refresh cookies
+/// 📥 Téléchargement vidéo (sans logique de reprise)
 Future<void> telechargerFichierVideo(String url, BuildContext context,
     {int? totalSize}) async {
   Dio dio = await buildDio(url);
@@ -203,9 +162,6 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
   final scrollController = ScrollController();
   final cancelToken = CancelToken();
 
-  int maxRetries = 3;
-  int attempt = 0;
-
   logs.add({'message': "🚀 Lancement du téléchargement : $fileName", 'type': 'log'});
   if (totalSize != null) {
     logs.add({'message': "📦 Taille du fichier : ${formatFileSize(totalSize)}", 'type': 'log'});
@@ -217,12 +173,22 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
     builder: (context) {
       return StatefulBuilder(
         builder: (context, setState) {
-          void addLog(String msg, String type) {
-            if (type == "stats" && logs.isNotEmpty && logs.last["type"] == "stats") {
-              // ⚡️ on remplace la dernière ligne si c'est déjà une progression
-              logs[logs.length - 1] = {"message": msg, "type": type};
+          void addLog(String msg, String type, {double? progress}) {
+            if (type == "stats" && progress != null) {
+              // Construire une petite barre de progression
+              const barLength = 20;
+              int filled = (progress * barLength).clamp(0, barLength).toInt();
+              String bar = "▰" * filled + "▱" * (barLength - filled);
+
+              final formatted =
+                  "$bar ${(progress * 100).toStringAsFixed(1)}%  $msg";
+
+              if (logs.isNotEmpty && logs.last["type"] == "stats") {
+                logs[logs.length - 1] = {"message": formatted, "type": "stats"};
+              } else {
+                logs.add({"message": formatted, "type": "stats"});
+              }
             } else {
-              // sinon on ajoute une nouvelle ligne (erreur, info, etc.)
               logs.add({"message": msg, "type": type});
             }
 
@@ -235,70 +201,43 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
           }
 
           Future<void> startDownload() async {
-            while (attempt < maxRetries &&
-                !isDownloadComplete &&
-                !isCancelled) {
-              try {
-                attempt++;
-                final file = File(savePath);
-                int downloadedLength = 0;
-                if (await file.exists()) {
-                  downloadedLength = await file.length();
-                  addLog("⏩ Reprise à ${formatFileSize(downloadedLength)}", "log");
-                }
-
-                final response = await dio.download(
-                  url,
-                  savePath,
-                  cancelToken: cancelToken,
-                  options: Options(
-                    headers: {
-                      if (downloadedLength > 0) "Range": "bytes=$downloadedLength-",
-                    },
-                  ),
-                  onReceiveProgress: (received, total) {
-                    final totalBytes = totalSize ?? total;
-                    if (totalBytes > 0) {
-                      final downloaded = received + downloadedLength;
-                      final progress =
-                      (downloaded / totalBytes * 100).toStringAsFixed(1);
-                      addLog("📥 ${formatFileSize(downloaded)} / ${formatFileSize(totalBytes)} ($progress%)", "stats");
-                    }
-                  },
-                );
-
-                addLog("⚠️ HTTP code : ${response.statusCode}", "log");
-
-                if (response.statusCode == 200 || response.statusCode == 206) {
-                  isDownloadComplete = true;
-                  addLog("✅ Fichier téléchargé : $savePath", "log");
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text("✅ Fichier enregistré : $fileName")),
+            try {
+              final response = await dio.download(
+                url,
+                savePath,
+                cancelToken: cancelToken,
+                onReceiveProgress: (received, total) {
+                  final totalBytes = totalSize ?? total;
+                  if (totalBytes > 0) {
+                    final progress = received / totalBytes;
+                    addLog(
+                      "📥 ${formatFileSize(received)} / ${formatFileSize(totalBytes)}",
+                      "stats",
+                      progress: progress,
                     );
                   }
-                } else {
-                  throw Exception("Code HTTP ${response.statusCode}");
-                }
-              } catch (e) {
-                if (e is DioException) {
-                  final statusCode = e.response?.statusCode;
-                  addLog("⚠️ Erreur HTTP $statusCode : ${e.message}", "error");
-                  print("❌ DioException: ${e.message}");
+                },
+              );
 
-                  if (statusCode == 461 || statusCode == 403) {
-                    addLog("🔄 Cookies expirés → rafraîchissement...", "log");
-                    await refreshCookies();
-                    dio = await buildDio(url); // recharger avec nouveaux cookies
-                    continue; // retry immédiat
-                  }
-                } else {
-                  addLog("❌ Erreur : $e", "error");
-                }
+              addLog("⚠️ HTTP code : ${response.statusCode}", "log");
 
-                if (attempt >= maxRetries) {
-                  addLog("❌ Abandon après $maxRetries tentatives", "error");
+              if (response.statusCode == 200) {
+                isDownloadComplete = true;
+                addLog("✅ Fichier téléchargé : $savePath", "log");
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("✅ Fichier enregistré : $fileName")),
+                  );
                 }
+              } else {
+                throw Exception("Code HTTP ${response.statusCode}");
+              }
+            } catch (e) {
+              if (e is DioException) {
+                addLog("⚠️ Erreur HTTP ${e.response?.statusCode} : ${e.message}", "error");
+                print("❌ DioException: ${e.message}");
+              } else {
+                addLog("❌ Erreur : $e", "error");
               }
             }
           }
