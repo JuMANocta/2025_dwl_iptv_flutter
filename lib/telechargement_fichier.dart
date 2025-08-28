@@ -67,7 +67,7 @@ class _ScanLineState extends State<ScanLine>
             alignment: Alignment(0, _animation.value * 2 - 1),
             child: Container(
               height: 2,
-              color: Colors.greenAccent.withOpacity(0.3),
+              color: Colors.greenAccent.withValues(alpha: 0.3),
             ),
           );
         },
@@ -81,12 +81,16 @@ Future<void> verifierEtTelecharger(String url, BuildContext context) async {
   final dio = Dio();
 
   try {
+    final referer = Uri.parse(url).origin + "/";
+
     final response = await dio.head(
       url,
       options: Options(
         headers: {
           "User-Agent": "Mozilla/5.0",
-          "Referer": "https://tonsite.com/",
+          "Accept": "*/*",
+          "Connection": "keep-alive",
+          "Referer": referer,
         },
       ),
     );
@@ -138,12 +142,12 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
   final rawFileName = Uri.parse(url).pathSegments.last;
   final fileName = sanitizeFilename(rawFileName);
   final savePath = "${await _getDownloadDirectory()}/$fileName";
+  final referer = Uri.parse(url).origin + "/";
 
   bool isDownloadComplete = false;
   bool isCancelled = false;
   List<Map<String, dynamic>> logs = [];
   final scrollController = ScrollController();
-  final logStream = StreamController<void>.broadcast();
   final cancelToken = CancelToken();
 
   int maxRetries = 3;
@@ -157,24 +161,93 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
       'type': 'log'
     });
   }
-  logStream.add(null);
 
-  unawaited(showDialog(
+  await showDialog(
     context: context,
     barrierDismissible: false,
     builder: (context) {
       return StatefulBuilder(
         builder: (context, setState) {
-          logStream.stream.listen((_) {
-            if (!context.mounted) return;
+          void addLog(String msg, String type) {
+            logs.add({'message': msg, 'type': type});
             setState(() {});
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (scrollController.hasClients) {
-                scrollController
-                    .jumpTo(scrollController.position.maxScrollExtent);
+                scrollController.jumpTo(
+                    scrollController.position.maxScrollExtent);
               }
             });
-          });
+          }
+
+          Future<void> startDownload() async {
+            while (attempt < maxRetries &&
+                !isDownloadComplete &&
+                !isCancelled) {
+              try {
+                attempt++;
+
+                final file = File(savePath);
+                int downloadedLength = 0;
+                if (await file.exists()) {
+                  downloadedLength = await file.length();
+                  addLog("⏩ Reprise à ${formatFileSize(downloadedLength)}",
+                      "log");
+                }
+
+                final response = await dio.download(
+                  url,
+                  savePath,
+                  cancelToken: cancelToken,
+                  options: Options(
+                    headers: {
+                      "User-Agent": "Mozilla/5.0",
+                      "Accept": "*/*",
+                      "Connection": "keep-alive",
+                      "Referer": referer,
+                      if (downloadedLength > 0)
+                        "Range": "bytes=$downloadedLength-",
+                    },
+                  ),
+                  onReceiveProgress: (received, total) {
+                    final totalBytes = totalSize ?? total;
+                    if (totalBytes > 0) {
+                      final downloaded = received + downloadedLength;
+                      final progress =
+                      (downloaded / totalBytes * 100).toStringAsFixed(1);
+                      addLog(
+                          "📥 ${formatFileSize(downloaded)} / ${formatFileSize(totalBytes)} ($progress%)",
+                          "stats");
+                    }
+                  },
+                );
+
+                addLog("⚠️ HTTP code : ${response.statusCode}", "log");
+
+                if (response.statusCode == 200 ||
+                    response.statusCode == 206) {
+                  isDownloadComplete = true;
+                  addLog("✅ Fichier téléchargé : $savePath", "log");
+
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text("✅ Fichier enregistré : $fileName")),
+                    );
+                  }
+                } else {
+                  throw Exception("Code HTTP ${response.statusCode}");
+                }
+              } catch (e) {
+                addLog("⚠️ Erreur : $e", "error");
+                if (attempt >= maxRetries) {
+                  addLog("❌ Abandon après $maxRetries tentatives", "error");
+                }
+              }
+            }
+          }
+
+          // lancer le téléchargement une fois le dialogue affiché
+          Future.microtask(startDownload);
 
           return AlertDialog(
             backgroundColor: Colors.black,
@@ -204,7 +277,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: [
                               BoxShadow(
-                                  color: Colors.greenAccent.withOpacity(0.3),
+                                  color: Colors.greenAccent.withValues(alpha: 0.3),
                                   blurRadius: 5)
                             ],
                           ),
@@ -264,76 +337,5 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
         },
       );
     },
-  ));
-
-  while (attempt < maxRetries && !isDownloadComplete && !isCancelled) {
-    try {
-      attempt++;
-
-      final file = File(savePath);
-      int downloadedLength = 0;
-      if (await file.exists()) {
-        downloadedLength = await file.length();
-        logs.add({
-          'message': "⏩ Reprise à ${formatFileSize(downloadedLength)}",
-          'type': 'log'
-        });
-        logStream.add(null);
-      }
-
-      final response = await dio.download(
-        url,
-        savePath,
-        cancelToken: cancelToken,
-        options: Options(
-          headers: {
-            "User-Agent": "Mozilla/5.0",
-            "Referer": "https://tonsite.com/",
-            if (downloadedLength > 0) "Range": "bytes=$downloadedLength-",
-          },
-        ),
-        onReceiveProgress: (received, total) {
-          final totalBytes = totalSize ?? total;
-          if (totalBytes > 0) {
-            final downloaded = received + downloadedLength;
-            final progress =
-            (downloaded / totalBytes * 100).toStringAsFixed(1);
-            logs.add({
-              'message':
-              "📥 ${formatFileSize(downloaded)} / ${formatFileSize(totalBytes)} ($progress%)",
-              'type': 'stats'
-            });
-            logStream.add(null);
-          }
-        },
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 206) {
-        isDownloadComplete = true;
-        logs.add({'message': "✅ Fichier téléchargé : $savePath", 'type': 'log'});
-        logStream.add(null);
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("✅ Fichier enregistré : $fileName")),
-          );
-        }
-      } else {
-        throw Exception("Code HTTP ${response.statusCode}");
-      }
-    } catch (e) {
-      logs.add({'message': "⚠️ Erreur : $e", 'type': 'error'});
-      logStream.add(null);
-      if (attempt >= maxRetries) {
-        logs.add({
-          'message': "❌ Abandon après $maxRetries tentatives",
-          'type': 'error'
-        });
-        logStream.add(null);
-      }
-    }
-  }
-
-  await Future.delayed(const Duration(seconds: 1));
-  logStream.close();
+  );
 }
