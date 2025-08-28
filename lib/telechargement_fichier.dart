@@ -17,58 +17,6 @@ Future<String> _getDownloadDirectory() async {
   return downloadDir.path;
 }
 
-Future<void> _showTerminalIntro(BuildContext context) async {
-  List<String> introLines = [
-    "[BOOT] Initialisation du terminal IPTV...",
-    "[OK] Chargement des modules FFmpeg...",
-    "[OK] Configuration du réseau...",
-    "[OK] Vérification de la bande passante...",
-    "[READY] Terminal prêt à recevoir le flux."
-  ];
-
-  await showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) {
-      return AlertDialog(
-        backgroundColor: Colors.black,
-        content: SizedBox(
-          height: 200,
-          width: double.maxFinite,
-          child: StatefulBuilder(
-            builder: (context, setState) {
-              List<String> displayedLines = [];
-              Timer.periodic(const Duration(milliseconds: 500), (timer) {
-                if (displayedLines.length < introLines.length) {
-                  displayedLines.add(introLines[displayedLines.length]);
-                  setState(() {});
-                } else {
-                  timer.cancel();
-                  Future.delayed(const Duration(seconds: 1), () {
-                    Navigator.of(context).pop();
-                  });
-                }
-              });
-
-              return ListView(
-                children: displayedLines
-                    .map((line) => Text(
-                  line,
-                  style: const TextStyle(
-                    color: Colors.greenAccent,
-                    fontFamily: 'Courier New',
-                  ),
-                ))
-                    .toList(),
-              );
-            },
-          ),
-        ),
-      );
-    },
-  );
-}
-
 class ScanLine extends StatefulWidget {
   const ScanLine({super.key});
 
@@ -106,7 +54,7 @@ class _ScanLineState extends State<ScanLine> with SingleTickerProviderStateMixin
             alignment: Alignment(0, _animation.value * 2 - 1),
             child: Container(
               height: 2,
-              color: Colors.greenAccent.withValues(),
+              color: Colors.greenAccent.withOpacity(0.3),
             ),
           );
         },
@@ -116,8 +64,6 @@ class _ScanLineState extends State<ScanLine> with SingleTickerProviderStateMixin
 }
 
 Future<void> telechargerFichierVideo(String url, BuildContext context) async {
-  await _showTerminalIntro(context);
-
   final fileName = Uri.parse(url).pathSegments.last;
   final savePath = "${await _getDownloadDirectory()}/$fileName";
   final ffmpegPath = await FFmpegLoader.prepareFFmpeg(context);
@@ -126,17 +72,42 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
   bool isCancelled = false;
   List<Map<String, dynamic>> logs = [];
   final scrollController = ScrollController();
+  final logStream = StreamController<void>();
 
   print("🛰️ Lancement de FFmpeg pour : $url");
   print("📂 Destination : $savePath");
   print("🔧 Binaire FFmpeg utilisé : $ffmpegPath");
 
-  await showDialog(
+  final command = ['-user_agent', 'Mozilla/5.0', '-i', url, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', savePath];
+
+  final process = await Process.start(ffmpegPath, command);
+
+  process.stdout.transform(utf8.decoder).listen((data) {
+    logs.add({'message': data.trim(), 'type': 'log'});
+    logStream.add(null);
+  });
+
+  process.stderr.transform(utf8.decoder).listen((data) {
+    logs.add({'message': data.trim(), 'type': 'error'});
+    logStream.add(null);
+  });
+
+  unawaited(showDialog(
     context: context,
     barrierDismissible: false,
     builder: (context) {
       return StatefulBuilder(
         builder: (context, setState) {
+          logStream.stream.listen((_) {
+            if (!context.mounted) return;
+            setState(() {});
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (scrollController.hasClients) {
+                scrollController.jumpTo(scrollController.position.maxScrollExtent);
+              }
+            });
+          });
+
           return AlertDialog(
             backgroundColor: Colors.black,
             title: Text(
@@ -147,6 +118,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
               children: [
                 SizedBox(
                   width: double.maxFinite,
+                  height: 300,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -160,7 +132,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
                             color: Colors.black,
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: [
-                              BoxShadow(color: Colors.greenAccent.withValues(), blurRadius: 5)
+                              BoxShadow(color: Colors.greenAccent.withOpacity(0.3), blurRadius: 5)
                             ],
                           ),
                           child: ListView.builder(
@@ -202,6 +174,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
                 TextButton(
                   onPressed: () {
                     isCancelled = true;
+                    process.kill();
                     Navigator.of(context).pop();
                   },
                   child: const Text("❌ Annuler", style: TextStyle(color: Colors.redAccent)),
@@ -218,42 +191,26 @@ Future<void> telechargerFichierVideo(String url, BuildContext context) async {
         },
       );
     },
-  );
-
-  if (isCancelled) {
-    print("⛔ Téléchargement annulé par l'utilisateur.");
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("❌ Téléchargement annulé.")),
-    );
-    return;
-  }
-
-  final command = ['-user_agent', 'Mozilla/5.0', '-i', url, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', savePath];
-
-  final process = await Process.start(ffmpegPath, command);
-
-  process.stdout.transform(utf8.decoder).listen((data) {
-    logs.add({'message': data.trim(), 'type': 'log'});
-    scrollController.jumpTo(scrollController.position.maxScrollExtent);
-  });
-
-  process.stderr.transform(utf8.decoder).listen((data) {
-    logs.add({'message': data.trim(), 'type': 'error'});
-    scrollController.jumpTo(scrollController.position.maxScrollExtent);
-  });
+  ));
 
   final exitCode = await process.exitCode;
 
-  if (exitCode == 0) {
-    isDownloadComplete = true;
+  isDownloadComplete = exitCode == 0;
+  logStream.add(null);
+
+  if (isDownloadComplete) {
+    print("✅ Fichier téléchargé : $savePath");
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("✅ Fichier enregistré : $fileName")),
     );
   } else {
     logs.add({'message': "❌ FFmpeg a échoué avec le code $exitCode", 'type': 'error'});
-    scrollController.jumpTo(scrollController.position.maxScrollExtent);
+    logStream.add(null);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("❌ Échec du téléchargement (code $exitCode)")),
+      SnackBar(content: Text("❌ Échec du téléchargement (code exitCode)")),
     );
   }
+
+  await Future.delayed(const Duration(seconds: 1));
+  logStream.close();
 }

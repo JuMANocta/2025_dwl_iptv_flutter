@@ -38,7 +38,7 @@ class FFmpegLoader {
       return outPath;
     } catch (e) {
       _showToast(context, '❌ Erreur lors de l\'installation de FFmpeg');
-      print('❌ Erreur lors de la préparation de FFmpeg : \$e');
+      print('❌ Erreur lors de la préparation de FFmpeg : $e');
       rethrow;
     }
   }
@@ -47,13 +47,13 @@ class FFmpegLoader {
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
     final cpuAbi = androidInfo.supportedAbis.first;
-    print('🔍 ABI détectée : \$cpuAbi');
+    print('🔍 ABI détectée : $cpuAbi');
 
     if (cpuAbi.contains('arm64')) return 'arm64';
     if (cpuAbi.contains('armeabi')) return 'armeabi';
     if (cpuAbi.contains('x86_64')) return 'x86_64';
 
-    throw UnsupportedError('Architecture non supportée : \$cpuAbi');
+    throw UnsupportedError('Architecture non supportée : $cpuAbi');
   }
 
   static void _showToast(BuildContext context, String message) {
