@@ -5,6 +5,7 @@ import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:media_store_plus/media_store_plus.dart';
 import 'secure_storage_service.dart';
 
 /// 📂 Récupère ou crée le dossier de téléchargement "Videos"
@@ -50,11 +51,13 @@ class _ScanLineState extends State<ScanLine>
       ..repeat(reverse: true);
     _animation = Tween<double>(begin: 0, end: 1).animate(_controller);
   }
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
@@ -83,6 +86,9 @@ Future<Dio> buildDio(String url) async {
   final origin = Uri.parse(url).origin;
 
   final dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 30),
+    receiveTimeout: const Duration(minutes: 10),
+    sendTimeout: const Duration(minutes: 2),
     headers: {
       'User-Agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -147,7 +153,7 @@ Future<void> verifierEtTelecharger(String url, BuildContext context) async {
   }
 }
 
-/// 📥 Téléchargement vidéo (sans logique de reprise)
+/// 📥 Téléchargement vidéo
 Future<void> telechargerFichierVideo(String url, BuildContext context,
     {int? totalSize}) async {
   Dio dio = await buildDio(url);
@@ -158,13 +164,18 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
 
   bool isDownloadComplete = false;
   bool isCancelled = false;
+  bool started = false;
   List<Map<String, dynamic>> logs = [];
   final scrollController = ScrollController();
   final cancelToken = CancelToken();
 
-  logs.add({'message': "🚀 Lancement du téléchargement : $fileName", 'type': 'log'});
+  logs.add(
+      {'message': "🚀 Lancement du téléchargement : $fileName", 'type': 'log'});
   if (totalSize != null) {
-    logs.add({'message': "📦 Taille du fichier : ${formatFileSize(totalSize)}", 'type': 'log'});
+    logs.add({
+      'message': "📦 Taille du fichier : ${formatFileSize(totalSize)}",
+      'type': 'log'
+    });
   }
 
   await showDialog(
@@ -174,8 +185,9 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
       return StatefulBuilder(
         builder: (context, setState) {
           void addLog(String msg, String type, {double? progress}) {
+            if (isCancelled) return;
+
             if (type == "stats" && progress != null) {
-              // Construire une petite barre de progression
               const barLength = 20;
               int filled = (progress * barLength).clamp(0, barLength).toInt();
               String bar = "▰" * filled + "▱" * (barLength - filled);
@@ -195,7 +207,8 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
             setState(() {});
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (scrollController.hasClients) {
-                scrollController.jumpTo(scrollController.position.maxScrollExtent);
+                scrollController
+                    .jumpTo(scrollController.position.maxScrollExtent);
               }
             });
           }
@@ -207,6 +220,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                 savePath,
                 cancelToken: cancelToken,
                 onReceiveProgress: (received, total) {
+                  if (isCancelled) return;
                   final totalBytes = totalSize ?? total;
                   if (totalBytes > 0) {
                     final progress = received / totalBytes;
@@ -219,11 +233,27 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                 },
               );
 
+              if (isCancelled) return;
+
               addLog("⚠️ HTTP code : ${response.statusCode}", "log");
 
               if (response.statusCode == 200) {
                 isDownloadComplete = true;
                 addLog("✅ Fichier téléchargé : $savePath", "log");
+
+                try {
+                  final ms = MediaStore();
+                  await ms.saveFile(
+                    tempFilePath: savePath,
+                    dirType: DirType.video,
+                    dirName: DirName.movies,
+                    relativePath: "IPtvFlux",
+                  );
+                  addLog("🎬 Copie MediaStore OK (Movies/IPtvFlux)", "log");
+                } catch (e) {
+                  addLog("⚠️ Erreur copie MediaStore: $e", "error");
+                }
+
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text("✅ Fichier enregistré : $fileName")),
@@ -233,16 +263,22 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                 throw Exception("Code HTTP ${response.statusCode}");
               }
             } catch (e) {
-              if (e is DioException) {
-                addLog("⚠️ Erreur HTTP ${e.response?.statusCode} : ${e.message}", "error");
-                print("❌ DioException: ${e.message}");
+              if (e is DioException && e.type == DioExceptionType.cancel) {
+                addLog("⏹️ Téléchargement annulé par l’utilisateur", "error");
+              } else if (e is DioException) {
+                addLog("⚠️ Erreur HTTP ${e.response?.statusCode} : ${e.message}",
+                    "error");
               } else {
                 addLog("❌ Erreur : $e", "error");
               }
             }
           }
 
-          Future.microtask(startDownload);
+          // ✅ on lance le download une seule fois
+          if (!started) {
+            started = true;
+            Future.microtask(startDownload);
+          }
 
           return AlertDialog(
             backgroundColor: Colors.black,
@@ -261,7 +297,8 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                   child: Column(
                     children: [
                       if (!isDownloadComplete)
-                        const CircularProgressIndicator(color: Colors.greenAccent),
+                        const CircularProgressIndicator(
+                            color: Colors.greenAccent),
                       const SizedBox(height: 16),
                       Expanded(
                         child: Container(

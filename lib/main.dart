@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:media_store_plus/media_store_plus.dart'; // ✅ ajouter l'import
 import 'secure_storage_service.dart';
 import 'credential_form.dart';
 import 'recherche.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await MediaStore.ensureInitialized();
   runApp(const MyApp());
 }
 
