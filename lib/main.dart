@@ -7,6 +7,7 @@ import 'recherche.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await MediaStore.ensureInitialized();
+  MediaStore.appFolder = "Movies/IPtvFlux";
   runApp(const MyApp());
 }
 
