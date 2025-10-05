@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:math' as Math;
+import 'dart:math' as math;
 import 'dart:async';
 import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
@@ -8,14 +8,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'secure_storage_service.dart';
 
-/// 📂 Récupère ou crée le dossier de téléchargement "Videos"
-Future<String> _getDownloadDirectory() async {
-  final dir = await getExternalStorageDirectory();
-  final downloadDir = Directory("${dir!.path}/Videos");
-  if (!await downloadDir.exists()) {
-    await downloadDir.create(recursive: true);
+/// 📂 Dossier de téléchargement "Videos" temporaire
+Future<String> _getTempDirectory() async {
+  final dir = await getTemporaryDirectory();
+  final tmp = Directory("${dir.path}/dl_tmp");
+  if (!await tmp.exists()) {
+    await tmp.create(recursive: true);
   }
-  return downloadDir.path;
+  return tmp.path;
 }
 
 /// 🔧 Nettoie le nom du fichier
@@ -27,7 +27,7 @@ String sanitizeFilename(String filename) {
 String formatFileSize(int bytes) {
   if (bytes <= 0) return "0 B";
   const suffixes = ["B", "KB", "MB", "GB", "TB"];
-  int i = (bytes == 0) ? 0 : (Math.log(bytes) / Math.log(1024)).floor();
+  int i = (bytes == 0) ? 0 : (math.log(bytes) / math.log(1024)).floor();
   double size = bytes / (1 << (10 * i));
   return "${size.toStringAsFixed(2)} ${suffixes[i]}";
 }
@@ -100,24 +100,78 @@ Future<Dio> buildDio(String url) async {
     },
     validateStatus: (status) => status != null && status < 500,
   ));
-
   (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
     final client = HttpClient();
-    client.badCertificateCallback = (cert, host, port) => true;
+    client.badCertificateCallback =
+        (X509Certificate cert, String host, int port) => true;
     return client;
   };
   return dio;
 }
 
-/// 🚀 Vérifie la taille avant téléchargement
+/// Essaie d'obtenir la taille du fichier sans le télécharger.
+/// 1) HEAD -> Content-Length
+/// 2) GET avec Range: bytes=0-0 -> Content-Range ou Content-Length
+Future<int?> probeContentLength(Dio dio, String url) async {
+  // Tentative 1 : HEAD
+  try {
+    final head = await dio.head(url, options: Options(followRedirects: true));
+    final cl = head.headers.value('content-length');
+    if (cl != null) {
+      final n = int.tryParse(cl);
+      if (n != null && n > 0) return n;
+    }
+  } catch (_) {
+    // ignore, on tentera Range
+  }
+
+  // Tentative 2 : GET avec Range: bytes=0-0
+  final token = CancelToken();
+  try {
+    final resp = await dio.get<ResponseBody>(
+      url,
+      options: Options(
+        method: 'GET',
+        headers: {'Range': 'bytes=0-0'},
+        responseType: ResponseType.stream,      // ne bufferise pas tout
+        followRedirects: true,
+        validateStatus: (s) => s != null && s < 500,
+      ),
+      cancelToken: token,
+    );
+
+    // On a les headers : on peut annuler pour éviter de lire le flux
+    token.cancel('probe done');
+
+    // Ex: "bytes 0-0/123456"
+    final cr = resp.headers.value('content-range');
+    if (cr != null && cr.contains('/')) {
+      final totalStr = cr.split('/').last.trim();
+      final total = int.tryParse(totalStr);
+      if (total != null && total > 0) return total;
+    }
+
+    // Certains serveurs renvoient aussi un Content-Length exploitable ici
+    final cl = resp.headers.value('content-length');
+    if (cl != null) {
+      final n = int.tryParse(cl);
+      if (n != null && n > 0) return n;
+    }
+  } catch (_) {
+    // inconnu
+  }
+
+  return null; // taille inconnue
+}
+
+/// 🚀 Vérifie la taille et les permissions avant téléchargement
 Future<void> verifierEtTelecharger(String url, BuildContext context) async {
   final dio = await buildDio(url);
   try {
-    final response = await dio.head(url);
-    final contentLength =
-        int.tryParse(response.headers.value("content-length") ?? "0") ?? 0;
-    final sizeFormatted = formatFileSize(contentLength);
+    final contentLength = await probeContentLength(dio, url) ?? 0;
+    final sizeFormatted = contentLength > 0 ? formatFileSize(contentLength) : "taille inconnue";
 
+    if (!context.mounted) return; // Sécurité
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -139,16 +193,17 @@ Future<void> verifierEtTelecharger(String url, BuildContext context) async {
     );
 
     if (confirm == true) {
-      await telechargerFichierVideo(url, context,
-          totalSize: contentLength > 0 ? contentLength : null);
+      if (!context.mounted) return; // Sécurité
+      await telechargerFichierVideo(url, context, totalSize: contentLength > 0 ? contentLength : null);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("❌ Téléchargement annulé")),
+      if (!context.mounted) return; // Sécurité
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("❌ Téléchargement annulé")),
       );
     }
   } catch (e) {
+    if (!context.mounted) return; // Sécurité
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("❌ Erreur HEAD request : $e")),
+      SnackBar(content: Text("❌ Erreur de vérification : $e")),
     );
   }
 }
@@ -160,7 +215,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
 
   final rawFileName = Uri.parse(url).pathSegments.last;
   final fileName = sanitizeFilename(rawFileName);
-  final savePath = "${await _getDownloadDirectory()}/$fileName";
+  final savePath = "${await _getTempDirectory()}/$fileName";
 
   bool isDownloadComplete = false;
   bool isCancelled = false;
@@ -221,7 +276,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                 cancelToken: cancelToken,
                 onReceiveProgress: (received, total) {
                   if (isCancelled) return;
-                  final totalBytes = totalSize ?? total;
+                  final int totalBytes = totalSize ?? total;
                   if (totalBytes > 0) {
                     final progress = received / totalBytes;
                     addLog(
@@ -229,18 +284,22 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                       "stats",
                       progress: progress,
                     );
+                  } else {
+                    // totalBytes == 0 ou -1 => taille inconnue
+                    addLog("📥 ${formatFileSize(received)} / ?", "log");
                   }
                 },
               );
 
               if (isCancelled) return;
 
-              addLog("⚠️ HTTP code : ${response.statusCode}", "log");
-
-              if (response.statusCode == 200) {
+              if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300) {
+                // ✅ CAS DE SUCCÈS : Le téléchargement est terminé et le code HTTP est 200.
                 isDownloadComplete = true;
-                addLog("✅ Fichier téléchargé : $savePath", "log");
+                addLog("🪄 HTTP code : 200", "log");
+                addLog("✅ Fichier téléchargé avec succès : $fileName", "log");
 
+                // Tentative de copie vers la galerie (MediaStore)
                 try {
                   final ms = MediaStore();
                   await ms.saveFile(
@@ -249,25 +308,61 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                     dirName: DirName.movies,
                     relativePath: "IPtvFlux",
                   );
-                  addLog("🎬 Copie MediaStore OK (Movies/IPtvFlux)", "log");
+                  addLog("🎬 Copié dans la galerie (Movies/IPtvFlux)", "log");
+                  try {
+                    final f = File(savePath);
+                    if (await f.exists()) {
+                      await f.delete();
+                      addLog("🧹 Fichier temporaire supprimé", "log");
+                    }
+                  } catch (e) {
+                    addLog("⚠️ Nettoyage temp impossible : $e", "error");
+                  }
                 } catch (e) {
-                  addLog("⚠️ Erreur copie MediaStore: $e", "error");
+                  addLog("⚠️ Erreur copie galerie : $e", "error");
                 }
 
+                // Affichage du message de succès
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text("✅ Fichier enregistré : $fileName")),
                   );
                 }
               } else {
-                throw Exception("Code HTTP ${response.statusCode}");
+                // ❌ CAS D'ERREUR HTTP : Le téléchargement s'est terminé mais avec un code d'erreur (ex: 403, 404).
+                // On lance une exception pour que le bloc 'catch' général la traite.
+                throw Exception("Échec avec le code HTTP ${response.statusCode}");
               }
+              // --- Fin de la logique refactorisée ---
+
             } catch (e) {
+              // --- Début de la gestion d'erreur centralisée ---
+
+              // On gère TOUTES les erreurs ici (annulation, erreur réseau, erreur HTTP, etc.).
+              final file = File(savePath);
+              if (await file.exists()) {
+                try {
+                  await file.delete();
+                  addLog("🗑️ Fichier partiel supprimé.", "log");
+
+                  // ✅ NOUVEAU : On notifie l'utilisateur que le fichier incomplet a été supprimé.
+                  // Ligne correcte
+                  if (context.mounted && !(e is DioException && e.type == DioExceptionType.cancel)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("❌ Échec, le fichier partiel a été supprimé.")),
+                    );
+                  }
+
+                } catch (deleteError) {
+                  addLog("⚠️ Impossible de supprimer le fichier partiel : $deleteError", "error");
+                }
+              }
+
+              // Ensuite, on identifie et on affiche le type d'erreur dans les logs du terminal.
               if (e is DioException && e.type == DioExceptionType.cancel) {
                 addLog("⏹️ Téléchargement annulé par l’utilisateur", "error");
               } else if (e is DioException) {
-                addLog("⚠️ Erreur HTTP ${e.response?.statusCode} : ${e.message}",
-                    "error");
+                addLog("⚠️ Erreur réseau : ${e.message}", "error");
               } else {
                 addLog("❌ Erreur : $e", "error");
               }
@@ -285,7 +380,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
             title: Text(
               isDownloadComplete
                   ? "✅ Téléchargement terminé"
-                  : "🎬 Téléchargement en cours...",
+                  : "🎬 Téléchargement",
               style: const TextStyle(
                   color: Colors.greenAccent, fontFamily: 'Courier New'),
             ),
