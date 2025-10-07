@@ -9,6 +9,9 @@ import 'iptv_account_service.dart';
 class PlaylistService {
   static const String playlistName = 'iptv_links.m3u';
 
+  /// Durée de validité de la playlist en cache avant de forcer un nouveau téléchargement.
+  static const Duration playlistCacheDuration = Duration(hours: 24);
+
   /// Retourne le chemin complet où la playlist doit être stockée.
   static Future<String> playlistPath() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -25,6 +28,37 @@ class PlaylistService {
     } catch (_) {
       // Ignorer les erreurs de suppression, ce n'est pas critique.
     }
+  }
+
+  /// Récupère le chemin de la playlist si elle est fraîche,
+  /// sinon la télécharge. C'est la fonction à appeler depuis l'extérieur.
+  static Future<String> getOrDownloadPlaylist() async {
+    final path = await playlistPath();
+    final file = File(path);
+
+    // 1. Vérifier si le fichier existe
+    if (await file.exists()) {
+      // 2. Si oui, vérifier sa date de modification
+      final lastModified = await file.lastModified();
+      final now = DateTime.now();
+
+      // 3. Vérifier si la liste n'est pas périmée
+      if (now.difference(lastModified) < playlistCacheDuration) {
+        // Utiliser debugPrint pour des logs de débogage clairs
+        // ignore: avoid_print
+        print("✅ Playlist trouvée en cache et encore valide. Pas de téléchargement.");
+        return path; // La liste est fraîche, on la retourne directement
+      } else {
+        // ignore: avoid_print
+        print("⏳ Playlist trouvée en cache mais périmée. Retéléchargement...");
+      }
+    } else {
+      // ignore: avoid_print
+      print("ℹ️ Aucune playlist en cache. Téléchargement initial...");
+    }
+
+    // 4. Si la liste n'existe pas ou est périmée, on la télécharge
+    return downloadCurrentM3U();
   }
 
   /// Construit l'URL de la playlist à partir des informations d'un compte.
@@ -73,7 +107,6 @@ class PlaylistService {
     final tempPath = '$destinationPath.part'; // Fichier temporaire
 
     // 2. Créer une instance de Dio dédiée et simple.
-    // Pas besoin de `buildDio` externe, qui est fait pour le téléchargement de vidéos.
     final dio = Dio();
     (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
       return HttpClient()..badCertificateCallback = (cert, host, port) => true;
@@ -102,10 +135,8 @@ class PlaylistService {
       await tempFile.rename(destinationPath); // Le fichier .part devient le fichier final
 
       return destinationPath;
-
     } catch (e) {
       // En cas d'erreur (HTTP, réseau, fichier vide), on propage une erreur claire.
-      // Le bloc `finally` s'occupera du nettoyage.
       if (e is DioException) {
         throw HttpException('Erreur réseau lors du téléchargement: ${e.message}');
       }

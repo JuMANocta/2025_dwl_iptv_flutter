@@ -6,13 +6,16 @@ import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart'; // NOUVEAU : Import pour les polices
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'secure_storage_service.dart';
 import 'services/iptv_account_service.dart';
 
-/// --- Utils fichiers --------------------------------------------------------
+// ... (Tout le code des fonctions utilitaires comme formatFileSize, buildDio, etc. reste inchangé) ...
+// [Le code des fonctions utilitaires est omis ici pour la lisibilité, mais il est inclus dans le bloc final]
+// --- Utils fichiers --------------------------------------------------------
 
 Future<String> _getTempDirectory() async {
   final dir = await getTemporaryDirectory();
@@ -60,8 +63,22 @@ String formatFileSize(int bytes) {
   return "${size.toStringAsFixed(2)} ${suffixes[i]}";
 }
 
-/// --- Effet scanline --------------------------------------------------------
+String formatDuration(int totalSeconds) {
+  if (totalSeconds < 0) return "--:--";
+  final duration = Duration(seconds: totalSeconds);
+  final hours = duration.inHours.toString().padLeft(2, '0');
+  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
 
+  if (duration.inHours > 0) {
+    return "$hours:$minutes:$seconds";
+  } else {
+    return "$minutes:$seconds";
+  }
+}
+
+/// --- Effet scanline --------------------------------------------------------
+// ... (code de ScanLine inchangé) ...
 class ScanLine extends StatefulWidget {
   const ScanLine({super.key});
   @override
@@ -94,7 +111,7 @@ class _ScanLineState extends State<ScanLine> with SingleTickerProviderStateMixin
             alignment: Alignment(0, _animation.value * 2 - 1),
             child: Container(
               height: 2,
-              color: Colors.greenAccent.withValues(alpha: 0.3), // tu souhaites withValues
+              color: Colors.greenAccent.withAlpha(75),
             ),
           );
         },
@@ -102,9 +119,49 @@ class _ScanLineState extends State<ScanLine> with SingleTickerProviderStateMixin
     );
   }
 }
+// NOUVEAU : Widget pour le curseur clignotant
+class BlinkingCursor extends StatefulWidget {
+  const BlinkingCursor({super.key});
+
+  @override
+  State<BlinkingCursor> createState() => _BlinkingCursorState();
+}
+
+class _BlinkingCursorState extends State<BlinkingCursor> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _controller,
+      child: const Text(
+        "_",
+        style: TextStyle(
+          color: Color(0xFF33FF33),
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+}
 
 /// --- Réseau / DIO ----------------------------------------------------------
-
+// ... (code de buildDio, probeContentLength, probeContentType inchangé) ...
 Future<Dio> buildDio(String url) async {
   // Cookies depuis le compte courant, fallback legacy si besoin
   final acc = await IptvAccountService.getCurrentAccount();
@@ -135,7 +192,6 @@ Future<Dio> buildDio(String url) async {
     ),
   );
 
-  // Tu gardes l'acceptation des certifs (serveur sans cert)
   (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
     final client = HttpClient();
     client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
@@ -145,7 +201,6 @@ Future<Dio> buildDio(String url) async {
   return dio;
 }
 
-/// HEAD → Range probe: taille du contenu
 Future<int?> probeContentLength(Dio dio, String url) async {
   try {
     final head = await dio.head(url, options: Options(followRedirects: true));
@@ -187,7 +242,6 @@ Future<int?> probeContentLength(Dio dio, String url) async {
   return null;
 }
 
-/// Probe Content-Type pour déduire l'extension si absente
 Future<String?> probeContentType(Dio dio, String url) async {
   try {
     final head = await dio.head(url, options: Options(followRedirects: true));
@@ -215,9 +269,8 @@ Future<String?> probeContentType(Dio dio, String url) async {
 
   return null;
 }
-
 /// --- Vérification / Confirmation -------------------------------------------
-
+// ... (code de verifierEtTelecharger inchangé) ...
 Future<void> verifierEtTelecharger(String url, BuildContext context) async {
   final dio = await buildDio(url);
 
@@ -254,7 +307,6 @@ Future<void> verifierEtTelecharger(String url, BuildContext context) async {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Erreur de vérification : $e")));
   }
 }
-
 /// --- Téléchargement + copie MediaStore -------------------------------------
 
 Future<void> telechargerFichierVideo(String url, BuildContext context, {int? totalSize}) async {
@@ -287,20 +339,26 @@ Future<void> telechargerFichierVideo(String url, BuildContext context, {int? tot
     logs.add({'message': "📦 Taille du fichier : ${formatFileSize(totalSize)}", 'type': 'log'});
   }
 
+  // MODIFIÉ : On utilise Dialog au lieu de AlertDialog pour plus de contrôle
   await showDialog(
     context: context,
     barrierDismissible: false,
+    barrierColor: Colors.black.withOpacity(0.75), // Fond noir semi-transparent
     builder: (context) {
       return StatefulBuilder(
         builder: (context, setState) {
-          void addLog(String msg, String type, {double? progress}) {
+
+          void addLog(String msg, String type, {double? progress, double? speed, int? eta}) {
             if (isCancelled) return;
 
             if (type == "stats" && progress != null) {
               const barLength = 20;
               final filled = (progress * barLength).clamp(0, barLength).toInt();
-              final bar = "▰" * filled + "▱" * (barLength - filled);
-              final formatted = "$bar ${(progress * 100).toStringAsFixed(1)}%  $msg";
+              // MODIFIÉ : Barre de progression avec des caractères plus "tech"
+              final bar = "█" * filled + "▒" * (barLength - filled);
+              final speedInfo = (speed != null && speed > 0) ? "${formatFileSize(speed.toInt())}/s" : "";
+              final etaInfo = (eta != null && eta > 0 && progress < 1.0) ? " | ETA: ${formatDuration(eta)}" : "";
+              final formatted = "[$bar] ${(progress * 100).toStringAsFixed(1)}% | $msg | $speedInfo$etaInfo";
 
               if (logs.isNotEmpty && logs.last["type"] == "stats") {
                 logs[logs.length - 1] = {"message": formatted, "type": "stats"};
@@ -320,167 +378,285 @@ Future<void> telechargerFichierVideo(String url, BuildContext context, {int? tot
           }
 
           Future<void> startDownload() async {
-            try {
-              final resp = await dio.download(
-                url,
-                savePath,
-                cancelToken: cancelToken,
-                onReceiveProgress: (received, total) {
-                  if (isCancelled) return;
-                  final int totalBytes = totalSize ?? total;
-                  if (totalBytes > 0) {
-                    final progress = received / totalBytes;
-                    addLog("📥 ${formatFileSize(received)} / ${formatFileSize(totalBytes)}", "stats",
-                        progress: progress);
-                  } else {
-                    addLog("📥 ${formatFileSize(received)} / ?", "log");
-                  }
-                },
-              );
+            final Stopwatch stopwatch = Stopwatch()..start();
+            double downloadSpeed = 0.0;
+            int remainingSeconds = 0;
 
-              if (isCancelled) return;
+            // ... (Toute la logique de startDownload, parallelDownload reste identique) ...
+            // ----- FONCTION UTILITAIRE POUR LE TÉLÉCHARGEMENT PARALLÈLE -----
+            Future<void> parallelDownload() async {
+              if (totalSize == null) return;
 
-              if (resp.statusCode != null && resp.statusCode! >= 200 && resp.statusCode! < 300) {
-                isDownloadComplete = true;
-                addLog("🪄 HTTP code : ${resp.statusCode}", "log");
-                addLog("✅ Fichier téléchargé avec succès : $fileName", "log");
+              const int concurrentDownloads = 4;
+              final chunkPaths = List<String>.generate(
+                  concurrentDownloads, (i) => '$savePath.part$i');
+              final chunkSize = (totalSize! / concurrentDownloads).ceil();
 
-                try {
-                  final ms = MediaStore();
-                  await ms.saveFile(
-                    tempFilePath: savePath,
-                    dirType: DirType.video,
-                    dirName: DirName.movies,
-                    relativePath: "IPtvFlux",
-                  );
-                  addLog("🎬 Copié dans la galerie (Movies/IPtvFlux)", "log");
+              final progressMap = <int, int>{
+                for (var i = 0; i < concurrentDownloads; i++) i: 0
+              };
 
-                  // Nettoyage si le temp existe encore
-                  try {
-                    final f = File(savePath);
-                    if (await f.exists()) {
-                      await f.delete();
-                      addLog("🧹 Fichier temporaire supprimé", "log");
-                    }
-                  } catch (e) {
-                    addLog("⚠️ Nettoyage temp impossible : $e", "error");
-                  }
-                } catch (e) {
-                  addLog("⚠️ Erreur copie galerie : $e", "error");
-                }
+              final downloadTasks = <Future<void>>[];
 
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(SnackBar(content: Text("✅ Fichier enregistré : $fileName")));
-                }
-              } else {
-                throw Exception("Échec avec le code HTTP ${resp.statusCode}");
+              for (int i = 0; i < concurrentDownloads; i++) {
+                final start = i * chunkSize;
+                final end = (i == concurrentDownloads - 1)
+                    ? totalSize! - 1
+                    : start + chunkSize - 1;
+
+                if (start >= totalSize!) continue;
+
+                downloadTasks.add(
+                  dio.download(
+                    url,
+                    chunkPaths[i],
+                    cancelToken: cancelToken,
+                    options: Options(headers: {'Range': 'bytes=$start-$end'}),
+                    onReceiveProgress: (received, total) {
+                      if (isCancelled) return;
+                      progressMap[i] = received;
+                      final totalReceived =
+                      progressMap.values.reduce((a, b) => a + b);
+                      final progress = totalReceived / totalSize!;
+
+                      // Calcul de la vitesse et du temps restant
+                      final elapsedSeconds = stopwatch.elapsed.inSeconds;
+                      if (elapsedSeconds > 0) {
+                        downloadSpeed = totalReceived / elapsedSeconds;
+                        final remainingBytes = totalSize! - totalReceived;
+                        remainingSeconds = (remainingBytes / downloadSpeed).round();
+                      }
+
+                      addLog(
+                          "DL_STATS",
+                          "stats",
+                          progress: progress,
+                          speed: downloadSpeed,
+                          eta: remainingSeconds);
+                    },
+                  ),
+                );
               }
-            } catch (e) {
-              final file = File(savePath);
-              if (await file.exists()) {
-                try {
-                  await file.delete();
-                  addLog("🗑️ Fichier partiel supprimé.", "log");
-                  if (context.mounted && !(e is DioException && e.type == DioExceptionType.cancel)) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text("❌ Échec, le fichier partiel a été supprimé.")));
-                  }
-                } catch (deleteError) {
-                  addLog("⚠️ Impossible de supprimer le fichier partiel : $deleteError", "error");
+
+              await Future.wait(downloadTasks);
+
+              if (cancelToken.isCancelled) {
+                throw DioException.requestCancelled(
+                  requestOptions: RequestOptions(path: url),
+                  reason: 'Cancelled by user',
+                );
+              }
+
+              addLog("SYSTEM: Assembling chunks...", "log");
+              final finalFile = File(savePath).openSync(mode: FileMode.writeOnlyAppend);
+              for (final path in chunkPaths) {
+                final chunkFile = File(path);
+                if (await chunkFile.exists()) {
+                  await finalFile.writeFrom(await chunkFile.readAsBytes());
+                  await chunkFile.delete();
                 }
+              }
+              await finalFile.close();
+            }
+            // ----- FIN DE LA FONCTION UTILITAIRE -----
+
+
+            // ----- CORPS PRINCIPAL DE STARTDOWNLOAD -----
+            try {
+              if (totalSize != null && totalSize! > 10 * 1024 * 1024) {
+                addLog("SYSTEM: Parallel mode activated (4 streams)", "log");
+                await parallelDownload();
+              } else {
+                if (totalSize == null) {
+                  addLog("SYSTEM: Unknown size, fallback to single stream", "log");
+                }
+                else {
+                  addLog("SYSTEM: Single stream mode", "log");
+                }
+
+                await dio.download(
+                  url,
+                  savePath,
+                  cancelToken: cancelToken,
+                  onReceiveProgress: (received, total) {
+                    if (isCancelled) return;
+                    final int totalBytes = totalSize ?? total;
+                    if (totalBytes > 0) {
+                      final progress = received / totalBytes;
+
+                      // Calcul de la vitesse et du temps restant
+                      final elapsedSeconds = stopwatch.elapsed.inSeconds;
+                      if (elapsedSeconds > 0) {
+                        downloadSpeed = received / elapsedSeconds;
+                        final remainingBytes = totalBytes - received;
+                        remainingSeconds = (remainingBytes / downloadSpeed).round();
+                      }
+
+                      addLog("DL_STATS", "stats",
+                          progress: progress,
+                          speed: downloadSpeed,
+                          eta: remainingSeconds);
+                    } else {
+                      addLog("DL_INFO: ${formatFileSize(received)} / ?", "log");
+                    }
+                  },
+                );
+              }
+
+              if (cancelToken.isCancelled) return;
+
+              isDownloadComplete = true;
+              addLog("SUCCESS: Download complete -> $fileName", "log");
+
+              try {
+                addLog("MEDIA_STORE: Copying to gallery...", "log");
+                final ms = MediaStore();
+                await ms.saveFile(
+                  tempFilePath: savePath,
+                  dirType: DirType.video,
+                  dirName: DirName.movies,
+                  relativePath: "IPtvFlux",
+                );
+                addLog("SUCCESS: File saved in Movies/IPtvFlux", "log");
+              } catch (e) {
+                addLog("ERROR: Gallery copy failed: $e", "error");
+              }
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text("✅ Fichier enregistré : $fileName")));
+              }
+
+            } catch (e) {
+              if (e is! DioException || e.type != DioExceptionType.cancel) {
+                addLog("FATAL: ${e is DioException ? e.message : e.toString()}", "error");
+              }
+
+              try {
+                for (int i = 0; i < 4; i++) {
+                  final partFile = File('$savePath.part$i');
+                  if (await partFile.exists()) await partFile.delete();
+                }
+                final singleFile = File(savePath);
+                if (await singleFile.exists()) await singleFile.delete();
+
+                addLog("CLEANUP: Temporary files deleted.", "log");
+
+                if (context.mounted && (e is! DioException || e.type != DioExceptionType.cancel)) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text("❌ Échec, les fichiers partiels ont été supprimés.")));
+                }
+
+              } catch (deleteError) {
+                addLog("ERROR: Cleanup failed: $deleteError", "error");
               }
 
               if (e is DioException && e.type == DioExceptionType.cancel) {
-                addLog("⏹️ Téléchargement annulé par l’utilisateur", "error");
-              } else if (e is DioException) {
-                addLog("⚠️ Erreur réseau : ${e.message}", "error");
-              } else {
-                addLog("❌ Erreur : $e", "error");
+                addLog("ABORT: Download cancelled by user.", "error");
+              }
+
+            } finally {
+              if (isDownloadComplete) {
+                final f = File(savePath);
+                if (await f.exists()) {
+                  await f.delete();
+                  addLog("CLEANUP: Final temp file deleted.", "log");
+                }
               }
             }
           }
 
           if (!started) {
+            startDownload();
             started = true;
-            Future.microtask(startDownload);
           }
 
-          return AlertDialog(
-            backgroundColor: Colors.black,
-            title: Text(
-              isDownloadComplete ? "✅ Téléchargement terminé" : "🎬 Téléchargement",
-              style: const TextStyle(color: Colors.greenAccent, fontFamily: 'Courier New'),
-            ),
-            content: Stack(
-              children: [
-                SizedBox(
-                  width: double.maxFinite,
-                  height: 300,
-                  child: Column(
-                    children: [
-                      if (!isDownloadComplete) const CircularProgressIndicator(color: Colors.greenAccent),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [
-                              BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.3), blurRadius: 5),
-                            ],
-                          ),
-                          child: ListView.builder(
+          // MODIFIÉ : Remplacement de AlertDialog par une composition de Widgets personnalisée
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(16),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.9),
+                border: Border.all(color: Colors.green.withOpacity(0.5)),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withOpacity(0.2),
+                    blurRadius: 10,
+                    spreadRadius: 2,
+                  )
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '//:FLUX_DOWNLOAD_INTERFACE',
+                    style: GoogleFonts.vt323(color: Colors.green, fontSize: 22),
+                  ),
+                  const Divider(color: Colors.green),
+                  Flexible(
+                    child: SizedBox(
+                      width: double.maxFinite,
+                      height: 300,
+                      child: Stack(
+                        children: [
+                          ListView.builder(
                             controller: scrollController,
                             itemCount: logs.length,
                             itemBuilder: (context, index) {
                               final log = logs[index];
-                              final message = log['message'] as String;
-                              final type = log['type'] as String;
-                              Color color;
-                              if (type == 'error') {
-                                color = Colors.redAccent;
-                              } else if (type == 'stats') {
-                                color = Colors.lightGreenAccent;
-                              } else {
-                                color = Colors.greenAccent;
+                              final Color color;
+                              switch(log['type']) {
+                                case 'stats': color = const Color(0xFF33FF33); break; // Vert vif
+                                case 'error': color = const Color(0xFFFF5555); break; // Rouge
+                                default: color = const Color(0xFFADFF2F); break; // Vert-jaune
                               }
                               return Text(
-                                message,
-                                style: TextStyle(
-                                  fontSize: 12,
+                                log['message'],
+                                style: GoogleFonts.sourceCodePro(
                                   color: color,
-                                  fontFamily: 'Courier New',
-                                  letterSpacing: 1.2,
+                                  fontSize: 11,
                                 ),
                               );
                             },
                           ),
-                        ),
+                          const ScanLine(),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-                const ScanLine(),
-              ],
+                  // NOUVEAU : Curseur clignotant
+                  if (!isDownloadComplete)
+                    const Row(
+                      children: [
+                        Text(">", style: TextStyle(color: Color(0xFF33FF33))),
+                        BlinkingCursor(),
+                      ],
+                    ),
+                  const Divider(color: Colors.green),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () {
+                        if (!isDownloadComplete) {
+                          isCancelled = true;
+                          cancelToken.cancel('User cancelled');
+                        }
+                        Navigator.of(context).pop();
+                      },
+                      child: Text(
+                        isDownloadComplete ? "[ CLOSE ]" : "[ ABORT ]",
+                        style: GoogleFonts.vt323(color: Colors.white, fontSize: 18),
+                      ),
+                    ),
+                  )
+                ],
+              ),
             ),
-            actions: [
-              if (!isDownloadComplete)
-                TextButton(
-                  onPressed: () {
-                    isCancelled = true;
-                    cancelToken.cancel();
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text("❌ Annuler", style: TextStyle(color: Colors.redAccent)),
-                ),
-              if (isDownloadComplete)
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text("✅ Terminer", style: TextStyle(color: Colors.greenAccent)),
-                ),
-            ],
           );
         },
       );

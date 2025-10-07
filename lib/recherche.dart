@@ -33,32 +33,46 @@ class _RecherchePageState extends State<RecherchePage> {
     _initAndLoad();
   }
 
-  Future<void> _initAndLoad() async {
-    final acc = await IptvAccountService.getCurrentAccount();
-    setState(() => _currentAccountLabel = acc?.label);
-    await _reloadPlaylistForCurrentAccount(showSnack: false);
-  }
+  // --- LOGIQUE DE CHARGEMENT CORRIGÉE ---
 
-  Future<void> _openSettings() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const AccountsScreen()),
-    );
-    if (changed == true) {
+  /// Chargement initial : utilise le cache.
+  Future<void> _initAndLoad() async {
+    setState(() => _loading = true);
+
+    try {
       final acc = await IptvAccountService.getCurrentAccount();
-      if (mounted) setState(() => _currentAccountLabel = acc?.label);
-      await _reloadPlaylistForCurrentAccount();
+      setState(() => _currentAccountLabel = acc?.label);
+
+      // 👇 CORRECTION PRINCIPALE : On utilise la fonction intelligente ici !
+      final path = await PlaylistService.getOrDownloadPlaylist();
+      final parsed = await _parseM3uFile(path);
+
+      if (!mounted) return;
+      setState(() {
+        _all = parsed;
+        _filtered = parsed;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("❌ Impossible de charger la liste : $e")),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
+  /// Rechargement manuel : force le téléchargement, ignorant le cache.
   Future<void> _reloadPlaylistForCurrentAccount({bool showSnack = true}) async {
     setState(() {
       _loading = true;
-      _all.clear();       // 🔥 vide l’ancienne liste
+      _all.clear();
       _filtered.clear();
       _searchCtrl.clear();
     });
 
     try {
+      // 👇 Ici, on garde `downloadCurrentM3U` car l'action est manuelle.
       final path = await PlaylistService.downloadCurrentM3U();
       final parsed = await _parseM3uFile(path);
 
@@ -86,6 +100,18 @@ class _RecherchePageState extends State<RecherchePage> {
     }
   }
 
+  // --- FIN DE LA LOGIQUE CORRIGÉE ---
+
+  Future<void> _openSettings() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const AccountsScreen()),
+    );
+    if (changed == true) {
+      // Quand on change de compte, on force le rechargement. C'est logique.
+      await _reloadPlaylistForCurrentAccount();
+    }
+  }
+
   void _onSearchChanged(String q) {
     final query = q.trim().toLowerCase();
     if (query.isEmpty) {
@@ -97,8 +123,6 @@ class _RecherchePageState extends State<RecherchePage> {
     });
   }
 
-  /// Parser M3U simple (compatible avec #EXTINF).
-  /// Si tu as déjà un parseur maison, remplace l’appel à cette fonction.
   Future<List<M3uItem>> _parseM3uFile(String path) async {
     final file = File(path);
     if (!await file.exists()) return [];
@@ -172,7 +196,6 @@ class _RecherchePageState extends State<RecherchePage> {
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             child: TextField(
@@ -194,10 +217,7 @@ class _RecherchePageState extends State<RecherchePage> {
               ),
             ),
           ),
-
-          if (_loading)
-            const LinearProgressIndicator(minHeight: 2),
-
+          if (_loading) const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: RefreshIndicator(
               onRefresh: _pullToRefresh,

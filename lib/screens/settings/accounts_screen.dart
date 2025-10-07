@@ -19,7 +19,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
   void initState() {
     super.initState();
     _future = _load();
-    _playlistInfoFuture = _loadPlaylistInfo();
+    // CORRECTION : On lance la logique de chargement intelligente au démarrage.
+    _playlistInfoFuture = _loadAndDisplayPlaylistInfo();
   }
 
   Future<List<IptvAccount>> _load() async {
@@ -30,7 +31,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
   Future<void> _refresh() async {
     setState(() {
       _future = _load();
-      _playlistInfoFuture = _loadPlaylistInfo();
+      // On utilise la même logique de chargement au rafraîchissement.
+      _playlistInfoFuture = _loadAndDisplayPlaylistInfo();
     });
   }
 
@@ -78,7 +80,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
     }
   }
 
-  Future<void> _reloadPlaylistFromSettings() async {
+  // Comportement du bouton "Recharger" : force le téléchargement.
+  Future<void> _forceReloadPlaylist() async {
     try {
       final path = await PlaylistService.downloadCurrentM3U();
       final info = await _readPlaylistInfo(path);
@@ -99,9 +102,20 @@ class _AccountsScreenState extends State<AccountsScreen> {
 
   // ---------- Playlist info ----------
 
-  Future<_PlaylistInfo?> _loadPlaylistInfo() async {
-    final p = await PlaylistService.playlistPath();
-    return _readPlaylistInfo(p);
+  // NOUVELLE FONCTION : Utilise la logique de cache pour le chargement initial.
+  Future<_PlaylistInfo?> _loadAndDisplayPlaylistInfo() async {
+    try {
+      final path = await PlaylistService.getOrDownloadPlaylist();
+      return _readPlaylistInfo(path);
+    } catch (e) {
+      // Si une erreur se produit (ex: réseau pendant le dl), on la propage au FutureBuilder.
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("❌ Erreur chargement playlist : $e")),
+      );
+      // Retourne null pour que l'UI puisse afficher l'état d'erreur.
+      return null;
+    }
   }
 
   Future<_PlaylistInfo?> _readPlaylistInfo(String path) async {
@@ -110,7 +124,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
       if (!await f.exists()) return null;
       final stat = await f.stat();
       final lines = await f.readAsLines();
-      // On compte les lignes URL (http/https) = nb d'entrées typiques
       final count = lines.where((l) {
         final s = l.trim().toLowerCase();
         return s.startsWith('http://') || s.startsWith('https://');
@@ -147,6 +160,18 @@ class _AccountsScreenState extends State<AccountsScreen> {
     return FutureBuilder<_PlaylistInfo?>(
       future: _playlistInfoFuture,
       builder: (ctx, snap) {
+
+        // Gestion de l'état de chargement
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Card(
+            margin: EdgeInsets.fromLTRB(12, 12, 12, 4),
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(child: Text("Vérification de la playlist...")),
+            ),
+          );
+        }
+
         final info = snap.data;
         return Card(
           margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
@@ -158,12 +183,13 @@ class _AccountsScreenState extends State<AccountsScreen> {
                 const Text("Infos playlist", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 if (info == null) ...[
-                  const Text("Aucune playlist disponible."),
+                  const Text("Aucune playlist disponible ou erreur de chargement."),
                   const SizedBox(height: 8),
                   FilledButton.icon(
-                    onPressed: _reloadPlaylistFromSettings,
+                    // Ce bouton doit forcer le rechargement
+                    onPressed: _forceReloadPlaylist,
                     icon: const Icon(Icons.refresh),
-                    label: const Text("Recharger la playlist"),
+                    label: const Text("Tenter un rechargement"),
                   ),
                 ] else ...[
                   ListTile(
@@ -178,7 +204,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   Row(
                     children: [
                       OutlinedButton.icon(
-                        onPressed: _reloadPlaylistFromSettings,
+                        // Ce bouton force le rechargement
+                        onPressed: _forceReloadPlaylist,
                         icon: const Icon(Icons.refresh),
                         label: const Text("Recharger"),
                       ),
@@ -190,9 +217,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                           if (await f.exists()) {
                             try { await f.delete(); } catch (_) {}
                           }
-                          setState(() {
-                            _playlistInfoFuture = _loadPlaylistInfo();
-                          });
+                          _refresh(); // Rafraîchit l'UI
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text("🗑️ Playlist supprimée.")),
@@ -414,35 +439,27 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
                         decoration: const InputDecoration(labelText: "Username"),
                         validator: (v)=> (v==null || v.trim().isEmpty) ? "Requis" : null,
                       )),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       Expanded(child: TextFormField(
                         controller: _password,
-                        obscureText: true,
                         decoration: const InputDecoration(labelText: "Password"),
                         validator: (v)=> (v==null || v.trim().isEmpty) ? "Requis" : null,
                       )),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _cookies,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: "Cookies (optionnel)",
+                      helperText: "Format: 'key1=value1; key2=value2'",
+                    ),
+                  ),
                 ],
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: ()=>Navigator.pop(context),
-                        child: const Text("Annuler"),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _save,
-                        icon: const Icon(Icons.check),
-                        label: const Text("Enregistrer"),
-                      ),
-                    ),
-                  ],
-                )
+                const SizedBox(height: 24),
+                FilledButton(onPressed: _save, child: const Text("Enregistrer")),
               ],
             ),
           ),
@@ -452,8 +469,7 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
   }
 }
 
-// ---------- Modèle d'infos playlist ----------
-
+// Classe pour contenir les infos de la playlist
 class _PlaylistInfo {
   final String path;
   final int size;
@@ -464,6 +480,6 @@ class _PlaylistInfo {
     required this.path,
     required this.size,
     required this.modified,
-    required this.count,
+    required this.count
   });
 }
