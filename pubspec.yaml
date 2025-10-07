@@ -1,18 +1,17 @@
 name: dwl_iptv
-description: "IPTV downloader"
-
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+description: Application Flutter dwl_iptv (multi-comptes, playlist M3U, téléchargement via MediaStore)
+publish_to: "none"
 
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.7.0
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
 
-  dio: ^5.4.3+1                     # téléchargement avec suivi de progression
+  dio: ^5.5.0                       # téléchargement avec suivi de progression
   path_provider: ^2.1.5             # accéder aux répertoires locaux
   flutter_secure_storage: ^9.2.4    # stockage sécurisé
   connectivity_plus: ^6.1.3         # vérifier la connectivité réseau

@@ -1,14 +1,19 @@
+// lib/telechargement_fichier.dart
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
-import 'secure_storage_service.dart';
+import 'package:path_provider/path_provider.dart';
 
-/// 📂 Dossier de téléchargement "Videos" temporaire
+import 'secure_storage_service.dart';
+import 'services/iptv_account_service.dart';
+
+/// --- Utils fichiers --------------------------------------------------------
+
 Future<String> _getTempDirectory() async {
   final dir = await getTemporaryDirectory();
   final tmp = Directory("${dir.path}/dl_tmp");
@@ -18,37 +23,58 @@ Future<String> _getTempDirectory() async {
   return tmp.path;
 }
 
-/// 🔧 Nettoie le nom du fichier
 String sanitizeFilename(String filename) {
   return filename.replaceAll(RegExp(r'[\\/*?:"<>|]'), "_");
 }
 
-/// 🔧 Taille lisible
+String _ext(String name) {
+  final i = name.lastIndexOf('.');
+  return (i >= 0 && i < name.length - 1) ? name.substring(i + 1).toLowerCase() : '';
+}
+
+String? _extFromContentType(String? ct) {
+  if (ct == null) return null;
+  final mime = ct.toLowerCase().split(';').first.trim();
+  switch (mime) {
+    case 'video/mp4':
+      return 'mp4';
+    case 'video/webm':
+      return 'webm';
+    case 'video/quicktime':
+      return 'mov';
+    case 'video/x-msvideo':
+      return 'avi';
+    case 'video/x-matroska':
+    case 'application/x-matroska':
+      return 'mkv';
+    default:
+      return null;
+  }
+}
+
 String formatFileSize(int bytes) {
   if (bytes <= 0) return "0 B";
   const suffixes = ["B", "KB", "MB", "GB", "TB"];
-  int i = (bytes == 0) ? 0 : (math.log(bytes) / math.log(1024)).floor();
-  double size = bytes / (1 << (10 * i));
+  final i = (math.log(bytes) / math.log(1024)).floor();
+  final size = bytes / (1 << (10 * i));
   return "${size.toStringAsFixed(2)} ${suffixes[i]}";
 }
 
-/// Effet scanline vert
+/// --- Effet scanline --------------------------------------------------------
+
 class ScanLine extends StatefulWidget {
   const ScanLine({super.key});
   @override
   State<ScanLine> createState() => _ScanLineState();
 }
 
-class _ScanLineState extends State<ScanLine>
-    with SingleTickerProviderStateMixin {
+class _ScanLineState extends State<ScanLine> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
   @override
   void initState() {
     super.initState();
-    _controller =
-    AnimationController(vsync: this, duration: const Duration(seconds: 2))
-      ..repeat(reverse: true);
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
     _animation = Tween<double>(begin: 0, end: 1).animate(_controller);
   }
 
@@ -68,7 +94,7 @@ class _ScanLineState extends State<ScanLine>
             alignment: Alignment(0, _animation.value * 2 - 1),
             child: Container(
               height: 2,
-              color: Colors.greenAccent.withValues(alpha: 0.3),
+              color: Colors.greenAccent.withValues(alpha: 0.3), // tu souhaites withValues
             ),
           );
         },
@@ -77,43 +103,50 @@ class _ScanLineState extends State<ScanLine>
   }
 }
 
-/// 🔧 Construit Dio configuré avec headers + cookies
-Future<Dio> buildDio(String url) async {
-  final storage = SecureStorageService();
-  final creds = await storage.getCredentials();
-  final cookies = creds["cookies"] ?? "";
-  final referer = Uri.parse(url).origin + "/";
-  final origin = Uri.parse(url).origin;
+/// --- Réseau / DIO ----------------------------------------------------------
 
-  final dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 30),
-    receiveTimeout: const Duration(minutes: 10),
-    sendTimeout: const Duration(minutes: 2),
-    headers: {
-      'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-      'Connection': 'keep-alive',
-      'Referer': referer,
-      'Origin': origin,
-      if (cookies.isNotEmpty) 'Cookie': cookies,
-    },
-    validateStatus: (status) => status != null && status < 500,
-  ));
+Future<Dio> buildDio(String url) async {
+  // Cookies depuis le compte courant, fallback legacy si besoin
+  final acc = await IptvAccountService.getCurrentAccount();
+  final legacy = await SecureStorageService().getCredentials();
+  final cookies = (acc?.cookies?.trim().isNotEmpty == true)
+      ? acc!.cookies!.trim()
+      : (legacy["cookies"] ?? "").toString().trim();
+
+  final uri = Uri.parse(url);
+  final referer = "${uri.origin}/";
+  final origin = uri.origin;
+
+  final dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(minutes: 10),
+      sendTimeout: const Duration(minutes: 2),
+      headers: {
+        'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Connection': 'keep-alive',
+        'Referer': referer,
+        'Origin': origin,
+        if (cookies.isNotEmpty) 'Cookie': cookies,
+      },
+      validateStatus: (s) => s != null && s < 500,
+    ),
+  );
+
+  // Tu gardes l'acceptation des certifs (serveur sans cert)
   (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
     final client = HttpClient();
-    client.badCertificateCallback =
-        (X509Certificate cert, String host, int port) => true;
+    client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
     return client;
   };
+
   return dio;
 }
 
-/// Essaie d'obtenir la taille du fichier sans le télécharger.
-/// 1) HEAD -> Content-Length
-/// 2) GET avec Range: bytes=0-0 -> Content-Range ou Content-Length
+/// HEAD → Range probe: taille du contenu
 Future<int?> probeContentLength(Dio dio, String url) async {
-  // Tentative 1 : HEAD
   try {
     final head = await dio.head(url, options: Options(followRedirects: true));
     final cl = head.headers.value('content-length');
@@ -121,11 +154,8 @@ Future<int?> probeContentLength(Dio dio, String url) async {
       final n = int.tryParse(cl);
       if (n != null && n > 0) return n;
     }
-  } catch (_) {
-    // ignore, on tentera Range
-  }
+  } catch (_) {}
 
-  // Tentative 2 : GET avec Range: bytes=0-0
   final token = CancelToken();
   try {
     final resp = await dio.get<ResponseBody>(
@@ -133,104 +163,128 @@ Future<int?> probeContentLength(Dio dio, String url) async {
       options: Options(
         method: 'GET',
         headers: {'Range': 'bytes=0-0'},
-        responseType: ResponseType.stream,      // ne bufferise pas tout
+        responseType: ResponseType.stream,
         followRedirects: true,
         validateStatus: (s) => s != null && s < 500,
       ),
       cancelToken: token,
     );
-
-    // On a les headers : on peut annuler pour éviter de lire le flux
     token.cancel('probe done');
 
-    // Ex: "bytes 0-0/123456"
-    final cr = resp.headers.value('content-range');
+    final cr = resp.headers.value('content-range'); // e.g. "bytes 0-0/123456"
     if (cr != null && cr.contains('/')) {
       final totalStr = cr.split('/').last.trim();
       final total = int.tryParse(totalStr);
       if (total != null && total > 0) return total;
     }
-
-    // Certains serveurs renvoient aussi un Content-Length exploitable ici
     final cl = resp.headers.value('content-length');
     if (cl != null) {
       final n = int.tryParse(cl);
       if (n != null && n > 0) return n;
     }
-  } catch (_) {
-    // inconnu
-  }
+  } catch (_) {}
 
-  return null; // taille inconnue
+  return null;
 }
 
-/// 🚀 Vérifie la taille et les permissions avant téléchargement
+/// Probe Content-Type pour déduire l'extension si absente
+Future<String?> probeContentType(Dio dio, String url) async {
+  try {
+    final head = await dio.head(url, options: Options(followRedirects: true));
+    final ct = head.headers.value('content-type');
+    if (ct != null && ct.isNotEmpty) return ct;
+  } catch (_) {}
+
+  final token = CancelToken();
+  try {
+    final resp = await dio.get<ResponseBody>(
+      url,
+      options: Options(
+        method: 'GET',
+        headers: {'Range': 'bytes=0-0'},
+        responseType: ResponseType.stream,
+        followRedirects: true,
+        validateStatus: (s) => s != null && s < 500,
+      ),
+      cancelToken: token,
+    );
+    token.cancel('probe done');
+    final ct = resp.headers.value('content-type');
+    if (ct != null && ct.isNotEmpty) return ct;
+  } catch (_) {}
+
+  return null;
+}
+
+/// --- Vérification / Confirmation -------------------------------------------
+
 Future<void> verifierEtTelecharger(String url, BuildContext context) async {
   final dio = await buildDio(url);
+
   try {
     final contentLength = await probeContentLength(dio, url) ?? 0;
     final sizeFormatted = contentLength > 0 ? formatFileSize(contentLength) : "taille inconnue";
 
-    if (!context.mounted) return; // Sécurité
+    if (!context.mounted) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("⚠️ Confirmation"),
-        content: Text(contentLength > 0
-            ? "Le fichier fait $sizeFormatted.\nVoulez-vous lancer le téléchargement ?"
-            : "Taille inconnue.\nVoulez-vous lancer le téléchargement ?"),
+        content: Text(
+          contentLength > 0
+              ? "Le fichier fait $sizeFormatted.\nVoulez-vous lancer le téléchargement ?"
+              : "Taille inconnue.\nVoulez-vous lancer le téléchargement ?",
+        ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text("❌ Annuler"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text("✅ Télécharger"),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("❌ Annuler")),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("✅ Télécharger")),
         ],
       ),
     );
 
     if (confirm == true) {
-      if (!context.mounted) return; // Sécurité
+      if (!context.mounted) return;
       await telechargerFichierVideo(url, context, totalSize: contentLength > 0 ? contentLength : null);
     } else {
-      if (!context.mounted) return; // Sécurité
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("❌ Téléchargement annulé")),
-      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("❌ Téléchargement annulé")));
     }
   } catch (e) {
-    if (!context.mounted) return; // Sécurité
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("❌ Erreur de vérification : $e")),
-    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Erreur de vérification : $e")));
   }
 }
 
-/// 📥 Téléchargement vidéo
-Future<void> telechargerFichierVideo(String url, BuildContext context,
-    {int? totalSize}) async {
-  Dio dio = await buildDio(url);
+/// --- Téléchargement + copie MediaStore -------------------------------------
 
-  final rawFileName = Uri.parse(url).pathSegments.last;
-  final fileName = sanitizeFilename(rawFileName);
+Future<void> telechargerFichierVideo(String url, BuildContext context, {int? totalSize}) async {
+  final Dio dio = await buildDio(url);
+
+  // Nom de fichier (nettoyé) + extension (URL ou probe Content-Type)
+  final urlName = sanitizeFilename(Uri.parse(url).pathSegments.isNotEmpty
+      ? Uri.parse(url).pathSegments.last
+      : "video");
+  String fileName = urlName.isEmpty ? "video" : urlName;
+
+  if (_ext(fileName).isEmpty) {
+    final ct = await probeContentType(dio, url);
+    final guessed = _extFromContentType(ct) ?? 'mp4';
+    fileName = "$fileName.$guessed";
+  }
+
   final savePath = "${await _getTempDirectory()}/$fileName";
 
   bool isDownloadComplete = false;
   bool isCancelled = false;
   bool started = false;
-  List<Map<String, dynamic>> logs = [];
+
+  final logs = <Map<String, dynamic>>[];
   final scrollController = ScrollController();
   final cancelToken = CancelToken();
 
-  logs.add(
-      {'message': "🚀 Lancement du téléchargement : $fileName", 'type': 'log'});
+  logs.add({'message': "🚀 Lancement du téléchargement : $fileName", 'type': 'log'});
   if (totalSize != null) {
-    logs.add({
-      'message': "📦 Taille du fichier : ${formatFileSize(totalSize)}",
-      'type': 'log'
-    });
+    logs.add({'message': "📦 Taille du fichier : ${formatFileSize(totalSize)}", 'type': 'log'});
   }
 
   await showDialog(
@@ -244,11 +298,9 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
 
             if (type == "stats" && progress != null) {
               const barLength = 20;
-              int filled = (progress * barLength).clamp(0, barLength).toInt();
-              String bar = "▰" * filled + "▱" * (barLength - filled);
-
-              final formatted =
-                  "$bar ${(progress * 100).toStringAsFixed(1)}%  $msg";
+              final filled = (progress * barLength).clamp(0, barLength).toInt();
+              final bar = "▰" * filled + "▱" * (barLength - filled);
+              final formatted = "$bar ${(progress * 100).toStringAsFixed(1)}%  $msg";
 
               if (logs.isNotEmpty && logs.last["type"] == "stats") {
                 logs[logs.length - 1] = {"message": formatted, "type": "stats"};
@@ -262,15 +314,14 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
             setState(() {});
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (scrollController.hasClients) {
-                scrollController
-                    .jumpTo(scrollController.position.maxScrollExtent);
+                scrollController.jumpTo(scrollController.position.maxScrollExtent);
               }
             });
           }
 
           Future<void> startDownload() async {
             try {
-              final response = await dio.download(
+              final resp = await dio.download(
                 url,
                 savePath,
                 cancelToken: cancelToken,
@@ -279,13 +330,9 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                   final int totalBytes = totalSize ?? total;
                   if (totalBytes > 0) {
                     final progress = received / totalBytes;
-                    addLog(
-                      "📥 ${formatFileSize(received)} / ${formatFileSize(totalBytes)}",
-                      "stats",
-                      progress: progress,
-                    );
+                    addLog("📥 ${formatFileSize(received)} / ${formatFileSize(totalBytes)}", "stats",
+                        progress: progress);
                   } else {
-                    // totalBytes == 0 ou -1 => taille inconnue
                     addLog("📥 ${formatFileSize(received)} / ?", "log");
                   }
                 },
@@ -293,13 +340,11 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
 
               if (isCancelled) return;
 
-              if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300) {
-                // ✅ CAS DE SUCCÈS : Le téléchargement est terminé et le code HTTP est 200.
+              if (resp.statusCode != null && resp.statusCode! >= 200 && resp.statusCode! < 300) {
                 isDownloadComplete = true;
-                addLog("🪄 HTTP code : 200", "log");
+                addLog("🪄 HTTP code : ${resp.statusCode}", "log");
                 addLog("✅ Fichier téléchargé avec succès : $fileName", "log");
 
-                // Tentative de copie vers la galerie (MediaStore)
                 try {
                   final ms = MediaStore();
                   await ms.saveFile(
@@ -309,6 +354,8 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                     relativePath: "IPtvFlux",
                   );
                   addLog("🎬 Copié dans la galerie (Movies/IPtvFlux)", "log");
+
+                  // Nettoyage si le temp existe encore
                   try {
                     final f = File(savePath);
                     if (await f.exists()) {
@@ -322,43 +369,28 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                   addLog("⚠️ Erreur copie galerie : $e", "error");
                 }
 
-                // Affichage du message de succès
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("✅ Fichier enregistré : $fileName")),
-                  );
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text("✅ Fichier enregistré : $fileName")));
                 }
               } else {
-                // ❌ CAS D'ERREUR HTTP : Le téléchargement s'est terminé mais avec un code d'erreur (ex: 403, 404).
-                // On lance une exception pour que le bloc 'catch' général la traite.
-                throw Exception("Échec avec le code HTTP ${response.statusCode}");
+                throw Exception("Échec avec le code HTTP ${resp.statusCode}");
               }
-              // --- Fin de la logique refactorisée ---
-
             } catch (e) {
-              // --- Début de la gestion d'erreur centralisée ---
-
-              // On gère TOUTES les erreurs ici (annulation, erreur réseau, erreur HTTP, etc.).
               final file = File(savePath);
               if (await file.exists()) {
                 try {
                   await file.delete();
                   addLog("🗑️ Fichier partiel supprimé.", "log");
-
-                  // ✅ NOUVEAU : On notifie l'utilisateur que le fichier incomplet a été supprimé.
-                  // Ligne correcte
                   if (context.mounted && !(e is DioException && e.type == DioExceptionType.cancel)) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("❌ Échec, le fichier partiel a été supprimé.")),
-                    );
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(const SnackBar(content: Text("❌ Échec, le fichier partiel a été supprimé.")));
                   }
-
                 } catch (deleteError) {
                   addLog("⚠️ Impossible de supprimer le fichier partiel : $deleteError", "error");
                 }
               }
 
-              // Ensuite, on identifie et on affiche le type d'erreur dans les logs du terminal.
               if (e is DioException && e.type == DioExceptionType.cancel) {
                 addLog("⏹️ Téléchargement annulé par l’utilisateur", "error");
               } else if (e is DioException) {
@@ -369,7 +401,6 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
             }
           }
 
-          // ✅ on lance le download une seule fois
           if (!started) {
             started = true;
             Future.microtask(startDownload);
@@ -378,11 +409,8 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
           return AlertDialog(
             backgroundColor: Colors.black,
             title: Text(
-              isDownloadComplete
-                  ? "✅ Téléchargement terminé"
-                  : "🎬 Téléchargement",
-              style: const TextStyle(
-                  color: Colors.greenAccent, fontFamily: 'Courier New'),
+              isDownloadComplete ? "✅ Téléchargement terminé" : "🎬 Téléchargement",
+              style: const TextStyle(color: Colors.greenAccent, fontFamily: 'Courier New'),
             ),
             content: Stack(
               children: [
@@ -391,9 +419,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                   height: 300,
                   child: Column(
                     children: [
-                      if (!isDownloadComplete)
-                        const CircularProgressIndicator(
-                            color: Colors.greenAccent),
+                      if (!isDownloadComplete) const CircularProgressIndicator(color: Colors.greenAccent),
                       const SizedBox(height: 16),
                       Expanded(
                         child: Container(
@@ -402,9 +428,7 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                             color: Colors.black,
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: [
-                              BoxShadow(
-                                  color: Colors.greenAccent.withValues(alpha: 0.3),
-                                  blurRadius: 5)
+                              BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.3), blurRadius: 5),
                             ],
                           ),
                           child: ListView.builder(
@@ -449,14 +473,12 @@ Future<void> telechargerFichierVideo(String url, BuildContext context,
                     cancelToken.cancel();
                     Navigator.of(context).pop();
                   },
-                  child: const Text("❌ Annuler",
-                      style: TextStyle(color: Colors.redAccent)),
+                  child: const Text("❌ Annuler", style: TextStyle(color: Colors.redAccent)),
                 ),
               if (isDownloadComplete)
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text("✅ Terminer",
-                      style: TextStyle(color: Colors.greenAccent)),
+                  child: const Text("✅ Terminer", style: TextStyle(color: Colors.greenAccent)),
                 ),
             ],
           );

@@ -1,10 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
-import 'package:dio/io.dart';
-import 'package:path_provider/path_provider.dart';
-import 'secure_storage_service.dart';
+import 'services/playlist_service.dart';
+import 'services/iptv_account_service.dart';
 
+/// Écran de compatibilité pour télécharger la playlist .m3u
+/// Désormais, on passe par PlaylistService.downloadCurrentM3U()
 class TelechargementPage extends StatefulWidget {
   const TelechargementPage({super.key});
 
@@ -13,100 +12,109 @@ class TelechargementPage extends StatefulWidget {
 }
 
 class _TelechargementPageState extends State<TelechargementPage> {
-  final SecureStorageService _storageService = SecureStorageService();
-  bool _isDownloading = false;
-  String _filePath = "";
+  bool _loading = false;
+  String? _lastPath;
 
-  Future<String> _getDownloadUrl() async {
-    var creds = await _storageService.getCredentials();
-    if (creds.containsKey('completeUrl') && creds['completeUrl']!.isNotEmpty) {
-      return creds['completeUrl']!;
-    } else {
-      return "${creds['baseUrl']}?username=${creds['login']}&password=${creds['password']}&type=m3u&output=ts";
+  Future<void> _download() async {
+    setState(() {
+      _loading = true;
+      _lastPath = null;
+    });
+
+    try {
+      final path = await PlaylistService.downloadCurrentM3U();
+      setState(() => _lastPath = path);
+
+      final acc = await IptvAccountService.getCurrentAccount();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("✅ Playlist téléchargée pour « ${acc?.label ?? "Compte"} »."))
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("❌ Échec du téléchargement : $e"))
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _downloadFile() async {
-    Directory appDocDir = await getApplicationDocumentsDirectory();
-    _filePath = "${appDocDir.path}/iptv_links.m3u";
-    setState(() => _isDownloading = true);
-
+  Future<void> _delete() async {
+    setState(() => _loading = true);
     try {
-      final dio = Dio(BaseOptions(
-        headers: {
-          'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Accept': '*/*',
-          'Connection': 'keep-alive',
-        },
-        validateStatus: (status) => status != null && status < 500,
-      ));
-
-      (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
-        final client = HttpClient();
-        client.badCertificateCallback = (cert, host, port) => true;
-        return client;
-      };
-
-      final url = await _getDownloadUrl();
-
-      // supprimer l'ancien fichier si déjà présent
-      if (await File(_filePath).exists()) {
-        debugPrint("📄 Fichier existant détecté, suppression...");
-        await File(_filePath).delete();
-      }
-
-      // ⚡ utilisation de get() pour pouvoir lire les headers (cookies)
-      final response = await dio.get(url,
-          options: Options(
-            responseType: ResponseType.bytes,
-            followRedirects: false,
-          ));
-
-      // sauvegarder les cookies si présents
-      final cookies = response.headers['set-cookie'];
-      if (cookies != null && cookies.isNotEmpty) {
-        final cookieString = cookies.join("; ");
-        await _storageService.saveCredentials({"cookies": cookieString});
-        debugPrint("🍪 Cookies sauvegardés : $cookieString");
-      }
-
-      // écrire le fichier en local
-      final file = File(_filePath);
-      await file.writeAsBytes(response.data);
-
-      debugPrint("✅ Téléchargement terminé");
-      debugPrint("📥 Fichier enregistré à : $_filePath");
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Playlist téléchargée 🎉')),
-        );
-        Navigator.pop(context, true);
-      }
+      await PlaylistService.deleteExisting();
+      if (!mounted) return;
+      setState(() => _lastPath = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("🗑️ Playlist supprimée."))
+      );
     } catch (e) {
-      debugPrint("❌ Erreur téléchargement : $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Erreur lors du téléchargement : $e')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("❌ Impossible de supprimer : $e"))
+      );
     } finally {
-      setState(() => _isDownloading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final action = _loading
+        ? const SizedBox(
+      height: 20, width: 20,
+      child: CircularProgressIndicator(strokeWidth: 2),
+    )
+        : const Icon(Icons.download);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('📥 Téléchargement IPTV')),
-      body: Center(
-        child: _isDownloading
-            ? const CircularProgressIndicator()
-            : ElevatedButton.icon(
-          onPressed: _downloadFile,
-          icon: const Icon(Icons.download),
-          label: const Text("⬇️ Télécharger le fichier IPTV"),
+      appBar: AppBar(title: const Text("Téléchargement de la playlist")),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.list_alt),
+                title: const Text("Playlist .m3u"),
+                subtitle: Text(
+                  _lastPath == null
+                      ? "Aucune playlist téléchargée dans ce contexte."
+                      : "Dernier fichier : $_lastPath",
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _loading ? null : _download,
+                    icon: action,
+                    label: const Text("Télécharger / Mettre à jour"),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loading ? null : _delete,
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    label: const Text("Supprimer"),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              "Astuce : tu peux aussi recharger la playlist depuis la roue crantée "
+                  "ou via l'icône de rafraîchissement sur l'écran de recherche.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
         ),
       ),
     );
