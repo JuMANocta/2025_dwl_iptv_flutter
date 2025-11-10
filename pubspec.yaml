@@ -44,16 +44,26 @@ flutter_native_splash:
   android: true
   ios: false
   web: false
+
   # Logo centré
   image: assets/splash/splash.png
 
-  # ✅ Dégradé via image pour Android ≤ 11
-  background_image: assets/splash/bg_cyberpunk.png
-  color: "#E7E8E9"
+  # ----------------------------------------------------
+  # ✅ CORRECTION APPLIQUÉE ICI
+  # ----------------------------------------------------
 
-  # 📱 Spécifique Android 12+ (pas d'image de fond possible)
+  # Pour Android 11 et inférieur (le background_image sera prioritaire)
+  color: "#FFFFFF"          # Fond blanc pour le mode clair
+  color_dark: "#000000"     # Fond noir pour le mode sombre
+
+  # Image de fond pour un effet stylisé sur les anciennes versions
+  background_image: assets/splash/bg_cyberpunk.png
+  background_image_dark: assets/splash/bg_cyberpunk.png
+
+  # Spécifique pour Android 12+ (qui ne supporte pas background_image)
+  # On utilise des couleurs unies qui correspondent au thème de l'app.
   android_12:
     image: assets/splash/splash.png
-    color: "#E7E8E9"
-    color_dark: "#E7E8E9"
     image_dark: assets/splash/splash.png
+    color: "#FFFFFF"          # Fond blanc pour le mode clair
+    color_dark: "#000000"     # Fond noir pour le mode sombre

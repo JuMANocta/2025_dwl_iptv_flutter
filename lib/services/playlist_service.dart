@@ -136,10 +136,17 @@ class PlaylistService {
 
       return destinationPath;
     } catch (e) {
-      // En cas d'erreur (HTTP, réseau, fichier vide), on propage une erreur claire.
       if (e is DioException) {
+        // Si on a un code d'erreur HTTP (4xx, 5xx), on le précise.
+        if (e.response?.statusCode != null) {
+          throw HttpException(
+              'Erreur du serveur (${e.response!.statusCode}) lors du téléchargement de la playlist.'
+          );
+        }
+        // Sinon, c'est probablement une erreur réseau (timeout, DNS...).
         throw HttpException('Erreur réseau lors du téléchargement: ${e.message}');
       }
+      // Pour toutes les autres erreurs (fichier vide, etc.)
       throw HttpException('Échec du téléchargement de la playlist: ${e.toString()}');
     } finally {
       // 6. GARANTIR le nettoyage du fichier temporaire.
