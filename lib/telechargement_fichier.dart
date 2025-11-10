@@ -153,17 +153,35 @@ Future<Dio> buildDio(String url) async {
 
 Future<int?> probeContentLength(Dio dio, String url) async {
   try {
-    final head = await dio.head(url, options: Options(followRedirects: true));
-    final cl = head.headers.value('content-length');
-    if (cl != null) { final n = int.tryParse(cl); if (n != null && n > 0) return n; }
+    final response = await dio.get(
+      url,
+      options: Options(
+        responseType: ResponseType.stream,
+        followRedirects: true,
+      ),
+    );
+    response.data.stream.listen((_) {}).cancel();
+
+    final cl = response.headers.value('content-length');
+    if (cl != null) {
+      final n = int.tryParse(cl);
+      if (n != null && n > 0) {
+        if (kDebugMode) {
+          print("✅ Taille du fichier trouvée : ${formatFileSize(n)}");
+        }
+        return n;
+      }
+    }
   } catch (e) {
     if (kDebugMode) {
-      debugPrint("❌ Probe content length failed for URL $url: $e");
+      debugPrint("⚠️ Probe content length a échoué pour l'URL $url: $e");
     }
+  }
+  if (kDebugMode) {
+    print("❌ Impossible de déterminer la taille du fichier.");
   }
   return null;
 }
-
 /// --- Vérification / Confirmation -------------------------------------------
 Future<void> verifierEtTelecharger({required String url, required String nom, required BuildContext context}) async {
   final dio = await buildDio(url);
