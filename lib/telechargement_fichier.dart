@@ -272,30 +272,32 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
           }
 
           Future<void> startDownload() async {
-            final Stopwatch stopwatch = Stopwatch()..start();
+            final Stopwatch stopwatch = Stopwatch()
+              ..start();
             double downloadSpeed = 0.0;
             int remainingSeconds = 0;
+            // ----> REMPLACEZ le bloc try...catch dans startDownload() par ceci <----
 
             try {
               int bytesDownloaded = 0;
-              final tempFile = File(savePath);
+              // 1. On ne travaille qu'avec le fichier temporaire .downloading
+              final tempDownloadPath = "$savePath.downloading";
+              final tempFile = File(tempDownloadPath);
 
+              // 2. Si le fichier .downloading existe, on récupère sa taille pour la reprise
               if (await tempFile.exists()) {
                 bytesDownloaded = await tempFile.length();
-                addLog("SYSTEM: Resuming download from ${formatFileSize(bytesDownloaded)}", "log");
+                if (bytesDownloaded > 0) {
+                  addLog("SYSTEM: Resuming download from ${formatFileSize(bytesDownloaded)}", "log");
+                }
               }
 
-              final tempDownloadPath = "$savePath.downloading";
-
+              // 3. On télécharge EN CONTINUANT d'écrire dans le même fichier .downloading
               await dio.download(
                 url,
                 tempDownloadPath,
                 cancelToken: cancelToken,
-                options: Options(
-                  headers: {
-                    if (bytesDownloaded > 0) 'Range': 'bytes=$bytesDownloaded-',
-                  },
-                ),
+                deleteOnError: false, // Crucial : on garde le fichier partiel si ça plante
                 onReceiveProgress: (received, total) {
                   if (isCancelled) return;
                   final totalReceived = bytesDownloaded + received;
@@ -305,35 +307,43 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
                     final elapsedSeconds = stopwatch.elapsed.inSeconds;
                     if (elapsedSeconds > 0) {
                       downloadSpeed = received / elapsedSeconds;
-                      final remainingBytes = totalBytes - totalReceived;
-                      remainingSeconds = (remainingBytes / downloadSpeed).round();
+                      if (downloadSpeed > 0) {
+                        final remainingBytes = totalBytes - totalReceived;
+                        remainingSeconds = (remainingBytes / downloadSpeed).round();
+                      }
                     }
                     addLog("DL_STATS", "stats", progress: progress, speed: downloadSpeed, eta: remainingSeconds);
                   } else {
                     addLog("DL_INFO: ${formatFileSize(totalReceived)} / ?", "log");
                   }
                 },
+                options: Options(
+                  headers: {
+                    if (bytesDownloaded > 0) 'Range': 'bytes=$bytesDownloaded-',
+                  },
+                  // Accepte le statut 206 "Partial Content" qui est la réponse normale pour une reprise
+                  validateStatus: (s) => s != null && (s >= 200 && s < 300 || s == 206),
+                ),
               );
 
-              if (bytesDownloaded > 0) {
-                addLog("SYSTEM: Merging file parts...", "log");
-                final tempDownloadFile = File(tempDownloadPath);
-                final originalFileSink = tempFile.openWrite(mode: FileMode.append);
-                await originalFileSink.addStream(tempDownloadFile.openRead());
-                await originalFileSink.close();
-                await tempDownloadFile.delete();
-              } else {
-                await File(tempDownloadPath).rename(savePath);
-              }
-
               if (cancelToken.isCancelled) return;
+
+              // 4. Une fois le téléchargement terminé, on renomme le fichier .downloading en fichier final
+              addLog("SYSTEM: Finalizing download...", "log");
+              await tempFile.rename(savePath);
+
               isDownloadComplete = true;
               addLog("SUCCESS: Download complete -> $fileName", "log");
 
               try {
                 addLog("MEDIA_STORE: Copying to gallery...", "log");
                 final ms = MediaStore();
-                await ms.saveFile(tempFilePath: savePath, dirType: DirType.video, dirName: DirName.movies, relativePath: "IPtvFlux");
+                // Le nom de dossier est "IPtvFlux" (depuis le main.dart)
+                await ms.saveFile(
+                  tempFilePath: savePath,
+                  dirType: DirType.video,
+                  dirName: DirName.movies,
+                );
                 addLog("SUCCESS: File saved in Movies/IPtvFlux", "log");
               } catch (e) {
                 addLog("ERROR: Gallery copy failed: $e", "error");
@@ -345,23 +355,24 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
               }
 
             } catch (e) {
-              if (e is! DioException || e.type != DioExceptionType.cancel) {
-                addLog("FATAL: ${e is DioException ? e.message : e.toString()}", "error");
-              }
               if (e is DioException && e.type == DioExceptionType.cancel) {
                 addLog("ABORT: Download cancelled by user.", "error");
+              } else {
+                // Affiche un message d'erreur plus clair pour les autres cas
+                String errorMessage = e is DioException ? e.message ?? e.toString() : e.toString();
+                addLog("FATAL: $errorMessage", "error");
               }
             } finally {
+              stopwatch.stop(); // Arrêter le chronomètre
+              // On ne nettoie le fichier final temporaire que si le DL est complet
               if (isDownloadComplete) {
                 final f = File(savePath);
                 if (await f.exists()) {
-                  await f.delete();
-                  addLog("CLEANUP: Final temp file deleted.", "log");
+                  try {
+                    await f.delete();
+                    addLog("CLEANUP: Final temp file deleted.", "log");
+                  } catch (_) {}
                 }
-              }
-              final tempDownloadFile = File("$savePath.downloading");
-              if (await tempDownloadFile.exists()) {
-                await tempDownloadFile.delete();
               }
             }
           }
