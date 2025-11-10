@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'screens/settings/accounts_screen.dart';
+import 'screens/accounts_screen.dart';
+import 'screens/downloads_page.dart';
 import 'services/iptv_account_service.dart';
 import 'services/playlist_service.dart';
 import 'telechargement_fichier.dart';
@@ -59,6 +60,16 @@ class _RecherchePageState extends State<RecherchePage> {
       appBar: AppBar(
         title: Text(_currentAccountLabel ?? "IPtvFlux"),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: 'Voir les téléchargements',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const DownloadsPage()),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Recharger la playlist',
             icon: const Icon(Icons.refresh),

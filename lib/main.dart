@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:media_store_plus/media_store_plus.dart';
+import 'services/download_manager_service.dart';
 import 'services/iptv_account_service.dart';
 import 'recherche_page.dart';
-import 'screens/settings/accounts_screen.dart';
+import 'screens/accounts_screen.dart';
 import 'services/playlist_service.dart';
 
 void main() async {
@@ -10,6 +11,7 @@ void main() async {
   await MediaStore.ensureInitialized();
   MediaStore.appFolder = 'IPtvFlux';
   await IptvAccountService.migrateFromLegacyIfNeeded();
+  await DownloadManagerService().init();
   runApp(const MyApp());
 }
 

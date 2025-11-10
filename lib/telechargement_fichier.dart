@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'models/download_task.dart';
+import 'services/download_manager_service.dart';
 import 'secure_storage_service.dart';
 import 'services/iptv_account_service.dart';
 
@@ -228,7 +230,20 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
     fileName = '$fileName.mp4';
   }
 
+  final taskId = 'task_${DateTime.now().millisecondsSinceEpoch}';
   final savePath = "${await _getTempDirectory()}/$fileName";
+  final downloadManager = DownloadManagerService();
+
+  final initialTask = DownloadTask(
+    id: taskId,
+    url: url,
+    displayName: nom,
+    finalPath: savePath,
+    totalSize: totalSize ?? 0,
+    createdAt: DateTime.now(),
+  );
+
+  await downloadManager.addTask(initialTask);
 
   bool isDownloadComplete = false;
   bool isCancelled = false;
@@ -300,10 +315,12 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
                 deleteOnError: false, // Crucial : on garde le fichier partiel si ça plante
                 onReceiveProgress: (received, total) {
                   if (isCancelled) return;
+                  downloadManager.updateTask(taskId, status: DownloadStatus.downloading);
                   final totalReceived = bytesDownloaded + received;
                   final int totalBytes = totalSize ?? (bytesDownloaded + total);
                   if (totalBytes > 0) {
                     final progress = totalReceived / totalBytes;
+                    downloadManager.updateTask(taskId, progress: progress);
                     final elapsedSeconds = stopwatch.elapsed.inSeconds;
                     if (elapsedSeconds > 0) {
                       downloadSpeed = received / elapsedSeconds;
@@ -334,6 +351,7 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
 
               isDownloadComplete = true;
               addLog("SUCCESS: Download complete -> $fileName", "log");
+              await downloadManager.updateTask(taskId, status: DownloadStatus.completed, progress: 1.0);
 
               try {
                 addLog("MEDIA_STORE: Copying to gallery...", "log");
@@ -357,10 +375,13 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
             } catch (e) {
               if (e is DioException && e.type == DioExceptionType.cancel) {
                 addLog("ABORT: Download cancelled by user.", "error");
+                await downloadManager.updateTask(taskId, status: DownloadStatus.canceled);
               } else {
                 // Affiche un message d'erreur plus clair pour les autres cas
-                String errorMessage = e is DioException ? e.message ?? e.toString() : e.toString();
-                addLog("FATAL: $errorMessage", "error");
+                addLog("FATAL: An error occurred: $e", "error");
+                await downloadManager.updateTask(taskId, status: DownloadStatus.failed); // <-- AJOUT
+                await Future.delayed(const Duration(seconds: 3));
+                if (context.mounted) Navigator.of(context).pop();
               }
             } finally {
               stopwatch.stop(); // Arrêter le chronomètre

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/settings/accounts_screen.dart';
+import 'screens/accounts_screen.dart';
 
 class InfosFichierButton extends StatelessWidget {
   /// Optionnel : texte du bouton (pour compat)
