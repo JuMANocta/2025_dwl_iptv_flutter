@@ -184,12 +184,79 @@ Future<int?> probeContentLength(Dio dio, String url) async {
   }
   return null;
 }
+
 /// --- Vérification / Confirmation -------------------------------------------
 Future<void> verifierEtTelecharger({required String url, required String nom, required BuildContext context}) async {
+  if (!context.mounted) return;
+
+  final downloadManager = DownloadManagerService();
   final dio = await buildDio(url);
+
+  // ÉTAPE 1: Vérifier si une tâche pour cette URL existe déjà.
+  final existingTask = downloadManager.tasksNotifier.value.firstWhere(
+        (t) => t.url == url,
+    orElse: () => DownloadTask.empty(), // Renvoie une tâche "vide" si non trouvée
+  );
+
+  // ÉTAPE 2: Gérer la tâche existante
+  if (existingTask.id.isNotEmpty) {
+    if (existingTask.status == DownloadStatus.completed) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("✅ Ce fichier est déjà téléchargé."),
+        backgroundColor: Colors.green,
+      ));
+      return; // Ne rien faire de plus
+    }
+
+    if (existingTask.status == DownloadStatus.downloading) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("⏳ Ce fichier est déjà en cours de téléchargement."),
+        backgroundColor: Colors.blue,
+      ));
+      return; // Ne rien faire de plus
+    }
+
+    // SI LA TÂCHE EXISTE ET A ÉCHOUÉ/A ÉTÉ ANNULÉE :
+    // On affiche un dialogue de confirmation de reprise.
+    final downloadedSoFar = existingTask.totalSize * existingTask.progress;
+    final totalSize = existingTask.totalSize;
+    final String progressInfo;
+    if (totalSize > 0 && existingTask.progress > 0) {
+      final percentage = (existingTask.progress * 100).toStringAsFixed(1);
+      progressInfo = "$percentage% du fichier a déjà été téléchargé.";
+    } else {
+      progressInfo = "Une partie du fichier a déjà été téléchargée.";
+    }
+
+    final bool? confirmResume = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("⚠️ Reprendre le téléchargement ?"),
+        content: Text("$progressInfo\nVoulez-vous continuer ?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("❌ Annuler")),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("✅ Reprendre")),
+        ],
+      ),
+    );
+
+    if (confirmResume == true) {
+      // Si l'utilisateur confirme, on relance la reprise
+      await downloadManager.removeTask(existingTask.id); // On la retire de la liste pour la relancer proprement
+      await Future.delayed(const Duration(milliseconds: 50)); // Laisse le temps à l'UI de réagir
+
+      await telechargerFichierVideo(url: url, nom: nom, context: context, totalSize: totalSize > 0 ? totalSize : null);
+    } else {
+      // Si l'utilisateur annule, on ne fait rien.
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("❌ Reprise annulée")));
+    }
+    return; // On a fini de gérer le cas de la tâche existante.
+  }
+
+  // ÉTAPE 3: Si aucune tâche n'existe, on suit le processus normal de confirmation.
   try {
-    final contentLength = await probeContentLength(dio, url) ?? 0;
-    final sizeFormatted = contentLength > 0 ? formatFileSize(contentLength) : "taille inconnue";
+    final contentLength = await probeContentLength(dio, url);
+    final sizeFormatted = contentLength != null && contentLength > 0 ? formatFileSize(contentLength) : "taille inconnue";
 
     if (!context.mounted) return;
 
@@ -197,7 +264,9 @@ Future<void> verifierEtTelecharger({required String url, required String nom, re
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("⚠️ Confirmation"),
-        content: Text(contentLength > 0 ? "Le fichier fait $sizeFormatted.\nVoulez-vous lancer le téléchargement ?" : "Taille inconnue.\nVoulez-vous lancer le téléchargement ?"),
+        content: Text(contentLength != null && contentLength > 0
+            ? "Le fichier fait $sizeFormatted.\nVoulez-vous lancer le téléchargement ?"
+            : "Taille inconnue.\nVoulez-vous lancer le téléchargement ?"),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("❌ Annuler")),
           TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("✅ Télécharger")),
@@ -207,9 +276,8 @@ Future<void> verifierEtTelecharger({required String url, required String nom, re
 
     if (confirm == true) {
       if (!context.mounted) return;
-      await telechargerFichierVideo(url: url, nom: nom, context: context, totalSize: contentLength > 0 ? contentLength : null);
+      await telechargerFichierVideo(url: url, nom: nom, context: context, totalSize: contentLength);
     } else {
-      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("❌ Téléchargement annulé")));
     }
   } catch (e) {
