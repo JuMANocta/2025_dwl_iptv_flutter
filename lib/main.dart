@@ -6,6 +6,8 @@ import 'recherche_page.dart';
 import 'screens/accounts_screen.dart';
 import 'services/playlist_service.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await MediaStore.ensureInitialized();
@@ -25,6 +27,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'IPtvFlux',
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),

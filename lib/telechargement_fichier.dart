@@ -75,6 +75,7 @@ class _ScanLineState extends State<ScanLine> with SingleTickerProviderStateMixin
     _controller.dispose();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
@@ -218,7 +219,7 @@ Future<void> verifierEtTelecharger({required String url, required String nom, re
 
     // SI LA TÂCHE EXISTE ET A ÉCHOUÉ/A ÉTÉ ANNULÉE :
     // On affiche un dialogue de confirmation de reprise.
-    final downloadedSoFar = existingTask.totalSize * existingTask.progress;
+    ///final downloadedSoFar = existingTask.totalSize * existingTask.progress;
     final totalSize = existingTask.totalSize;
     final String progressInfo;
     if (totalSize > 0 && existingTask.progress > 0) {
@@ -234,8 +235,8 @@ Future<void> verifierEtTelecharger({required String url, required String nom, re
         title: const Text("⚠️ Reprendre le téléchargement ?"),
         content: Text("$progressInfo\nVoulez-vous continuer ?"),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("❌ Annuler")),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("✅ Reprendre")),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("Annuler",style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("Reprendre")),
         ],
       ),
     );
@@ -268,8 +269,8 @@ Future<void> verifierEtTelecharger({required String url, required String nom, re
             ? "Le fichier fait $sizeFormatted.\nVoulez-vous lancer le téléchargement ?"
             : "Taille inconnue.\nVoulez-vous lancer le téléchargement ?"),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("❌ Annuler")),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("✅ Télécharger")),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("Annuler", style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("Télécharger")),
         ],
       ),
     );
@@ -315,11 +316,12 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
 
   bool isDownloadComplete = false;
   bool isCancelled = false;
+  bool hasFatalError = false;
   bool started = false;
   final logs = <Map<String, dynamic>>[];
   final scrollController = ScrollController();
   final cancelToken = CancelToken();
-  logs.add({'message': "🚀 Lancement du téléchargement : $fileName", 'type': 'log'});
+  logs.add({'message': "🚀 Lancement du téléchargement :\n🎞️ $fileName", 'type': 'log'});
   if (totalSize != null) { logs.add({'message': "📦 Taille du fichier : ${formatFileSize(totalSize)}", 'type': 'log'}); }
 
   await showDialog(
@@ -336,7 +338,7 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
               final filled = (progress * barLength).clamp(0, barLength).toInt();
               final bar = "█" * filled + "▒" * (barLength - filled);
               final speedInfo = (speed != null && speed > 0) ? "${formatFileSize(speed.toInt())}/s" : "";
-              final etaInfo = (eta != null && eta > 0 && progress < 1.0) ? " | ETA: ${formatDuration(eta)}" : "";
+              final etaInfo = (eta != null && eta > 0 && progress < 1.0) ? " \n⏳ ETA: ${formatDuration(eta)}" : "";
               final formatted = "[$bar] ${(progress * 100).toStringAsFixed(1)}% | $speedInfo$etaInfo";
               if (logs.isNotEmpty && logs.last["type"] == "stats") {
                 logs[logs.length - 1] = {"message": formatted, "type": "stats"};
@@ -359,7 +361,6 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
               ..start();
             double downloadSpeed = 0.0;
             int remainingSeconds = 0;
-            // ----> REMPLACEZ le bloc try...catch dans startDownload() par ceci <----
 
             try {
               int bytesDownloaded = 0;
@@ -371,7 +372,7 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
               if (await tempFile.exists()) {
                 bytesDownloaded = await tempFile.length();
                 if (bytesDownloaded > 0) {
-                  addLog("SYSTEM: Resuming download from ${formatFileSize(bytesDownloaded)}", "log");
+                  addLog("🪄 SYSTEM: Resuming download from ${formatFileSize(bytesDownloaded)}", "log");
                 }
               }
 
@@ -388,7 +389,7 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
                   final int totalBytes = totalSize ?? (bytesDownloaded + total);
                   if (totalBytes > 0) {
                     final progress = totalReceived / totalBytes;
-                    downloadManager.updateTask(taskId, progress: progress);
+                    downloadManager.updateTask(taskId, status: DownloadStatus.downloading, progress: progress, totalSize: totalBytes);
                     final elapsedSeconds = stopwatch.elapsed.inSeconds;
                     if (elapsedSeconds > 0) {
                       downloadSpeed = received / elapsedSeconds;
@@ -400,6 +401,7 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
                     addLog("DL_STATS", "stats", progress: progress, speed: downloadSpeed, eta: remainingSeconds);
                   } else {
                     addLog("DL_INFO: ${formatFileSize(totalReceived)} / ?", "log");
+                    downloadManager.updateTask(taskId, status: DownloadStatus.downloading);
                   }
                 },
                 options: Options(
@@ -414,25 +416,25 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
               if (cancelToken.isCancelled) return;
 
               // 4. Une fois le téléchargement terminé, on renomme le fichier .downloading en fichier final
-              addLog("SYSTEM: Finalizing download...", "log");
+              addLog("🪄 SYSTEM: Finalizing download...", "log");
               await tempFile.rename(savePath);
 
               isDownloadComplete = true;
-              addLog("SUCCESS: Download complete -> $fileName", "log");
+              addLog("🟢 SUCCESS: Download complete -> $fileName", "log");
               await downloadManager.updateTask(taskId, status: DownloadStatus.completed, progress: 1.0);
 
               try {
-                addLog("MEDIA_STORE: Copying to gallery...", "log");
+                addLog("📁 MEDIA_STORE: Copying to gallery...", "log");
                 final ms = MediaStore();
-                // Le nom de dossier est "IPtvFlux" (depuis le main.dart)
+
                 await ms.saveFile(
                   tempFilePath: savePath,
                   dirType: DirType.video,
                   dirName: DirName.movies,
                 );
-                addLog("SUCCESS: File saved in Movies/IPtvFlux", "log");
+                addLog("🟢 SUCCESS: File saved in Movies/IPtvFlux", "log");
               } catch (e) {
-                addLog("ERROR: Gallery copy failed: $e", "error");
+                addLog("🔴 ERROR: Gallery copy failed: $e", "error");
               }
 
               if (context.mounted) {
@@ -442,14 +444,16 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
 
             } catch (e) {
               if (e is DioException && e.type == DioExceptionType.cancel) {
-                addLog("ABORT: Download cancelled by user.", "error");
+                isCancelled = true;
+                addLog("ℹ️ ABORT: Download cancelled by user.", "error");
                 await downloadManager.updateTask(taskId, status: DownloadStatus.canceled);
-              } else {
-                // Affiche un message d'erreur plus clair pour les autres cas
-                addLog("FATAL: An error occurred: $e", "error");
-                await downloadManager.updateTask(taskId, status: DownloadStatus.failed); // <-- AJOUT
-                await Future.delayed(const Duration(seconds: 3));
                 if (context.mounted) Navigator.of(context).pop();
+              } else {
+                setState(() {
+                  hasFatalError = true;
+                });
+                addLog("☣️ FATAL: An error occurred: $e", "error");
+                await downloadManager.updateTask(taskId, status: DownloadStatus.failed);
               }
             } finally {
               stopwatch.stop(); // Arrêter le chronomètre
@@ -459,7 +463,7 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
                 if (await f.exists()) {
                   try {
                     await f.delete();
-                    addLog("CLEANUP: Final temp file deleted.", "log");
+                    addLog("🧹 CLEANUP: Final temp file deleted.", "log");
                   } catch (_) {}
                 }
               }
@@ -520,14 +524,16 @@ Future<void> telechargerFichierVideo({required String url, required String nom, 
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () {
-                        if (!isDownloadComplete) {
-                          isCancelled = true;
-                          cancelToken.cancel('User cancelled');
+                        if (hasFatalError || isDownloadComplete) {
+                          Navigator.of(context).pop();
+                        } else{
+                          if(!isCancelled){
+                            cancelToken.cancel('User cancelled');
+                          }
                         }
-                        Navigator.of(context).pop();
                       },
                       child: Text(
-                        isDownloadComplete ? "[ CLOSE ]" : "[ ABORT ]",
+                        hasFatalError ? "[ CLOSE ]" : (isDownloadComplete ? "[ CLOSE ]" : "[ ABORT ]"),
                         style: GoogleFonts.vt323(color: Colors.white, fontSize: 18),
                       ),
                     ),

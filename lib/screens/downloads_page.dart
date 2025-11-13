@@ -2,9 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:open_file_plus/open_file_plus.dart';
+import '../main.dart';
 import '../models/download_task.dart';
 import '../services/download_manager_service.dart';
-import '../telechargement_fichier.dart'; // Contient maintenant notre logique intelligente
+import '../telechargement_fichier.dart';
 
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({super.key});
@@ -114,18 +115,24 @@ class _DownloadTaskTile extends StatelessWidget {
   }
 
   Future<void> _retryDownload(BuildContext context) async {
-    if (context.mounted) {
-      // Appelle la fonction intelligente qui va détecter l'état et reprendre
-      await verifierEtTelecharger(
-        url: task.url,
-        nom: task.displayName,
-        context: context,
-      );
+    Navigator.of(context).pop();
+
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    final BuildContext? safeContext = navigatorKey.currentContext;
+    if (safeContext == null || !safeContext.mounted) {
+      debugPrint("Le contexte de navigation n'est plus valide, impossible de continuer.");
+      return;
     }
+
+    await verifierEtTelecharger(
+      url: task.url,
+      nom: task.displayName,
+      context: safeContext,
+    );
   }
 
   // --- WIDGETS D'UI ---
-
   Widget _getLeadingIcon() {
     switch (task.status) {
       case DownloadStatus.downloading:
@@ -162,13 +169,22 @@ class _DownloadTaskTile extends StatelessWidget {
         return Text("Terminé • $size • $formattedDate", style: const TextStyle(fontSize: 12, color: Colors.grey));
       case DownloadStatus.failed:
         String progressInfo = '';
-        if (task.totalSize > 0) {
-          final downloaded = task.totalSize * task.progress;
-          progressInfo = ' à ${formatFileSize(downloaded.toInt())} / ${formatFileSize(task.totalSize)}';
+        if (task.totalSize > 0 && task.progress > 0) {
+          final percentage = (task.progress * 100).toStringAsFixed(1);
+          final downloadedSize = formatFileSize((task.totalSize * task.progress).toInt());
+          final totalSize = formatFileSize(task.totalSize);
+          progressInfo = '($percentage% - $downloadedSize / $totalSize)';
         }
-        return Text("Échec$progressInfo • Appuyer pour relancer", style: const TextStyle(fontSize: 12, color: Colors.red));
+        return Text("Échec $progressInfo • Appuyer pour relancer", style: const TextStyle(fontSize: 12, color: Colors.red));
       case DownloadStatus.canceled:
-        return Text("Annulé • Appuyer pour relancer", style: const TextStyle(fontSize: 12, color: Colors.amber));
+        String progressInfo = '';
+        if (task.totalSize > 0 && task.progress > 0) {
+          final percentage = (task.progress * 100).toStringAsFixed(1);
+          final downloadedSize = formatFileSize((task.totalSize * task.progress).toInt());
+          final totalSize = formatFileSize(task.totalSize);
+          progressInfo = '($percentage% - $downloadedSize / $totalSize)';
+        }
+        return Text("Annulé $progressInfo • Appuyer pour relancer", style: const TextStyle(fontSize: 12, color: Colors.amber));
       default:
         return Text("En attente • $formattedDate", style: const TextStyle(fontSize: 12, color: Colors.grey));
     }
@@ -186,7 +202,7 @@ class _DownloadTaskTile extends StatelessWidget {
         tooltip: "Supprimer définitivement",
         onPressed: () => _deleteTask(context),
       ),
-      onTap: () => _handleTap(context), // On gère le clic sur toute la ligne
+      onTap: () => _handleTap(context),
       isThreeLine: task.status == DownloadStatus.downloading,
     );
   }

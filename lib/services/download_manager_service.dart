@@ -71,19 +71,29 @@ class DownloadManagerService {
   }
 
   /// Met à jour une tâche existante (par exemple, sa progression ou son statut).
-  Future<void> updateTask(String taskId, {DownloadStatus? status, double? progress}) async {
-    final currentTasks = List<DownloadTask>.from(tasksNotifier.value);
-    final index = currentTasks.indexWhere((t) => t.id == taskId);
+  Future<void> updateTask(String taskId, {DownloadStatus? status, double? progress, int? totalSize}) async {
+    // On récupère la référence directe à la liste actuelle.
+    final tasks = tasksNotifier.value;
+    final index = tasks.indexWhere((t) => t.id == taskId);
 
     if (index != -1) {
-      currentTasks[index] = currentTasks[index].copyWith(
+      // On met à jour l'objet tâche directement dans la liste.
+      tasks[index] = tasks[index].copyWith(
         status: status,
         progress: progress,
+        totalSize: totalSize, // Ajout du paramètre manquant
       );
-      tasksNotifier.value = currentTasks;
+
+      // LA LIGNE CLÉ :
+      // On assigne une NOUVELLE liste (une copie) au notifier.
+      // C'est ce qui déclenche la mise à jour de l'UI.
+      tasksNotifier.value = List.from(tasks);
+
+      // On sauvegarde l'état mis à jour.
       await _saveTasksToDisk();
     }
   }
+
 
   /// Supprime une tâche de la liste et sauvegarde.
   /// La suppression du fichier physique devra être gérée séparément.

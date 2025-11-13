@@ -40,20 +40,23 @@ class DownloadTask {
   // Méthode 'copyWith' pour créer une nouvelle instance avec des valeurs modifiées.
   // C'est une bonne pratique pour les objets immuables.
   DownloadTask copyWith({
+    String? id,
+    String? url,
+    String? displayName,String? finalPath,
     DownloadStatus? status,
     double? progress,
-    DateTime? updatedAt,
+    int? totalSize, // <--- 1. AJOUTER LE PARAMÈTRE ICI
+    DateTime? createdAt,
   }) {
     return DownloadTask(
-      id: id,
-      url: url,
-      displayName: displayName,
-      finalPath: finalPath,
+      id: id ?? this.id,
+      url: url ?? this.url,
+      displayName: displayName ?? this.displayName,
+      finalPath: finalPath ?? this.finalPath,
       status: status ?? this.status,
       progress: progress ?? this.progress,
-      totalSize: totalSize,
-      createdAt: createdAt,
-      updatedAt: updatedAt ?? DateTime.now(),
+      totalSize: totalSize ?? this.totalSize, // <--- 2. UTILISER LE NOUVEAU PARAMÈTRE ICI
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 
