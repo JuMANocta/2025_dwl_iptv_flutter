@@ -62,9 +62,11 @@ class _DownloadTaskTile extends StatelessWidget {
   const _DownloadTaskTile({required this.task});
 
   // --- ACTIONS ---
-
   Future<void> _handleTap(BuildContext context) async {
     switch (task.status) {
+      case DownloadStatus.downloading:
+        await DownloadManagerService().cancelTask(task.id);
+        break;
       case DownloadStatus.completed:
         _openFile(context);
         break;
@@ -162,7 +164,7 @@ class _DownloadTaskTile extends StatelessWidget {
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text("Téléchargement en cours...$remainingText", style: const TextStyle(fontSize: 12)),
           const SizedBox(height: 4),
-          LinearProgressIndicator(value: task.progress, backgroundColor: Colors.grey.shade300, color: Colors.blue),
+          LinearProgressIndicator(value: task.progress, backgroundColor: Colors.grey.shade300, color: Colors.greenAccent),
         ]);
       case DownloadStatus.completed:
         final size = formatFileSize(task.totalSize);
