@@ -6,6 +6,7 @@ import 'screens/downloads_page.dart';
 import 'services/iptv_account_service.dart';
 import 'services/playlist_service.dart';
 import 'telechargement_fichier.dart';
+import 'screens/player_page.dart';
 
 //############################################################################
 // WIDGET "CONTENEUR" PRINCIPAL (RecherchePage)
@@ -151,6 +152,14 @@ class _RechercheM3UState extends State<RechercheM3U> {
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() {
+      if (_searchQuery != _searchController.text) {
+        setState(() {
+          _searchQuery = _searchController.text;
+          _filterAndGroupResults();
+        });
+      }
+    });
     _loadM3U();
   }
 
@@ -164,27 +173,41 @@ class _RechercheM3UState extends State<RechercheM3U> {
     setState(() => _isLoading = true);
     try {
       final file = File(widget.filePath);
-      if (!await file.exists()) throw Exception("Fichier de playlist non trouvé : ${widget.filePath}");
+      if (!await file.exists()) throw Exception(
+          "Fichier de playlist non trouvé : ${widget.filePath}");
       final content = await file.readAsString(encoding: utf8);
       final lines = LineSplitter.split(content).toList();
       List<M3uEntry> parsed = [];
       for (int i = 0; i < lines.length - 1; i++) {
         final line = lines[i].trim();
         if (line.startsWith("#EXTINF")) {
-          final title = line.split(',').last.trim();
+          final title = line
+              .split(',')
+              .last
+              .trim();
           final url = lines[i + 1].trim();
           if (url.isEmpty || !url.startsWith('http')) continue;
-          final isSerie = RegExp(r"S\d{2} E\d{2}", caseSensitive: false).hasMatch(title);
+          final isSerie = RegExp(r"S\d{2} E\d{2}", caseSensitive: false)
+              .hasMatch(title);
           String? saison, episode;
           if (isSerie) {
-            final match = RegExp(r"S(\d{2}) E(\d{2})", caseSensitive: false).firstMatch(title);
+            final match = RegExp(r"S(\d{2}) E(\d{2})", caseSensitive: false)
+                .firstMatch(title);
             if (match != null) {
               saison = match.group(1);
               episode = match.group(2);
             }
           }
-          parsed.add(M3uEntry(nom: title, url: url, isSerie: isSerie, saison: saison, episode: episode));
+          parsed.add(M3uEntry(nom: title,
+              url: url,
+              isSerie: isSerie,
+              saison: saison,
+              episode: episode));
         }
+      }
+      if (parsed.isEmpty) {
+        throw Exception(
+            "La playlist a été téléchargée mais elle est vide ou dans un format non reconnu.");
       }
       setState(() {
         _allEntries = parsed;
@@ -193,22 +216,39 @@ class _RechercheM3UState extends State<RechercheM3U> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Erreur parsing M3U: $e")));
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _allEntries = [];
+        _filterAndGroupResults();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("❌ Erreur de chargement de la playlist: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
-  String _getBaseName(String title) {
-    String name = title.split(RegExp(r"S\d{2} E\d{2}", caseSensitive: false)).first;
+  String _getBaseName(M3uEntry entry) {
+    String name = entry.nom;
+    name = name
+        .split(RegExp(r"S\d{2} E\d{2}", caseSensitive: false))
+        .first;
     name = name.replaceAll(RegExp(r'\(.*?\)|\[.*?\]'), '');
-    name = name.replaceAll(RegExp(r'\b(FHD|UHD|4K|2160p|1080p|720p|480p|SD|HDR10\+?|HDR|MULTI|VOSTFR|VF|VO|VFF|TRUEFRENCH|TRUEHD|DTS|ATMOS|FR|ENG)\b', caseSensitive: false), '');
-    return name.trim().replaceAll(RegExp(r'[-_.|]'), ' ').replaceAll(RegExp(r'\s+'), ' ');
+    name = name.replaceAll(RegExp(
+        r'\b(4K|UHD|FHD|HD|SD|2160p|1080p|720p|480p|HEVC|X265|HDR10\+?|HDR|MULTI|VOSTFR|VF|VO|VFF|TRUEFRENCH|TRUEHD|DTS|ATMOS|FR|EN|ES)\b',
+        caseSensitive: false), '');
+    name = name.trim().replaceAll(RegExp(r'[-_.|]'), ' ').replaceAll(
+        RegExp(r'\s+'), ' ');
+    return name.isEmpty ? entry.nom.replaceAll('|', ' ').trim() : name;
   }
 
   /// Retourne le nom de l'épisode SANS le numéro SxxExx.
   String _getEpisodeName(M3uEntry entry) {
     // Sépare le titre en deux parties au niveau de "SxxExx"
-    final parts = entry.nom.split(RegExp(r"S\d{2}\s*E\d{2}", caseSensitive: false));
+    final parts = entry.nom.split(
+        RegExp(r"S\d{2}\s*E\d{2}", caseSensitive: false));
     if (parts.length > 1) {
       // La deuxième partie contient le nom de l'épisode (s'il existe)
       final episodeTitle = parts[1].trim();
@@ -217,7 +257,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       }
     }
     // S'il n'y a pas de titre d'épisode, on retourne le nom de la série
-    return _getBaseName(entry.nom);
+    return _getBaseName(entry);
   }
 
   /// Crée un tag (Chip) pour le numéro de l'épisode.
@@ -233,17 +273,22 @@ class _RechercheM3UState extends State<RechercheM3U> {
     final query = _searchQuery.toLowerCase();
     final filtered = _allEntries.where((entry) {
       final url = entry.url.toLowerCase();
-      bool isAllowed = (_showFilms && url.contains('/movie/')) || (_showSeries && url.contains('/series/')) || (_showTv && !url.contains('/movie/') && !url.contains('/series/'));
+      bool isAllowed = (_showFilms && url.contains('/movie/')) ||
+          (_showSeries && url.contains('/series/')) ||
+          (_showTv && !url.contains('/movie/') && !url.contains('/series/'));
       return entry.nom.toLowerCase().contains(query) && isAllowed;
     }).toList();
 
     final Map<String, Map<String, List<M3uEntry>>> tempGroupedSeries = {};
     for (var entry in filtered.where((e) => e.isSerie)) {
-      final baseName = _getBaseName(entry.nom);
-      final seasonLabel = entry.saison != null ? "Saison ${entry.saison}" : "Autre";
+      final baseName = _getBaseName(entry);
+      final seasonLabel = entry.saison != null
+          ? "Saison ${entry.saison}"
+          : "Autre";
 
       tempGroupedSeries.putIfAbsent(baseName, () => {});
-      tempGroupedSeries[baseName]!.putIfAbsent(seasonLabel, () => []).add(entry);
+      tempGroupedSeries[baseName]!.putIfAbsent(seasonLabel, () => []).add(
+          entry);
     }
 
     tempGroupedSeries.forEach((_, seasons) {
@@ -253,8 +298,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
     });
 
     final Map<String, List<M3uEntry>> tempGroupedFilms = {};
-    for (var entry in filtered.where((e) => !e.isSerie && e.url.contains('/movie/'))) {
-      final baseName = _getBaseName(entry.nom);
+    for (var entry in filtered.where((e) => !e.isSerie)) {
+      final baseName = _getBaseName(entry);
       tempGroupedFilms.putIfAbsent(baseName, () => []).add(entry);
     }
 
@@ -279,48 +324,166 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   Widget _getQualityChip(String title) {
     final lower = title.toLowerCase();
-    if (lower.contains("4k") || lower.contains("2160p")) return _chip("4K", Colors.blueAccent);
-    if (lower.contains("fhd") || lower.contains("1080p")) return _chip("FHD", Colors.green);
-    if (lower.contains("hd") || lower.contains("720p")) return _chip("HD", Colors.orange);
-    if (lower.contains("sd") || lower.contains("480p")) return _chip("SD", Colors.redAccent);
+    if (lower.contains("4k") || lower.contains("2160p"))
+      return _chip("4K", Colors.blueAccent);
+    if (lower.contains("fhd") || lower.contains("1080p"))
+      return _chip("FHD", Colors.green);
+    if (lower.contains("hd") || lower.contains("720p"))
+      return _chip("HD", Colors.orange);
+    if (lower.contains("sd") || lower.contains("480p"))
+      return _chip("SD", Colors.redAccent);
     return const SizedBox.shrink();
   }
 
   List<Widget> _getLanguageChips(String title) {
     final lower = title.toLowerCase();
     List<Widget> chips = [];
-    if (lower.contains("multi")) chips.add(_chip("MULTI", Colors.teal));
-    else if (lower.contains("vostfr")) chips.add(_chip("VOSTFR", Colors.deepOrange));
-    else if (lower.contains("vf") || lower.contains("truefrench") || lower.contains("vff")) chips.add(_chip("VF", Colors.indigo));
-    else if (lower.contains("vo")) chips.add(_chip("VO", Colors.brown));
+    if (lower.contains("multi"))
+      chips.add(_chip("MULTI", Colors.teal));
+    else if (lower.contains("vostfr"))
+      chips.add(_chip("VOSTFR", Colors.deepOrange));
+    else if (lower.contains("vf") || lower.contains("truefrench") ||
+        lower.contains("vff"))
+      chips.add(_chip("VF", Colors.indigo));
+    else if (lower.contains("vo"))
+      chips.add(_chip("VO", Colors.brown));
     else if (lower.contains("fr")) chips.add(_chip("VF", Colors.indigo));
     return chips;
   }
 
   Widget _chip(String label, Color color) {
-    return Chip(label: Text(label, style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: color, visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0), materialTapTargetSize: MaterialTapTargetSize.shrinkWrap);
+    return Chip(
+        label: Text(label,
+            style: const TextStyle(
+                fontSize: 10,
+                color: Colors.white,
+                fontWeight: FontWeight.bold)),
+        backgroundColor: color.withOpacity(0.8),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap);
   }
 
-  void _onEntrySelected(M3uEntry entry) => verifierEtTelecharger(url: entry.url, nom: entry.nom, context: context);
+  void _onEntrySelected(M3uEntry entry) {
+    final url = entry.url.toLowerCase();
+    final bool isTvChannel = !url.contains('/movie/') && !url.contains('/series/');
+
+    if (isTvChannel) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PlayerPage(
+            path: entry.url,
+            title: entry.nom,
+            sourceType: VideoSourceType.network,
+          ),
+        ),
+      );
+    } else {
+      verifierEtTelecharger(url: entry.url, nom: entry.nom, context: context);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(), SizedBox(height: 16), Text("Analyse de la playlist...")]));
-    return Column(children: [
-      SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.all(8.0), child: Row(children: [
-        FilterChip(label: const Text('🎬 Films'), selected: _showFilms, onSelected: (val) => setState(() { _showFilms = val; _filterAndGroupResults(); })),
-        const SizedBox(width: 8),
-        FilterChip(label: const Text('📺 Séries'), selected: _showSeries, onSelected: (val) => setState(() { _showSeries = val; _filterAndGroupResults(); })),
-        const SizedBox(width: 8),
-        FilterChip(label: const Text('📡 TV'), selected: _showTv, onSelected: (val) => setState(() { _showTv = val; _filterAndGroupResults(); })),
-      ])),
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 8.0), child: TextField(controller: _searchController, decoration: InputDecoration(labelText: 'Rechercher...', prefixIcon: const Icon(Icons.search), border: const OutlineInputBorder(), suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () { _searchController.clear(); FocusScope.of(context).unfocus(); setState((){ _searchQuery = ""; _filterAndGroupResults(); }); }) : null), onChanged: (q) => setState(() { _searchQuery = q; _filterAndGroupResults(); }))),
-      Expanded(child: (_groupedFilms.isEmpty && _groupedSeries.isEmpty && _searchQuery.isNotEmpty) ? const Center(child: Text('🔎 Aucun résultat trouvé')) : ListView(
+    if (_isLoading) {
+      return const Center(
+        child: Column(mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text("Analyse de la playlist..."),
+          ],
+        ),
+      );
+    }
+
+    // Utilisation de NestedScrollView pour une gestion avancée du défilement
+    // qui corrige le problème de "RenderFlex overflowed".
+    return NestedScrollView(
+      headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+        // La partie "en-tête" contient les filtres et le champ de recherche.
+        // Elle défilera avec le contenu si nécessaire.
+        return <Widget>[
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                // --- FILTRES (CHIPS) ---
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.all(8.0),
+                  child: Row(
+                    children: [
+                      FilterChip(
+                        label: const Text('🎬 Films'),
+                        selected: _showFilms,
+                        onSelected: (val) =>
+                            setState(() {
+                              _showFilms = val;
+                              _filterAndGroupResults();
+                            }),
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('📺 Séries'),
+                        selected: _showSeries,
+                        onSelected: (val) =>
+                            setState(() {
+                              _showSeries = val;
+                              _filterAndGroupResults();
+                            }),
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('📡 TV'),
+                        selected: _showTv,
+                        onSelected: (val) =>
+                            setState(() {
+                              _showTv = val;
+                              _filterAndGroupResults();
+                            }),
+                      ),
+                    ],
+                  ),
+                ),
+                // --- CHAMP DE RECHERCHE ---
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8.0, 0, 8.0, 8.0),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      labelText: 'Rechercher...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          // L'état se mettra à jour via le listener
+                        },
+                      )
+                          : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ];
+      },
+      // Le "corps" contient la liste des résultats qui défile.
+      body: (_groupedFilms.isEmpty && _groupedSeries.isEmpty &&
+          _searchQuery.isNotEmpty)
+          ? const Center(child: Text('🔎 Aucun résultat trouvé'))
+          : ListView(
+        padding: EdgeInsets.zero, // Important avec NestedScrollView
         children: [
+          // --- LISTE DES SÉRIES ---
           ..._groupedSeries.entries.map((seriesEntry) {
             return ExpansionTile(
               leading: const Text("📺", style: TextStyle(fontSize: 24)),
-              title: Text(seriesEntry.key, style: const TextStyle(fontWeight: FontWeight.bold)),
+              title: Text(seriesEntry.key,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
               children: seriesEntry.value.entries.map((seasonEntry) {
                 final representativeEpisodeName = seasonEntry.value.first.nom;
                 return ExpansionTile(
@@ -340,28 +503,68 @@ class _RechercheM3UState extends State<RechercheM3U> {
                       ],
                     ),
                   ),
-                  children: seasonEntry.value.map((ep) => ListTile(
-                    title: Padding(
-                      padding: const EdgeInsets.only(left: 32.0),
-                      child: Text(_getEpisodeName(ep)), // Titre nettoyé
-                    ),
-                    // Le trailing affiche maintenant le tag de l'épisode
-                    trailing: _getEpisodeChip(ep),
-                    onTap: () => _onEntrySelected(ep),
-                  )).toList(),
+                  children: seasonEntry.value
+                      .map((ep) =>
+                      ListTile(
+                        title: Padding(
+                          padding: const EdgeInsets.only(left: 32.0),
+                          child: Text(_getEpisodeName(ep)),
+                        ),
+                        trailing: _getEpisodeChip(ep),
+                        onTap: () => _onEntrySelected(ep),
+                      ))
+                      .toList(),
                 );
               }).toList(),
             );
           }),
+          // --- LISTE DES FILMS ET TV ---
           ..._groupedFilms.entries.map((entry) {
             if (entry.value.length == 1) {
               final film = entry.value.first;
-              return ListTile(leading: const Padding(padding: EdgeInsets.only(left: 8.0), child: Text("🎬", style: TextStyle(fontSize: 24))), title: Text(entry.key), trailing: Wrap(spacing: 4, runSpacing: 4, children: [_getQualityChip(film.nom), ..._getLanguageChips(film.nom)]), onTap: () => _onEntrySelected(film));
+              return ListTile(
+                leading: const Padding(
+                  padding: EdgeInsets.only(left: 8.0),
+                  child: Text("🎬", style: TextStyle(fontSize: 24)),
+                ),
+                title: Text(entry.key),
+                trailing: Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    _getQualityChip(film.nom),
+                    ..._getLanguageChips(film.nom)
+                  ],
+                ),
+                onTap: () => _onEntrySelected(film),
+              );
             }
-            return ExpansionTile(leading: const Text("🎬", style: TextStyle(fontSize: 24)), title: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.bold)), children: entry.value.map((film) => ListTile(title: Text(film.nom.split(entry.key).last.trim()), trailing: Wrap(spacing: 4, runSpacing: 4, children: [_getQualityChip(film.nom), ..._getLanguageChips(film.nom)]), onTap: () => _onEntrySelected(film))).toList());
+            return ExpansionTile(
+              leading: const Text("🎬", style: TextStyle(fontSize: 24)),
+              title: Text(entry.key,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              children: entry.value
+                  .map((film) =>
+                  ListTile(
+                    title: Text(film.nom
+                        .split(entry.key)
+                        .last
+                        .trim()),
+                    trailing: Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        _getQualityChip(film.nom),
+                        ..._getLanguageChips(film.nom)
+                      ],
+                    ),
+                    onTap: () => _onEntrySelected(film),
+                  ))
+                  .toList(),
+            );
           }),
         ],
-      )),
-    ]);
+      ),
+    );
   }
 }

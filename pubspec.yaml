@@ -23,6 +23,8 @@ dependencies:
   shared_preferences: ^2.5.3
   intl: ^0.20.2
   open_file_plus: ^3.4.1+1
+  video_player: ^2.10.1
+  chewie: ^1.13.0
 
 dev_dependencies:
   flutter_test:

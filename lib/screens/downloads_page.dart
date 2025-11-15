@@ -1,11 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:open_file_plus/open_file_plus.dart';
 import '../main.dart';
 import '../models/download_task.dart';
 import '../services/download_manager_service.dart';
 import '../telechargement_fichier.dart';
+import '../screens/player_page.dart';
+
 
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({super.key});
@@ -110,10 +111,16 @@ class _DownloadTaskTile extends StatelessWidget {
   }
 
   Future<void> _openFile(BuildContext context) async {
-    final result = await OpenFile.open(task.finalPath);
-    if (result.type != ResultType.done && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Impossible d'ouvrir le fichier : ${result.message}")));
-    }
+    // On utilise notre lecteur interne !
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PlayerPage(path: task.finalPath, // On passe le chemin du fichier local
+          title: task.displayName,
+          sourceType: VideoSourceType.file, // On spécifie que c'est un fichier
+        ),
+      ),
+    );
   }
 
   Future<void> _retryDownload(BuildContext context) async {
