@@ -75,7 +75,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
       await IptvAccountService.saveAccount(result);
       await IptvAccountService.setCurrentAccount(result.id);
       if (!mounted) return;
-      // Ferme en signalant un changement (le parent relancera le chargement)
+      // Ferme en signalant un changement
       Navigator.of(context).pop(true);
     }
   }
@@ -101,8 +101,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
   }
 
   // ---------- Playlist info ----------
-
-  // NOUVELLE FONCTION : Utilise la logique de cache pour le chargement initial.
   Future<_PlaylistInfo?> _loadAndDisplayPlaylistInfo() async {
     try {
       final path = await PlaylistService.getOrDownloadPlaylist();
@@ -113,7 +111,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("❌ Erreur chargement playlist : $e")),
       );
-      // Retourne null pour que l'UI puisse afficher l'état d'erreur.
       return null;
     }
   }
@@ -341,6 +338,7 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
   late TextEditingController _baseUrl;
   late TextEditingController _username;
   late TextEditingController _password;
+  late PlaylistType _playlistType;
   late TextEditingController _cookies;
   IptvAuthMode _mode = IptvAuthMode.completeUrl;
 
@@ -353,6 +351,7 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
     _baseUrl = TextEditingController(text: i?.baseUrl ?? "");
     _username = TextEditingController(text: i?.username ?? "");
     _password = TextEditingController(text: i?.password ?? "");
+    _playlistType = i?.playlistType ?? PlaylistType.m3u;
     _cookies = TextEditingController(text: i?.cookies ?? "");
     _mode = i?.mode ?? IptvAuthMode.completeUrl;
   }
@@ -375,6 +374,7 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
       baseUrl: _mode == IptvAuthMode.separate ? _baseUrl.text.trim() : null,
       username: _mode == IptvAuthMode.separate ? _username.text.trim() : null,
       password: _mode == IptvAuthMode.separate ? _password.text.trim() : null,
+      playlistType: _playlistType,
       cookies: _cookies.text.trim().isEmpty ? null : _cookies.text.trim(),
     );
     Navigator.of(context).pop(acc);
@@ -393,7 +393,6 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text("Éditer le compte", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _label,
@@ -402,7 +401,7 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
                     prefixIcon: Icon(Icons.badge_outlined),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 24),
                 SegmentedButton<IptvAuthMode>(
                   segments: const [
                     ButtonSegment(
@@ -445,19 +444,37 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
                         decoration: const InputDecoration(labelText: "Password"),
                         validator: (v)=> (v==null || v.trim().isEmpty) ? "Requis" : null,
                       )),
+                      const SizedBox(height: 16),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _cookies,
-                    minLines: 2,
-                    maxLines: 4,
+                  const SizedBox(height: 24),
+                  DropdownButtonFormField<PlaylistType>(
+                    initialValue: _playlistType,
                     decoration: const InputDecoration(
-                      labelText: "Cookies (optionnel)",
-                      helperText: "Format: 'key1=value1; key2=value2'",
+                      labelText: 'Type de playlist',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.list_alt),
                     ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: PlaylistType.m3u,
+                        child: Text('m3u'),
+                      ),
+                      DropdownMenuItem(
+                        value: PlaylistType.simple,
+                        child: Text('Simple'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          _playlistType = value;
+                        });
+                      }
+                    },
                   ),
                 ],
+
                 const SizedBox(height: 24),
                 FilledButton(onPressed: _save, child: const Text("Enregistrer")),
               ],

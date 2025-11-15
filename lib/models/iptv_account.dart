@@ -2,32 +2,27 @@
 /// - [completeUrl] : l’utilisateur fournit directement l’URL .m3u complète.
 /// - [separate]   : on construit l’URL à partir de baseUrl + username + password (style Xtream Codes).
 enum IptvAuthMode { completeUrl, separate }
+enum PlaylistType { m3u, simple }
 
 class IptvAccount {
   /// Identifiant unique stocké dans le secure storage (ex: "acc_1712345678901").
   final String id;
-
   /// Label affiché à l’utilisateur (ex: "Mon Compte #1").
-  String label;
-
+  final String label;
   /// Mode d’authentification.
-  IptvAuthMode mode;
-
+  final IptvAuthMode mode;
   /// URL .m3u complète (si mode == completeUrl).
-  String? completeUrl;
-
+  final String? completeUrl;
   /// Base URL (ex: https://host:port/) si mode == separate.
-  String? baseUrl;
-
+  final String? baseUrl;
   /// Identifiant si mode == separate.
-  String? username;
-
+  final String? username;
   /// Mot de passe si mode == separate.
-  String? password;
-
+  final String? password;
   /// Cookies optionnels à injecter dans les requêtes.
-  String? cookies;
-
+  final String? cookies;
+  /// Type de playlist (m3u ou simple).
+  final PlaylistType playlistType;
   /// Date de création (info utile pour tri/diagnostic).
   DateTime createdAt;
 
@@ -40,6 +35,7 @@ class IptvAccount {
     this.username,
     this.password,
     this.cookies,
+    this.playlistType = PlaylistType.m3u,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -60,9 +56,10 @@ class IptvAccount {
     // Normalise le slash
     final hasSlash = b.endsWith('/');
     final base = hasSlash ? b.substring(0, b.length - 1) : b;
+    final String typeValue = playlistType == PlaylistType.simple ? 'simple' : 'm3u';
 
-    // On évite Uri.queryParameters ici pour garder exactement le format attendu par certains panels.
-    return "$base/get.php?username=$u&password=$p&type=m3u&output=ts";
+    return "$base/get.php?username=$u&password=$p&type=$typeValue&output=ts";
+
   }
 
   /// Indique si le compte a de quoi construire une URL .m3u.
@@ -78,6 +75,7 @@ class IptvAccount {
     'username': username,
     'password': password,
     'cookies': cookies,
+    'playlistType': playlistType.name,
     'createdAt': createdAt.toIso8601String(),
   };
 
@@ -96,6 +94,7 @@ class IptvAccount {
       username: j['username'] as String?,
       password: j['password'] as String?,
       cookies: j['cookies'] as String?,
+      playlistType: PlaylistType.values.byName(j['playlistType'] ?? 'm3u'),
       createdAt: DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
     );
   }
@@ -110,6 +109,7 @@ class IptvAccount {
     String? username,
     String? password,
     String? cookies,
+    PlaylistType? playlistType,
     DateTime? createdAt,
   }) {
     return IptvAccount(
@@ -121,6 +121,7 @@ class IptvAccount {
       username: username ?? this.username,
       password: password ?? this.password,
       cookies: cookies ?? this.cookies,
+      playlistType: playlistType ?? this.playlistType,
       createdAt: createdAt ?? this.createdAt,
     );
   }

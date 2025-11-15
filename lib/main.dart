@@ -54,12 +54,18 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   Future<bool> _initializeApp() async {
     final accounts = await IptvAccountService.listAccounts();
     if (accounts.isEmpty) return false;
-    await PlaylistService.getOrDownloadPlaylist();
-    return true;
+    try {
+      await PlaylistService.getOrDownloadPlaylist();
+      return true;
+    } catch (e) {
+      rethrow;
+    }
   }
 
   void _retryInitialization() {
-    setState(() => _initFuture = _initializeApp());
+    setState(() {
+      _initFuture = _initializeApp();
+    });
   }
 
   Future<void> _recheckAfterSettings() async {

@@ -173,47 +173,90 @@ class _RechercheM3UState extends State<RechercheM3U> {
     setState(() => _isLoading = true);
     try {
       final file = File(widget.filePath);
-      if (!await file.exists()) throw Exception(
-          "Fichier de playlist non trouvé : ${widget.filePath}");
-      final content = await file.readAsString(encoding: utf8);
-      final lines = LineSplitter.split(content).toList();
+      if (!await file.exists()) {
+        throw Exception("Fichier de playlist non trouvé : ${widget.filePath}");
+      }
+
+      final fileSize = await file.length();
+
+      if (fileSize < 10) {
+        throw Exception("Le fichier est vide ou corrompu.");
+      }
+
+      final lines = await file.readAsLines(encoding: utf8);
+
       List<M3uEntry> parsed = [];
-      for (int i = 0; i < lines.length - 1; i++) {
-        final line = lines[i].trim();
-        if (line.startsWith("#EXTINF")) {
-          final title = line
-              .split(',')
-              .last
-              .trim();
-          final url = lines[i + 1].trim();
-          if (url.isEmpty || !url.startsWith('http')) continue;
-          final isSerie = RegExp(r"S\d{2} E\d{2}", caseSensitive: false)
-              .hasMatch(title);
-          String? saison, episode;
-          if (isSerie) {
-            final match = RegExp(r"S(\d{2}) E(\d{2})", caseSensitive: false)
-                .firstMatch(title);
-            if (match != null) {
-              saison = match.group(1);
-              episode = match.group(2);
+      final fileContent = lines.join('\n');
+
+      // --- LOGIQUE DE SÉLECTION DU PARSER ---
+      if (fileContent.contains("#EXTINF")) {
+        // Parser standard (pour les listes m3u classiques)
+        for (int i = 0; i < lines.length; i++) {
+          final line = lines[i].trim();
+          if (line.startsWith("#EXTINF")) {
+            final title = line.contains(',') ? line.split(',').last.trim() : '';
+            if (title.isEmpty) continue;
+
+            String? url;
+            for (int j = i + 1; j < lines.length; j++) {
+              final nextLine = lines[j].trim();
+              if (nextLine.startsWith('http')) {
+                url = nextLine;
+                i = j;
+                break;
+              }
+              if (nextLine.startsWith('#EXTINF')) break;
+            }
+
+            if (url != null) {
+              parsed.add(M3uEntry(nom: title, url: url));
             }
           }
-          parsed.add(M3uEntry(nom: title,
-              url: url,
-              isSerie: isSerie,
-              saison: saison,
-              episode: episode));
+        }
+      } else {
+        // Parser spécial pour le format "URL #Name: Titre"
+        for (final line in lines) {
+          if (line.contains("#Name:")) {
+            final parts = line.split("#Name:");
+            final url = parts[0].trim();
+            final title = parts.length > 1 ? parts[1].trim() : '';
+
+            if (url.startsWith('http') && title.isNotEmpty) {
+              parsed.add(M3uEntry(nom: title, url: url));
+            }
+          }
         }
       }
-      if (parsed.isEmpty) {
-        throw Exception(
-            "La playlist a été téléchargée mais elle est vide ou dans un format non reconnu.");
+      // --- FIN DE LA LOGIQUE DE SÉLECTION ---
+
+
+      // Le reste du code est le même, mais on adapte la logique pour les séries
+      // car ce format simple ne contient probablement pas d'infos SxxExx
+      for (int i=0; i < parsed.length; i++) {
+        final entry = parsed[i];
+        final isSerie = RegExp(r"S\d{2} E\d{2}", caseSensitive: false).hasMatch(entry.nom);
+        if (isSerie) {
+          final match = RegExp(r"S(\d{2}) E(\d{2})", caseSensitive: false).firstMatch(entry.nom);
+          parsed[i] = M3uEntry(
+            nom: entry.nom,
+            url: entry.url,
+            isSerie: true,
+            saison: match?.group(1),
+            episode: match?.group(2),
+          );
+        }
       }
+
+      if (parsed.isEmpty && lines.isNotEmpty) {
+        throw Exception("Format de playlist non reconnu (aucune entrée valide trouvée).");
+      }
+
       setState(() {
         _allEntries = parsed;
         _isLoading = false;
         _filterAndGroupResults();
       });
+
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -223,8 +266,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("❌ Erreur de chargement de la playlist: $e"),
-          backgroundColor: Colors.red,
+          content: Text("❌ Erreur de chargement de la playlist: $e", style: const TextStyle(color: Colors.white)),
+          backgroundColor: Colors.red.shade800,
+          duration: const Duration(seconds: 10),
         ),
       );
     }
@@ -232,15 +276,34 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   String _getBaseName(M3uEntry entry) {
     String name = entry.nom;
+
+    // On enlève d'abord le SxxExx pour les séries pour ne pas interférer
     name = name
         .split(RegExp(r"S\d{2} E\d{2}", caseSensitive: false))
         .first;
-    name = name.replaceAll(RegExp(r'\(.*?\)|\[.*?\]'), '');
+
+    // Cette Regex supprime :
+    // 1. Tout contenu entre crochets [...]
+    // 2. Tout contenu entre parenthèses (...) s'il contient un des mots-clés.
+    // 3. Les mots-clés eux-mêmes s'ils sont seuls.
+    const String tags = r'4K|UHD|FHD|HD|SD|2160p|1080p|720p|480p|HEVC|H265|X265|HDR10\+?|HDR|MULTI|VOSTFR|VF|VO|VFF|TRUEFRENCH|TRUEHD|DTS|ATMOS|FR|EN|ES';
+
     name = name.replaceAll(RegExp(
-        r'\b(4K|UHD|FHD|HD|SD|2160p|1080p|720p|480p|HEVC|X265|HDR10\+?|HDR|MULTI|VOSTFR|VF|VO|VFF|TRUEFRENCH|TRUEHD|DTS|ATMOS|FR|EN|ES)\b',
+      // Explication de la nouvelle partie :
+      // \([^\(\)]*?($tags)[^\(\)]*?\)
+      //   \(        => parenthèse ouvrante
+      //   [^\(\)]*? => n'importe quel caractère SAUF une parenthèse (0 ou plusieurs fois, non gourmand)
+      //   ($tags)   => un de nos tags
+      //   [^\(\)]*? => à nouveau, n'importe quel caractère SAUF une parenthèse
+      //   \)        => parenthèse fermante
+        r'\s*(\[.*?\]|\([^\(\)]*?(' + tags + r')[^\(\)]*?\)|' r'\b(' + tags + r')\b)',
         caseSensitive: false), '');
-    name = name.trim().replaceAll(RegExp(r'[-_.|]'), ' ').replaceAll(
+
+    // On nettoie les espaces et caractères de séparation résiduels.
+    name = name.trim().replaceAll(RegExp(r'[-_.]'), ' ').replaceAll(
         RegExp(r'\s+'), ' ');
+
+    // Si après nettoyage, le nom est vide, on retourne le nom original pour éviter un crash.
     return name.isEmpty ? entry.nom.replaceAll('|', ' ').trim() : name;
   }
 
@@ -268,15 +331,37 @@ class _RechercheM3UState extends State<RechercheM3U> {
     return const SizedBox.shrink();
   }
 
-
   void _filterAndGroupResults() {
     final query = _searchQuery.toLowerCase();
+
     final filtered = _allEntries.where((entry) {
+      // 1. Filtre par le nom (recherche textuelle)
+      if (query.isNotEmpty && !entry.nom.toLowerCase().contains(query)) {
+        return false;
+      }
+
+      // --- LOGIQUE DE FILTRAGE SIMPLIFIÉE ET FIABLE ---
       final url = entry.url.toLowerCase();
-      bool isAllowed = (_showFilms && url.contains('/movie/')) ||
-          (_showSeries && url.contains('/series/')) ||
-          (_showTv && !url.contains('/movie/') && !url.contains('/series/'));
-      return entry.nom.toLowerCase().contains(query) && isAllowed;
+
+      // Un film est montré si le filtre film est actif ET que l'URL est une URL de film.
+      if (_showFilms && url.contains('/movie/')) {
+        return true;
+      }
+
+      // Une série est montrée si le filtre série est actif ET que l'URL est une URL de série.
+      if (_showSeries && url.contains('/series/')) {
+        return true;
+      }
+
+      // Un direct TV est montré si le filtre TV est actif ET que ce n'est ni un film, ni une série.
+      final bool isTvUrl = !url.contains('/movie/') && !url.contains('/series/');
+      if (_showTv && isTvUrl) {
+        return true;
+      }
+
+      // Si aucune des conditions n'est remplie, on cache l'élément.
+      return false;
+
     }).toList();
 
     final Map<String, Map<String, List<M3uEntry>>> tempGroupedSeries = {};
@@ -324,43 +409,30 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   Widget _getQualityChip(String title) {
     final lower = title.toLowerCase();
-    if (lower.contains("4k") || lower.contains("2160p"))
-      return _chip("4K", Colors.blueAccent);
-    if (lower.contains("fhd") || lower.contains("1080p"))
-      return _chip("FHD", Colors.green);
-    if (lower.contains("hd") || lower.contains("720p"))
-      return _chip("HD", Colors.orange);
-    if (lower.contains("sd") || lower.contains("480p"))
-      return _chip("SD", Colors.redAccent);
+    if (lower.contains("4k") || lower.contains("2160p")) return _chip("4K", Colors.yellow.shade800);
+    if (lower.contains("fhd") || lower.contains("1080p")) return _chip("FHD", Colors.orange.shade800);
+    if (lower.contains("hd") || lower.contains("720p")) return _chip("HD", Colors.blue.shade800);
+    if (lower.contains("sd") || lower.contains("480p")) return _chip("SD", Colors.green.shade800);
     return const SizedBox.shrink();
   }
 
   List<Widget> _getLanguageChips(String title) {
     final lower = title.toLowerCase();
-    List<Widget> chips = [];
-    if (lower.contains("multi"))
-      chips.add(_chip("MULTI", Colors.teal));
-    else if (lower.contains("vostfr"))
-      chips.add(_chip("VOSTFR", Colors.deepOrange));
-    else if (lower.contains("vf") || lower.contains("truefrench") ||
-        lower.contains("vff"))
-      chips.add(_chip("VF", Colors.indigo));
-    else if (lower.contains("vo"))
-      chips.add(_chip("VO", Colors.brown));
-    else if (lower.contains("fr")) chips.add(_chip("VF", Colors.indigo));
+    final chips = <Widget>[];
+    if (lower.contains("multi")) chips.add(_chip("MULTI", Colors.lightBlue));
+    if (lower.contains("vostfr")) chips.add(_chip("VOSTFR", Colors.teal));
+    if (lower.contains("vf")) chips.add(_chip("VF", Colors.cyan.shade800));
     return chips;
   }
 
   Widget _chip(String label, Color color) {
     return Chip(
-        label: Text(label,
-            style: const TextStyle(
-                fontSize: 10,
-                color: Colors.white,
-                fontWeight: FontWeight.bold)),
-        backgroundColor: color.withOpacity(0.8),
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap);
+      label: Text(label),
+      labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+      backgroundColor: color,
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+    );
   }
 
   void _onEntrySelected(M3uEntry entry) {
@@ -379,7 +451,11 @@ class _RechercheM3UState extends State<RechercheM3U> {
         ),
       );
     } else {
-      verifierEtTelecharger(url: entry.url, nom: entry.nom, context: context);
+      verifierEtTelecharger(
+        url: entry.url,
+        nom: entry.nom,
+        context: context
+      );
     }
   }
 
@@ -397,8 +473,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
       );
     }
 
-    // Utilisation de NestedScrollView pour une gestion avancée du défilement
-    // qui corrige le problème de "RenderFlex overflowed".
     return NestedScrollView(
       headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
         // La partie "en-tête" contient les filtres et le champ de recherche.
@@ -546,10 +620,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
               children: entry.value
                   .map((film) =>
                   ListTile(
-                    title: Text(film.nom
-                        .split(entry.key)
-                        .last
-                        .trim()),
+                    title: Text(entry.key),
                     trailing: Wrap(
                       spacing: 4,
                       runSpacing: 4,
