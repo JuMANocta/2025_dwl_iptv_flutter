@@ -1,12 +1,15 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'models/download_task.dart';
 import 'screens/accounts_screen.dart';
 import 'screens/downloads_page.dart';
 import 'services/iptv_account_service.dart';
 import 'services/playlist_service.dart';
 import 'telechargement_fichier.dart';
 import 'screens/player_page.dart';
+import 'services/download_manager_service.dart';
 
 //############################################################################
 // WIDGET "CONTENEUR" PRINCIPAL (RecherchePage)
@@ -435,28 +438,140 @@ class _RechercheM3UState extends State<RechercheM3U> {
     );
   }
 
-  void _onEntrySelected(M3uEntry entry) {
-    final url = entry.url.toLowerCase();
-    final bool isTvChannel = !url.contains('/movie/') && !url.contains('/series/');
+  void _onEntrySelected(M3uEntry entry) async {    final url = entry.url.toLowerCase();
+  // On identifie si c'est une chaîne de TV en direct
+  final bool isTvChannel = !url.contains('/movie/') && !url.contains('/series/');
 
-    if (isTvChannel) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PlayerPage(
-            path: entry.url,
-            title: entry.nom,
-            sourceType: VideoSourceType.network,
-          ),
+  // Si c'est une chaîne TV, on lance le lecteur directement, sans choix.
+  if (isTvChannel) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PlayerPage(
+          path: entry.url,
+          title: entry.nom,
+          sourceType: VideoSourceType.network,
         ),
+      ),
+    );
+    return; // On arrête l'exécution ici
+  }
+
+  // Pour les films et séries, on affiche une boîte de dialogue avec des choix.
+  final choix = await showDialog<String>(
+    context: context,
+    builder: (BuildContext ctx) {
+      return AlertDialog(
+        title: Text(
+            _getBaseName(entry),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w600)
+        ),
+        content: const Text(
+          "Quelle action souhaitez-vous effectuer ?",
+          textAlign: TextAlign.center,
+        ),
+        actions: <Widget>[
+          TextButton(
+            child: const Text("Annuler", style: TextStyle(color: Colors.red)),
+            onPressed: () {
+              Navigator.of(ctx).pop('cancel');
+            },
+          ),
+          FilledButton(
+            child: const Text("Lire"),
+            onPressed: () {
+              Navigator.of(ctx).pop('play');
+            },
+          ),
+          TextButton(
+            child: const Text("Télécharger", style: TextStyle(color: Colors.green)),
+            onPressed: () {
+              Navigator.of(ctx).pop('download');
+            },
+          ),
+        ],
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
       );
-    } else {
-      verifierEtTelecharger(
-        url: entry.url,
-        nom: entry.nom,
-        context: context
-      );
+    },
+  );
+
+  if (!context.mounted) return;
+  // --- ON GÈRE LE CHOIX DE L'UTILISATEUR ---
+  if (choix == 'download') {
+    // Option 1: L'utilisateur veut juste télécharger.
+    // On appelle la fonction existante qui gère tout (confirmation de taille, ajout à la liste, etc.)
+    verifierEtTelecharger(
+      url: entry.url,
+      nom: entry.nom,
+      context: context,
+    );
+  } else if (choix == 'play') {
+    // Option 2: L'utilisateur veut lire ET lancer le téléchargement en arrière-plan.
+
+    // Étape 2.1: On lance le lecteur vidéo immédiatement.
+    // Le lecteur lira toujours le flux réseau (`sourceType: VideoSourceType.network`).
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PlayerPage(
+          path: entry.url,
+          title: entry.nom,
+          sourceType: VideoSourceType.network,
+        ),
+      ),
+    );
+
+    // Étape 2.2: En parallèle, on lance le téléchargement en arrière-plan.
+    // On ne veut PAS afficher le dialogue de confirmation de taille ici.
+    // On appelle directement le DownloadManagerService.
+    final downloadManager = DownloadManagerService();
+
+    // On vérifie si la tâche n'existe pas déjà pour éviter les doublons.
+    final tasks = downloadManager.tasksNotifier.value;
+    if (tasks.any((t) => t.url == entry.url)) {
+      debugPrint("ℹ️ Le téléchargement pour ce fichier a déjà été initié. Pas d'action supplémentaire.");
+      return;
     }
+
+    // Création et démarrage de la tâche sans dialogue de confirmation.
+    final String extension = _ext(entry.url);
+    String fileName = sanitizeFilename(entry.nom);
+    if (_ext(fileName).isEmpty) fileName = '$fileName.${extension.isNotEmpty ? extension : 'mp4'}';
+
+    final savePath = "${await _getTempDirectory()}/$fileName";
+    final taskId = 'task_${DateTime.now().millisecondsSinceEpoch}';
+
+    final newTask = DownloadTask(
+      id: taskId,
+      url: entry.url,
+      displayName: entry.nom,
+      finalPath: savePath,
+      status: DownloadStatus.queued,
+      createdAt: DateTime.now(),
+    );
+
+    // On ajoute la tâche au manager qui s'occupera de la démarrer.
+    // L'UI dans `downloads_page.dart` se mettra à jour automatiquement.
+    await downloadManager.addTask(newTask);
+    downloadManager.startDownloadTask(newTask); // Pas de 'await', c'est asynchrone.
+  }
+    // Si choix == 'cancel' ou si le dialogue est fermé, on ne fait rien.
+  }
+
+  // J'ai ajouté ces petites fonctions utilitaires qui sont dans telechargement_fichier.dart
+  // pour que le code ci-dessus fonctionne sans erreur.
+  Future<String> _getTempDirectory() async {
+    final dir = await getTemporaryDirectory();
+    final tmp = Directory("${dir.path}/dl_tmp");
+    if (!await tmp.exists()) await tmp.create(recursive: true);
+    return tmp.path;
+  }
+  String sanitizeFilename(String filename) => filename.replaceAll(RegExp(r'[\\/*?:"<>|]'), "_");
+  String _ext(String name) {
+    final i = name.lastIndexOf('.');
+    return (i >= 0 && i < name.length - 1) ? name.substring(i + 1).toLowerCase() : '';
   }
 
   @override

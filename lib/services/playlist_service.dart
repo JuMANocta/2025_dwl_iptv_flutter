@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../utils/network.dart';
 import 'iptv_account_service.dart';
@@ -27,13 +28,13 @@ class PlaylistService {
     if (await file.exists()) {
       final lastModified = await file.lastModified();
       if (DateTime.now().difference(lastModified) < playlistCacheDuration) {
-        print("✅ Playlist trouvée en cache et encore valide. Pas de téléchargement.");
+        debugPrint("✅ Playlist trouvée en cache et encore valide. Pas de téléchargement.");
         return path;
       } else {
-        print("⏳ Playlist trouvée en cache mais périmée. Retéléchargement...");
+        debugPrint("⏳ Playlist trouvée en cache mais périmée. Retéléchargement...");
       }
     } else {
-      print("ℹ️ Aucune playlist en cache. Téléchargement initial...");
+      debugPrint("ℹ️ Aucune playlist en cache. Téléchargement initial...");
     }
     return downloadCurrentM3U();
   }

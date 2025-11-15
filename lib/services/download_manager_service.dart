@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
 import '../utils/network.dart';
@@ -10,12 +10,12 @@ import '../utils/network.dart';
 /// Il utilise SharedPreferences pour la persistance et un ValueNotifier
 /// pour notifier l'UI des changements en temps réel.
 class DownloadManagerService {
-  // --- Singleton Pattern ---
+  // --- Singleton Pattern (assure qu'il n'y a qu'une seule instance de ce service) ---
   static final DownloadManagerService _instance = DownloadManagerService._internal();
   factory DownloadManagerService() => _instance;
   DownloadManagerService._internal();
 
-  // --- State Management ---
+  // --- State Management (le coeur de la notification) ---
   final ValueNotifier<List<DownloadTask>> tasksNotifier = ValueNotifier([]);
 
   // --- Persistence ---
@@ -28,7 +28,7 @@ class DownloadManagerService {
     _loadTasksFromDisk();
   }
 
-  // --- Private Methods ---
+  // --- Méthodes privées ---
 
   void _loadTasksFromDisk() {
     final jsonString = _prefs.getString(_storageKey);
@@ -54,6 +54,8 @@ class DownloadManagerService {
     }
   }
 
+  // --- Méthodes publiques (utilisées par le reste de l'app) ---
+
   /// Ajoute une nouvelle tâche à la liste.
   Future<void> addTask(DownloadTask task) async {
     final currentTasks = List<DownloadTask>.from(tasksNotifier.value);
@@ -64,36 +66,29 @@ class DownloadManagerService {
     }
   }
 
-  // On garde une trace des CancelToken pour pouvoir annuler les tâches de l'extérieur.
+  // On garde une trace des CancelToken pour pouvoir annuler les tâches.
   final Map<String, CancelToken> _cancelTokens = {};
 
   /// LANCE ET GÈRE UN TÉLÉCHARGEMENT EN ARRIÈRE-PLAN
   Future<void> startDownloadTask(DownloadTask task) async {
-    if (_cancelTokens.containsKey(task.id)) return;
+    if (_cancelTokens.containsKey(task.id)) return; // Déjà en cours
 
     final dio = await NetworkUtils.buildIptvDio(task.url);
     final cancelToken = CancelToken();
     _cancelTokens[task.id] = cancelToken;
 
-    int bytesDownloaded = 0;
-    final tempFile = File('${task.finalPath}.downloading');
-
     try {
-      if (await tempFile.exists()) {
-        bytesDownloaded = await tempFile.length();
-      }
-
-      await updateTask(task.id, status: DownloadStatus.downloading, progress: bytesDownloaded / (task.totalSize > 0 ? task.totalSize : 1));
+      // Met à jour le statut pour que l'UI affiche "En attente" ou "En cours"
+      await updateTask(task.id, status: DownloadStatus.downloading, progress: 0.0);
 
       await dio.download(
         task.url,
-        tempFile.path,
+        '${task.finalPath}.downloading', // On télécharge dans un fichier temporaire
         cancelToken: cancelToken,
         onReceiveProgress: (received, total) {
           final totalBytes = total > 0 ? total : task.totalSize;
           if (totalBytes > 0) {
-            final totalReceived = bytesDownloaded + received;
-            final progress = totalReceived / totalBytes;
+            final progress = received / totalBytes;
             // C'est ici que la magie opère : mise à jour en temps réel
             updateTask(
               task.id,
@@ -103,10 +98,10 @@ class DownloadManagerService {
             );
           }
         },
-        options: bytesDownloaded > 0 ? Options(headers: {'Range': 'bytes=$bytesDownloaded-'}) : null,
       );
 
-      await tempFile.rename(task.finalPath);
+      // Renomme le fichier temporaire en fichier final
+      await File('${task.finalPath}.downloading').rename(task.finalPath);
       await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
 
     } on DioException catch (e) {
@@ -128,9 +123,6 @@ class DownloadManagerService {
     if (_cancelTokens.containsKey(taskId)) {
       _cancelTokens[taskId]?.cancel();
       // Le bloc `catch` dans `startDownloadTask` mettra à jour le statut.
-    } else {
-      // Si le token n'est pas là (rare), on force le statut.
-      await updateTask(taskId, status: DownloadStatus.canceled);
     }
   }
 
@@ -153,6 +145,9 @@ class DownloadManagerService {
 
   /// Supprime une tâche de la liste.
   Future<void> removeTask(String taskId) async {
+    // Annuler si en cours
+    await cancelTask(taskId);
+    // Supprimer de la liste
     final currentTasks = List<DownloadTask>.from(tasksNotifier.value);
     currentTasks.removeWhere((t) => t.id == taskId);
     tasksNotifier.value = currentTasks;
