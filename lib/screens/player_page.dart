@@ -1,14 +1,13 @@
-import 'dart:async';
 import 'dart:io';
+import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
-// Énumération pour savoir si on lit un fichier local ou un flux réseau.
+// L'enum reste la même, c'est parfait pour la compatibilité
 enum VideoSourceType { network, file }
 
 class PlayerPage extends StatefulWidget {
-  final String path; // "path" peut être une URL ou un chemin de fichier
+  final String path;
   final String title;
   final VideoSourceType sourceType;
 
@@ -16,7 +15,7 @@ class PlayerPage extends StatefulWidget {
     super.key,
     required this.path,
     required this.title,
-    this.sourceType = VideoSourceType.network, // Par défaut, on lit un flux réseau
+    this.sourceType = VideoSourceType.network,
   });
 
   @override
@@ -24,83 +23,79 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> {
-  late VideoPlayerController _controller;
+  late VideoPlayerController _videoPlayerController;
+  ChewieController? _chewieController;
   bool _isLoading = true;
   bool _hasError = false;
-  bool _showControls = true;
-  Timer? _controlsTimer;
+  String _errorMessage = "Impossible de lire ce média.";
 
   @override
   void initState() {
     super.initState();
-    _setLandscape();
-    _initializePlayer();
-    _startControlsTimer();
+    initializePlayer();
   }
 
-  void _initializePlayer() {
-    // On initialise le contrôleur différemment selon la source
-    if (widget.sourceType == VideoSourceType.network) {
-      _controller = VideoPlayerController.networkUrl(Uri.parse(widget.path));
-    } else {
-      _controller = VideoPlayerController.file(File(widget.path));
-    }
+  Future<void> initializePlayer() async {
+    try {
+      // 1. Initialiser le contrôleur video_player
+      if (widget.sourceType == VideoSourceType.network) {
+        _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(widget.path));
+      } else {
+        _videoPlayerController = VideoPlayerController.file(File(widget.path));
+      }
 
-    _controller
-      ..initialize().then((_) {
-        setState(() => _isLoading = false);
-        _controller.play();
-      }).catchError((error) {
-        setState(() {
-          _isLoading = false;
-          _hasError = true;
-        });
-        debugPrint("Erreur VideoPlayer: $error");
+      await _videoPlayerController.initialize();
+
+      // 2. Créer le ChewieController avec toutes les options
+      _chewieController = ChewieController(
+        videoPlayerController: _videoPlayerController,
+        autoPlay: true,
+        looping: false,
+
+        // --- OPTIONS D'INTERFACE COMPLETES ---
+        aspectRatio: _videoPlayerController.value.aspectRatio,
+        showControls: true,
+        materialProgressColors: ChewieProgressColors(
+          playedColor: Colors.greenAccent,
+          handleColor: Colors.greenAccent,
+          bufferedColor: Colors.grey,
+          backgroundColor: Colors.black45,
+        ),
+        placeholder: const Center(child: CircularProgressIndicator()),
+        autoInitialize: true,
+
+        // --- GESTION DU PLEIN ÉCRAN ---
+        allowedScreenSleep: false, // Empêche l'écran de se mettre en veille
+        allowFullScreen: true,
+        fullScreenByDefault: true, // Passe en plein écran au démarrage
+
+        // Permet d'ajouter des boutons personnalisés !
+        customControls: const CupertinoControls(
+          backgroundColor: Color.fromRGBO(41, 41, 41, 0.7),
+          iconColor: Colors.white,
+        ),
+      );
+
+      setState(() {
+        _isLoading = false;
+        _hasError = false;
       });
-
-    // On écoute les changements pour reconstruire l'UI (ex: la barre de progression)
-    _controller.addListener(() {
-      if (mounted) setState(() {});
-    });
-  }
-
-  void _startControlsTimer() {
-    _controlsTimer?.cancel();
-    _controlsTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted && _controller.value.isPlaying) {
-        setState(() => _showControls = false);
-      }
-    });
-  }
-
-  void _toggleControls() {
-    setState(() {
-      _showControls = !_showControls;
-      if (_showControls) {
-        _startControlsTimer();
-      }
-    });
-  }
-
-  void _setLandscape() {
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeRight,
-      DeviceOrientation.landscapeLeft,
-    ]);
-  }
-
-  void _setPortrait() {
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
+    } catch (error) {
+      // Gérer les erreurs (URL invalide, fichier corrompu, etc.)
+      setState(() {
+        _isLoading = false;
+        _hasError = true;
+        _errorMessage = "Erreur de chargement: ${error.toString()}";
+      });
+      debugPrint("Erreur Chewie/VideoPlayer: $error");
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
-    _controlsTimer?.cancel();
-    _setPortrait(); // On restaure le mode portrait en quittant la page
+    // Très important de bien tout libérer
+    _videoPlayerController.dispose();
+    _chewieController?.dispose();
     super.dispose();
   }
 
@@ -108,110 +103,40 @@ class _PlayerPageState extends State<PlayerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: Text(widget.title, style: const TextStyle(fontSize: 16)),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
       body: Center(
         child: _isLoading
             ? _buildLoading()
             : _hasError
             ? _buildError()
-            : _buildPlayerWithControls(),
+            : Chewie(controller: _chewieController!),
       ),
     );
   }
 
-  // --- Widgets de construction ---
+  Widget _buildLoading() => const Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      CircularProgressIndicator(color: Colors.white),
+      SizedBox(height: 16),
+      Text("Initialisation du lecteur...", style: TextStyle(color: Colors.white))
+    ],
+  );
 
-  Widget _buildPlayerWithControls() {
-    return GestureDetector(
-      onTap: _toggleControls,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Le lecteur vidéo en arrière-plan
-          AspectRatio(
-            aspectRatio: _controller.value.aspectRatio,
-            child: VideoPlayer(_controller),
-          ),
-          // Les contrôles superposés
-          AnimatedOpacity(
-            opacity: _showControls ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 300),
-            child: _buildControlsOverlay(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildControlsOverlay() {
-    return Stack(
+  Widget _buildError() => Padding(
+    padding: const EdgeInsets.all(24.0),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // --- BOUTON DE RETOUR ---
-        Positioned(
-          top: 10,
-          left: 10,
-          child: SafeArea(
-            child: BackButton(color: Colors.white, onPressed: () => Navigator.of(context).pop()),
-          ),
-        ),
-        // --- BOUTON PLAY/PAUSE CENTRAL ---
-        Center(
-          child: IconButton(
-            icon: Icon(
-              _controller.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-              color: Colors.white.withOpacity(0.8),
-              size: 64,
-            ),
-            onPressed: () {
-              setState(() => _controller.value.isPlaying ? _controller.pause() : _controller.play());
-              _startControlsTimer();
-            },
-          ),
-        ),
-        // --- BARRE DE PROGRESSION ET TEMPS (en bas) ---
-        Positioned(
-          bottom: 10,
-          left: 20,
-          right: 20,
-          child: SafeArea(
-            child: Row(
-              children: [
-                Text(
-                  _formatDuration(_controller.value.position),
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-                Expanded(
-                  child: VideoProgressIndicator(
-                    _controller,
-                    allowScrubbing: true, // Permet de se déplacer dans la vidéo
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    colors: const VideoProgressColors(
-                      playedColor: Colors.greenAccent,
-                      bufferedColor: Colors.grey,
-                      backgroundColor: Colors.black45,
-                    ),
-                  ),
-                ),
-                Text(
-                  _formatDuration(_controller.value.duration),
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ),
+        const Icon(Icons.error_outline, color: Colors.red, size: 48),
+        const SizedBox(height: 16),
+        Text(_errorMessage, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
       ],
-    );
-  }
-
-  Widget _buildLoading() => const Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(color: Colors.white), SizedBox(height: 16), Text("Chargement...", style: TextStyle(color: Colors.white))]);
-
-  Widget _buildError() => const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.error_outline, color: Colors.red, size: 48), SizedBox(height: 16), Text("Impossible de lire ce média.", style: TextStyle(color: Colors.white))]);
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, "0");
-    final hours = duration.inHours;
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return hours > 0 ? "$hours:$minutes:$seconds" : "$minutes:$seconds";
-  }
+    ),
+  );
 }
+
