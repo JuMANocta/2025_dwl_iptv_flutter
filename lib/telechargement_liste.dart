@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'services/playlist_service.dart';
-import 'services/iptv_account_service.dart';
+import 'services/stream_account_service.dart';
 
 /// Écran de compatibilité pour télécharger la playlist .m3u
 /// Désormais, on passe par PlaylistService.downloadCurrentM3U()
@@ -25,7 +25,7 @@ class _TelechargementPageState extends State<TelechargementPage> {
       final path = await PlaylistService.downloadCurrentM3U();
       setState(() => _lastPath = path);
 
-      final acc = await IptvAccountService.getCurrentAccount();
+      final acc = await StreamAccountService.getCurrentAccount();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("✅ Playlist téléchargée pour « ${acc?.label ?? "Compte"} »."))

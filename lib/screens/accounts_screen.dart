@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../../models/iptv_account.dart';
-import '../../services/iptv_account_service.dart';
+import '../../models/stream_account.dart';
+import '../../services/stream_account_service.dart';
 import '../../services/playlist_service.dart';
 
 class AccountsScreen extends StatefulWidget {
@@ -12,7 +12,7 @@ class AccountsScreen extends StatefulWidget {
 }
 
 class _AccountsScreenState extends State<AccountsScreen> {
-  late Future<List<IptvAccount>> _future;
+  late Future<List<StreamAccount>> _future;
   late Future<_PlaylistInfo?> _playlistInfoFuture;
 
   @override
@@ -23,9 +23,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
     _playlistInfoFuture = _loadAndDisplayPlaylistInfo();
   }
 
-  Future<List<IptvAccount>> _load() async {
-    await IptvAccountService.migrateFromLegacyIfNeeded();
-    return IptvAccountService.listAccounts();
+  Future<List<StreamAccount>> _load() async {
+    await StreamAccountService.migrateFromLegacyIfNeeded();
+    return StreamAccountService.listAccounts();
   }
 
   Future<void> _refresh() async {
@@ -37,7 +37,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
   }
 
   Future<void> _setCurrent(String id) async {
-    await IptvAccountService.setCurrentAccount(id);
+    await StreamAccountService.setCurrentAccount(id);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("✅ Compte sélectionné.")),
@@ -59,21 +59,21 @@ class _AccountsScreenState extends State<AccountsScreen> {
       ),
     );
     if (ok == true) {
-      await IptvAccountService.deleteAccount(id);
+      await StreamAccountService.deleteAccount(id);
       await _refresh();
     }
   }
 
-  Future<void> _openEditor({IptvAccount? initial}) async {
-    final result = await showModalBottomSheet<IptvAccount>(
+  Future<void> _openEditor({StreamAccount? initial}) async {
+    final result = await showModalBottomSheet<StreamAccount>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (_) => _EditAccountSheet(initial: initial),
     );
     if (result != null) {
-      await IptvAccountService.saveAccount(result);
-      await IptvAccountService.setCurrentAccount(result.id);
+      await StreamAccountService.saveAccount(result);
+      await StreamAccountService.setCurrentAccount(result.id);
       if (!mounted) return;
       // Ferme en signalant un changement
       Navigator.of(context).pop(true);
@@ -192,7 +192,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: const Text("iptv_links.m3u"),
+                    title: const Text("Fichier de playlist local"),
                     subtitle: Text(
                       "Taille : ${_formatBytes(info.size)} • Maj : ${_formatDate(info.modified)}",
                     ),
@@ -240,8 +240,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Comptes IPTV")),
-      body: FutureBuilder<List<IptvAccount>>(
+      appBar: AppBar(title: const Text("Nouveau Compte")),
+      body: FutureBuilder<List<StreamAccount>>(
         future: _future,
         builder: (ctx, snap) {
           if (snap.connectionState != ConnectionState.done) {
@@ -258,7 +258,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   child: TextButton.icon(
                     onPressed: ()=>_openEditor(),
                     icon: const Icon(Icons.add),
-                    label: const Text("Ajouter un compte IPTV"),
+                    label: const Text("Ajouter un compte"),
                   ),
                 )
                     : RefreshIndicator(
@@ -269,12 +269,12 @@ class _AccountsScreenState extends State<AccountsScreen> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (_, i) {
                       final a = accounts[i];
-                      return FutureBuilder<IptvAccount?>(
-                        future: IptvAccountService.getCurrentAccount(),
+                      return FutureBuilder<StreamAccount?>(
+                        future: StreamAccountService.getCurrentAccount(),
                         builder: (ctx, curSnap) {
                           final currentId = curSnap.data?.id;
                           final isCurrent = currentId == a.id;
-                          final host = a.mode == IptvAuthMode.separate
+                          final host = a.mode == StreamAuthMode.separate
                               ? (Uri.tryParse(a.baseUrl ?? "")?.host ?? "?")
                               : (Uri.tryParse(a.completeUrl ?? "")?.host ?? "?");
                           return ListTile(
@@ -284,7 +284,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                             ),
                             title: Text(a.label),
                             subtitle: Text(
-                              a.mode == IptvAuthMode.completeUrl
+                              a.mode == StreamAuthMode.completeUrl
                                   ? "Mode: URL complète — $host"
                                   : "Mode: séparé — ${a.username ?? "?"}@$host",
                             ),
@@ -324,7 +324,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
 // ---------- Sheet d'édition de compte ----------
 
 class _EditAccountSheet extends StatefulWidget {
-  final IptvAccount? initial;
+  final StreamAccount? initial;
   const _EditAccountSheet({this.initial});
 
   @override
@@ -340,20 +340,20 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
   late TextEditingController _password;
   late PlaylistType _playlistType;
   late TextEditingController _cookies;
-  IptvAuthMode _mode = IptvAuthMode.completeUrl;
+  StreamAuthMode _mode = StreamAuthMode.completeUrl;
 
   @override
   void initState() {
     super.initState();
     final i = widget.initial;
-    _label = TextEditingController(text: i?.label ?? "Compte IPTV");
+    _label = TextEditingController(text: i?.label ?? "Compte");
     _completeUrl = TextEditingController(text: i?.completeUrl ?? "");
     _baseUrl = TextEditingController(text: i?.baseUrl ?? "");
     _username = TextEditingController(text: i?.username ?? "");
     _password = TextEditingController(text: i?.password ?? "");
     _playlistType = i?.playlistType ?? PlaylistType.m3u;
     _cookies = TextEditingController(text: i?.cookies ?? "");
-    _mode = i?.mode ?? IptvAuthMode.completeUrl;
+    _mode = i?.mode ?? StreamAuthMode.completeUrl;
   }
 
   @override
@@ -366,14 +366,14 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
   void _save() {
     if (!_form.currentState!.validate()) return;
     final id = widget.initial?.id ?? "acc_${DateTime.now().millisecondsSinceEpoch}";
-    final acc = IptvAccount(
+    final acc = StreamAccount(
       id: id,
-      label: _label.text.trim().isEmpty ? "Compte IPTV" : _label.text.trim(),
+      label: _label.text.trim().isEmpty ? "Compte source" : _label.text.trim(),
       mode: _mode,
-      completeUrl: _mode == IptvAuthMode.completeUrl ? _completeUrl.text.trim() : null,
-      baseUrl: _mode == IptvAuthMode.separate ? _baseUrl.text.trim() : null,
-      username: _mode == IptvAuthMode.separate ? _username.text.trim() : null,
-      password: _mode == IptvAuthMode.separate ? _password.text.trim() : null,
+      completeUrl: _mode == StreamAuthMode.completeUrl ? _completeUrl.text.trim() : null,
+      baseUrl: _mode == StreamAuthMode.separate ? _baseUrl.text.trim() : null,
+      username: _mode == StreamAuthMode.separate ? _username.text.trim() : null,
+      password: _mode == StreamAuthMode.separate ? _password.text.trim() : null,
       playlistType: _playlistType,
       cookies: _cookies.text.trim().isEmpty ? null : _cookies.text.trim(),
     );
@@ -402,15 +402,15 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                SegmentedButton<IptvAuthMode>(
+                SegmentedButton<StreamAuthMode>(
                   segments: const [
                     ButtonSegment(
-                      value: IptvAuthMode.completeUrl,
+                      value: StreamAuthMode.completeUrl,
                       icon: Icon(Icons.link),
                       label: Text("URL complète"),
                     ),
                     ButtonSegment(
-                      value: IptvAuthMode.separate,
+                      value: StreamAuthMode.separate,
                       icon: Icon(Icons.vpn_key_outlined),
                       label: Text("Séparé"),
                     ),
@@ -419,7 +419,7 @@ class _EditAccountSheetState extends State<_EditAccountSheet> {
                   onSelectionChanged: (s)=>setState(()=>_mode = s.first),
                 ),
                 const SizedBox(height: 12),
-                if (_mode == IptvAuthMode.completeUrl) ...[
+                if (_mode == StreamAuthMode.completeUrl) ...[
                   TextFormField(
                     controller: _completeUrl,
                     decoration: const InputDecoration(labelText: "URL .m3u complète"),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'services/download_manager_service.dart';
-import 'services/iptv_account_service.dart';
+import 'services/stream_account_service.dart';
 import 'recherche_page.dart';
 import 'screens/accounts_screen.dart';
 import 'services/playlist_service.dart';
@@ -11,8 +11,8 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await MediaStore.ensureInitialized();
-  MediaStore.appFolder = 'IPtvFlux';
-  await IptvAccountService.migrateFromLegacyIfNeeded();
+  MediaStore.appFolder = 'AetherStream';
+  await StreamAccountService.migrateFromLegacyIfNeeded();
   await DownloadManagerService().init();
   runApp(const MyApp());
 }
@@ -28,7 +28,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
-      title: 'IPtvFlux',
+      title: 'AetherStream',
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       home: const _LaunchDecider(),
@@ -52,7 +52,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   }
 
   Future<bool> _initializeApp() async {
-    final accounts = await IptvAccountService.listAccounts();
+    final accounts = await StreamAccountService.listAccounts();
     if (accounts.isEmpty) return false;
     try {
       await PlaylistService.getOrDownloadPlaylist();
@@ -99,10 +99,10 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
           // L'appel à RecherchePage est maintenant correct car il vient du bon fichier
           return const RecherchePage();
         }
-        return Scaffold(appBar: AppBar(title: const Text('IPtvFlux')), body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        return Scaffold(appBar: AppBar(title: const Text('AetherStream')), body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.settings, size: 64),
           const SizedBox(height: 16),
-          const Text('Aucun compte IPTV configuré', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          const Text('Aucun compte configuré', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           const Text('Ajoutez un compte via la roue crantée pour commencer.', textAlign: TextAlign.center),
           const SizedBox(height: 24),

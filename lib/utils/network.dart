@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';import '../secure_storage_service.dart';
-import '../services/iptv_account_service.dart';
+import '../services/stream_account_service.dart';
 
 /// Classe utilitaire pour la configuration réseau centralisée.
 /// Elle fournit des instances de Dio préconfigurées.
@@ -44,7 +44,7 @@ class NetworkUtils {
   ///
   /// C'est la fonction que `telechargement_fichier.dart` et `download_manager_service.dart`
   /// doivent utiliser.
-  static Future<Dio> buildIptvDio(String url) async {
+  static Future<Dio> buildDio(String url) async {
     final uri = Uri.parse(url);
     final referer = "${uri.scheme}://${uri.host}/";
     final origin = "${uri.scheme}://${uri.host}";
@@ -53,7 +53,7 @@ class NetworkUtils {
     final dio = buildBaseDio(referer: referer, origin: origin);
 
     // On récupère les informations du compte pour enrichir la requête
-    final acc = await IptvAccountService.getCurrentAccount();
+    final acc = await StreamAccountService.getCurrentAccount();
     final legacy = await SecureStorageService().getCredentials();
     final cookies = (acc?.cookies?.trim().isNotEmpty == true)
         ? acc!.cookies!.trim()

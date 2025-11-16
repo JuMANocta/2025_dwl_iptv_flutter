@@ -73,7 +73,7 @@ class DownloadManagerService {
   Future<void> startDownloadTask(DownloadTask task) async {
     if (_cancelTokens.containsKey(task.id)) return; // Déjà en cours
 
-    final dio = await NetworkUtils.buildIptvDio(task.url);
+    final dio = await NetworkUtils.buildDio(task.url);
     final cancelToken = CancelToken();
     _cancelTokens[task.id] = cancelToken;
 

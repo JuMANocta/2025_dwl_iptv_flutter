@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../models/iptv_account.dart';
+import '../models/stream_account.dart';
 import '../secure_storage_service.dart';
 
 /// Service de gestion **multi-comptes IPTV**
@@ -8,9 +8,9 @@ import '../secure_storage_service.dart';
 ///
 /// Clés utilisées :
 /// - `accounts_index`             → JSON: ["acc_...","acc_..."]
-/// - `account:<id>`               → JSON d'un IptvAccount
+/// - `account:<id>`               → JSON d'un StreamAccount
 /// - `current_account_id`         → "acc_..."
-class IptvAccountService {
+class StreamAccountService {
   static const String _kIndexKey = 'accounts_index';
   static const String _kCurrentKey = 'current_account_id';
   static String _kAccount(String id) => 'account:$id';
@@ -22,7 +22,7 @@ class IptvAccountService {
   );
 
   /// Liste tous les comptes enregistrés (dans l'ordre de l'index).
-  static Future<List<IptvAccount>> listAccounts() async {
+  static Future<List<StreamAccount>> listAccounts() async {
     final raw = await _storage.read(key: _kIndexKey);
     if (raw == null || raw.isEmpty) return [];
 
@@ -35,12 +35,12 @@ class IptvAccountService {
       return [];
     }
 
-    final out = <IptvAccount>[];
+    final out = <StreamAccount>[];
     for (final id in ids) {
       final aj = await _storage.read(key: _kAccount(id));
       if (aj == null) continue;
       try {
-        out.add(IptvAccount.fromJson(jsonDecode(aj)));
+        out.add(StreamAccount.fromJson(jsonDecode(aj)));
       } catch (_) {
         // entrée corrompue → ignorer
       }
@@ -60,7 +60,7 @@ class IptvAccountService {
 
   /// Crée ou met à jour un compte.
   /// Si l'id n'existe pas encore, il est ajouté à l'index.
-  static Future<void> saveAccount(IptvAccount acc) async {
+  static Future<void> saveAccount(StreamAccount acc) async {
     final accounts = await listAccounts();
     final ids = accounts.map((a) => a.id).toList();
     if (!ids.contains(acc.id)) ids.add(acc.id);
@@ -91,11 +91,11 @@ class IptvAccountService {
   }
 
   /// Récupère un compte par son id.
-  static Future<IptvAccount?> getAccount(String id) async {
+  static Future<StreamAccount?> getAccount(String id) async {
     final raw = await _storage.read(key: _kAccount(id));
     if (raw == null) return null;
     try {
-      return IptvAccount.fromJson(jsonDecode(raw));
+      return StreamAccount.fromJson(jsonDecode(raw));
     } catch (_) {
       return null;
     }
@@ -107,7 +107,7 @@ class IptvAccountService {
   }
 
   /// Récupère le compte courant (ou le 1er de la liste si rien n'est sélectionné).
-  static Future<IptvAccount?> getCurrentAccount() async {
+  static Future<StreamAccount?> getCurrentAccount() async {
     final curId = await _storage.read(key: _kCurrentKey);
     if (curId != null) {
       final acc = await getAccount(curId);
@@ -135,10 +135,10 @@ class IptvAccountService {
 
     final bool hasComplete = (legacy['completeUrl'] ?? '').toString().trim().isNotEmpty;
 
-    final acc = IptvAccount(
+    final acc = StreamAccount(
       id: "acc_${DateTime.now().millisecondsSinceEpoch}",
       label: "Compte par défaut",
-      mode: hasComplete ? IptvAuthMode.completeUrl : IptvAuthMode.separate,
+      mode: hasComplete ? StreamAuthMode.completeUrl : StreamAuthMode.separate,
       completeUrl: (legacy['completeUrl'] ?? '').toString().trim().isNotEmpty
           ? (legacy['completeUrl'] as String)
           : null,

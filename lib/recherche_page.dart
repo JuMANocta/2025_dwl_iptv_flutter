@@ -5,7 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'models/download_task.dart';
 import 'screens/accounts_screen.dart';
 import 'screens/downloads_page.dart';
-import 'services/iptv_account_service.dart';
+import 'services/stream_account_service.dart';
 import 'services/playlist_service.dart';
 import 'telechargement_fichier.dart';
 import 'screens/player_page.dart';
@@ -35,7 +35,7 @@ class _RecherchePageState extends State<RecherchePage> {
   void _loadPlaylistPath() {
     setState(() {
       _playlistPathFuture = PlaylistService.getOrDownloadPlaylist();
-      IptvAccountService.getCurrentAccount().then((acc) {
+      StreamAccountService.getCurrentAccount().then((acc) {
         if (mounted) setState(() => _currentAccountLabel = acc?.label);
       });
     });
@@ -62,7 +62,7 @@ class _RecherchePageState extends State<RecherchePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentAccountLabel ?? "IPtvFlux"),
+        title: Text(_currentAccountLabel ?? "AetherStream"),
         actions: [
           IconButton(
             icon: const Icon(Icons.download),

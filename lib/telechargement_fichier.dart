@@ -63,7 +63,7 @@ Future<void> verifierEtTelecharger({required String url, required String nom, re
   }
 
   try {
-    final dio = await NetworkUtils.buildIptvDio(url);
+    final dio = await NetworkUtils.buildDio(url);
     final contentLength = await probeContentLength(dio, url);
     final sizeFormatted = contentLength != null && contentLength > 0 ? formatFileSize(contentLength) : "taille inconnue";
 

@@ -1,5 +1,5 @@
-name: dwl_iptv
-description: Application Flutter dwl_iptv (multi-comptes, playlist M3U, téléchargement via MediaStore)
+name: AetherStream
+description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
 version: 1.0.0+1

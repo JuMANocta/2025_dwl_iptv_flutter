@@ -1,16 +1,16 @@
 /// Mode d’authentification IPTV.
 /// - [completeUrl] : l’utilisateur fournit directement l’URL .m3u complète.
 /// - [separate]   : on construit l’URL à partir de baseUrl + username + password (style Xtream Codes).
-enum IptvAuthMode { completeUrl, separate }
+enum StreamAuthMode { completeUrl, separate }
 enum PlaylistType { m3u, simple }
 
-class IptvAccount {
+class StreamAccount {
   /// Identifiant unique stocké dans le secure storage (ex: "acc_1712345678901").
   final String id;
   /// Label affiché à l’utilisateur (ex: "Mon Compte #1").
   final String label;
   /// Mode d’authentification.
-  final IptvAuthMode mode;
+  final StreamAuthMode mode;
   /// URL .m3u complète (si mode == completeUrl).
   final String? completeUrl;
   /// Base URL (ex: https://host:port/) si mode == separate.
@@ -26,7 +26,7 @@ class IptvAccount {
   /// Date de création (info utile pour tri/diagnostic).
   DateTime createdAt;
 
-  IptvAccount({
+  StreamAccount({
     required this.id,
     required this.label,
     required this.mode,
@@ -44,7 +44,7 @@ class IptvAccount {
   /// - En mode [separate], construit l’URL standard Xtream Codes :
   ///   `{baseUrl}/get.php?username=<u>&password=<p>&type=m3u&output=ts`
   String? buildM3uUrl() {
-    if (mode == IptvAuthMode.completeUrl) {
+    if (mode == StreamAuthMode.completeUrl) {
       return (completeUrl ?? '').trim().isEmpty ? null : completeUrl!.trim();
     }
 
@@ -69,7 +69,7 @@ class IptvAccount {
   Map<String, dynamic> toJson() => {
     'id': id,
     'label': label,
-    'mode': mode == IptvAuthMode.completeUrl ? 'complete' : 'separate',
+    'mode': mode == StreamAuthMode.completeUrl ? 'complete' : 'separate',
     'completeUrl': completeUrl,
     'baseUrl': baseUrl,
     'username': username,
@@ -80,15 +80,15 @@ class IptvAccount {
   };
 
   /// Désérialisation JSON.
-  factory IptvAccount.fromJson(Map<String, dynamic> j) {
-    return IptvAccount(
+  factory StreamAccount.fromJson(Map<String, dynamic> j) {
+    return StreamAccount(
       id: j['id'] as String,
       label: (j['label'] as String?)?.trim().isNotEmpty == true
           ? (j['label'] as String).trim()
           : 'Compte IPTV',
       mode: (j['mode'] == 'complete')
-          ? IptvAuthMode.completeUrl
-          : IptvAuthMode.separate,
+          ? StreamAuthMode.completeUrl
+          : StreamAuthMode.separate,
       completeUrl: j['completeUrl'] as String?,
       baseUrl: j['baseUrl'] as String?,
       username: j['username'] as String?,
@@ -100,10 +100,10 @@ class IptvAccount {
   }
 
   /// Copie immuable pratique pour modifier quelques champs.
-  IptvAccount copyWith({
+  StreamAccount copyWith({
     String? id,
     String? label,
-    IptvAuthMode? mode,
+    StreamAuthMode? mode,
     String? completeUrl,
     String? baseUrl,
     String? username,
@@ -112,7 +112,7 @@ class IptvAccount {
     PlaylistType? playlistType,
     DateTime? createdAt,
   }) {
-    return IptvAccount(
+    return StreamAccount(
       id: id ?? this.id,
       label: label ?? this.label,
       mode: mode ?? this.mode,
@@ -128,5 +128,5 @@ class IptvAccount {
 
   @override
   String toString() =>
-      'IptvAccount(id=$id, label=$label, mode=$mode, usable=$isUsable)';
+      'StreamAccount(id=$id, label=$label, mode=$mode, usable=$isUsable)';
 }

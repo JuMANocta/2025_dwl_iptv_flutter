@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../utils/network.dart';
-import 'iptv_account_service.dart';
+import 'stream_account_service.dart';
 
 class PlaylistService {
   static const String playlistName = 'iptv_links.m3u';
@@ -40,7 +40,7 @@ class PlaylistService {
   }
 
   static Future<String> _buildUrlForCurrentAccount() async {
-    final acc = await IptvAccountService.getCurrentAccount();
+    final acc = await StreamAccountService.getCurrentAccount();
     if (acc == null) throw StateError("Aucun compte IPTV sélectionné.");
     final url = acc.buildM3uUrl();
     if (url == null || url.isEmpty) throw StateError('Configuration de compte invalide.');
@@ -52,7 +52,7 @@ class PlaylistService {
     final destinationPath = await playlistPath();
     final tempPath = '$destinationPath.part';
 
-    final dio = await NetworkUtils.buildIptvDio(url);
+    final dio = await NetworkUtils.buildDio(url);
 
     try {
       await dio.download(
