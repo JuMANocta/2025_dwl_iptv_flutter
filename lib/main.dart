@@ -5,6 +5,7 @@ import 'services/stream_account_service.dart';
 import 'recherche_page.dart';
 import 'screens/accounts_screen.dart';
 import 'services/playlist_service.dart';
+import 'themes/themes.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -19,18 +20,15 @@ void main() async {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-  ThemeData _theme(Brightness b) {
-    final base = ThemeData(useMaterial3: true, colorSchemeSeed: Colors.greenAccent, brightness: b);
-    return base.copyWith(appBarTheme: base.appBarTheme.copyWith(centerTitle: true));
-  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
       title: 'AetherStream',
-      theme: _theme(Brightness.light),
-      darkTheme: _theme(Brightness.dark),
+      themeMode: ThemeMode.system,
+      theme: lightTheme(),
+      darkTheme: darkTheme(),
       home: const _LaunchDecider(),
     );
   }
