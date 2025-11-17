@@ -67,30 +67,51 @@ class _DownloadTaskTile extends StatelessWidget {
     final downloadManager = DownloadManagerService();
     switch (task.status) {
       case DownloadStatus.downloading:
-      // ACTION : Annuler
+      // ACTION : Annuler (logique correcte)
         await downloadManager.cancelTask(task.id);
         break;
       case DownloadStatus.completed:
-      // ACTION : Lire
+      // ACTION : Lire (logique correcte)
         _openFile(context);
         break;
+
       case DownloadStatus.failed:
       case DownloadStatus.canceled:
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("🚀 Relance du téléchargement...")));
+      // 1. On informe l'utilisateur
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("🚀 Relance du téléchargement...")));
+        }
+
+        // 2. On supprime l'ancienne tâche échouée/annulée du manager
         await downloadManager.removeTask(task.id);
+
+        // 3. On crée une NOUVELLE tâche avec les mêmes informations
         final newTask = DownloadTask(
-          id: 'task_${DateTime.now().millisecondsSinceEpoch}', // Nouvel ID
+          id: 'task_${DateTime.now().millisecondsSinceEpoch}', // ID unique pour la nouvelle tentative
           url: task.url,
           displayName: task.displayName,
-          finalPath: task.finalPath, // Le chemin de sauvegarde reste le même
-          totalSize: task.totalSize,
-          status: DownloadStatus.queued,
+          finalPath: task.finalPath,
+          totalSize: 0, // La taille sera re-sondée par le manager
+          status: DownloadStatus.queued, // On la met en file d'attente
           createdAt: DateTime.now(),
         );
+
+        // 4. On ajoute et on lance la nouvelle tâche
         await downloadManager.addTask(newTask);
         downloadManager.startDownloadTask(newTask);
+
+        // 5. On affiche le dialogue moniteur pour la nouvelle tâche
+        final rootContext = navigatorKey.currentContext;
+        if (rootContext != null && rootContext.mounted) {
+          showDialog(
+              context: rootContext,
+              builder: (_) => TerminalDownloadDialog(taskId: newTask.id)
+          );
+        }
         break;
+
       default:
+      // Pour les autres statuts (queued, paused), on ne fait rien pour l'instant
         break;
     }
   }
@@ -133,24 +154,6 @@ class _DownloadTaskTile extends StatelessWidget {
           sourceType: VideoSourceType.file, // On spécifie que c'est un fichier
         ),
       ),
-    );
-  }
-
-  Future<void> _retryDownload(BuildContext context) async {
-    Navigator.of(context).pop();
-
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    final BuildContext? safeContext = navigatorKey.currentContext;
-    if (safeContext == null || !safeContext.mounted) {
-      debugPrint("Le contexte de navigation n'est plus valide, impossible de continuer.");
-      return;
-    }
-
-    await verifierEtTelecharger(
-      url: task.url,
-      nom: task.displayName,
-      context: safeContext,
     );
   }
 

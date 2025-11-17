@@ -1,15 +1,12 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'models/download_task.dart';
 import 'screens/accounts_screen.dart';
 import 'screens/downloads_page.dart';
 import 'services/stream_account_service.dart';
 import 'services/playlist_service.dart';
 import 'telechargement_fichier.dart';
 import 'screens/player_page.dart';
-import 'services/download_manager_service.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 //############################################################################
@@ -669,6 +666,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
     const String tags = r'4K|UHD|FHD|HD|SD|2160p|1080p|720p|480p|HEVC|H265|X265|HDR10\+?|HDR|MULTI|VOSTFR|VF|VO|VFF|TRUEFRENCH|TRUEHD|DTS|ATMOS|FR|EN|ES';
     name = name.replaceAll(RegExp(r'\s*(\[.*?\]|\([^\(\)]*?(' + tags + r')[^\(\)]*?\)|' r'\b(' + tags + r')\b)', caseSensitive: false), '');
     name = name.trim().replaceAll(RegExp(r'[-_.]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (name.startsWith('|| ')) {
+      name = name.substring(3);
+    }
     if (name.isEmpty) {
       name = originalName.split(RegExp(r"S\d{2} E\d{2}", caseSensitive: false)).first.replaceAll(RegExp(r'[\[\]\(\)|_.-]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
     }

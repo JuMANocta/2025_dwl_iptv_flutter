@@ -135,7 +135,26 @@ Future<void> _telechargerFichierVideo({
     debugPrint("Impossible de sonder la taille du fichier: $e");
   }
 
-  // 2. CRÉATION DE LA TÂCHE
+  // 2. On affiche l'AlertDialog de confirmation.
+  if (!context.mounted) return;
+
+  // 3. On affiche l'AlertDialog de confirmation.
+  await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(nom),
+      content: Text(
+          "Labncer le téléchargement ?\n\n"
+              "Taille du fichier : ${totalSize != null ? formatFileSize(totalSize) : "Inconnue"}"
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Annuler")),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Télécharger")),
+      ],
+    ),
+  );
+
+  // 3. CRÉATION DE LA TÂCHE
   final String extension = _ext(url);
   String fileName = sanitizeFilename(nom);
   if (_ext(fileName).isEmpty) fileName = '$fileName.${extension.isNotEmpty ? extension : 'mp4'}';
@@ -153,11 +172,11 @@ Future<void> _telechargerFichierVideo({
     createdAt: DateTime.now(),
   );
 
-  // 3. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN
+  // 4. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN
   await downloadManager.addTask(newTask);
   downloadManager.startDownloadTask(newTask);
 
-  // 4. AFFICHAGE DU DIALOGUE "MONITEUR"
+  // 5. AFFICHAGE DU DIALOGUE "MONITEUR"
   final rootContext = navigatorKey.currentContext;
   if (rootContext == null || !rootContext.mounted) return;
 
