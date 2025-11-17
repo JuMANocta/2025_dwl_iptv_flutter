@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 
+import '../main.dart';
 import '../telechargement_fichier.dart';
 
 enum VideoSourceType {
@@ -37,11 +38,26 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = "Impossible de lire ce média.";
+  bool _isDisposed = false;
 
   @override
   void initState() {
     super.initState();
     initializePlayer();
+  }
+
+
+  // Une méthode de nettoyage centralisée
+  void _cleanUpControllers() {
+    // Si déjà libéré, on ne fait rien pour éviter l'erreur.
+    if (_isDisposed) return;
+
+    _chewieController?.pause();
+    _chewieController?.dispose();
+    _videoPlayerController?.dispose();
+    _cachedVideoPlayerPlus?.dispose();
+
+    _isDisposed = true; // On marque comme libéré.
   }
 
   Future<void> initializePlayer() async {
@@ -119,48 +135,71 @@ class _PlayerPageState extends State<PlayerPage> {
 
     debugPrint("Lancement de la sauvegarde en arrière-plan...");
 
+    final rootContext = navigatorKey.currentContext;
+    if (rootContext == null || !rootContext.mounted) {
+      debugPrint("Erreur critique : Impossible d'obtenir le contexte global pour le téléchargement.");
+      return;
+    }
+
     // On appelle la fonction de téléchargement classique.
     // Elle s'occupera de tout (vérification, dialogue, etc.)
     verifierEtTelecharger(
       url: widget.path, // On utilise l'URL originale
       nom: widget.title,
-      context: context,
+      context: rootContext,
     );
   }
 
   @override
   void dispose() {
-    // Le dispose est intelligent
-    _chewieController?.dispose();
-    // Si on a utilisé le cache, on dispose l'objet principal
-    _cachedVideoPlayerPlus?.dispose();
+    _cleanUpControllers();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(widget.title, style: const TextStyle(fontSize: 16)),
+    return PopScope(
+      canPop: false,
+      // onPopInvoked est remplacé par onPopInvokedWithResult
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        // Le reste de la logique est identique.
+        if (didPop) return;
+
+        // 1. On libère les ressources du lecteur.
+        _cleanUpControllers();
+
+        // 2. On attend un court instant.
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        // 3. On ferme manuellement la page.
+        if (mounted) {
+          // La méthode pop() de base ne retourne pas de résultat, donc c'est parfait.
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
         backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        actions: [
-          // Le bouton apparaît systématiquement pour les flux réseau
-          if (widget.sourceType == VideoSourceType.networkWithCache)
-            IconButton(
-              icon: const Icon(Icons.save_alt_outlined),
-              tooltip: 'Sauvegarder cette vidéo',
-              onPressed: _promoteCacheToDownload,
-            ),
-        ],
-      ),
-      body: Center(
-        child: _isLoading
-            ? _buildLoading()
-            : _hasError
-            ? _buildError()
-            : Chewie(controller: _chewieController!),
+        appBar: AppBar(
+          title: Text(widget.title, style: const TextStyle(fontSize: 16)),
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          actions: [
+            // Le bouton apparaît systématiquement pour les flux réseau
+            if (widget.sourceType == VideoSourceType.networkWithCache)
+              IconButton(
+                icon: const Icon(Icons.save_alt_outlined),
+                tooltip: 'Sauvegarder cette vidéo',
+                onPressed: _promoteCacheToDownload,
+              ),
+          ],
+        ),
+        body: Center(
+          child: _isLoading
+              ? _buildLoading()
+              : _hasError
+              ? _buildError()
+              : Chewie(controller: _chewieController!),
+        ),
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'recherche_page.dart';
 import 'screens/accounts_screen.dart';
 import 'services/playlist_service.dart';
 import 'themes/themes.dart';
+import 'themes/colors.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -29,6 +30,34 @@ class MyApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       theme: lightTheme(),
       darkTheme: darkTheme(),
+      // On supprime le bandeau par défaut pour mettre le nôtre.
+      debugShowCheckedModeBanner: false,
+
+      // On utilise un "builder" pour insérer notre propre widget par-dessus toute l'app.
+      builder: (context, child) {
+        // Le `child` ici est votre application entière (le `home`).
+        // On vérifie si on est en mode debug pour n'afficher le bandeau que pendant le développement.
+        bool isDebug = false;
+        assert(isDebug = true); // Cette astuce ne met isDebug à true qu'en mode debug.
+
+        if (isDebug) {
+          // Si on est en mode debug, on enveloppe l'app dans notre bandeau personnalisé.
+          return Banner(
+            message: "BETA", // Le texte que vous voulez afficher
+            location: BannerLocation.topEnd, // Position (topStart, topEnd, bottomStart, bottomEnd)
+            color: kAetherPrimaryPurple, // La couleur du bandeau
+            textStyle: const TextStyle(
+              color: Colors.white,
+              fontSize: 12.0,
+              fontWeight: FontWeight.bold,
+            ),
+            child: child, // On affiche le reste de l'application en dessous.
+          );
+        }
+
+        // Si on n'est pas en mode debug (en production), on affiche l'app normalement.
+        return child!;
+      },
       home: const _LaunchDecider(),
     );
   }

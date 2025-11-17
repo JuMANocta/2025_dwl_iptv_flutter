@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
-import 'package:dio/io.dart';import '../secure_storage_service.dart';
+import 'package:dio/io.dart';import 'secure_storage_service.dart';
 import '../services/stream_account_service.dart';
 
 /// Classe utilitaire pour la configuration réseau centralisée.

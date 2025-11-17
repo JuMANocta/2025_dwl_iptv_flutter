@@ -584,7 +584,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
           builder: (_) => PlayerPage(
             path: selectedEntry!.url,
             title: selectedEntry.displayName,
-            sourceType: VideoSourceType.networkWithCache,
+            sourceType: VideoSourceType.network,
           )
       ));
     } else {

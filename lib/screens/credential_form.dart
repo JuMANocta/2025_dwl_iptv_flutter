@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/accounts_screen.dart';
+import 'accounts_screen.dart';
 
 /// Ancien nom le plus probable (conservé pour compat)
 class CredentialForm extends StatelessWidget {
