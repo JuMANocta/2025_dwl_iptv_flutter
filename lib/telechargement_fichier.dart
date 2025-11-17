@@ -53,11 +53,11 @@ Future<void> verifierEtTelecharger({
   // La gestion des tâches existantes ne change pas
   if (existingTask.id.isNotEmpty) {
     if (existingTask.status == DownloadStatus.completed) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Ce fichier est déjà sauvegardé."), backgroundColor: Colors.green));
+      debugPrint("✅ Ce fichier est déjà sauvegardé.");
       return;
     }
     if (existingTask.status == DownloadStatus.downloading) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⏳ Ce téléchargement est déjà en cours."), backgroundColor: Colors.blue));
+      debugPrint("⏳ Ce téléchargement est déjà en cours.");
       // Optionnel : on peut ouvrir le dialogue moniteur
       final rootContext = navigatorKey.currentContext;
       if (rootContext != null && rootContext.mounted) {
@@ -68,7 +68,7 @@ Future<void> verifierEtTelecharger({
   }
 
   // Si on est ici, c'est un nouveau téléchargement. Pas de dialogue de confirmation.
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Préparation du téléchargement de : $nom")));
+  debugPrint("Préparation du téléchargement de : $nom");
 
   // On appelle directement la fonction de création et lancement de tâche
   await _telechargerFichierVideo(url: url, nom: nom, context: context);
@@ -139,7 +139,7 @@ Future<void> _telechargerFichierVideo({
   if (!context.mounted) return;
 
   // 3. On affiche l'AlertDialog de confirmation.
-  await showDialog<bool>(
+  final bool? confirm = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(nom),
@@ -154,7 +154,16 @@ Future<void> _telechargerFichierVideo({
     ),
   );
 
-  // 3. CRÉATION DE LA TÂCHE
+  // 4. Si l'utilisateur annule, on arrête tout.
+  if (confirm != true) {
+    // On peut optionnellement notifier l'utilisateur que l'action a été annulée.
+    if (context.mounted) {
+      debugPrint("Téléchargement annulé.");
+    }
+    return; // Arrêt complet de la fonction
+  }
+
+  // 5. CRÉATION DE LA TÂCHE
   final String extension = _ext(url);
   String fileName = sanitizeFilename(nom);
   if (_ext(fileName).isEmpty) fileName = '$fileName.${extension.isNotEmpty ? extension : 'mp4'}';
@@ -172,11 +181,11 @@ Future<void> _telechargerFichierVideo({
     createdAt: DateTime.now(),
   );
 
-  // 4. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN
+  // 6. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN
   await downloadManager.addTask(newTask);
   downloadManager.startDownloadTask(newTask);
 
-  // 5. AFFICHAGE DU DIALOGUE "MONITEUR"
+  // 7. AFFICHAGE DU DIALOGUE "MONITEUR"
   final rootContext = navigatorKey.currentContext;
   if (rootContext == null || !rootContext.mounted) return;
 

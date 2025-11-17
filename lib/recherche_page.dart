@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'main.dart';
 import 'screens/accounts_screen.dart';
 import 'screens/downloads_page.dart';
 import 'services/stream_account_service.dart';
@@ -40,9 +41,7 @@ class _RecherchePageState extends State<RecherchePage> {
   }
 
   void _forceReload() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("🔄 Forçage du rechargement de la playlist...")),
-    );
+    debugPrint("🔄 Forçage du rechargement de la playlist...");
     await PlaylistService.deleteExisting();
     _loadPlaylistPath();
   }
@@ -156,7 +155,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
   final TextEditingController _searchController = TextEditingController();
 
   // --- Données ---
-  List<M3uEntry> _allEntries = [];
   List<M3uEntry> _filmsList = [];
   List<M3uEntry> _seriesList = [];
   List<M3uEntry> _tvList = [];
@@ -264,8 +262,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
           _tvList.add(M3uEntry(rawTitle: entry.rawTitle, url: entry.url, isSerie: false, displayName: displayName));
         }
       }
-
-      _allEntries = parsedEntries;
 
       // Lance le premier filtrage/groupement pour que l'UI initiale ait des données.
       _filterAndGroupResults();
@@ -516,20 +512,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
     final entry = versions.first;
     final url = entry.url.toLowerCase();
-
-    // CAS 1: C'est une chaîne TV -> Lecture directe, pas d'autres options.
-    if (!url.contains('/movie/') && !url.contains('/series/')) {
-      // On utilise le lecteur avec cache, comme pour tout le reste.
-      Navigator.push(context, MaterialPageRoute(
-          builder: (_) => PlayerPage(
-            path: entry.url,
-            title: entry.displayName,
-            // On force le mode cache, comme décidé.
-            sourceType: VideoSourceType.networkWithCache,
-          )
-      ));
-      return;
-    }
+    final bool isTvChannel = !url.contains('/movie/') && !url.contains('/series/');
 
     // --- LOGIQUE CORRIGÉE ---
     M3uEntry? selectedEntry;
@@ -559,7 +542,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const Divider(height: 32),
-
                 // La liste des versions disponibles
                 Flexible( // Important pour que la liste ne dépasse pas
                   child: ListView.builder(
@@ -594,9 +576,19 @@ class _RechercheM3UState extends State<RechercheM3U> {
       );
     }
 
-    // Si une version a été choisie (soit directement, soit via le dialogue)...
-    if (selectedEntry != null && mounted) {
-      // ...on affiche la feuille d'ACTIONS.
+    // Si aucune version n'a été sélectionnée (l'utilisateur a annulé), on ne fait rien.
+    if (selectedEntry == null || !mounted) return;
+
+    if (isTvChannel) {
+      Navigator.push(context, MaterialPageRoute(
+          builder: (_) => PlayerPage(
+            path: selectedEntry!.url,
+            title: selectedEntry.displayName,
+            sourceType: VideoSourceType.networkWithCache,
+          )
+      ));
+    } else {
+      // CAS FILMS/SÉRIES : On affiche la feuille d'actions "Lire/Télécharger"
       _showActionSheet(selectedEntry);
     }
   }
@@ -648,8 +640,17 @@ class _RechercheM3UState extends State<RechercheM3U> {
                 subtitle: const Text("Pour regarder plus tard sans connexion."),
                 onTap: () {
                   Navigator.pop(context);
+                  final rootContext = navigatorKey.currentContext;
+                  if (rootContext == null || !rootContext.mounted) {
+                    debugPrint("Erreur critique : Impossible d'obtenir le contexte global.");
+                    return;
+                  }
                   // La fonction de téléchargement classique reste la même
-                  verifierEtTelecharger(url: entry.url, nom: entry.displayName, context: context);
+                  verifierEtTelecharger(
+                      url: entry.url,
+                      nom: entry.displayName,
+                      context: rootContext,
+                  );
                 },
               ),
             ],
@@ -659,16 +660,14 @@ class _RechercheM3UState extends State<RechercheM3U> {
     );
   }
 
-
   String _getDisplayName(String originalName) {
     String name = originalName;
+    name = name.replaceFirst(RegExp(r'^\|[A-Z]{2,}\|\s*'), '');
     name = name.split(RegExp(r"S\d{2} E\d{2}", caseSensitive: false)).first;
     const String tags = r'4K|UHD|FHD|HD|SD|2160p|1080p|720p|480p|HEVC|H265|X265|HDR10\+?|HDR|MULTI|VOSTFR|VF|VO|VFF|TRUEFRENCH|TRUEHD|DTS|ATMOS|FR|EN|ES';
     name = name.replaceAll(RegExp(r'\s*(\[.*?\]|\([^\(\)]*?(' + tags + r')[^\(\)]*?\)|' r'\b(' + tags + r')\b)', caseSensitive: false), '');
     name = name.trim().replaceAll(RegExp(r'[-_.]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (name.startsWith('|| ')) {
-      name = name.substring(3);
-    }
+
     if (name.isEmpty) {
       name = originalName.split(RegExp(r"S\d{2} E\d{2}", caseSensitive: false)).first.replaceAll(RegExp(r'[\[\]\(\)|_.-]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
     }
@@ -714,10 +713,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
     final chips = <Widget>[];
     final lowerTitle = title.toLowerCase();
 
-    // --- AMÉLIORATION ICI ---
     // Utilisation de RegExp plus permissives avec les délimiteurs de mots (\b)
     // pour éviter les faux positifs (ex: "gaufre" ne matchera plus "vf").
-
     if (RegExp(r'\b(vff|truefrench|multi)\b').hasMatch(lowerTitle)) {
       chips.add(_chip('VF', Colors.cyan));
       // Si c'est multi, on peut aussi supposer VO

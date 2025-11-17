@@ -27,14 +27,10 @@ class _TelechargementPageState extends State<TelechargementPage> {
 
       final acc = await StreamAccountService.getCurrentAccount();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("✅ Playlist téléchargée pour « ${acc?.label ?? "Compte"} »."))
-      );
+        debugPrint("✅ Playlist téléchargée pour « ${acc?.label ?? "Compte"} ».");
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("❌ Échec du téléchargement : $e"))
-      );
+        debugPrint("❌ Échec du téléchargement : $e");
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -46,14 +42,10 @@ class _TelechargementPageState extends State<TelechargementPage> {
       await PlaylistService.deleteExisting();
       if (!mounted) return;
       setState(() => _lastPath = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("🗑️ Playlist supprimée."))
-      );
+      debugPrint("🗑️ Playlist supprimée.");
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("❌ Impossible de supprimer : $e"))
-      );
+      debugPrint("❌ Impossible de supprimer : $e");
     } finally {
       if (mounted) setState(() => _loading = false);
     }

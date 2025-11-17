@@ -79,7 +79,7 @@ class _DownloadTaskTile extends StatelessWidget {
       case DownloadStatus.canceled:
       // 1. On informe l'utilisateur
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("🚀 Relance du téléchargement...")));
+          debugPrint("🚀 Relance du téléchargement...");
         }
 
         // 2. On supprime l'ancienne tâche échouée/annulée du manager
@@ -138,7 +138,7 @@ class _DownloadTaskTile extends StatelessWidget {
         if (await tempFile.exists()) await tempFile.delete();
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur lors de la suppression du fichier : $e")));
+          debugPrint("Erreur lors de la suppression du fichier : $e");
         }
       }
     }

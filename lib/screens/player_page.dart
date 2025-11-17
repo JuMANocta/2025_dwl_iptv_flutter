@@ -81,12 +81,16 @@ class _PlayerPageState extends State<PlayerPage> {
         autoInitialize: true,
         allowedScreenSleep: false,
         allowFullScreen: true,
-        fullScreenByDefault: true,
         customControls: const CupertinoControls(
           backgroundColor: Color.fromRGBO(41, 41, 41, 0.7),
           iconColor: Colors.white,
         ),
       );
+
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (mounted) {
+        _chewieController?.enterFullScreen();
+      }
 
       setState(() {
         _isLoading = false;
@@ -105,7 +109,7 @@ class _PlayerPageState extends State<PlayerPage> {
   Future<void> _promoteCacheToDownload() async {
     // On vérifie que le lecteur cache est bien actif
     if (_cachedVideoPlayerPlus == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cette vidéo n'est pas mise en cache.")));
+      debugPrint("Cette vidéo n'est pas mise en cache.");
       return;
     }
 
@@ -113,7 +117,7 @@ class _PlayerPageState extends State<PlayerPage> {
     // PLAN B - Plus simple et tout aussi efficace :
     // On relance simplement la fonction de téléchargement. Si le fichier est déjà
 
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lancement de la sauvegarde en arrière-plan...")));
+    debugPrint("Lancement de la sauvegarde en arrière-plan...");
 
     // On appelle la fonction de téléchargement classique.
     // Elle s'occupera de tout (vérification, dialogue, etc.)
@@ -129,13 +133,7 @@ class _PlayerPageState extends State<PlayerPage> {
     // Le dispose est intelligent
     _chewieController?.dispose();
     // Si on a utilisé le cache, on dispose l'objet principal
-    if (_cachedVideoPlayerPlus != null) {
-      _cachedVideoPlayerPlus!.dispose();
-    } else {
-      // Sinon, on dispose le contrôleur standard
-      _videoPlayerController?.dispose();
-    }
-
+    _cachedVideoPlayerPlus?.dispose();
     super.dispose();
   }
 

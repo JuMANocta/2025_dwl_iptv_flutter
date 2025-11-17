@@ -39,11 +39,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
   Future<void> _setCurrent(String id) async {
     await StreamAccountService.setCurrentAccount(id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("✅ Compte sélectionné.")),
-    );
-    // Signale au parent qu'il doit recharger la playlist, et ferme l'écran
-    Navigator.of(context).pop(true);
+      debugPrint("✅ Compte sélectionné.");
+      // Signale au parent qu'il doit recharger la playlist, et ferme l'écran
+      Navigator.of(context).pop(true);
   }
 
   Future<void> _delete(String id) async {
@@ -89,14 +87,10 @@ class _AccountsScreenState extends State<AccountsScreen> {
       setState(() {
         _playlistInfoFuture = Future.value(info);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("🔄 Playlist rechargée (${info?.count ?? 0} entrées)")),
-      );
+      debugPrint("🔄 Playlist rechargée (${info?.count ?? 0} entrées)");
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("❌ Échec du rechargement : $e")),
-      );
+        debugPrint("❌ Échec du rechargement : $e");
     }
   }
 
@@ -108,9 +102,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
     } catch (e) {
       // Si une erreur se produit (ex: réseau pendant le dl), on la propage au FutureBuilder.
       if (!mounted) return null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("❌ Erreur chargement playlist : $e")),
-      );
+        debugPrint("❌ Erreur chargement playlist : $e");
       return null;
     }
   }
@@ -216,9 +208,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                           }
                           _refresh(); // Rafraîchit l'UI
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("🗑️ Playlist supprimée.")),
-                            );
+                            debugPrint("🗑️ Playlist supprimée.");
                           }
                         },
                         icon: const Icon(Icons.delete_outline, color: Colors.red),
