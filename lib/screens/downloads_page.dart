@@ -64,20 +64,33 @@ class _DownloadTaskTile extends StatelessWidget {
 
   // --- ACTIONS ---
   Future<void> _handleTap(BuildContext context) async {
+    final downloadManager = DownloadManagerService();
     switch (task.status) {
       case DownloadStatus.downloading:
-        await DownloadManagerService().cancelTask(task.id);
+      // ACTION : Annuler
+        await downloadManager.cancelTask(task.id);
         break;
       case DownloadStatus.completed:
+      // ACTION : Lire
         _openFile(context);
         break;
       case DownloadStatus.failed:
       case DownloadStatus.canceled:
-      // Au lieu d'un menu, on relance directement au clic
-        _retryDownload(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("🚀 Relance du téléchargement...")));
+        await downloadManager.removeTask(task.id);
+        final newTask = DownloadTask(
+          id: 'task_${DateTime.now().millisecondsSinceEpoch}', // Nouvel ID
+          url: task.url,
+          displayName: task.displayName,
+          finalPath: task.finalPath, // Le chemin de sauvegarde reste le même
+          totalSize: task.totalSize,
+          status: DownloadStatus.queued,
+          createdAt: DateTime.now(),
+        );
+        await downloadManager.addTask(newTask);
+        downloadManager.startDownloadTask(newTask);
         break;
       default:
-      // Pour les autres statuts (downloading, queued), un clic ne fait rien.
         break;
     }
   }

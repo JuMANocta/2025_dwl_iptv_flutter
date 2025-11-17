@@ -39,54 +39,39 @@ String formatDuration(int totalSeconds) {
   return (duration.inHours > 0) ? "$hours:$minutes:$seconds" : "$minutes:$seconds";
 }
 
-Future<void> verifierEtTelecharger({required String url, required String nom, required BuildContext context}) async {
+Future<void> verifierEtTelecharger({
+  required String url,
+  required String nom,
+  required BuildContext context // On garde le contexte pour les messages (SnackBar)
+}) async {
   if (!context.mounted) return;
   final downloadManager = DownloadManagerService();
 
   final existingTask = downloadManager.tasksNotifier.value.firstWhere(
           (t) => t.url == url, orElse: () => DownloadTask.empty());
 
+  // La gestion des tâches existantes ne change pas
   if (existingTask.id.isNotEmpty) {
     if (existingTask.status == DownloadStatus.completed) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Ce fichier est déjà téléchargé."), backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Ce fichier est déjà sauvegardé."), backgroundColor: Colors.green));
       return;
     }
     if (existingTask.status == DownloadStatus.downloading) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⏳ Ce fichier est déjà en cours de téléchargement."), backgroundColor: Colors.blue));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⏳ Ce téléchargement est déjà en cours."), backgroundColor: Colors.blue));
+      // Optionnel : on peut ouvrir le dialogue moniteur
+      final rootContext = navigatorKey.currentContext;
+      if (rootContext != null && rootContext.mounted) {
+        showDialog(context: rootContext, builder: (_) => TerminalDownloadDialog(taskId: existingTask.id));
+      }
       return;
     }
-
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("🚀 Relance du téléchargement..."), backgroundColor: Colors.orange));
-    await downloadManager.removeTask(existingTask.id);
-    await _telechargerFichierVideo(url: url, nom: nom, context: context, totalSize: existingTask.totalSize);
-    return;
   }
 
-  try {
-    final dio = await NetworkUtils.buildDio(url);
-    final contentLength = await probeContentLength(dio, url);
-    final sizeFormatted = contentLength != null && contentLength > 0 ? formatFileSize(contentLength) : "taille inconnue";
+  // Si on est ici, c'est un nouveau téléchargement. Pas de dialogue de confirmation.
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Préparation du téléchargement de : $nom")));
 
-    if (!context.mounted) return;
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("⚠️ Confirmation"),
-        content: Text(contentLength != null && contentLength > 0 ? "Le fichier fait $sizeFormatted.\nVoulez-vous lancer le téléchargement ?" : "Taille inconnue.\nVoulez-vous lancer le téléchargement ?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("Annuler", style: TextStyle(color: Colors.red))),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("Télécharger")),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      if (!context.mounted) return;
-      await _telechargerFichierVideo(url: url, nom: nom, context: context, totalSize: contentLength);
-    }
-  } catch (e) {
-    if (!context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Erreur de vérification : $e")));
-  }
+  // On appelle directement la fonction de création et lancement de tâche
+  await _telechargerFichierVideo(url: url, nom: nom, context: context);
 }
 
 Future<int?> probeContentLength(Dio dio, String url) async {
@@ -134,10 +119,23 @@ Future<int?> probeContentLength(Dio dio, String url) async {
 }
 
 /// --- FONCTION DE TÉLÉCHARGEMENT (REVUE POUR DÉLÉGUER) ---
-Future<void> _telechargerFichierVideo({required String url, required String nom, required BuildContext context, int? totalSize}) async {
+Future<void> _telechargerFichierVideo({
+  required String url,
+  required String nom,
+  required BuildContext context
+}) async {
   final downloadManager = DownloadManagerService();
 
-  // 1. CRÉATION DE LA TÂCHE
+  // 1. On sonde la taille du fichier AVANT de créer la tâche
+  int? totalSize;
+  try {
+    final dio = await NetworkUtils.buildDio(url);
+    totalSize = await probeContentLength(dio, url);
+  } catch (e) {
+    debugPrint("Impossible de sonder la taille du fichier: $e");
+  }
+
+  // 2. CRÉATION DE LA TÂCHE
   final String extension = _ext(url);
   String fileName = sanitizeFilename(nom);
   if (_ext(fileName).isEmpty) fileName = '$fileName.${extension.isNotEmpty ? extension : 'mp4'}';
@@ -155,17 +153,17 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
     createdAt: DateTime.now(),
   );
 
-  // 2. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN
+  // 3. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN
   await downloadManager.addTask(newTask);
-  downloadManager.startDownloadTask(newTask); // Pas de 'await', le service s'en charge.
+  downloadManager.startDownloadTask(newTask);
 
-  // 3. AFFICHAGE DU DIALOGUE "MONITEUR" (NON BLOQUANT)
+  // 4. AFFICHAGE DU DIALOGUE "MONITEUR"
   final rootContext = navigatorKey.currentContext;
   if (rootContext == null || !rootContext.mounted) return;
 
   showDialog(
     context: rootContext,
-    barrierDismissible: true, // Peut être fermé sans interrompre le téléchargement
+    barrierDismissible: true,
     builder: (context) => TerminalDownloadDialog(taskId: taskId),
   );
 }

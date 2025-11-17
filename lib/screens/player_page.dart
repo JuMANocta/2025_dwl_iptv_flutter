@@ -2,9 +2,15 @@ import 'dart:io';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 
-// L'enum reste la même, c'est parfait pour la compatibilité
-enum VideoSourceType { network, file }
+import '../telechargement_fichier.dart';
+
+enum VideoSourceType {
+  network,
+  file,
+  networkWithCache
+}
 
 class PlayerPage extends StatefulWidget {
   final String path;
@@ -23,7 +29,10 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> {
-  late VideoPlayerController _videoPlayerController;
+  // On a besoin d'une référence à l'objet CachedVideoPlayerPlus quand on est en mode cache
+  CachedVideoPlayerPlus? _cachedVideoPlayerPlus;
+  // ET on a toujours besoin de la référence au contrôleur pour Chewie
+  VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
   bool _isLoading = true;
   bool _hasError = false;
@@ -37,24 +46,31 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Future<void> initializePlayer() async {
     try {
-      // 1. Initialiser le contrôleur video_player
-      if (widget.sourceType == VideoSourceType.network) {
-        _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(widget.path));
-      } else {
-        _videoPlayerController = VideoPlayerController.file(File(widget.path));
+      // --- LOGIQUE D'INITIALISATION AMÉLIORÉE ---
+      switch (widget.sourceType) {
+        case VideoSourceType.network:
+          _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(widget.path));
+          await _videoPlayerController!.initialize();
+          break;
+        case VideoSourceType.file:
+          _videoPlayerController = VideoPlayerController.file(File(widget.path));
+          await _videoPlayerController!.initialize();
+          break;
+      case VideoSourceType.networkWithCache:
+      // 1. On crée l'objet principal
+      _cachedVideoPlayerPlus = CachedVideoPlayerPlus.networkUrl(Uri.parse(widget.path), invalidateCacheIfOlderThan: const Duration(minutes: 69),);      ;
+      await _cachedVideoPlayerPlus!.initialize();
+      _videoPlayerController = _cachedVideoPlayerPlus!.controller;
+      break;
       }
 
-      await _videoPlayerController.initialize();
-
-      // 2. Créer le ChewieController avec toutes les options
+      // Le reste de la création du ChewieController ne change pas,
+      // car Chewie s'attend juste à recevoir un `VideoPlayerController`.
       _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController,
+        videoPlayerController: _videoPlayerController!,
         autoPlay: true,
         looping: false,
-
-        // --- OPTIONS D'INTERFACE COMPLETES ---
-        aspectRatio: _videoPlayerController.value.aspectRatio,
-        showControls: true,
+        aspectRatio: _videoPlayerController!.value.aspectRatio,
         materialProgressColors: ChewieProgressColors(
           playedColor: Colors.greenAccent,
           handleColor: Colors.greenAccent,
@@ -63,13 +79,9 @@ class _PlayerPageState extends State<PlayerPage> {
         ),
         placeholder: const Center(child: CircularProgressIndicator()),
         autoInitialize: true,
-
-        // --- GESTION DU PLEIN ÉCRAN ---
-        allowedScreenSleep: false, // Empêche l'écran de se mettre en veille
+        allowedScreenSleep: false,
         allowFullScreen: true,
-        fullScreenByDefault: true, // Passe en plein écran au démarrage
-
-        // Permet d'ajouter des boutons personnalisés !
+        fullScreenByDefault: true,
         customControls: const CupertinoControls(
           backgroundColor: Color.fromRGBO(41, 41, 41, 0.7),
           iconColor: Colors.white,
@@ -81,7 +93,6 @@ class _PlayerPageState extends State<PlayerPage> {
         _hasError = false;
       });
     } catch (error) {
-      // Gérer les erreurs (URL invalide, fichier corrompu, etc.)
       setState(() {
         _isLoading = false;
         _hasError = true;
@@ -91,11 +102,40 @@ class _PlayerPageState extends State<PlayerPage> {
     }
   }
 
+  Future<void> _promoteCacheToDownload() async {
+    // On vérifie que le lecteur cache est bien actif
+    if (_cachedVideoPlayerPlus == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cette vidéo n'est pas mise en cache.")));
+      return;
+    }
+
+    // flutter_cache_manager ne fournit pas de méthode directe pour obtenir le fichier.
+    // PLAN B - Plus simple et tout aussi efficace :
+    // On relance simplement la fonction de téléchargement. Si le fichier est déjà
+
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lancement de la sauvegarde en arrière-plan...")));
+
+    // On appelle la fonction de téléchargement classique.
+    // Elle s'occupera de tout (vérification, dialogue, etc.)
+    verifierEtTelecharger(
+      url: widget.path, // On utilise l'URL originale
+      nom: widget.title,
+      context: context,
+    );
+  }
+
   @override
   void dispose() {
-    // Très important de bien tout libérer
-    _videoPlayerController.dispose();
+    // Le dispose est intelligent
     _chewieController?.dispose();
+    // Si on a utilisé le cache, on dispose l'objet principal
+    if (_cachedVideoPlayerPlus != null) {
+      _cachedVideoPlayerPlus!.dispose();
+    } else {
+      // Sinon, on dispose le contrôleur standard
+      _videoPlayerController?.dispose();
+    }
+
     super.dispose();
   }
 
@@ -107,6 +147,15 @@ class _PlayerPageState extends State<PlayerPage> {
         title: Text(widget.title, style: const TextStyle(fontSize: 16)),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        actions: [
+          // Le bouton apparaît systématiquement pour les flux réseau
+          if (widget.sourceType == VideoSourceType.networkWithCache)
+            IconButton(
+              icon: const Icon(Icons.save_alt_outlined),
+              tooltip: 'Sauvegarder cette vidéo',
+              onPressed: _promoteCacheToDownload,
+            ),
+        ],
       ),
       body: Center(
         child: _isLoading
@@ -139,4 +188,3 @@ class _PlayerPageState extends State<PlayerPage> {
     ),
   );
 }
-

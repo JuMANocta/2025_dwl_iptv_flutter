@@ -25,6 +25,8 @@ dependencies:
   open_file_plus: ^3.4.1+1
   video_player: ^2.10.1
   chewie: ^1.13.0
+  scrollable_positioned_list: ^0.3.8
+  cached_video_player_plus: ^4.0.4
 
 dev_dependencies:
   flutter_test:
