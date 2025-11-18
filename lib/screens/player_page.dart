@@ -54,7 +54,6 @@ class _PlayerPageState extends State<PlayerPage> {
 
     _chewieController?.pause();
     _chewieController?.dispose();
-    _videoPlayerController?.dispose();
     _cachedVideoPlayerPlus?.dispose();
 
     _isDisposed = true; // On marque comme libéré.

@@ -510,6 +510,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
   Future<void> _onEntrySelected(List<M3uEntry> versions) async {
     if (versions.isEmpty || !mounted) return;
 
+    FocusManager.instance.primaryFocus?.unfocus();
+
     final entry = versions.first;
     final url = entry.url.toLowerCase();
     final bool isTvChannel = !url.contains('/movie/') && !url.contains('/series/');
