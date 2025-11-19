@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
-import 'services/playlist_service.dart';
-import 'services/stream_account_service.dart';
+import '../../data/services/playlist_service.dart';
+import '../../data/services/stream_account_service.dart';
 
 /// Écran de compatibilité pour télécharger la playlist .m3u
 /// Désormais, on passe par PlaylistService.downloadCurrentM3U()
-class TelechargementPage extends StatefulWidget {
-  const TelechargementPage({super.key});
+class PlaylistManagementPage extends StatefulWidget {
+  const PlaylistManagementPage({super.key});
 
   @override
-  State<TelechargementPage> createState() => _TelechargementPageState();
+  State<PlaylistManagementPage> createState() => _PlaylistManagementPageState();
 }
 
-class _TelechargementPageState extends State<TelechargementPage> {
+class _PlaylistManagementPageState extends State<PlaylistManagementPage> {
   bool _loading = false;
   String? _lastPath;
 

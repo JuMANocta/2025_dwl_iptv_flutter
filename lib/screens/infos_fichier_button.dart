@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'accounts_screen.dart';
+import '../feature/accounts/accounts_page.dart';
 
 class InfosFichierButton extends StatelessWidget {
   /// Optionnel : texte du bouton (pour compat)
@@ -20,7 +20,7 @@ class InfosFichierButton extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: () {
           Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const AccountsScreen()),
+            MaterialPageRoute(builder: (_) => const AccountsPage()),
           );
         },
         icon: const Icon(Icons.info_outline),

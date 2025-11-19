@@ -139,6 +139,5 @@ ThemeData darkTheme() {
       unselectedItemColor: kMediumGrey,
       selectedLabelStyle: TextStyle(fontWeight: FontWeight.bold),
     ),
-    // ... Ajoutez d'autres thèmes d'widgets au besoin
   );
 }

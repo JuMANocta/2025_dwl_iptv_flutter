@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 // Énumération pour représenter l'état d'un téléchargement.
-// C'est plus propre et plus sûr que d'utiliser des chaînes de caractères.
 enum DownloadStatus {
   queued,      // En attente de démarrage
   downloading, // En cours de téléchargement
@@ -38,14 +37,13 @@ class DownloadTask {
   });
 
   // Méthode 'copyWith' pour créer une nouvelle instance avec des valeurs modifiées.
-  // C'est une bonne pratique pour les objets immuables.
   DownloadTask copyWith({
     String? id,
     String? url,
     String? displayName,String? finalPath,
     DownloadStatus? status,
     double? progress,
-    int? totalSize, // <--- 1. AJOUTER LE PARAMÈTRE ICI
+    int? totalSize,
     DateTime? createdAt,
   }) {
     return DownloadTask(
@@ -55,7 +53,7 @@ class DownloadTask {
       finalPath: finalPath ?? this.finalPath,
       status: status ?? this.status,
       progress: progress ?? this.progress,
-      totalSize: totalSize ?? this.totalSize, // <--- 2. UTILISER LE NOUVEAU PARAMÈTRE ICI
+      totalSize: totalSize ?? this.totalSize,
       createdAt: createdAt ?? this.createdAt,
     );
   }

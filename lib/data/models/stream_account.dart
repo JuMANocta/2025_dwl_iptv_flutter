@@ -1,4 +1,4 @@
-/// Mode d’authentification IPTV.
+/// Mode d’authentification
 /// - [completeUrl] : l’utilisateur fournit directement l’URL .m3u complète.
 /// - [separate]   : on construit l’URL à partir de baseUrl + username + password (style Xtream Codes).
 enum StreamAuthMode { completeUrl, separate }

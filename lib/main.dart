@@ -1,24 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:media_store_plus/media_store_plus.dart';
-import 'services/download_manager_service.dart';
-import 'services/stream_account_service.dart';
-import 'recherche_page.dart';
-import 'screens/accounts_screen.dart';
-import 'services/playlist_service.dart';
-import 'themes/themes.dart';
-import 'themes/colors.dart';
+import 'data/services/download_manager_service.dart';
+import 'data/services/stream_account_service.dart';
+import 'feature/search/recherche_page.dart';
+import 'feature/accounts/accounts_page.dart';
+import 'data/services/playlist_service.dart';
+import 'core/themes/themes.dart';
+import 'core/themes/colors.dart';
 
+/// Clé globale pour le Navigator, permettant une navigation programmatique sans `BuildContext`.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+/// Point d'entrée de l'application.
 void main() async {
+  // Séquence d'initialisation critique avant le lancement de l'UI.
   WidgetsFlutterBinding.ensureInitialized();
   await MediaStore.ensureInitialized();
   MediaStore.appFolder = 'AetherStream';
   await StreamAccountService.migrateFromLegacyIfNeeded();
   await DownloadManagerService().init();
+
   runApp(const MyApp());
 }
 
+/// Widget racine de l'application.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -30,32 +35,22 @@ class MyApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       theme: lightTheme(),
       darkTheme: darkTheme(),
-      // On supprime le bandeau par défaut pour mettre le nôtre.
       debugShowCheckedModeBanner: false,
 
-      // On utilise un "builder" pour insérer notre propre widget par-dessus toute l'app.
+      // Le `builder` est utilisé ici pour superposer un bandeau "BETA"
+      // uniquement en mode debug, sans interférer avec le widget `home`.
       builder: (context, child) {
-        // Le `child` ici est votre application entière (le `home`).
-        // On vérifie si on est en mode debug pour n'afficher le bandeau que pendant le développement.
         bool isDebug = false;
-        assert(isDebug = true); // Cette astuce ne met isDebug à true qu'en mode debug.
+        assert(isDebug = true); // Astuce pour n'être `true` qu'en mode debug.
 
         if (isDebug) {
-          // Si on est en mode debug, on enveloppe l'app dans notre bandeau personnalisé.
           return Banner(
-            message: "BETA", // Le texte que vous voulez afficher
-            location: BannerLocation.topEnd, // Position (topStart, topEnd, bottomStart, bottomEnd)
-            color: kAetherPrimaryPurple, // La couleur du bandeau
-            textStyle: const TextStyle(
-              color: Colors.white,
-              fontSize: 12.0,
-              fontWeight: FontWeight.bold,
-            ),
-            child: child, // On affiche le reste de l'application en dessous.
+            message: "BETA",
+            location: BannerLocation.topEnd,
+            color: kAetherPrimaryPurple,
+            child: child,
           );
         }
-
-        // Si on n'est pas en mode debug (en production), on affiche l'app normalement.
         return child!;
       },
       home: const _LaunchDecider(),
@@ -63,6 +58,9 @@ class MyApp extends StatelessWidget {
   }
 }
 
+/// Ce widget agit comme un "aiguilleur" au démarrage.
+/// Il affiche un écran de chargement, puis décide de la page à afficher
+/// en fonction de l'état de l'initialisation (comptes, playlist).
 class _LaunchDecider extends StatefulWidget {
   const _LaunchDecider();
   @override
@@ -78,30 +76,33 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     _initFuture = _initializeApp();
   }
 
+  /// Valide la configuration initiale (comptes + playlist).
   Future<bool> _initializeApp() async {
     final accounts = await StreamAccountService.listAccounts();
     if (accounts.isEmpty) return false;
-    try {
-      await PlaylistService.getOrDownloadPlaylist();
-      return true;
-    } catch (e) {
-      rethrow;
-    }
+
+    // Propage l'erreur au FutureBuilder si la playlist échoue.
+    await PlaylistService.getOrDownloadPlaylist();
+    return true;
   }
 
+  /// Permet de relancer la validation, typiquement après une action de l'utilisateur.
   void _retryInitialization() {
     setState(() {
       _initFuture = _initializeApp();
     });
   }
 
+  /// Navigue vers les paramètres et force une réinitialisation au retour.
   Future<void> _recheckAfterSettings() async {
-    await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const AccountsScreen()));
+    await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const AccountsPage()));
     _retryInitialization();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Le FutureBuilder gère nativement les différents états (chargement, erreur, succès)
+    // de notre logique d'initialisation asynchrone.
     return FutureBuilder<bool>(
       future: _initFuture,
       builder: (context, snapshot) {
@@ -123,7 +124,6 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         }
         final hasAccountAndPlaylistIsReady = snapshot.data ?? false;
         if (hasAccountAndPlaylistIsReady) {
-          // L'appel à RecherchePage est maintenant correct car il vient du bon fichier
           return const RecherchePage();
         }
         return Scaffold(appBar: AppBar(title: const Text('AetherStream')), body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [

@@ -4,7 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
-import '../utils/network.dart';
+import '../../core/utils/network.dart';
 
 /// Service pour gérer la liste des tâches de téléchargement.
 /// Il utilise SharedPreferences pour la persistance et un ValueNotifier
@@ -26,9 +26,8 @@ class DownloadManagerService {
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     _loadTasksFromDisk();
+    _reconcileTasksOnStartup();
   }
-
-  // --- Méthodes privées ---
 
   void _loadTasksFromDisk() {
     final jsonString = _prefs.getString(_storageKey);
@@ -45,6 +44,29 @@ class DownloadManagerService {
     }
   }
 
+  /// Au démarrage, réinitialise les tâches qui étaient "en cours" car elles ne peuvent pas survivre à un redémarrage.
+  void _reconcileTasksOnStartup() {
+    final tasks = List<DownloadTask>.from(tasksNotifier.value);
+    bool hasChanged = false;
+
+    // On crée une nouvelle liste avec les statuts mis à jour
+    final reconciledTasks = tasks.map((task) {
+      if (task.status == DownloadStatus.downloading || task.status == DownloadStatus.queued) {
+        hasChanged = true;
+        // On considère la tâche comme échouée pour permettre à l'utilisateur de la relancer.
+        // On ne modifie pas la progression pour qu'il voie où ça s'est arrêté.
+        return task.copyWith(status: DownloadStatus.failed);
+      }
+      return task;
+    }).toList();
+
+    if (hasChanged) {
+      debugPrint("🧹 Nettoyage de ${reconciledTasks.where((t) => t.status == DownloadStatus.failed).length} tâches bloquées au démarrage.");
+      tasksNotifier.value = reconciledTasks;
+      _saveTasksToDisk(); // On sauvegarde immédiatement le nouvel état propre.
+    }
+  }
+
   Future<void> _saveTasksToDisk() async {
     try {
       final jsonList = tasksNotifier.value.map((task) => task.toJson()).toList();
@@ -53,8 +75,6 @@ class DownloadManagerService {
       debugPrint("Erreur lors de la sauvegarde des tâches : $e");
     }
   }
-
-  // --- Méthodes publiques (utilisées par le reste de l'app) ---
 
   /// Ajoute une nouvelle tâche à la liste.
   Future<void> addTask(DownloadTask task) async {
@@ -78,18 +98,22 @@ class DownloadManagerService {
     _cancelTokens[task.id] = cancelToken;
 
     try {
-      // Met à jour le statut pour que l'UI affiche "En attente" ou "En cours"
+      // Met à jour le statut pour que l'UI affiche "En cours" et réinitialise la progression visuellement.
+      // C'est la clé pour donner un feedback immédiat à l'utilisateur lors d'une reprise.
       await updateTask(task.id, status: DownloadStatus.downloading, progress: 0.0);
 
       await dio.download(
         task.url,
         '${task.finalPath}.downloading', // On télécharge dans un fichier temporaire
         cancelToken: cancelToken,
+        // MODIFICATION CRUCIALE : On ne supprime PAS le fichier partiel en cas d'erreur.
+        // C'est ce qui permet une VRAIE reprise au prochain essai.
+        deleteOnError: false,
         onReceiveProgress: (received, total) {
           final totalBytes = total > 0 ? total : task.totalSize;
           if (totalBytes > 0) {
             final progress = received / totalBytes;
-            // C'est ici que la magie opère : mise à jour en temps réel
+            // Mise à jour en temps réel
             updateTask(
               task.id,
               progress: progress,
@@ -128,17 +152,24 @@ class DownloadManagerService {
 
   /// Met à jour une tâche existante et notifie l'UI.
   Future<void> updateTask(String taskId, {DownloadStatus? status, double? progress, int? totalSize}) async {
-    final tasks = tasksNotifier.value;
-    final index = tasks.indexWhere((t) => t.id == taskId);
+    // 1. On crée une NOUVELLE liste (une copie) IMMÉDIATEMENT.
+    final currentTasks = List<DownloadTask>.from(tasksNotifier.value);
+    final index = currentTasks.indexWhere((t) => t.id == taskId);
 
     if (index != -1) {
-      tasks[index] = tasks[index].copyWith(
+      // 2. On récupère l'ancienne tâche pour la mettre à jour.
+      final oldTask = currentTasks[index];
+
+      // 3. On remplace l'élément dans NOTRE COPIE avec la version mise à jour.
+      currentTasks[index] = oldTask.copyWith(
         status: status,
         progress: progress,
         totalSize: totalSize,
       );
-      // LA LIGNE CLÉ : On assigne une NOUVELLE liste pour déclencher le ValueNotifier.
-      tasksNotifier.value = List.from(tasks);
+
+      // 4. On assigne notre copie modifiée au notifier.
+      // L'UI est maintenant garantie de se mettre à jour.
+      tasksNotifier.value = currentTasks;
       await _saveTasksToDisk();
     }
   }

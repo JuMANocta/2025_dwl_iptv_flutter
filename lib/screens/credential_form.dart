@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'accounts_screen.dart';
+import '../feature/accounts/accounts_page.dart';
 
 /// Ancien nom le plus probable (conservé pour compat)
 class CredentialForm extends StatelessWidget {
@@ -8,7 +8,7 @@ class CredentialForm extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // On renvoie directement l'écran de gestion des comptes
-    return const AccountsScreen();
+    return const AccountsPage();
   }
 }
 
@@ -18,6 +18,6 @@ class CredentialFormPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const AccountsScreen();
+    return const AccountsPage();
   }
 }

@@ -3,9 +3,8 @@ import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
-
-import '../main.dart';
-import '../telechargement_fichier.dart';
+import '../../main.dart';
+import '../downloads/logic/download_initiator.dart';
 
 enum VideoSourceType {
   network,

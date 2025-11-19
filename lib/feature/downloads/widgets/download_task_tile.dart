@@ -1,68 +1,19 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../main.dart';
-import '../models/download_task.dart';
-import '../services/download_manager_service.dart';
-import '../telechargement_fichier.dart';
-import '../screens/player_page.dart';
+import 'package:flutter/material.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../main.dart';
+import '../../../data/models/download_task.dart';
+import '../../../data/services/download_manager_service.dart';
+import '../../../widgets/info_row.dart';
+import '../../../widgets/terminal_download_dialog.dart';
+import '../../player/player_page.dart';
 
-
-class DownloadsPage extends StatefulWidget {
-  const DownloadsPage({super.key});
-
-  @override
-  State<DownloadsPage> createState() => _DownloadsPageState();
-}
-
-class _DownloadsPageState extends State<DownloadsPage> {
-  final DownloadManagerService _downloadManager = DownloadManagerService();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gestion des Téléchargements'),
-      ),
-      body: ValueListenableBuilder<List<DownloadTask>>(
-        valueListenable: _downloadManager.tasksNotifier,
-        builder: (context, tasks, child) {
-          if (tasks.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.download_done, size: 80, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'Aucun téléchargement',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: tasks.length,
-            itemBuilder: (context, index) {
-              final task = tasks[index];
-              return _DownloadTaskTile(task: task);
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// Widget pour une seule tâche de téléchargement
-class _DownloadTaskTile extends StatelessWidget {
+class DownloadTaskTile extends StatelessWidget {
   final DownloadTask task;
 
-  const _DownloadTaskTile({required this.task});
+  const DownloadTaskTile({super.key, required this.task});
 
-  // --- ACTIONS ---
   Future<void> _handleTap(BuildContext context) async {
     final downloadManager = DownloadManagerService();
     switch (task.status) {
@@ -70,42 +21,27 @@ class _DownloadTaskTile extends StatelessWidget {
       // ACTION : Annuler (logique correcte)
         await downloadManager.cancelTask(task.id);
         break;
+
       case DownloadStatus.completed:
       // ACTION : Lire (logique correcte)
         _openFile(context);
         break;
 
+    // NOUVELLE LOGIQUE UNIFIÉE POUR LA REPRISE
       case DownloadStatus.failed:
       case DownloadStatus.canceled:
-      // 1. On informe l'utilisateur
-        if (context.mounted) {
-          debugPrint("🚀 Relance du téléchargement...");
-        }
+        debugPrint("🔄 Reprise du téléchargement pour la tâche : ${task.displayName}");
 
-        // 2. On supprime l'ancienne tâche échouée/annulée du manager
-        await downloadManager.removeTask(task.id);
+        // On ne supprime PAS la tâche.
+        // On demande simplement au manager de relancer CETTE tâche existante.
+        downloadManager.startDownloadTask(task);
 
-        // 3. On crée une NOUVELLE tâche avec les mêmes informations
-        final newTask = DownloadTask(
-          id: 'task_${DateTime.now().millisecondsSinceEpoch}', // ID unique pour la nouvelle tentative
-          url: task.url,
-          displayName: task.displayName,
-          finalPath: task.finalPath,
-          totalSize: 0, // La taille sera re-sondée par le manager
-          status: DownloadStatus.queued, // On la met en file d'attente
-          createdAt: DateTime.now(),
-        );
-
-        // 4. On ajoute et on lance la nouvelle tâche
-        await downloadManager.addTask(newTask);
-        downloadManager.startDownloadTask(newTask);
-
-        // 5. On affiche le dialogue moniteur pour la nouvelle tâche
+        // On affiche le moniteur pour que l'utilisateur voie la reprise.
         final rootContext = navigatorKey.currentContext;
         if (rootContext != null && rootContext.mounted) {
           showDialog(
               context: rootContext,
-              builder: (_) => TerminalDownloadDialog(taskId: newTask.id)
+              builder: (_) => TerminalDownloadDialog(taskId: task.id) // On utilise l'ID de la tâche existante
           );
         }
         break;
@@ -120,11 +56,56 @@ class _DownloadTaskTile extends StatelessWidget {
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Confirmation de suppression"),
-        content: Text("Voulez-vous vraiment supprimer le fichier \"${task.displayName}\" ? Cette action est irréversible."),
+        // 1. Un titre avec une icône d'avertissement claire
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 12),
+            Text("Supprimer le fichier ?"),
+          ],
+        ),
+
+        // 2. Un contenu structuré qui donne confiance
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // On met en évidence le nom du fichier concerné
+            Text(
+              task.displayName,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            // On ajoute la taille pour être sûr de ce qu'on supprime
+            InfoRow(
+                icon: Icons.straighten,
+                label: "Taille",
+                value: formatFileSize(task.totalSize)
+            ),
+            const Divider(height: 24),
+            // Un message d'avertissement plus explicite
+            const Text("Cette action est irréversible et le fichier sera définitivement effacé."),
+          ],
+        ),
+
+        // 3. Des boutons d'action sans ambiguïté
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("Annuler")),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("Supprimer", style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text("Annuler"),
+          ),
+          FilledButton.icon(
+            // On donne au bouton un style "destructif"
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white, // Pour que le texte et l'icône soient blancs
+            ),
+            icon: const Icon(Icons.delete_forever),
+            label: const Text("Supprimer"),
+            onPressed: () => Navigator.of(ctx).pop(true),
+          ),
         ],
       ),
     );
