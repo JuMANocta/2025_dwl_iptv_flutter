@@ -91,50 +91,97 @@ class DownloadManagerService {
 
   /// LANCE ET GÈRE UN TÉLÉCHARGEMENT EN ARRIÈRE-PLAN
   Future<void> startDownloadTask(DownloadTask task) async {
-    if (_cancelTokens.containsKey(task.id)) return; // Déjà en cours
+    // 0. Vérification si déjà actif
+    if (_cancelTokens.containsKey(task.id)) return;
 
     final dio = await NetworkUtils.buildDio(task.url);
     final cancelToken = CancelToken();
     _cancelTokens[task.id] = cancelToken;
 
+    final tempPath = '${task.finalPath}.downloading';
+    final tempFile = File(tempPath);
+
+    // 1. On détermine la quantité de données déjà téléchargées (Offset)
+    int resumedBytes = 0;
+    if (await tempFile.exists()) {
+      resumedBytes = await tempFile.length();
+    }
+
+    // Cas spécial : si le fichier est déjà complet mais n'a pas été renommé
+    if (task.totalSize > 0 && resumedBytes >= task.totalSize) {
+      debugPrint("✅ Fichier déjà complet sur le disque, finalisation immédiate: ${task.id}");
+      await File(tempPath).rename(task.finalPath);
+      await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
+      return;
+    }
+
     try {
       await updateTask(task.id, status: DownloadStatus.downloading);
 
+      debugPrint("🚀 Démarrage download | Offset: $resumedBytes bytes | URL: ${task.url}");
+
+      // 2. LE CŒUR DU FIX : On force l'en-tête 'Range' manuellement
       await dio.download(
         task.url,
-        '${task.finalPath}.downloading', // On télécharge dans un fichier temporaire
+        tempPath,
         cancelToken: cancelToken,
+        // CRITIQUE : Empêche Dio de supprimer le fichier partiel en cas d'erreur/cancel
         deleteOnError: false,
+        options: Options(
+          headers: {
+            // On dit explicitement au serveur : "Donne-moi la suite à partir de là"
+            'range': 'bytes=$resumedBytes-',
+          },
+        ),
         onReceiveProgress: (received, total) {
-          final currentTask = tasksNotifier.value.firstWhere((t) => t.id == task.id, orElse: () => DownloadTask.empty());
-          if (currentTask.status == DownloadStatus.canceled) {
-            // Si c'est le cas, on ne fait RIEN. On empêche la "race condition".
-            return;
-          }
-          final totalBytes = total > 0 ? total : task.totalSize;
-          if (totalBytes > 0) {
-            final progress = received / totalBytes;
+          final currentTask = tasksNotifier.value.firstWhere(
+                  (t) => t.id == task.id,
+              orElse: () => DownloadTask.empty()
+          );
+
+          if (currentTask.status == DownloadStatus.canceled) return;
+
+          // 3. Calcul de progression hybride
+          // received = octets de CETTE session
+          // resumedBytes = octets DÉJÀ présents
+          if (task.totalSize > 0) {
+            final totalProgress = (resumedBytes + received) / task.totalSize;
+
             updateTask(
               task.id,
-              progress: progress,
-              totalSize: totalBytes,
+              progress: totalProgress.clamp(0.0, 1.0),
               status: DownloadStatus.downloading,
             );
           }
         },
       );
 
-      await File('${task.finalPath}.downloading').rename(task.finalPath);
-      await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
+      // 4. Succès : Renommage final
+      if (await File(tempPath).exists()) {
+        await File(tempPath).rename(task.finalPath);
+        await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
+        debugPrint("💾 Fichier sauvegardé : ${task.finalPath}");
+      }
 
     } on DioException catch (e) {
-      if (e.type == DioExceptionType.cancel) {
-        debugPrint("Téléchargement ${task.id} stoppé par un token d'annulation.");
-      } else {
-        // On gère toujours les autres erreurs Dio.
+      // Gestion erreur 416 (Range Not Satisfiable) -> Fichier déjà fini en réalité
+      if (e.response?.statusCode == 416) {
+        debugPrint("⚠️ Range 416: Le serveur dit que le fichier est déjà complet.");
+        if (await File(tempPath).exists()) {
+          await File(tempPath).rename(task.finalPath);
+          await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
+        }
+      }
+      else if (e.type == DioExceptionType.cancel) {
+        debugPrint("🛑 Téléchargement ${task.id} annulé par l'utilisateur.");
+        // On laisse le statut en 'paused' ou 'canceled' selon ta logique updateTask
+      }
+      else {
+        debugPrint("💀 Erreur Dio: ${e.message}");
         await updateTask(task.id, status: DownloadStatus.failed);
       }
     } catch (e) {
+      debugPrint("💀 Erreur Générale: $e");
       await updateTask(task.id, status: DownloadStatus.failed);
     } finally {
       _cancelTokens.remove(task.id);
