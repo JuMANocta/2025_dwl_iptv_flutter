@@ -35,8 +35,20 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   void initState() {
     super.initState();
     _downloadManager.tasksNotifier.addListener(_onTaskUpdated);
-    final initialTask = _downloadManager.tasksNotifier.value.firstWhere((t) => t.id == widget.taskId, orElse: () => DownloadTask.empty());
-    if (initialTask.id.isNotEmpty) _updateLogs(initialTask);
+    // On trouve la tâche initiale pour pré-remplir les logs ET l'état de la progression.
+    final initialTask = _downloadManager.tasksNotifier.value.firstWhere(
+          (t) => t.id == widget.taskId,
+      orElse: () => DownloadTask.empty(),
+    );
+
+    if (initialTask.id.isNotEmpty) {
+      // C'est la ligne la plus importante : on initialise _lastReceivedBytes
+      // avec la quantité de données DÉJÀ téléchargées.
+      if (initialTask.totalSize > 0) {
+        _lastReceivedBytes = (initialTask.progress * initialTask.totalSize).toInt();
+      }
+      _updateLogs(initialTask);
+    }
   }
 
   void _onTaskUpdated() {
