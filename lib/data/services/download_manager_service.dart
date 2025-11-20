@@ -22,6 +22,9 @@ class DownloadManagerService {
   static const _storageKey = 'download_tasks_list';
   late SharedPreferences _prefs;
 
+  // On garde une trace des CancelToken pour pouvoir annuler les tâches.
+  final Map<String, CancelToken> _cancelTokens = {};
+
   /// Doit être appelé une seule fois au démarrage de l'application (dans main.dart).
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -86,9 +89,6 @@ class DownloadManagerService {
     }
   }
 
-  // On garde une trace des CancelToken pour pouvoir annuler les tâches.
-  final Map<String, CancelToken> _cancelTokens = {};
-
   /// LANCE ET GÈRE UN TÉLÉCHARGEMENT EN ARRIÈRE-PLAN
   Future<void> startDownloadTask(DownloadTask task) async {
     if (_cancelTokens.containsKey(task.id)) return; // Déjà en cours
@@ -98,22 +98,17 @@ class DownloadManagerService {
     _cancelTokens[task.id] = cancelToken;
 
     try {
-      // Met à jour le statut pour que l'UI affiche "En cours" et réinitialise la progression visuellement.
-      // C'est la clé pour donner un feedback immédiat à l'utilisateur lors d'une reprise.
       await updateTask(task.id, status: DownloadStatus.downloading, progress: 0.0);
 
       await dio.download(
         task.url,
         '${task.finalPath}.downloading', // On télécharge dans un fichier temporaire
         cancelToken: cancelToken,
-        // MODIFICATION CRUCIALE : On ne supprime PAS le fichier partiel en cas d'erreur.
-        // C'est ce qui permet une VRAIE reprise au prochain essai.
         deleteOnError: false,
         onReceiveProgress: (received, total) {
           final totalBytes = total > 0 ? total : task.totalSize;
           if (totalBytes > 0) {
             final progress = received / totalBytes;
-            // Mise à jour en temps réel
             updateTask(
               task.id,
               progress: progress,
@@ -124,30 +119,33 @@ class DownloadManagerService {
         },
       );
 
-      // Renomme le fichier temporaire en fichier final
       await File('${task.finalPath}.downloading').rename(task.finalPath);
       await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
 
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) {
-        await updateTask(task.id, status: DownloadStatus.canceled);
+        debugPrint("Téléchargement ${task.id} stoppé par un token d'annulation.");
       } else {
+        // On gère toujours les autres erreurs Dio.
         await updateTask(task.id, status: DownloadStatus.failed);
       }
     } catch (e) {
       await updateTask(task.id, status: DownloadStatus.failed);
     } finally {
-      // Nettoyage impératif pour permettre de relancer la tâche
       _cancelTokens.remove(task.id);
     }
   }
 
   /// Annule un téléchargement en cours.
   Future<void> cancelTask(String taskId) async {
+    // On annule le token Dio s'il existe, pour stopper le processus réseau.
     if (_cancelTokens.containsKey(taskId)) {
       _cancelTokens[taskId]?.cancel();
-      // Le bloc `catch` dans `startDownloadTask` mettra à jour le statut.
+      // Le `finally` dans `startDownloadTask` s'occupera de retirer le token.
     }
+    // On met à jour l'état IMMÉDIATEMENT et EXPLICITEMENT.
+    // Cela garantit que l'UI est notifiée, quoi qu'il arrive.
+    await updateTask(taskId, status: DownloadStatus.canceled);
   }
 
   /// Met à jour une tâche existante et notifie l'UI.

@@ -41,7 +41,10 @@ class DownloadTaskTile extends StatelessWidget {
         if (rootContext != null && rootContext.mounted) {
           showDialog(
               context: rootContext,
-              builder: (_) => TerminalDownloadDialog(taskId: task.id) // On utilise l'ID de la tâche existante
+              builder: (_) => TerminalDownloadDialog(
+                taskId: task.id,
+                isResume: true,
+              ) // On utilise l'ID de la tâche existante + l'état
           );
         }
         break;

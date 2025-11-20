@@ -72,7 +72,10 @@ Future<void> verifierEtTelecharger({
         if (rootContext != null && rootContext.mounted) {
           showDialog(
               context: rootContext,
-              builder: (_) => TerminalDownloadDialog(taskId: existingTask.id));
+              builder: (_) => TerminalDownloadDialog(
+                taskId: existingTask.id,
+                isResume: true,
+              ));
         }
         return;
     }

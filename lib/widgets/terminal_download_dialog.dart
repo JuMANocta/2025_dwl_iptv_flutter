@@ -6,7 +6,14 @@ import '../core/utils/formatters.dart';
 
 class TerminalDownloadDialog extends StatefulWidget {
   final String taskId;
-  const TerminalDownloadDialog({super.key, required this.taskId});
+  final bool isResume;
+
+  const TerminalDownloadDialog({
+    super.key,
+    required this.taskId,
+    this.isResume = false,
+  });
+
   @override
   State<TerminalDownloadDialog> createState() => _TerminalDownloadDialogState();
 }
@@ -55,8 +62,24 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
     if (_lastTaskState == task) return;
 
     if (_logs.isEmpty) {
-      _logs.add({'message': "🚀 Lancement du téléchargement :\n🎞️ ${task.displayName}", 'type': 'log'});
-      if (task.totalSize > 0) _logs.add({'message': "📦 Taille du fichier : ${formatFileSize(task.totalSize)}", 'type': 'log'});
+      if (widget.isResume) {
+        _logs.add({
+          'message': "🔄 Reprise du téléchargement :\n🎞️ ${task.displayName}",
+          'type': 'log'
+        });
+      } else {
+        _logs.add({
+          'message': "🚀 Lancement du téléchargement :\n🎞️ ${task.displayName}",
+          'type': 'log'
+        });
+      }
+
+      if (task.totalSize > 0) {
+        _logs.add({
+          'message': "📦 Taille du fichier : ${formatFileSize(task.totalSize)}",
+          'type': 'log'
+        });
+      }
     }
 
     if (task.status == DownloadStatus.downloading) {
@@ -105,10 +128,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
     } else if (task.status == DownloadStatus.canceled && _lastTaskState?.status != DownloadStatus.canceled) {
       _logs.add({'message': "\nℹ️ ABORT: Download cancelled by user", 'type': 'error'});
     }
-
-    if (!_isDownloadComplete && !_hasFatalError) {
-      setState(() => _lastTaskState = task);
-    }
+    setState(() => _lastTaskState = task);
   }
 
   @override
