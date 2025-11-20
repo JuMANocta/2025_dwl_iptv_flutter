@@ -107,26 +107,26 @@ class DownloadManagerService {
       resumedBytes = await tempFile.length();
     }
 
-    // Cas spécial : si le fichier est déjà complet mais n'a pas été renommé
+    // Cas spécial de sécurité : si le fichier semble déjà complet localement.
+    // Cela évite une requête inutile qui pourrait résulter en une erreur 416.
     if (task.totalSize > 0 && resumedBytes >= task.totalSize) {
       debugPrint("✅ Fichier déjà complet sur le disque, finalisation immédiate: ${task.id}");
       await File(tempPath).rename(task.finalPath);
       await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
+      _cancelTokens.remove(task.id);
       return;
     }
 
     try {
       await updateTask(task.id, status: DownloadStatus.downloading);
-
       debugPrint("🚀 Démarrage download | Offset: $resumedBytes bytes | URL: ${task.url}");
 
-      // 2. LE CŒUR DU FIX : On force l'en-tête 'Range' manuellement
+      // 2. On force l'en-tête 'Range' manuellement
       await dio.download(
         task.url,
         tempPath,
         cancelToken: cancelToken,
-        // CRITIQUE : Empêche Dio de supprimer le fichier partiel en cas d'erreur/cancel
-        deleteOnError: false,
+        deleteOnError: false, // CRITIQUE : Empêche Dio de supprimer le fichier partiel en cas d'erreur/cancel
         options: Options(
           headers: {
             // On dit explicitement au serveur : "Donne-moi la suite à partir de là"
@@ -135,21 +135,21 @@ class DownloadManagerService {
         ),
         onReceiveProgress: (received, total) {
           final currentTask = tasksNotifier.value.firstWhere(
-                  (t) => t.id == task.id,
-              orElse: () => DownloadTask.empty()
+            (t) => t.id == task.id,
+            orElse: () => DownloadTask.empty()
           );
 
           if (currentTask.status == DownloadStatus.canceled) return;
 
           // 3. Calcul de progression hybride
-          // received = octets de CETTE session
-          // resumedBytes = octets DÉJÀ présents
-          if (task.totalSize > 0) {
-            final totalProgress = (resumedBytes + received) / task.totalSize;
-
+          final definitiveTotal = total > 0 ? (resumedBytes + total) : task.totalSize;
+          if (definitiveTotal > 0) {
+            final actualReceived = resumedBytes + received;
+            final progress = (actualReceived / definitiveTotal).clamp(0.0, 1.0);
             updateTask(
               task.id,
-              progress: totalProgress.clamp(0.0, 1.0),
+              progress: progress,
+              totalSize: definitiveTotal, // On met à jour la taille totale si on a une meilleure info
               status: DownloadStatus.downloading,
             );
           }
