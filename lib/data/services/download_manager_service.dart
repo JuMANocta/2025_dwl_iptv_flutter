@@ -98,7 +98,7 @@ class DownloadManagerService {
     _cancelTokens[task.id] = cancelToken;
 
     try {
-      await updateTask(task.id, status: DownloadStatus.downloading, progress: 0.0);
+      await updateTask(task.id, status: DownloadStatus.downloading);
 
       await dio.download(
         task.url,
@@ -106,6 +106,11 @@ class DownloadManagerService {
         cancelToken: cancelToken,
         deleteOnError: false,
         onReceiveProgress: (received, total) {
+          final currentTask = tasksNotifier.value.firstWhere((t) => t.id == task.id, orElse: () => DownloadTask.empty());
+          if (currentTask.status == DownloadStatus.canceled) {
+            // Si c'est le cas, on ne fait RIEN. On empêche la "race condition".
+            return;
+          }
           final totalBytes = total > 0 ? total : task.totalSize;
           if (totalBytes > 0) {
             final progress = received / totalBytes;
