@@ -8,6 +8,7 @@ enum DownloadStatus {
   failed,      // Échec
   canceled,    // Annulé par l'utilisateur
   paused,      // En pause (pour une future évolution)
+  finalizing,
 }
 
 @immutable
@@ -20,7 +21,6 @@ class DownloadTask {
   final DownloadStatus status; // L'état actuel du téléchargement
   final double progress;       // La progression de 0.0 à 1.0
   final int totalSize;         // La taille totale du fichier en octets
-
   final DateTime createdAt; // La date de création de la tâche
   final DateTime? updatedAt;  // La date de la dernière mise à jour de l'état
 

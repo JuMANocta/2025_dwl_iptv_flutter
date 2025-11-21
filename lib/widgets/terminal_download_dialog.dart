@@ -127,6 +127,9 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       } else {
         _logs.add({"message": formatted, "type": "stats"});
       }
+    } else if (task.status == DownloadStatus.finalizing && _lastTaskState?.status != DownloadStatus.finalizing) {
+      _logs.add({
+        'message': "\n⚙️ Finalizing...\nMoving file to public storage (Movies/AetherStream). Please wait.", 'type': 'log'});
     } else if (task.status == DownloadStatus.completed && _lastTaskState?.status != DownloadStatus.completed) {
       _logs.add({'message': "\n🟢 SUCCESS: Download complete!", 'type': 'success'});
       setState(() {
@@ -138,7 +141,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
         _hasFatalError = true;
       });
     } else if (task.status == DownloadStatus.canceled && _lastTaskState?.status != DownloadStatus.canceled) {
-      _logs.add({'message': "\nℹ️ ABORT: Download cancelled by user", 'type': 'error'});
+      _logs.add({'message': "\nℹ️ ABORT: Download cancelled by user", 'type': 'log'});
     }
     setState(() => _lastTaskState = task);
   }

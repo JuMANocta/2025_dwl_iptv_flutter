@@ -79,6 +79,9 @@ Future<void> verifierEtTelecharger({
               ));
         }
         return;
+      case DownloadStatus.finalizing:
+        debugPrint("✅ Stream terminé. Finalisation...");
+        return;
     }
   }
 

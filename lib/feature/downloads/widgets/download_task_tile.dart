@@ -145,7 +145,11 @@ class DownloadTaskTile extends StatelessWidget {
   Widget _getLeadingIcon() {
     switch (task.status) {
       case DownloadStatus.downloading:
-        return SizedBox(width: 24, height: 24, child: CircularProgressIndicator(value: task.progress > 0 ? task.progress : null, strokeWidth: 3));
+        return SizedBox(width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+                value: task.progress > 0 ? task.progress : null,
+                strokeWidth: 3));
       case DownloadStatus.completed:
         return const Icon(Icons.check_circle, color: Colors.green);
       case DownloadStatus.failed:
@@ -156,6 +160,8 @@ class DownloadTaskTile extends StatelessWidget {
         return const Icon(Icons.pause_circle, color: Colors.blueGrey);
       case DownloadStatus.queued:
         return const Icon(Icons.hourglass_top, color: Colors.grey);
+      case DownloadStatus.finalizing:
+        return const Icon(Icons.check_circle, color: Colors.green);
     }
   }
 

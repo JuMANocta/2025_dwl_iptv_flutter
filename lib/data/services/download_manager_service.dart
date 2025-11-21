@@ -182,6 +182,7 @@ class DownloadManagerService {
           // `onDone` est appelé quand le flux est terminé (téléchargement réussi)
           await raf.close(); // On ferme le fichier proprement
           debugPrint("✅ Téléchargement vers le cache terminé. Déplacement vers le stockage public...");
+          await updateTask(task.id, status: DownloadStatus.finalizing);
 
           final bool success = await _moveFileToMediaStore(
             tempPath: task.tempPath,
