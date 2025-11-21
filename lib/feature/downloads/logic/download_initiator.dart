@@ -215,9 +215,9 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
 
   // 5.OBTENIR LE CHEMIN DE SAUVEGARDE SÉCURISÉ
   final storageService = StorageService();
-  final String? saveDirectory = await storageService.getAppMoviesPath();
+  final String? finalSaveDirectory = await storageService.getAppMoviesPath();
 
-  if (saveDirectory == null) {
+  if (finalSaveDirectory == null) {
     // Si on n'a pas pu obtenir le chemin (permission refusée), on notifie et on arrête.
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -228,12 +228,14 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   }
 
   // 6. CRÉATION DE LA TÂCHE AVEC LE BON CHEMIN
+  final String tempDirectory = await _getTempDirectory();
   String fileName = sanitizeFilename(nom);
   final fileExt = extension.isNotEmpty ? extension.toLowerCase() : 'mp4';
   if (_ext(fileName).isEmpty) fileName = '$fileName.$fileExt';
 
   // On construit le chemin final en utilisant le dossier obtenu par notre service.
-  final finalPath = "$saveDirectory/$fileName";
+  final finalPath = "$finalSaveDirectory/$fileName";
+  final tempPath = "$tempDirectory/$fileName"; // Chemin dans le cache privé
   final taskId = 'task_${DateTime.now().millisecondsSinceEpoch}';
 
   final newTask = DownloadTask(
@@ -241,6 +243,7 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
     url: url,
     displayName: nom,
     finalPath: finalPath,
+    tempPath: tempPath,
     totalSize: totalSize ?? 0,
     status: DownloadStatus.queued,
     createdAt: DateTime.now(),

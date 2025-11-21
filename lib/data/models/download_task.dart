@@ -15,8 +15,8 @@ class DownloadTask {
   final String id;          // Un identifiant unique, ex: un timestamp ou un UUID
   final String url;         // L'URL source du fichier
   final String displayName; // Le nom du fichier choisi par l'utilisateur
-  final String finalPath;   // Le chemin final où le fichier est (ou sera) sauvegardé
-
+  final String finalPath;   // ex: /storage/emulated/0/Movies/AetherStream/film.mp4 Le chemin final où le fichier est (ou sera) sauvegardé
+  final String tempPath;    // ex: /data/user/0/com.javu.aetherstream/cache/dl_tmp/task_123.mp4
   final DownloadStatus status; // L'état actuel du téléchargement
   final double progress;       // La progression de 0.0 à 1.0
   final int totalSize;         // La taille totale du fichier en octets
@@ -29,6 +29,7 @@ class DownloadTask {
     required this.url,
     required this.displayName,
     required this.finalPath,
+    required this.tempPath,
     this.status = DownloadStatus.queued,
     this.progress = 0.0,
     this.totalSize = 0,
@@ -40,21 +41,26 @@ class DownloadTask {
   DownloadTask copyWith({
     String? id,
     String? url,
-    String? displayName,String? finalPath,
+    String? displayName,
+    String? finalPath,
+    String? tempPath,
     DownloadStatus? status,
     double? progress,
     int? totalSize,
     DateTime? createdAt,
+
   }) {
     return DownloadTask(
       id: id ?? this.id,
       url: url ?? this.url,
       displayName: displayName ?? this.displayName,
       finalPath: finalPath ?? this.finalPath,
+      tempPath: tempPath ?? this.tempPath,
       status: status ?? this.status,
       progress: progress ?? this.progress,
       totalSize: totalSize ?? this.totalSize,
       createdAt: createdAt ?? this.createdAt,
+
     );
   }
 
@@ -66,6 +72,7 @@ class DownloadTask {
       url: json['url'] as String,
       displayName: json['displayName'] as String,
       finalPath: json['finalPath'] as String,
+      tempPath: json['tempPath'] as String? ?? '',
       status: DownloadStatus.values[json['status'] as int],
       progress: (json['progress'] as num).toDouble(),
       totalSize: json['totalSize'] as int,
@@ -82,6 +89,7 @@ class DownloadTask {
       url: '',
       displayName: '',
       finalPath: '',
+      tempPath: '',
       createdAt: DateTime.fromMicrosecondsSinceEpoch(0),
       status: DownloadStatus.queued, // Un statut par défaut
       progress: 0.0,
@@ -95,6 +103,7 @@ class DownloadTask {
       'url': url,
       'displayName': displayName,
       'finalPath': finalPath,
+      'tempPath': tempPath,
       'status': status.index, // On stocke l'index de l'enum, c'est plus robuste
       'progress': progress,
       'totalSize': totalSize,
