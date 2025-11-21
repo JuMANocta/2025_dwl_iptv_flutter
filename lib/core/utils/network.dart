@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
-import 'secure_storage_service.dart';
+import 'secure_storage_compte.dart';
 import '../../data/services/stream_account_service.dart';
 
 

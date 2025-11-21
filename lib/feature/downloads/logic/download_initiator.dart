@@ -9,6 +9,7 @@ import '../../../data/models/download_task.dart';
 import '../../../data/services/download_manager_service.dart';
 import '../../../core/utils/network.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/storage_file.dart';
 import '../../../widgets/terminal_download_dialog.dart';
 import '../../../widgets/info_row.dart';
 
@@ -206,35 +207,50 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
 
   // 4. Si l'utilisateur annule, on arrête tout.
   if (confirm != true) {
-    // On peut optionnellement notifier l'utilisateur que l'action a été annulée.
     if (context.mounted) {
       debugPrint("Téléchargement annulé.");
     }
     return; // Arrêt complet de la fonction
   }
 
-  // 5. CRÉATION DE LA TÂCHE
-  String fileName = sanitizeFilename(nom);
-  if (_ext(fileName).isEmpty) fileName = '$fileName.${extension.isNotEmpty ? extension : 'mp4'}';
+  // 5.OBTENIR LE CHEMIN DE SAUVEGARDE SÉCURISÉ
+  final storageService = StorageService();
+  final String? saveDirectory = await storageService.getAppMoviesPath();
 
-  final savePath = "${await _getTempDirectory()}/$fileName";
+  if (saveDirectory == null) {
+    // Si on n'a pas pu obtenir le chemin (permission refusée), on notifie et on arrête.
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Permission refusée. Le téléchargement ne peut pas commencer.")),
+      );
+    }
+    return;
+  }
+
+  // 6. CRÉATION DE LA TÂCHE AVEC LE BON CHEMIN
+  String fileName = sanitizeFilename(nom);
+  final fileExt = extension.isNotEmpty ? extension.toLowerCase() : 'mp4';
+  if (_ext(fileName).isEmpty) fileName = '$fileName.$fileExt';
+
+  // On construit le chemin final en utilisant le dossier obtenu par notre service.
+  final finalPath = "$saveDirectory/$fileName";
   final taskId = 'task_${DateTime.now().millisecondsSinceEpoch}';
 
   final newTask = DownloadTask(
     id: taskId,
     url: url,
     displayName: nom,
-    finalPath: savePath,
+    finalPath: finalPath,
     totalSize: totalSize ?? 0,
     status: DownloadStatus.queued,
     createdAt: DateTime.now(),
   );
 
-  // 6. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN
+  // 7. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN
   await downloadManager.addTask(newTask);
   downloadManager.startDownloadTask(newTask);
 
-  // 7. AFFICHAGE DU DIALOGUE "MONITEUR"
+  // 8. AFFICHAGE DU DIALOGUE "MONITEUR"
   final rootContext = navigatorKey.currentContext;
   if (rootContext == null || !rootContext.mounted) return;
 

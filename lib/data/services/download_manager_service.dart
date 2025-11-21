@@ -1,5 +1,6 @@
-import 'dart:convert';
 import 'dart:io';
+import 'dart:convert';
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -54,6 +55,7 @@ class DownloadManagerService {
 
     // On crée une nouvelle liste avec les statuts mis à jour
     final reconciledTasks = tasks.map((task) {
+      debugPrint("🔍 [DEBUG-PATH] Tâche '${task.displayName}' -> Chemin: ${task.finalPath}");
       if (task.status == DownloadStatus.downloading || task.status == DownloadStatus.queued) {
         hasChanged = true;
         // On considère la tâche comme échouée pour permettre à l'utilisateur de la relancer.
@@ -89,9 +91,9 @@ class DownloadManagerService {
     }
   }
 
-  /// LANCE ET GÈRE UN TÉLÉCHARGEMENT EN ARRIÈRE-PLAN
+  /// LANCE ET GÈRE UN TÉLÉCHARGEMENT AVEC REPRISE ROBUSTE (FLUX MANUEL)
   Future<void> startDownloadTask(DownloadTask task) async {
-    // 0. Vérification si déjà actif
+    // 0. Sécurité anti-doublon
     if (_cancelTokens.containsKey(task.id)) return;
 
     final dio = await NetworkUtils.buildDio(task.url);
@@ -101,87 +103,123 @@ class DownloadManagerService {
     final tempPath = '${task.finalPath}.downloading';
     final tempFile = File(tempPath);
 
-    // 1. On détermine la quantité de données déjà téléchargées (Offset)
+    // 1. Calcul de l'Offset (ce qu'on a déjà sur le disque)
     int resumedBytes = 0;
     if (await tempFile.exists()) {
-      resumedBytes = await tempFile.length();
+      try {
+        resumedBytes = await tempFile.length();
+      } catch (e) {
+        debugPrint("⚠️ Impossible de lire la taille du fichier partiel. Reprise à zéro. Erreur: $e");
+        resumedBytes = 0;
+      }
     }
 
-    // Cas spécial de sécurité : si le fichier semble déjà complet localement.
-    // Cela évite une requête inutile qui pourrait résulter en une erreur 416.
+    // Cas spécial de sécurité : Fichier déjà complet localement
     if (task.totalSize > 0 && resumedBytes >= task.totalSize) {
-      debugPrint("✅ Fichier déjà complet sur le disque, finalisation immédiate: ${task.id}");
-      await File(tempPath).rename(task.finalPath);
+      debugPrint("✅ Fichier déjà complet, finalisation immédiate: ${task.id}");
+      if (await tempFile.exists()) {
+        await tempFile.rename(task.finalPath);
+      }
       await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
       _cancelTokens.remove(task.id);
       return;
     }
 
+    // Utilisation d'un Completer pour gérer la fin du stream
+    final completer = Completer<void>();
+
     try {
       await updateTask(task.id, status: DownloadStatus.downloading);
-      debugPrint("🚀 Démarrage download | Offset: $resumedBytes bytes | URL: ${task.url}");
+      debugPrint("🚀 Démarrage | Offset: $resumedBytes bytes | URL: ${task.url}");
 
-      // 2. On force l'en-tête 'Range' manuellement
-      await dio.download(
+      // 2. Requête en mode STREAM pour un contrôle total
+      final response = await dio.get<ResponseBody>(
         task.url,
-        tempPath,
         cancelToken: cancelToken,
-        deleteOnError: false, // CRITIQUE : Empêche Dio de supprimer le fichier partiel en cas d'erreur/cancel
         options: Options(
+          responseType: ResponseType.stream, // TRÈS IMPORTANT: On reçoit un flux de données
           headers: {
-            // On dit explicitement au serveur : "Donne-moi la suite à partir de là"
-            'range': 'bytes=$resumedBytes-',
+            'range': 'bytes=$resumedBytes-', // Instruction de reprise explicite
           },
         ),
-        onReceiveProgress: (received, total) {
-          final currentTask = tasksNotifier.value.firstWhere(
-            (t) => t.id == task.id,
-            orElse: () => DownloadTask.empty()
-          );
+      );
 
-          if (currentTask.status == DownloadStatus.canceled) return;
+      // 3. Écriture manuelle et sécurisée du flux dans le fichier
+      // On ouvre le fichier en mode APPEND (ajout à la fin). C'est la clé pour éviter la corruption.
+      final raf = await tempFile.open(mode: FileMode.append);
+      int receivedThisSession = 0;
 
-          // 3. Calcul de progression hybride
-          final definitiveTotal = total > 0 ? (resumedBytes + total) : task.totalSize;
+      // On détermine la taille totale du fichier en se basant sur la réponse du serveur.
+      final contentLengthHeader = response.headers.value(Headers.contentLengthHeader);
+      final segmentSize = int.tryParse(contentLengthHeader ?? '0') ?? 0;
+      final definitiveTotal = segmentSize > 0 ? (resumedBytes + segmentSize) : task.totalSize;
+
+      // Le `listen` s'abonne au flux de données. Il reçoit les données par segments (chunks).
+      final streamSubscription = response.data!.stream.listen(
+            (chunk) {
+          // Écrit le segment reçu à la fin du fichier.
+          raf.writeFromSync(chunk);
+          receivedThisSession += chunk.length;
+
+          final actualReceived = resumedBytes + receivedThisSession;
           if (definitiveTotal > 0) {
-            final actualReceived = resumedBytes + received;
             final progress = (actualReceived / definitiveTotal).clamp(0.0, 1.0);
             updateTask(
               task.id,
               progress: progress,
-              totalSize: definitiveTotal, // On met à jour la taille totale si on a une meilleure info
+              totalSize: definitiveTotal,
               status: DownloadStatus.downloading,
             );
           }
         },
+        onDone: () async {
+          // `onDone` est appelé quand le flux est terminé (téléchargement réussi)
+          await raf.close(); // On ferme le fichier proprement
+
+          if (await File(tempPath).exists()) {
+            await File(tempPath).rename(task.finalPath);
+            await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
+            debugPrint("💾 Fichier finalisé avec succès : ${task.finalPath}");
+          } else {
+            debugPrint("❌ Erreur de finalisation: Le fichier temporaire n'a pas été trouvé après le téléchargement.");
+            await updateTask(task.id, status: DownloadStatus.failed);
+          }
+          if (!completer.isCompleted) completer.complete();
+        },
+        onError: (e) async {
+          // Gestion des erreurs pendant le streaming
+          await raf.close();
+          debugPrint("💀 Erreur de flux : $e");
+          if (e is DioException && e.type == DioExceptionType.cancel) {
+            debugPrint("🛑 Flux annulé par l'utilisateur : ${task.id}");
+          } else {
+            await updateTask(task.id, status: DownloadStatus.failed);
+          }
+          if (!completer.isCompleted) completer.completeError(e);
+        },
+        cancelOnError: true, // Stopper l'écoute en cas d'erreur
       );
 
-      // 4. Succès : Renommage final
-      if (await File(tempPath).exists()) {
-        await File(tempPath).rename(task.finalPath);
-        await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
-        debugPrint("💾 Fichier sauvegardé : ${task.finalPath}");
-      }
+      // Assurer que l'annulation externe arrête bien le stream
+      cancelToken.whenCancel.then((_) {
+        streamSubscription.cancel();
+      });
+
+      await completer.future; // Attend que le stream soit terminé (onDone ou onError)
 
     } on DioException catch (e) {
-      // Gestion erreur 416 (Range Not Satisfiable) -> Fichier déjà fini en réalité
       if (e.response?.statusCode == 416) {
-        debugPrint("⚠️ Range 416: Le serveur dit que le fichier est déjà complet.");
-        if (await File(tempPath).exists()) {
-          await File(tempPath).rename(task.finalPath);
+        debugPrint("⚠️ Erreur 416 (Range) -> Fichier considéré comme déjà complet.");
+        if (await tempFile.exists()) {
+          await tempFile.rename(task.finalPath);
           await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
         }
-      }
-      else if (e.type == DioExceptionType.cancel) {
-        debugPrint("🛑 Téléchargement ${task.id} annulé par l'utilisateur.");
-        // On laisse le statut en 'paused' ou 'canceled' selon ta logique updateTask
-      }
-      else {
-        debugPrint("💀 Erreur Dio: ${e.message}");
+      } else if (e.type != DioExceptionType.cancel) {
+        debugPrint("💀 Erreur Dio initiale: ${e.message}");
         await updateTask(task.id, status: DownloadStatus.failed);
       }
     } catch (e) {
-      debugPrint("💀 Erreur Générale: $e");
+      debugPrint("💀 Erreur Système non gérée : $e");
       await updateTask(task.id, status: DownloadStatus.failed);
     } finally {
       _cancelTokens.remove(task.id);
@@ -193,6 +231,7 @@ class DownloadManagerService {
     // On annule le token Dio s'il existe, pour stopper le processus réseau.
     if (_cancelTokens.containsKey(taskId)) {
       _cancelTokens[taskId]?.cancel();
+      _cancelTokens.remove(taskId); // Libération du token pour ne pas boucler lors d'un rechargement
       // Le `finally` dans `startDownloadTask` s'occupera de retirer le token.
     }
     // On met à jour l'état IMMÉDIATEMENT et EXPLICITEMENT.

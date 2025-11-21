@@ -14,6 +14,11 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
 
+
+    <!-- Pour Android 13 (API 33) et supérieur.
+    Cette permission est requise pour accéder aux vidéos dans le stockage partagé. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
     <!-- Téléchargements longs / foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 

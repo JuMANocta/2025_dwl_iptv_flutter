@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/stream_account.dart';
-import '../../core/utils/secure_storage_service.dart';
+import '../../core/utils/secure_storage_compte.dart';
 
 /// Service de gestion **multi-comptes**
 /// Stockage : `flutter_secure_storage` (mêmes fondations que ton SecureStorageService)
