@@ -9,6 +9,7 @@ import '../../data/services/playlist_service.dart';
 import '../player/player_page.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../downloads/logic/download_initiator.dart';
+import '../../l10n/app_localizations.dart';
 
 //############################################################################
 // WIDGET "CONTENEUR" PRINCIPAL (RecherchePage)
@@ -57,13 +58,14 @@ class _RecherchePageState extends State<RecherchePage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentAccountLabel ?? "AetherStream"),
+        title: Text(_currentAccountLabel ?? l10n.searchPageDefaultTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.download),
-            tooltip: 'Voir les téléchargements',
+            tooltip: l10n.searchPageDownloadsTooltip,
             onPressed: () {
               Navigator.push(
                 context,
@@ -72,12 +74,12 @@ class _RecherchePageState extends State<RecherchePage> {
             },
           ),
           IconButton(
-            tooltip: 'Recharger la playlist',
+            tooltip: l10n.searchPageReloadTooltip,
             icon: const Icon(Icons.refresh),
             onPressed: _forceReload,
           ),
           IconButton(
-            tooltip: 'Comptes et Paramètres',
+            tooltip: l10n.searchPageAccountsTooltip,
             icon: const Icon(Icons.settings),
             onPressed: _openSettings,
           ),
@@ -98,11 +100,11 @@ class _RecherchePageState extends State<RecherchePage> {
                   children: [
                     const Icon(Icons.error_outline, color: Colors.red, size: 48),
                     const SizedBox(height: 16),
-                    const Text("Impossible de charger la playlist", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18), textAlign: TextAlign.center),
+                    Text(l10n.searchPageLoadingError, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18), textAlign: TextAlign.center),
                     const SizedBox(height: 8),
                     Text(snapshot.error.toString(), textAlign: TextAlign.center),
                     const SizedBox(height: 24),
-                    FilledButton.icon(onPressed: _forceReload, icon: const Icon(Icons.refresh), label: const Text("Réessayer")),
+                    FilledButton.icon(onPressed: _forceReload, icon: const Icon(Icons.refresh), label: Text(l10n.searchPageRetryButton)),
                   ],
                 ),
               ),
@@ -269,7 +271,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       return true; // Signale au FutureBuilder que tout est prêt.
 
     } catch (e) {
-      debugPrint("Erreur critique dans _loadAndProcessM3U: $e");
+      debugPrint("❌ Erreur critique dans _loadAndProcessM3U: $e");
       rethrow; // Propage l'erreur au FutureBuilder pour qu'il l'affiche.
     }
   }
@@ -357,6 +359,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return FutureBuilder<bool>(
       future: _initFuture,
       builder: (context, snapshot) {
@@ -370,7 +373,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Text("Erreur de traitement de la playlist:\n${snapshot.error}", textAlign: TextAlign.center, style: TextStyle(color: Colors.red.shade400)),
+              child: Text("${l10n.searchPageProcessingError}\n${snapshot.error}", textAlign: TextAlign.center, style: TextStyle(color: Colors.red.shade400)),
             ),
           );
         }
@@ -383,7 +386,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                 title: TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Rechercher...',
+                    hintText: l10n.searchFieldHint,
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => _searchController.clear()) : null,
                   ),
@@ -399,11 +402,11 @@ class _RechercheM3UState extends State<RechercheM3U> {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        FilterChip(label: const Text('Films'), selected: _showFilms, onSelected: (s) => setState(() { _showFilms = s; _filterAndGroupResults(); })),
+                        FilterChip(label: Text(l10n.searchFilterFilms), selected: _showFilms, onSelected: (s) => setState(() { _showFilms = s; _filterAndGroupResults(); })),
                         const SizedBox(width: 8),
-                        FilterChip(label: const Text('Séries'), selected: _showSeries, onSelected: (s) => setState(() { _showSeries = s; _filterAndGroupResults(); })),
+                        FilterChip(label: Text(l10n.searchFilterSeries), selected: _showSeries, onSelected: (s) => setState(() { _showSeries = s; _filterAndGroupResults(); })),
                         const SizedBox(width: 8),
-                        FilterChip(label: const Text('TV'), selected: _showTv, onSelected: (s) => setState(() { _showTv = s; _filterAndGroupResults(); })),
+                        FilterChip(label: Text(l10n.searchFilterTv), selected: _showTv, onSelected: (s) => setState(() { _showTv = s; _filterAndGroupResults(); })),
                       ],
                     ),
                   ),
@@ -412,7 +415,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
             ];
           },
           body: _flatList.isEmpty
-              ? Center(child: Text(_searchQuery.isNotEmpty ? "Aucun résultat trouvé." : "Aucun contenu à afficher."))
+              ? Center(child: Text(_searchQuery.isNotEmpty ? l10n.searchNoResults : l10n.searchNoContent))
               : ScrollablePositionedList.builder(
             itemCount: _flatList.length,
               itemBuilder: (context, index) {
@@ -477,12 +480,16 @@ class _RechercheM3UState extends State<RechercheM3U> {
     final totalEpisodes = saisons.values.fold<int>(0, (prev, epList) => prev + epList.length);
     final firstEpisode = saisons.values.first.first;
 
+    final l10n = AppLocalizations.of(context)!;
+    final seasonsChip = l10n.chipSeasons(saisons.keys.length);
+    final episodesChip = l10n.chipEpisodes(totalEpisodes);
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: ExpansionTile(
         title: Text(serieName),
         subtitle: Wrap(spacing: 4.0, runSpacing: 4.0, children: [
-          Chip(label: Text('${saisons.keys.length} Saison(s) / $totalEpisodes Ép.')),
+          Chip(label: Text('$seasonsChip / $episodesChip')),
           _getQualityChip(firstEpisode.rawTitle),
           ..._getLanguageChips(firstEpisode.rawTitle),
         ]),
@@ -490,7 +497,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
           final saisonNum = saisonEntry.key;
           final episodes = saisonEntry.value;
           return ExpansionTile(
-            title: Text("Saison $saisonNum", style: const TextStyle(fontWeight: FontWeight.bold)),
+            title: Text("${l10n.season} $saisonNum", style: const TextStyle(fontWeight: FontWeight.bold)),
             children: episodes.map((ep) {
               return ListTile(
                 title: Text(_getEpisodeName(ep)),
@@ -527,6 +534,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       selectedEntry = await showModalBottomSheet<M3uEntry>(
         context: context,
         builder: (context) {
+          final l10n = AppLocalizations.of(context)!;
           // C'est un widget très similaire à _showActionSheet
           return Container(
             padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -536,7 +544,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
               children: [
                 // Le titre de la feuille d'action
                 Text(
-                  "Choisir une version pour :",
+                  l10n.actionSheetChooseVersion,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 Text(
@@ -596,6 +604,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
   }
 
   Future<void> _showActionSheet(M3uEntry entry) async {
+    final l10n = AppLocalizations.of(context)!;
     await showModalBottomSheet(
       context: context,
       builder: (ctx) {
@@ -620,8 +629,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
               // --- OPTION 1 : LIRE (maintenant avec cache implicite) ---
               ListTile(
                 leading: const Icon(Icons.play_circle_outline, size: 32),
-                title: const Text("Lire"),
-                subtitle: const Text("Lance la lecture (mise en cache automatique)."),
+                title: Text(l10n.actionSheetPlay),
+                subtitle: Text(l10n.actionSheetPlaySubtitle),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(
@@ -638,8 +647,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
               // --- OPTION 2 : TÉLÉCHARGER (sans lire) ---
               ListTile(
                 leading: const Icon(Icons.download_for_offline_outlined, size: 32),
-                title: const Text("Télécharger en arrière-plan"),
-                subtitle: const Text("Pour regarder plus tard sans connexion."),
+                title: Text(l10n.actionSheetDownload),
+                subtitle: Text(l10n.actionSheetDownloadSubtitle),
                 onTap: () {
                   Navigator.pop(context);
                   final rootContext = navigatorKey.currentContext;
@@ -685,11 +694,14 @@ class _RechercheM3UState extends State<RechercheM3U> {
     return _getDisplayName(entry.rawTitle);
   }
 
-  Widget _getEpisodeChip(M3uEntry ep) {
-    if (ep.saison != null && ep.episode != null) {
-      return _chip("S${ep.saison}E${ep.episode}", Colors.purple);
-    }
-    return const SizedBox.shrink();
+  Chip _getEpisodeChip(M3uEntry ep) {
+    final l10n = AppLocalizations.of(context)!;
+    return Chip(
+      avatar: CircleAvatar(child: Text(ep.saison ?? 'S?')),
+      label: Text("${l10n.episode} ${ep.episode ?? 'E?'}"),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+    );
   }
 
   Widget _chip(String label, Color color) {

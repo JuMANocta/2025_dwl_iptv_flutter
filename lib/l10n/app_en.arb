@@ -1,0 +1,65 @@
+{
+    "@@locale": "en",
+
+    "downloadManagerTitle": "Download Manager",
+    "noDownloads": "No downloads",
+
+    "downloadDialogTitle": "Start Download","downloadDialogFileNameLabel": "File name",
+    "downloadDialogFileSizeLabel": "File size",
+    "downloadDialogFileTypeLabel": "File type",
+    "downloadDialogUnknownSize": "Unknown",
+    "cancel": "Cancel",
+    "download": "Download",
+    "denied": "Permission denied. The download cannot begin.",
+
+    "terminalTitle": "//:FLUX_DOWNLOAD_INTERFACE",
+    "terminalResumeMessage": "🔄 Resuming download:\n🎞️ {fileName}",
+    "terminalStartMessage": "🤖 Starting download:\n🎞️ {fileName}",
+    "terminalFileSizeMessage": "📦 File size: {fileSize}",
+    "terminalFinalizingMessage": "\n⚙️ Finalizing...\nMoving file to public storage. Please wait.",
+    "terminalSuccessMessage": "\n🟢 SUCCESS: Download complete!",
+    "terminalFatalErrorMessage": "\n☣️ FATAL: An error occurred",
+    "terminalCancelMessage": "\nℹ️ ABORT: Download cancelled by user",
+    "terminalCloseButton": "[ CLOSE ]",
+    "terminalAbortingButton": "[ ABORTING... ]",
+    "terminalAbortButton": "[ ABORT ]",
+
+    "searchPageDefaultTitle": "AetherStream",
+    "searchPageDownloadsTooltip": "See downloads",
+    "searchPageReloadTooltip": "Reload playlist",
+    "searchPageAccountsTooltip": "Accounts and Settings",
+    "searchPageLoadingError": "Could not load playlist",
+    "searchPageRetryButton": "Retry",
+    "searchPageProcessingError": "Error processing playlist:",
+    "searchFieldHint": "Search...",
+    "searchFilterFilms": "Movies",
+    "searchFilterSeries": "Series",
+    "searchFilterTv": "TV",
+    "searchNoResults": "No results found.",
+    "searchNoContent": "No content to display.",
+
+    "actionSheetChooseVersion": "Choose a version for:",
+    "chipSeasons": "{count,plural, =1{1 Season} other{{count} Seasons}}",
+    "chipEpisodes": "{count,plural, =1{1 Ep.} other{{count} Ep.}}",
+    "season": "Season",
+    "episode": "Episode",
+
+    "actionSheetPlay": "Play",
+    "actionSheetPlaySubtitle": "Starts playback (automatic caching).",
+    "actionSheetDownload": "Download in background",
+    "actionSheetDownloadSubtitle": "To watch later without a connection.",
+
+    "deleteDialogTitle": "Delete file?",
+    "deleteDialogSizeLabel": "Size",
+    "deleteDialogWarning": "This action is irreversible and the file will be permanently deleted.",
+    "deleteDialogConfirmButton": "Delete",
+    "deleteTooltip": "Delete permanently",
+
+    "taskStatusDownloading": "Downloading...",
+    "taskStatusRemaining": " • {remainingSize} left",
+    "taskStatusCompleted": "Completed • {size} • {date}",
+    "taskStatusFailed": "Failed {progressInfo} • Tap to retry",
+    "taskStatusCanceled": "Canceled {progressInfo} • Tap to retry",
+    "taskStatusPending": "Pending • {date}"
+
+}

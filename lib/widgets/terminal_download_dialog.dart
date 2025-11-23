@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../data/models/download_task.dart';
 import '../data/services/download_manager_service.dart';
 import '../core/utils/formatters.dart';
+import '../l10n/app_localizations.dart';
 
 class TerminalDownloadDialog extends StatefulWidget {
   final String taskId;
@@ -71,24 +72,25 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   }
 
   void _updateLogs(DownloadTask task) {
+    final l10n = AppLocalizations.of(context)!;
     if (_lastTaskState == task) return;
 
     if (_logs.isEmpty) {
       if (widget.isResume) {
         _logs.add({
-          'message': "🔄 Reprise du téléchargement :\n🎞️ ${task.displayName}",
+          'message': l10n.terminalResumeMessage(task.displayName),
           'type': 'log'
         });
       } else {
         _logs.add({
-          'message': "🚀 Lancement du téléchargement :\n🎞️ ${task.displayName}",
+          'message': l10n.terminalStartMessage(task.displayName),
           'type': 'log'
         });
       }
 
       if (task.totalSize > 0) {
         _logs.add({
-          'message': "📦 Taille du fichier : ${formatFileSize(task.totalSize)}",
+          'message': l10n.terminalFileSizeMessage(formatFileSize(task.totalSize)),
           'type': 'log'
         });
       }
@@ -118,8 +120,8 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
         _stopwatch!.reset(); // On réinitialise APRES avoir fait le calcul
       }
 
-      final speedInfo = (_speed > 0) ? "${formatFileSize(_speed.toInt())}/s" : "";
-      final etaInfo = (_eta > 0) ? " \n⏳ ETA: ${formatDuration(_eta)}" : "";
+      final speedInfo = (_speed > 0) ? "\n 🚀 Speed:${formatFileSize(_speed.toInt())}/s" : "";
+      final etaInfo = (_eta > 0) ? "\n⏳ ETA: ${formatDuration(_eta)}" : "";
       final formatted = "[$bar] ${(task.progress * 100).toStringAsFixed(1)}% | $speedInfo$etaInfo";
 
       if (_logs.isNotEmpty && _logs.last["type"] == "stats") {
@@ -129,19 +131,19 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       }
     } else if (task.status == DownloadStatus.finalizing && _lastTaskState?.status != DownloadStatus.finalizing) {
       _logs.add({
-        'message': "\n⚙️ Finalizing...\nMoving file to public storage (Movies/AetherStream). Please wait.", 'type': 'log'});
+        'message': l10n.terminalFinalizingMessage, 'type': 'log'});
     } else if (task.status == DownloadStatus.completed && _lastTaskState?.status != DownloadStatus.completed) {
-      _logs.add({'message': "\n🟢 SUCCESS: Download complete!", 'type': 'success'});
+      _logs.add({'message': l10n.terminalSuccessMessage, 'type': 'log'});
       setState(() {
         _isDownloadComplete = true;
       });
     } else if (task.status == DownloadStatus.failed && _lastTaskState?.status != DownloadStatus.failed) {
-      _logs.add({'message': "\n☣️ FATAL: An error occurred", 'type': 'error'});
+      _logs.add({'message': l10n.terminalFatalErrorMessage, 'type': 'error'});
       setState(() {
         _hasFatalError = true;
       });
     } else if (task.status == DownloadStatus.canceled && _lastTaskState?.status != DownloadStatus.canceled) {
-      _logs.add({'message': "\nℹ️ ABORT: Download cancelled by user", 'type': 'log'});
+      _logs.add({'message': l10n.terminalCancelMessage, 'type': 'log'});
     }
     setState(() => _lastTaskState = task);
   }
@@ -155,6 +157,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(16),
@@ -171,7 +174,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '//:FLUX_DOWNLOAD_INTERFACE',
+              l10n.terminalTitle,
               style: GoogleFonts.vt323(color: Colors.green, fontSize: 22),
             ),
             const Divider(color: Colors.green),
@@ -220,10 +223,10 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                 },
                 child: Text(
                   _isDownloadComplete || _hasFatalError
-                      ? "[ CLOSE ]"
+                      ? l10n.terminalCloseButton
                       : _isAborting
-                      ? "[ ABORTING... ]" // Texte pendant l'attente de la confirmation
-                      : "[ ABORT ]",
+                      ? l10n.terminalAbortingButton // Texte pendant l'attente de la confirmation
+                      : l10n.terminalAbortButton,
                   style: GoogleFonts.vt323(color: Colors.white, fontSize: 18),
                 ),
               ),

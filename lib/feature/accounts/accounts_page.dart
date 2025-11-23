@@ -231,7 +231,7 @@ class _AccountsPageState extends State<AccountsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Nouveau Compte")),
+      appBar: AppBar(title: const Text("Gestion des Comptes")),
       body: FutureBuilder<List<StreamAccount>>(
         future: _future,
         builder: (ctx, snap) {

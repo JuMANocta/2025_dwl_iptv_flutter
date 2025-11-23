@@ -12,6 +12,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/storage_file.dart';
 import '../../../widgets/terminal_download_dialog.dart';
 import '../../../widgets/info_row.dart';
+import '../../../l10n/app_localizations.dart';
 
 Future<String> _getTempDirectory() async {
   final dir = await getTemporaryDirectory();
@@ -136,6 +137,7 @@ Future<int?> probeContentLength(Dio dio, String url) async {
 
 /// --- FONCTION DE TÉLÉCHARGEMENT (REVUE POUR DÉLÉGUER) ---
 Future<void> _telechargerFichierVideo({required String url, required String nom, required BuildContext context}) async {
+  final l10n = AppLocalizations.of(context)!;
   final downloadManager = DownloadManagerService();
 
   // 1. On sonde la taille du fichier AVANT de créer la tâche
@@ -144,7 +146,7 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
     final dio = await NetworkUtils.buildDio(url);
     totalSize = await probeContentLength(dio, url);
   } catch (e) {
-    debugPrint("Impossible de sonder la taille du fichier: $e");
+    debugPrint("❓ Impossible de sonder la taille du fichier: $e");
   }
 
   // 2. On affiche l'AlertDialog de confirmation.
@@ -179,14 +181,14 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
           // 3. Des informations claires et iconifiées
           InfoRow(
             icon: Icons.straighten, // Icône pour la taille
-            label: "Taille du fichier",
-            value: totalSize != null ? formatFileSize(totalSize) : "Inconnue",
+            label: l10n.downloadDialogFileSizeLabel,
+            value: totalSize != null ? formatFileSize(totalSize) : l10n.downloadDialogUnknownSize,
           ),
           if (extension.isNotEmpty) ...[
             const SizedBox(height: 8),
             InfoRow(
               icon: Icons.description_outlined, // Icône pour le type
-              label: "Type de fichier",
+              label: l10n.downloadDialogFileTypeLabel,
               value: extension,
             ),
           ],
@@ -197,11 +199,11 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
-          child: const Text("Annuler"),
+          child: Text(l10n.cancel),
         ),
         FilledButton.icon( // On ajoute une icône au bouton principal
           icon: const Icon(Icons.download_rounded),
-          label: const Text("Télécharger"),
+          label: Text(l10n.download),
           onPressed: () => Navigator.pop(ctx, true),
         ),
       ],
@@ -224,7 +226,7 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
     // Si on n'a pas pu obtenir le chemin (permission refusée), on notifie et on arrête.
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Permission refusée. Le téléchargement ne peut pas commencer.")),
+        SnackBar(content: Text("Permission denied. The download cannot begin.")),
       );
     }
     return;

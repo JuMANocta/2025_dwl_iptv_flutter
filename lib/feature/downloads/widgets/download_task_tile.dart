@@ -8,6 +8,7 @@ import '../../../data/services/download_manager_service.dart';
 import '../../../widgets/info_row.dart';
 import '../../../widgets/terminal_download_dialog.dart';
 import '../../player/player_page.dart';
+import '../../../l10n/app_localizations.dart';
 
 class DownloadTaskTile extends StatelessWidget {
   final DownloadTask task;
@@ -56,15 +57,16 @@ class DownloadTaskTile extends StatelessWidget {
   }
 
   Future<void> _deleteTask(BuildContext context) async {
+    final l10n = AppLocalizations.of(context)!;
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         // 1. Un titre avec une icône d'avertissement claire
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange),
-            SizedBox(width: 12),
-            Text("Supprimer le fichier ?"),
+            const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            const SizedBox(width: 12),
+            Text(l10n.deleteDialogTitle),
           ],
         ),
 
@@ -84,12 +86,12 @@ class DownloadTaskTile extends StatelessWidget {
             // On ajoute la taille pour être sûr de ce qu'on supprime
             InfoRow(
                 icon: Icons.straighten,
-                label: "Taille",
+                label: l10n.deleteDialogSizeLabel,
                 value: formatFileSize(task.totalSize)
             ),
             const Divider(height: 24),
             // Un message d'avertissement plus explicite
-            const Text("Cette action est irréversible et le fichier sera définitivement effacé."),
+            Text(l10n.deleteDialogWarning),
           ],
         ),
 
@@ -97,7 +99,7 @@ class DownloadTaskTile extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text("Annuler"),
+            child: Text(l10n.cancel),
           ),
           FilledButton.icon(
             // On donne au bouton un style "destructif"
@@ -106,7 +108,7 @@ class DownloadTaskTile extends StatelessWidget {
               foregroundColor: Colors.white, // Pour que le texte et l'icône soient blancs
             ),
             icon: const Icon(Icons.delete_forever),
-            label: const Text("Supprimer"),
+            label: Text(l10n.deleteDialogConfirmButton),
             onPressed: () => Navigator.of(ctx).pop(true),
           ),
         ],
@@ -165,23 +167,30 @@ class DownloadTaskTile extends StatelessWidget {
     }
   }
 
-  Widget _buildSubtitle() {
+  Widget _buildSubtitle(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(task.createdAt);
     switch (task.status) {
       case DownloadStatus.downloading:
         String remainingText = '';
         if (task.totalSize > 0 && task.progress > 0) {
           final remainingBytes = task.totalSize * (1 - task.progress);
-          remainingText = ' • Reste ${formatFileSize(remainingBytes.toInt())}';
+          remainingText = l10n.taskStatusRemaining(formatFileSize(remainingBytes.toInt()));
         }
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text("Téléchargement en cours...$remainingText", style: const TextStyle(fontSize: 12)),
+          Text(
+              "${l10n.taskStatusDownloading}$remainingText",
+              style: const TextStyle(fontSize: 12)
+          ),
           const SizedBox(height: 4),
           LinearProgressIndicator(value: task.progress, backgroundColor: Colors.grey.shade300, color: Colors.greenAccent),
         ]);
       case DownloadStatus.completed:
         final size = formatFileSize(task.totalSize);
-        return Text("Terminé • $size • $formattedDate", style: const TextStyle(fontSize: 12, color: Colors.grey));
+        return Text(
+            l10n.taskStatusCompleted(formatFileSize(task.totalSize), formattedDate),
+            style: const TextStyle(fontSize: 12, color: Colors.grey)
+        );
       case DownloadStatus.failed:
         String progressInfo = '';
         if (task.totalSize > 0 && task.progress > 0) {
@@ -190,7 +199,10 @@ class DownloadTaskTile extends StatelessWidget {
           final totalSize = formatFileSize(task.totalSize);
           progressInfo = '($percentage% - $downloadedSize / $totalSize)';
         }
-        return Text("Échec $progressInfo • Appuyer pour relancer", style: const TextStyle(fontSize: 12, color: Colors.red));
+        return Text(
+          l10n.taskStatusFailed(progressInfo),
+          style: const TextStyle(fontSize: 12, color: Colors.red)
+        );
       case DownloadStatus.canceled:
         String progressInfo = '';
         if (task.totalSize > 0 && task.progress > 0) {
@@ -199,22 +211,33 @@ class DownloadTaskTile extends StatelessWidget {
           final totalSize = formatFileSize(task.totalSize);
           progressInfo = '($percentage% - $downloadedSize / $totalSize)';
         }
-        return Text("Annulé $progressInfo • Appuyer pour relancer", style: const TextStyle(fontSize: 12, color: Colors.amber));
+        return Text(
+            l10n.taskStatusCanceled(progressInfo),
+            style: const TextStyle(fontSize: 12, color: Colors.amber)
+        );
+      case DownloadStatus.finalizing:
+        return Text(
+          "${l10n.terminalFinalizingMessage.trim()}...",
+          style: const TextStyle(fontSize: 12, color: Colors.grey));
       default:
-        return Text("En attente • $formattedDate", style: const TextStyle(fontSize: 12, color: Colors.grey));
+        return Text(
+          l10n.taskStatusPending(formattedDate),
+          style: const TextStyle(fontSize: 12, color: Colors.grey)
+        );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return ListTile(
       leading: _getLeadingIcon(),
       title: Text(task.displayName, maxLines: 2, overflow: TextOverflow.ellipsis),
-      subtitle: _buildSubtitle(),
+      subtitle: _buildSubtitle(context),
       trailing: IconButton(
         icon: const Icon(Icons.delete_forever_outlined),
         color: Colors.grey.shade600,
-        tooltip: "Supprimer définitivement",
+        tooltip: l10n.deleteTooltip,
         onPressed: () => _deleteTask(context),
       ),
       onTap: () => _handleTap(context),

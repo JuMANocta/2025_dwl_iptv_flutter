@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'widgets/download_task_tile.dart';
 import '../../data/models/download_task.dart';
 import '../../data/services/download_manager_service.dart';
-import 'widgets/download_task_tile.dart';
+import '../../../l10n/app_localizations.dart';
 
 
 class DownloadsPage extends StatefulWidget {
@@ -16,23 +17,24 @@ class _DownloadsPageState extends State<DownloadsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gestion des Téléchargements'),
+        title: Text(l10n.downloadManagerTitle),
       ),
       body: ValueListenableBuilder<List<DownloadTask>>(
         valueListenable: _downloadManager.tasksNotifier,
         builder: (context, tasks, child) {
           if (tasks.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.download_done, size: 80, color: Colors.grey),
-                  SizedBox(height: 16),
+                  const Icon(Icons.download_done, size: 80, color: Colors.grey),
+                  const SizedBox(height: 16),
                   Text(
-                    'Aucun téléchargement',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                    l10n.noDownloads,
+                    style: const TextStyle(fontSize: 18, color: Colors.grey),
                   ),
                 ],
               ),

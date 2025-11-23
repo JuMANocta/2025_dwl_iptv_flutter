@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:media_store_plus/media_store_plus.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'l10n/app_localizations.dart';
 import 'data/services/download_manager_service.dart';
 import 'data/services/stream_account_service.dart';
 import 'feature/search/recherche_page.dart';
@@ -36,6 +38,17 @@ class MyApp extends StatelessWidget {
       theme: lightTheme(),
       darkTheme: darkTheme(),
       debugShowCheckedModeBanner: false,
+
+      localizationsDelegates: const [
+        AppLocalizations.delegate, // Notre delegate généré
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en'), // Anglais
+        Locale('fr'), // Français
+      ],
 
       // Le `builder` est utilisé ici pour superposer un bandeau "BETA"
       // uniquement en mode debug, sans interférer avec le widget `home`.

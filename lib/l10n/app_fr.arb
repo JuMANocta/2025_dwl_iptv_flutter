@@ -1,0 +1,67 @@
+{
+    "@@locale": "fr",
+
+    "downloadManagerTitle": "Gestion des Téléchargements",
+    "noDownloads": "Aucun téléchargement",
+
+    "downloadDialogTitle": "Démarrer le téléchargement",
+    "downloadDialogFileNameLabel": "Nom du fichier",
+    "downloadDialogFileSizeLabel": "Taille du fichier",
+    "downloadDialogFileTypeLabel": "Type de fichier",
+    "downloadDialogUnknownSize": "Inconnue",
+    "cancel": "Annuler",
+    "download": "Télécharger",
+    "denied": "Permission refusée. Le téléchargement ne peut pas commencer.",
+
+
+    "terminalTitle": "//:INTERFACE_FLUX_TELECHARGEMENT",
+    "terminalResumeMessage": "🔄 Reprise du téléchargement :\n🎞️ {fileName}",
+    "terminalStartMessage": "🤖 Lancement du téléchargement :\n🎞️ {fileName}",
+    "terminalFileSizeMessage": "📦 Taille du fichier : {fileSize}",
+    "terminalFinalizingMessage": "\n⚙️ Finalisation...\nDéplacement du fichier vers le stockage public. Veuillez patienter.",
+    "terminalSuccessMessage": "\n🟢 SUCCÈS : Téléchargement terminé !",
+    "terminalFatalErrorMessage": "\n☣️ FATAL : Une erreur est survenue",
+    "terminalCancelMessage": "\nℹ️ ABANDON : Téléchargement annulé par l'utilisateur",
+    "terminalCloseButton": "[ FERMER ]",
+    "terminalAbortingButton": "[ ABANDON... ]",
+    "terminalAbortButton": "[ ABANDONNER ]",
+
+    "searchPageDefaultTitle": "AetherStream",
+    "searchPageDownloadsTooltip": "Voir les téléchargements",
+    "searchPageReloadTooltip": "Recharger la playlist",
+    "searchPageAccountsTooltip": "Comptes et Paramètres",
+    "searchPageLoadingError": "Impossible de charger la playlist",
+    "searchPageRetryButton": "Réessayer",
+    "searchPageProcessingError": "Erreur de traitement de la playlist :",
+    "searchFieldHint": "Rechercher...",
+    "searchFilterFilms": "Films",
+    "searchFilterSeries": "Séries",
+    "searchFilterTv": "TV",
+    "searchNoResults": "Aucun résultat trouvé.",
+    "searchNoContent": "Aucun contenu à afficher.",
+
+    "actionSheetChooseVersion": "Choisir une version pour :",
+    "chipSeasons": "{count,plural, =1{1 Saison} other{{count} Saisons}}",
+    "chipEpisodes": "{count,plural, =1{1 Ép.} other{{count} Ép.}}",
+    "season": "Saison",
+    "episode": "Épisode",
+
+    "actionSheetPlay": "Lire",
+    "actionSheetPlaySubtitle": "Lance la lecture (mise en cache automatique).",
+    "actionSheetDownload": "Télécharger en arrière-plan",
+    "actionSheetDownloadSubtitle": "Pour regarder plus tard sans connexion.",
+
+    "deleteDialogTitle": "Supprimer le fichier ?",
+    "deleteDialogSizeLabel": "Taille",
+    "deleteDialogWarning": "Cette action est irréversible et le fichier sera définitivement effacé.",
+    "deleteDialogConfirmButton": "Supprimer",
+    "deleteTooltip": "Supprimer définitivement",
+
+    "taskStatusDownloading": "Téléchargement en cours...",
+    "taskStatusRemaining": " • {remainingSize} restant",
+    "taskStatusCompleted": "Terminé • {size} • {date}",
+    "taskStatusFailed": "Échec {progressInfo} • Appuyer pour relancer",
+    "taskStatusCanceled": "Annulé {progressInfo} • Appuyer pour relancer",
+    "taskStatusPending": "En attente • {date}"
+
+}
