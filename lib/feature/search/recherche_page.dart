@@ -32,27 +32,42 @@ class _RecherchePageState extends State<RecherchePage> {
     _loadPlaylistPath();
   }
 
-  void _loadPlaylistPath() {
+  void _loadPlaylistPath({bool forceDownload = false}) {
     setState(() {
-      _playlistPathFuture = PlaylistService.getOrDownloadPlaylist();
-      StreamAccountService.getCurrentAccount().then((acc) {
-        if (mounted) setState(() => _currentAccountLabel = acc?.label);
+      if (forceDownload) {
+        // Pour le bouton "Rafraîchir", on appelle directement downloadCurrentM3U.
+        _playlistPathFuture = PlaylistService.downloadCurrentM3U();
+      } else {
+        // Pour le démarrage ou le changement de compte, on utilise la logique de cache.
+        _playlistPathFuture = PlaylistService.getOrDownloadPlaylist();
+      }
+
+      // On met à jour le titre de l'AppBar dans tous les cas.
+      _playlistPathFuture.then((_) {
+        StreamAccountService.getCurrentAccount().then((acc) {
+          if (mounted) setState(() => _currentAccountLabel = acc?.label);
+        });
+      }).catchError((_){
+        // Gère le cas où le téléchargement échoue, pour ne pas laisser un titre incorrect.
+        if (mounted) setState(() => _currentAccountLabel = "Erreur");
       });
     });
   }
 
-  void _forceReload() async {
-    debugPrint("🔄 Forçage du rechargement de la playlist...");
-    await PlaylistService.deleteExisting();
-    _loadPlaylistPath();
+  void _forceReload() {
+    debugPrint("🔄 Forçage du rechargement de la playlist via le bouton...");
+    _loadPlaylistPath(forceDownload: true);
   }
 
   Future<void> _openSettings() async {
     final dynamic result = await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const AccountsPage()),
+      MaterialPageRoute(
+        builder: (_) => const AccountsPage(),
+      ),
     );
+
     if (result == true) {
-      _forceReload();
+      _loadPlaylistPath(forceDownload: false);
     }
   }
 

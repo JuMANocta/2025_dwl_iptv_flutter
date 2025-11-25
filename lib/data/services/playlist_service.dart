@@ -6,17 +6,23 @@ import '../../core/utils/network.dart';
 import 'stream_account_service.dart';
 
 class PlaylistService {
-  static const String playlistName = 'iptv_links.m3u';
+  static const String _playlistBaseName = 'playlist';
   static const Duration playlistCacheDuration = Duration(hours: 24);
 
   static Future<String> playlistPath() async {
+    final acc = await StreamAccountService.getCurrentAccount();
+    if (acc == null) throw StateError("Aucun compte sélectionné pour déterminer le chemin de la playlist.");
+
     final dir = await getApplicationDocumentsDirectory();
-    return '${dir.path}/$playlistName';
+    // Le nom du fichier inclut l'ID du compte pour un cache unique !
+    // ex: playlist_1a2b3c.m3u
+    return '${dir.path}/${_playlistBaseName}_${acc.id}.m3u';
   }
 
   static Future<void> deleteExisting() async {
     try {
-      final file = File(await playlistPath());
+      final path = await playlistPath();
+      final file = File(path);
       if (await file.exists()) await file.delete();
     } catch (_) {}
   }
@@ -70,8 +76,8 @@ class PlaylistService {
         throw StateError('Le fichier de playlist téléchargé est vide.');
       }
 
-      await deleteExisting();
       await tempFile.rename(destinationPath);
+      debugPrint("✅ Playlist téléchargée et mise en cache avec succès pour le compte actuel.");
       return destinationPath;
 
     } catch (e) {

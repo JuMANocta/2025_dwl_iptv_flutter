@@ -7,7 +7,8 @@ import 'edit_account_sheet.dart';
 import '../../l10n/app_localizations.dart';
 
 class AccountsPage extends StatefulWidget {
-  const AccountsPage({super.key});
+  const AccountsPage({super.key, this.initialPlaylistPath});
+  final String? initialPlaylistPath;
 
   @override
   State<AccountsPage> createState() => _AccountsPageState();
@@ -22,7 +23,12 @@ class _AccountsPageState extends State<AccountsPage> {
     super.initState();
     _future = _load();
     // On utilise la même logique de chargement intelligente au démarrage.
-    _playlistInfoFuture = _loadAndDisplayPlaylistInfo();
+    if (widget.initialPlaylistPath != null) {
+      _playlistInfoFuture = _readPlaylistInfo(widget.initialPlaylistPath!);
+    } else {
+      // Sinon (si on ouvre la page directement), on garde l'ancienne logique.
+      _playlistInfoFuture = _loadAndDisplayPlaylistInfo();
+    }
   }
 
   Future<List<StreamAccount>> _load() async {
