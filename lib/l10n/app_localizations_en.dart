@@ -67,6 +67,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalFatalErrorMessage => '\n☣️ FATAL: An error occurred';
 
   @override
+  String get terminalSpeedMessage => 'Speed';
+
+  @override
+  String get terminalEtaMessage => 'ETA';
+
+  @override
   String get terminalCancelMessage => '\nℹ️ ABORT: Download cancelled by user';
 
   @override

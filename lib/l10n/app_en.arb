@@ -19,6 +19,8 @@
     "terminalFinalizingMessage": "\n⚙️ Finalizing...\nMoving file to public storage. Please wait.",
     "terminalSuccessMessage": "\n🟢 SUCCESS: Download complete!",
     "terminalFatalErrorMessage": "\n☣️ FATAL: An error occurred",
+    "terminalSpeedMessage": "Speed",
+    "terminalEtaMessage": "ETA",
     "terminalCancelMessage": "\nℹ️ ABORT: Download cancelled by user",
     "terminalCloseButton": "[ CLOSE ]",
     "terminalAbortingButton": "[ PAUSE... ]",

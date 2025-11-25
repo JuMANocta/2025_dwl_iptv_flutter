@@ -200,6 +200,18 @@ abstract class AppLocalizations {
   /// **'\n☣️ FATAL: An error occurred'**
   String get terminalFatalErrorMessage;
 
+  /// No description provided for @terminalSpeedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Speed'**
+  String get terminalSpeedMessage;
+
+  /// No description provided for @terminalEtaMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'ETA'**
+  String get terminalEtaMessage;
+
   /// No description provided for @terminalCancelMessage.
   ///
   /// In en, this message translates to:

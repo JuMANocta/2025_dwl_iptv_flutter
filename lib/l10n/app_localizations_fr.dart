@@ -69,6 +69,12 @@ class AppLocalizationsFr extends AppLocalizations {
       '\n☣️ FATAL : Une erreur est survenue';
 
   @override
+  String get terminalSpeedMessage => 'Vitesse';
+
+  @override
+  String get terminalEtaMessage => 'Temps restant';
+
+  @override
   String get terminalCancelMessage =>
       '\nℹ️ ABANDON : Téléchargement annulé par l\'utilisateur';
 
@@ -261,7 +267,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get playlistInfoTryReload => 'Tenter un rechargement';
 
   @override
-  String get playlistInfoLocalFile => 'Fichier de playlist local';
+  String get playlistInfoLocalFile => 'Fichier playlist local';
 
   @override
   String get playlistInfoSize => 'Taille';

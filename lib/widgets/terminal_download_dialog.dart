@@ -105,9 +105,9 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
         _stopwatch!.reset(); // On réinitialise APRES avoir fait le calcul
       }
 
-      final speedInfo = (_speed > 0) ? "\n 🚀 Speed:${formatFileSize(_speed.toInt())}/s" : "";
-      final etaInfo = (_eta > 0) ? "\n⏳ ETA: ${formatDuration(_eta)}" : "";
-      final formatted = "[$bar] ${(task.progress * 100).toStringAsFixed(1)}% | $speedInfo$etaInfo";
+      final speedInfo = (_speed > 0) ? "\n🚀 ${l10n!.terminalSpeedMessage} : ${formatFileSize(_speed.toInt())}/s" : "";
+      final etaInfo = (_eta > 0) ? "\n⏳ ${l10n!.terminalEtaMessage} : ${formatDuration(_eta)}" : "";
+      final formatted = "\n[$bar] ${(task.progress * 100).toStringAsFixed(1)}% $speedInfo$etaInfo";
 
       if (_logs.isNotEmpty && _logs.last["type"] == "stats") {
         _logs[_logs.length - 1] = {"message": formatted, "type": "stats"};
