@@ -53,29 +53,14 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   }
 
   void _onTaskUpdated() {
-    if (!mounted) return;
-    try {
-      final task = _downloadManager.tasksNotifier.value.firstWhere((t) => t.id == widget.taskId);
-
-      // Si on a demandé l'annulation et que le service a bien mis à jour l'état, on ferme.
-      if (_isAborting && task.status == DownloadStatus.canceled) {
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-        return; // Très important pour arrêter l'exécution ici.
-      }
-
-      _updateLogs(task);
-    } catch (e) {
-      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
-    }
+    if(!mounted) return;
+      setState(() {});
   }
 
-  void _updateLogs(DownloadTask task) {
-    final l10n = AppLocalizations.of(context)!;
+  void _updateLogs(DownloadTask task, [AppLocalizations? l10n]) {
     if (_lastTaskState == task) return;
 
-    if (_logs.isEmpty) {
+    if (l10n != null && _logs.isEmpty) {
       if (widget.isResume) {
         _logs.add({
           'message': l10n.terminalResumeMessage(task.displayName),
@@ -129,23 +114,23 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       } else {
         _logs.add({"message": formatted, "type": "stats"});
       }
-    } else if (task.status == DownloadStatus.finalizing && _lastTaskState?.status != DownloadStatus.finalizing) {
+    } else if (l10n != null && task.status == DownloadStatus.finalizing && _lastTaskState?.status != DownloadStatus.finalizing) {
       _logs.add({
         'message': l10n.terminalFinalizingMessage, 'type': 'log'});
-    } else if (task.status == DownloadStatus.completed && _lastTaskState?.status != DownloadStatus.completed) {
+    } else if (l10n != null && task.status == DownloadStatus.completed && _lastTaskState?.status != DownloadStatus.completed) {
       _logs.add({'message': l10n.terminalSuccessMessage, 'type': 'log'});
       setState(() {
         _isDownloadComplete = true;
       });
-    } else if (task.status == DownloadStatus.failed && _lastTaskState?.status != DownloadStatus.failed) {
+    } else if (l10n != null && task.status == DownloadStatus.failed && _lastTaskState?.status != DownloadStatus.failed) {
       _logs.add({'message': l10n.terminalFatalErrorMessage, 'type': 'error'});
       setState(() {
         _hasFatalError = true;
       });
-    } else if (task.status == DownloadStatus.canceled && _lastTaskState?.status != DownloadStatus.canceled) {
+    } else if (l10n != null && task.status == DownloadStatus.canceled && _lastTaskState?.status != DownloadStatus.canceled) {
       _logs.add({'message': l10n.terminalCancelMessage, 'type': 'log'});
     }
-    setState(() => _lastTaskState = task);
+    if(mounted) setState(() => _lastTaskState = task);
   }
 
   @override
@@ -158,6 +143,41 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    // On essaie de trouver la tâche actuelle.
+    final currentTask = _downloadManager.tasksNotifier.value.firstWhere(
+          (t) => t.id == widget.taskId,
+      // Si elle n'est pas trouvée (supprimée ?), on utilise le dernier état connu.
+      orElse: () => _lastTaskState ?? DownloadTask.empty(),
+    );
+
+    // On capture le Navigator AVANT toute logique asynchrone.
+    final navigator = Navigator.of(context);
+
+    // On ne met à jour les logs que si une tâche valide existe.
+    if (currentTask.id.isEmpty) {
+      // scheduleMicrotask évite une erreur de build en exécutant le pop() juste après.
+      Future.microtask(() {
+        if (mounted && navigator.canPop()) {
+          navigator.pop();
+        }
+      });
+      // On retourne un widget vide en attendant la fermeture
+      return const SizedBox.shrink();
+    }
+
+    // Si on a demandé l'annulation et que la tâche est confirmée comme annulée
+    if (_isAborting && currentTask.status == DownloadStatus.canceled) {
+      Future.microtask(() {
+        if (mounted && navigator.canPop()) {
+          navigator.pop();
+        }
+      });
+      return const SizedBox.shrink();
+    }
+
+    // L'appel clé : on met à jour les logs avec un l10n valide
+    _updateLogs(currentTask, l10n);
+
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(16),
@@ -251,8 +271,13 @@ class _ScanLineState extends State<ScanLine> with SingleTickerProviderStateMixin
     super.initState();
     _controller = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
   }
+
   @override
-  void dispose() { _controller.dispose(); super.dispose(); }
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(

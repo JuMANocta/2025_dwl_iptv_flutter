@@ -4,6 +4,7 @@ import '../../data/models/stream_account.dart';
 import '../../data/services/stream_account_service.dart';
 import '../../data/services/playlist_service.dart';
 import 'edit_account_sheet.dart';
+import '../../l10n/app_localizations.dart';
 
 class AccountsPage extends StatefulWidget {
   const AccountsPage({super.key});
@@ -46,14 +47,15 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Future<void> _delete(String id) async {
+    final l10n = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Supprimer le compte ?"),
-        content: const Text("Cette action est définitive."),
+        title: Text(l10n!.deleteAccountDialogTitle),
+        content: Text(l10n.deleteAccountDialogContent),
         actions: [
-          TextButton(onPressed: ()=>Navigator.pop(ctx,false), child: const Text("Annuler")),
-          TextButton(onPressed: ()=>Navigator.pop(ctx,true), child: const Text("Supprimer", style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: ()=>Navigator.pop(ctx,false), child: Text(l10n.cancel)),
+          TextButton(onPressed: ()=>Navigator.pop(ctx,true), child: Text(l10n.deleteAccountConfirm, style: TextStyle(color: Colors.red))),
         ],
       ),
     );
@@ -147,17 +149,18 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Widget _playlistInfoCard() {
+    final l10n = AppLocalizations.of(context);
     return FutureBuilder<_PlaylistInfo?>(
       future: _playlistInfoFuture,
       builder: (ctx, snap) {
 
         // Gestion de l'état de chargement
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Card(
-            margin: EdgeInsets.fromLTRB(12, 12, 12, 4),
+          return Card(
+            margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
             child: Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Center(child: Text("Vérification de la playlist...")),
+              padding: const EdgeInsets.all(16.0),
+              child: Center(child: Text(l10n!.playlistInfoChecking)),
             ),
           );
         }
@@ -170,26 +173,26 @@ class _AccountsPageState extends State<AccountsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Infos playlist", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text(l10n!.playlistInfoTitle, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 if (info == null) ...[
-                  const Text("Aucune playlist disponible ou erreur de chargement."),
+                  Text(l10n.playlistInfoUnavailable),
                   const SizedBox(height: 8),
                   FilledButton.icon(
                     // Ce bouton doit forcer le rechargement
                     onPressed: _forceReloadPlaylist,
                     icon: const Icon(Icons.refresh),
-                    label: const Text("Tenter un rechargement"),
+                    label: Text(l10n.playlistInfoTryReload),
                   ),
                 ] else ...[
                   ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: const Text("Fichier de playlist local"),
+                    title: Text(l10n.playlistInfoLocalFile),
                     subtitle: Text(
-                      "Taille : ${_formatBytes(info.size)} • Maj : ${_formatDate(info.modified)}",
+                      "${l10n.playlistInfoSize} ${_formatBytes(info.size)} • ${l10n.playlistInfoLastUpdate} : ${_formatDate(info.modified)}",
                     ),
-                    trailing: Chip(label: Text("Entrées : ${info.count}")),
+                    trailing: Chip(label: Text("${l10n.playlistInfoEntries} : ${info.count}")),
                   ),
                   Row(
                     children: [
@@ -197,7 +200,7 @@ class _AccountsPageState extends State<AccountsPage> {
                         // Ce bouton force le rechargement
                         onPressed: _forceReloadPlaylist,
                         icon: const Icon(Icons.refresh),
-                        label: const Text("Recharger"),
+                        label: Text(l10n.playlistInfoReloadButton),
                       ),
                       const SizedBox(width: 8),
                       TextButton.icon(
@@ -212,8 +215,14 @@ class _AccountsPageState extends State<AccountsPage> {
                             debugPrint("🗑️ Playlist supprimée.");
                           }
                         },
-                        icon: const Icon(Icons.delete_outline, color: Colors.red),
-                        label: const Text("Supprimer", style: TextStyle(color: Colors.red)),
+                        icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red
+                        ),
+                        label: Text(
+                            l10n.playlistInfoDeleteButton,
+                            style: TextStyle(color: Colors.red)
+                        ),
                       ),
                     ],
                   )
@@ -230,8 +239,9 @@ class _AccountsPageState extends State<AccountsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text("Gestion des Comptes")),
+      appBar: AppBar(title: Text(l10n!.accountsTitle)),
       body: FutureBuilder<List<StreamAccount>>(
         future: _future,
         builder: (ctx, snap) {
@@ -249,7 +259,7 @@ class _AccountsPageState extends State<AccountsPage> {
                   child: TextButton.icon(
                     onPressed: ()=>_openEditor(),
                     icon: const Icon(Icons.add),
-                    label: const Text("Ajouter un compte"),
+                    label: Text(l10n.accountsListEmpty),
                   ),
                 )
                     : RefreshIndicator(
@@ -276,18 +286,18 @@ class _AccountsPageState extends State<AccountsPage> {
                             title: Text(a.label),
                             subtitle: Text(
                               a.mode == StreamAuthMode.completeUrl
-                                  ? "Mode: URL complète — $host"
-                                  : "Mode: séparé — ${a.username ?? "?"}@$host",
+                                  ? l10n.accountModeComplete(host)
+                                  : l10n.accountModeSeparate(a.username ?? "?", host),
                             ),
                             onTap: ()=>_setCurrent(a.id),
                             trailing: Wrap(spacing: 4, children: [
                               IconButton(
-                                tooltip: "Modifier",
+                                tooltip: l10n.accountActionEdit,
                                 icon: const Icon(Icons.edit),
                                 onPressed: ()=>_openEditor(initial: a),
                               ),
                               IconButton(
-                                tooltip: "Supprimer",
+                                tooltip: l10n.accountActionDelete,
                                 icon: const Icon(Icons.delete_outline, color: Colors.red),
                                 onPressed: ()=>_delete(a.id),
                               ),
@@ -306,7 +316,7 @@ class _AccountsPageState extends State<AccountsPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: ()=>_openEditor(),
         icon: const Icon(Icons.add),
-        label: const Text("Nouveau"),
+        label: Text(l10n.accountsFab),
       ),
     );
   }

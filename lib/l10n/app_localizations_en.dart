@@ -73,10 +73,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalCloseButton => '[ CLOSE ]';
 
   @override
-  String get terminalAbortingButton => '[ ABORTING... ]';
+  String get terminalAbortingButton => '[ PAUSE... ]';
 
   @override
-  String get terminalAbortButton => '[ ABORT ]';
+  String get terminalAbortButton => '[ PAUSE ]';
 
   @override
   String get searchPageDefaultTitle => 'AetherStream';
@@ -204,4 +204,94 @@ class AppLocalizationsEn extends AppLocalizations {
   String taskStatusPending(Object date) {
     return 'Pending • $date';
   }
+
+  @override
+  String get playlistManagementTitle => 'Playlist Download';
+
+  @override
+  String get playlistCardTitle => 'Playlist .m3u';
+
+  @override
+  String get playlistCardSubtitleNone =>
+      'No playlist downloaded in this context.';
+
+  @override
+  String playlistCardSubtitleLastFile(Object path) {
+    return 'Last file: $path';
+  }
+
+  @override
+  String get playlistDownloadButton => 'Download / Update';
+
+  @override
+  String get playlistDeleteButton => 'Delete';
+
+  @override
+  String get playlistManagementTip =>
+      'Tip: You can also reload the playlist from the settings gear or via the refresh icon on the search screen.';
+
+  @override
+  String get accountsTitle => 'Account Management';
+
+  @override
+  String get deleteAccountDialogTitle => 'Delete account?';
+
+  @override
+  String get deleteAccountDialogContent => 'This action is permanent.';
+
+  @override
+  String get deleteAccountConfirm => 'Delete';
+
+  @override
+  String get playlistInfoTitle => 'Playlist Info';
+
+  @override
+  String get playlistInfoChecking => 'Checking playlist...';
+
+  @override
+  String get playlistInfoUnavailable =>
+      'No playlist available or loading error.';
+
+  @override
+  String get playlistInfoTryReload => 'Try reloading';
+
+  @override
+  String get playlistInfoLocalFile => 'Local playlist file';
+
+  @override
+  String get playlistInfoSize => 'Size';
+
+  @override
+  String get playlistInfoLastUpdate => 'Upd.';
+
+  @override
+  String get playlistInfoEntries => 'Entries';
+
+  @override
+  String get playlistInfoReloadButton => 'Reload';
+
+  @override
+  String get playlistInfoDeleteButton => 'Delete';
+
+  @override
+  String get accountsListEmpty => 'Add an account';
+
+  @override
+  String accountModeComplete(Object host) {
+    return 'Mode: Full URL — $host';
+  }
+
+  @override
+  String accountModeSeparate(Object host, Object username) {
+    return 'Mode: Separate — $username@$host';
+  }
+
+  @override
+  String get accountActionEdit => 'Edit';
+
+  @override
+  String get accountActionDelete => 'Delete';
+
+  @override
+  String get accountsFab => 'New';
 }

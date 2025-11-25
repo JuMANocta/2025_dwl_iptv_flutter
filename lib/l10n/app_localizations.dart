@@ -215,13 +215,13 @@ abstract class AppLocalizations {
   /// No description provided for @terminalAbortingButton.
   ///
   /// In en, this message translates to:
-  /// **'[ ABORTING... ]'**
+  /// **'[ PAUSE... ]'**
   String get terminalAbortingButton;
 
   /// No description provided for @terminalAbortButton.
   ///
   /// In en, this message translates to:
-  /// **'[ ABORT ]'**
+  /// **'[ PAUSE ]'**
   String get terminalAbortButton;
 
   /// No description provided for @searchPageDefaultTitle.
@@ -421,6 +421,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Pending • {date}'**
   String taskStatusPending(Object date);
+
+  /// No description provided for @playlistManagementTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Playlist Download'**
+  String get playlistManagementTitle;
+
+  /// No description provided for @playlistCardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Playlist .m3u'**
+  String get playlistCardTitle;
+
+  /// No description provided for @playlistCardSubtitleNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No playlist downloaded in this context.'**
+  String get playlistCardSubtitleNone;
+
+  /// No description provided for @playlistCardSubtitleLastFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Last file: {path}'**
+  String playlistCardSubtitleLastFile(Object path);
+
+  /// No description provided for @playlistDownloadButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Download / Update'**
+  String get playlistDownloadButton;
+
+  /// No description provided for @playlistDeleteButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get playlistDeleteButton;
+
+  /// No description provided for @playlistManagementTip.
+  ///
+  /// In en, this message translates to:
+  /// **'Tip: You can also reload the playlist from the settings gear or via the refresh icon on the search screen.'**
+  String get playlistManagementTip;
+
+  /// No description provided for @accountsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Account Management'**
+  String get accountsTitle;
+
+  /// No description provided for @deleteAccountDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account?'**
+  String get deleteAccountDialogTitle;
+
+  /// No description provided for @deleteAccountDialogContent.
+  ///
+  /// In en, this message translates to:
+  /// **'This action is permanent.'**
+  String get deleteAccountDialogContent;
+
+  /// No description provided for @deleteAccountConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get deleteAccountConfirm;
+
+  /// No description provided for @playlistInfoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Playlist Info'**
+  String get playlistInfoTitle;
+
+  /// No description provided for @playlistInfoChecking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking playlist...'**
+  String get playlistInfoChecking;
+
+  /// No description provided for @playlistInfoUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No playlist available or loading error.'**
+  String get playlistInfoUnavailable;
+
+  /// No description provided for @playlistInfoTryReload.
+  ///
+  /// In en, this message translates to:
+  /// **'Try reloading'**
+  String get playlistInfoTryReload;
+
+  /// No description provided for @playlistInfoLocalFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Local playlist file'**
+  String get playlistInfoLocalFile;
+
+  /// No description provided for @playlistInfoSize.
+  ///
+  /// In en, this message translates to:
+  /// **'Size'**
+  String get playlistInfoSize;
+
+  /// No description provided for @playlistInfoLastUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Upd.'**
+  String get playlistInfoLastUpdate;
+
+  /// No description provided for @playlistInfoEntries.
+  ///
+  /// In en, this message translates to:
+  /// **'Entries'**
+  String get playlistInfoEntries;
+
+  /// No description provided for @playlistInfoReloadButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Reload'**
+  String get playlistInfoReloadButton;
+
+  /// No description provided for @playlistInfoDeleteButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get playlistInfoDeleteButton;
+
+  /// No description provided for @accountsListEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Add an account'**
+  String get accountsListEmpty;
+
+  /// No description provided for @accountModeComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode: Full URL — {host}'**
+  String accountModeComplete(Object host);
+
+  /// No description provided for @accountModeSeparate.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode: Separate — {username}@{host}'**
+  String accountModeSeparate(Object host, Object username);
+
+  /// No description provided for @accountActionEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get accountActionEdit;
+
+  /// No description provided for @accountActionDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get accountActionDelete;
+
+  /// No description provided for @accountsFab.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get accountsFab;
 }
 
 class _AppLocalizationsDelegate

@@ -23,8 +23,8 @@
     "terminalFatalErrorMessage": "\n☣️ FATAL : Une erreur est survenue",
     "terminalCancelMessage": "\nℹ️ ABANDON : Téléchargement annulé par l'utilisateur",
     "terminalCloseButton": "[ FERMER ]",
-    "terminalAbortingButton": "[ ABANDON... ]",
-    "terminalAbortButton": "[ ABANDONNER ]",
+    "terminalAbortingButton": "[ PAUSE... ]",
+    "terminalAbortButton": "[ PAUSE ]",
 
     "searchPageDefaultTitle": "AetherStream",
     "searchPageDownloadsTooltip": "Voir les téléchargements",
@@ -62,6 +62,35 @@
     "taskStatusCompleted": "Terminé • {size} • {date}",
     "taskStatusFailed": "Échec {progressInfo} • Appuyer pour relancer",
     "taskStatusCanceled": "Annulé {progressInfo} • Appuyer pour relancer",
-    "taskStatusPending": "En attente • {date}"
+    "taskStatusPending": "En attente • {date}",
+
+    "playlistManagementTitle": "Téléchargement de la playlist",
+    "playlistCardTitle": "Playlist .m3u",
+    "playlistCardSubtitleNone": "Aucune playlist téléchargée dans ce contexte.",
+    "playlistCardSubtitleLastFile": "Dernier fichier : {path}",
+    "playlistDownloadButton": "Télécharger / Mettre à jour",
+    "playlistDeleteButton": "Supprimer",
+    "playlistManagementTip": "Astuce : vous pouvez aussi recharger la playlist depuis la roue crantée ou via l'icône de rafraîchissement sur l'écran de recherche.",
+
+    "accountsTitle": "Gestion des Comptes",
+    "deleteAccountDialogTitle": "Supprimer le compte ?",
+    "deleteAccountDialogContent": "Cette action est définitive.",
+    "deleteAccountConfirm": "Supprimer",
+    "playlistInfoTitle": "Infos playlist",
+    "playlistInfoChecking": "Vérification de la playlist...",
+    "playlistInfoUnavailable": "Aucune playlist disponible ou erreur de chargement.",
+    "playlistInfoTryReload": "Tenter un rechargement",
+    "playlistInfoLocalFile": "Fichier de playlist local",
+    "playlistInfoSize": "Taille",
+    "playlistInfoLastUpdate": "Maj",
+    "playlistInfoEntries": "Entrées",
+    "playlistInfoReloadButton": "Recharger",
+    "playlistInfoDeleteButton": "Supprimer",
+    "accountsListEmpty": "Ajouter un compte",
+    "accountModeComplete": "Mode: URL complète — {host}",
+    "accountModeSeparate": "Mode: Séparé — {username}@{host}",
+    "accountActionEdit": "Modifier",
+    "accountActionDelete": "Supprimer",
+    "accountsFab": "Nouveau"
 
 }

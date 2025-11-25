@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/services/playlist_service.dart';
 import '../../data/services/stream_account_service.dart';
+import '../../l10n/app_localizations.dart';
 
 /// Écran de compatibilité pour télécharger la playlist .m3u
 /// Désormais, on passe par PlaylistService.downloadCurrentM3U()
@@ -53,6 +54,7 @@ class _PlaylistManagementPageState extends State<PlaylistManagementPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final action = _loading
         ? const SizedBox(
       height: 20, width: 20,
@@ -61,7 +63,8 @@ class _PlaylistManagementPageState extends State<PlaylistManagementPage> {
         : const Icon(Icons.download);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Téléchargement de la playlist")),
+      appBar: AppBar(
+          title: Text(l10n.playlistManagementTitle)),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -69,11 +72,11 @@ class _PlaylistManagementPageState extends State<PlaylistManagementPage> {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.list_alt),
-                title: const Text("Playlist .m3u"),
+                title: Text(l10n.playlistCardTitle),
                 subtitle: Text(
                   _lastPath == null
-                      ? "Aucune playlist téléchargée dans ce contexte."
-                      : "Dernier fichier : $_lastPath",
+                      ? l10n.playlistCardSubtitleNone
+                      : l10n.playlistCardSubtitleLastFile(_lastPath!),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -86,7 +89,7 @@ class _PlaylistManagementPageState extends State<PlaylistManagementPage> {
                   child: FilledButton.icon(
                     onPressed: _loading ? null : _download,
                     icon: action,
-                    label: const Text("Télécharger / Mettre à jour"),
+                    label: Text(l10n.playlistDownloadButton),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -94,15 +97,14 @@ class _PlaylistManagementPageState extends State<PlaylistManagementPage> {
                   child: OutlinedButton.icon(
                     onPressed: _loading ? null : _delete,
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    label: const Text("Supprimer"),
+                    label: Text(l10n.playlistManagementTip),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            const Text(
-              "Astuce : tu peux aussi recharger la playlist depuis la roue crantée "
-                  "ou via l'icône de rafraîchissement sur l'écran de recherche.",
+            Text(
+              l10n.playlistManagementTip,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12),
             ),

@@ -17,7 +17,7 @@ class StorageService {
     // 1. Demander les permissions
     final bool permissionGranted = await _requestStoragePermission();
     if (!permissionGranted) {
-      debugPrint("Permission de stockage refusée par l'utilisateur.");
+      debugPrint("❌ Permission de stockage refusée par l'utilisateur.");
       return null;
     }
 
@@ -47,7 +47,7 @@ class StorageService {
       }
 
     } catch (e) {
-      debugPrint("Erreur critique lors de la recherche du dossier Movies : $e");
+      debugPrint("❌ Erreur critique lors de la recherche du dossier Movies : $e");
       return null;
     }
 
@@ -65,7 +65,7 @@ class StorageService {
       }
       return appPath.path;
     } catch (e) {
-      debugPrint("Erreur lors de la création du dossier '$_appName'. Erreur: $e");
+      debugPrint("❌ Erreur lors de la création du dossier '$_appName'. Erreur: $e");
       return null;
     }
   }

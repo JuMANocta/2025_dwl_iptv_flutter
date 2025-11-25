@@ -43,7 +43,7 @@ class DownloadManagerService {
             .map((json) => DownloadTask.fromJson(json as Map<String, dynamic>))
             .toList();
       } catch (e) {
-        debugPrint("Erreur lors du chargement des tâches : $e");
+        debugPrint("❌ Erreur lors du chargement des tâches : $e");
         tasksNotifier.value = [];
       }
     }
@@ -78,7 +78,7 @@ class DownloadManagerService {
       final jsonList = tasksNotifier.value.map((task) => task.toJson()).toList();
       await _prefs.setString(_storageKey, jsonEncode(jsonList));
     } catch (e) {
-      debugPrint("Erreur lors de la sauvegarde des tâches : $e");
+      debugPrint("❌ Erreur lors de la sauvegarde des tâches : $e");
     }
   }
 

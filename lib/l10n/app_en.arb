@@ -21,8 +21,8 @@
     "terminalFatalErrorMessage": "\n☣️ FATAL: An error occurred",
     "terminalCancelMessage": "\nℹ️ ABORT: Download cancelled by user",
     "terminalCloseButton": "[ CLOSE ]",
-    "terminalAbortingButton": "[ ABORTING... ]",
-    "terminalAbortButton": "[ ABORT ]",
+    "terminalAbortingButton": "[ PAUSE... ]",
+    "terminalAbortButton": "[ PAUSE ]",
 
     "searchPageDefaultTitle": "AetherStream",
     "searchPageDownloadsTooltip": "See downloads",
@@ -60,6 +60,35 @@
     "taskStatusCompleted": "Completed • {size} • {date}",
     "taskStatusFailed": "Failed {progressInfo} • Tap to retry",
     "taskStatusCanceled": "Canceled {progressInfo} • Tap to retry",
-    "taskStatusPending": "Pending • {date}"
+    "taskStatusPending": "Pending • {date}",
+
+    "playlistManagementTitle": "Playlist Download",
+    "playlistCardTitle": "Playlist .m3u",
+    "playlistCardSubtitleNone": "No playlist downloaded in this context.",
+    "playlistCardSubtitleLastFile": "Last file: {path}",
+    "playlistDownloadButton": "Download / Update",
+    "playlistDeleteButton": "Delete",
+    "playlistManagementTip": "Tip: You can also reload the playlist from the settings gear or via the refresh icon on the search screen.",
+
+    "accountsTitle": "Account Management",
+    "deleteAccountDialogTitle": "Delete account?",
+    "deleteAccountDialogContent": "This action is permanent.",
+    "deleteAccountConfirm": "Delete",
+    "playlistInfoTitle": "Playlist Info",
+    "playlistInfoChecking": "Checking playlist...",
+    "playlistInfoUnavailable": "No playlist available or loading error.",
+    "playlistInfoTryReload": "Try reloading",
+    "playlistInfoLocalFile": "Local playlist file",
+    "playlistInfoSize": "Size",
+    "playlistInfoLastUpdate": "Upd.",
+    "playlistInfoEntries": "Entries",
+    "playlistInfoReloadButton": "Reload",
+    "playlistInfoDeleteButton": "Delete",
+    "accountsListEmpty": "Add an account",
+    "accountModeComplete": "Mode: Full URL — {host}",
+    "accountModeSeparate": "Mode: Separate — {username}@{host}",
+    "accountActionEdit": "Edit",
+    "accountActionDelete": "Delete",
+    "accountsFab": "New"
 
 }

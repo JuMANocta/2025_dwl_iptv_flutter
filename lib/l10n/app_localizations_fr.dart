@@ -76,10 +76,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get terminalCloseButton => '[ FERMER ]';
 
   @override
-  String get terminalAbortingButton => '[ ABANDON... ]';
+  String get terminalAbortingButton => '[ PAUSE... ]';
 
   @override
-  String get terminalAbortButton => '[ ABANDONNER ]';
+  String get terminalAbortButton => '[ PAUSE ]';
 
   @override
   String get searchPageDefaultTitle => 'AetherStream';
@@ -209,4 +209,94 @@ class AppLocalizationsFr extends AppLocalizations {
   String taskStatusPending(Object date) {
     return 'En attente • $date';
   }
+
+  @override
+  String get playlistManagementTitle => 'Téléchargement de la playlist';
+
+  @override
+  String get playlistCardTitle => 'Playlist .m3u';
+
+  @override
+  String get playlistCardSubtitleNone =>
+      'Aucune playlist téléchargée dans ce contexte.';
+
+  @override
+  String playlistCardSubtitleLastFile(Object path) {
+    return 'Dernier fichier : $path';
+  }
+
+  @override
+  String get playlistDownloadButton => 'Télécharger / Mettre à jour';
+
+  @override
+  String get playlistDeleteButton => 'Supprimer';
+
+  @override
+  String get playlistManagementTip =>
+      'Astuce : vous pouvez aussi recharger la playlist depuis la roue crantée ou via l\'icône de rafraîchissement sur l\'écran de recherche.';
+
+  @override
+  String get accountsTitle => 'Gestion des Comptes';
+
+  @override
+  String get deleteAccountDialogTitle => 'Supprimer le compte ?';
+
+  @override
+  String get deleteAccountDialogContent => 'Cette action est définitive.';
+
+  @override
+  String get deleteAccountConfirm => 'Supprimer';
+
+  @override
+  String get playlistInfoTitle => 'Infos playlist';
+
+  @override
+  String get playlistInfoChecking => 'Vérification de la playlist...';
+
+  @override
+  String get playlistInfoUnavailable =>
+      'Aucune playlist disponible ou erreur de chargement.';
+
+  @override
+  String get playlistInfoTryReload => 'Tenter un rechargement';
+
+  @override
+  String get playlistInfoLocalFile => 'Fichier de playlist local';
+
+  @override
+  String get playlistInfoSize => 'Taille';
+
+  @override
+  String get playlistInfoLastUpdate => 'Maj';
+
+  @override
+  String get playlistInfoEntries => 'Entrées';
+
+  @override
+  String get playlistInfoReloadButton => 'Recharger';
+
+  @override
+  String get playlistInfoDeleteButton => 'Supprimer';
+
+  @override
+  String get accountsListEmpty => 'Ajouter un compte';
+
+  @override
+  String accountModeComplete(Object host) {
+    return 'Mode: URL complète — $host';
+  }
+
+  @override
+  String accountModeSeparate(Object host, Object username) {
+    return 'Mode: Séparé — $username@$host';
+  }
+
+  @override
+  String get accountActionEdit => 'Modifier';
+
+  @override
+  String get accountActionDelete => 'Supprimer';
+
+  @override
+  String get accountsFab => 'Nouveau';
 }

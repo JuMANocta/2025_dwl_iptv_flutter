@@ -205,7 +205,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     try {
       final file = File(widget.filePath);
       if (!await file.exists() || await file.length() < 10) {
-        throw Exception("Le fichier de playlist est invalide, vide ou non trouvé.");
+        debugPrint("❌ Le fichier de playlist est invalide, vide ou non trouvé.");
       }
 
       final lines = await file.readAsLines(encoding: utf8);
@@ -240,7 +240,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       }
 
       if (parsedEntries.isEmpty) {
-        throw Exception("Aucune entrée valide trouvée. Le format de la playlist pourrait ne pas être reconnu.");
+        debugPrint("❌ Aucune entrée valide trouvée. Le format de la playlist pourrait ne pas être reconnu.");
       }
 
       // --- Pré-calcul intensif (la clé de la performance) ---
@@ -653,7 +653,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                   Navigator.pop(context);
                   final rootContext = navigatorKey.currentContext;
                   if (rootContext == null || !rootContext.mounted) {
-                    debugPrint("Erreur critique : Impossible d'obtenir le contexte global.");
+                    debugPrint("❌ Erreur critique : Impossible d'obtenir le contexte global.");
                     return;
                   }
                   // La fonction de téléchargement classique reste la même
