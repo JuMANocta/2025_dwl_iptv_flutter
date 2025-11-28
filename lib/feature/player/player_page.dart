@@ -30,7 +30,6 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _isLoading = true;
   bool _hasError = false;
   late String _errorMessage;
-  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -42,19 +41,6 @@ class _PlayerPageState extends State<PlayerPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _errorMessage = AppLocalizations.of(context)!.playerGenericError;
-  }
-
-  void _cleanUpControllers() {
-    if (_isDisposed) return;
-    _isDisposed = true;
-
-    _chewieController?.pause();
-
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _videoPlayerController?.dispose();
-      _chewieController?.dispose();
-      _cachedVideoPlayerPlus?.dispose();
-    });
   }
 
   Future<void> initializePlayer() async {
@@ -119,37 +105,28 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
-    _cleanUpControllers();
+    _chewieController?.dispose();
+    _cachedVideoPlayerPlus?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, dynamic result) async {
-        if (didPop) return;
-        _cleanUpControllers();
-        if (mounted) {
-          Navigator.of(context).pop();
-        }
-      },
-      child: Scaffold(
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: Text(widget.title, style: const TextStyle(fontSize: 16)),
         backgroundColor: Colors.black,
-        appBar: AppBar(
-          title: Text(widget.title, style: const TextStyle(fontSize: 16)),
-          backgroundColor: Colors.black,
-          foregroundColor: Colors.white,
-          actions: const [],
-        ),
-        body: Center(
-          child: _isLoading
-              ? _buildLoading(l10n)
-              : _hasError
-              ? _buildError()
-              : Chewie(controller: _chewieController!),
-        ),
+        foregroundColor: Colors.white,
+        actions: const [],
+      ),
+      body: Center(
+        child: _isLoading
+            ? _buildLoading(l10n)
+            : _hasError
+            ? _buildError()
+            : Chewie(controller: _chewieController!),
       ),
     );
   }
