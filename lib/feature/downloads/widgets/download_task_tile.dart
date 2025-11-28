@@ -28,7 +28,6 @@ class DownloadTaskTile extends StatelessWidget {
         _openFile(context);
         break;
 
-    // NOUVELLE LOGIQUE UNIFIÉE POUR LA REPRISE
       case DownloadStatus.failed:
       case DownloadStatus.canceled:
         debugPrint("🔄 Reprise du téléchargement pour la tâche : ${task.displayName}");
@@ -208,16 +207,35 @@ class DownloadTaskTile extends StatelessWidget {
             style: const TextStyle(fontSize: 12, color: Colors.grey)
         );
       case DownloadStatus.failed:
+        final String errorText = task.errorMessage ?? l10n.taskStatusUnknownError;
         String progressInfo = '';
         if (task.totalSize > 0 && task.progress > 0) {
           final percentage = (task.progress * 100).toStringAsFixed(1);
           final downloadedSize = formatFileSize((task.totalSize * task.progress).toInt());
           final totalSize = formatFileSize(task.totalSize);
-          progressInfo = '($percentage% - $downloadedSize / $totalSize)';
+          progressInfo = ' ($percentage% - $downloadedSize / $totalSize)';
         }
-        return Text(
-          l10n.taskStatusFailed(progressInfo),
-          style: const TextStyle(fontSize: 12, color: Colors.red)
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.taskStatusFailed(progressInfo),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.error,
+                fontWeight: FontWeight.bold, // On met en évidence l'échec
+              ),
+            ),
+            Text(
+              errorText,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.error.withOpacity(0.9),
+              ),
+            ),
+          ],
         );
       case DownloadStatus.canceled:
         String progressInfo = '';

@@ -1,15 +1,15 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../../main.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import '../player/player_page.dart';
+import '../downloads/logic/download_initiator.dart';
 import '../accounts/accounts_page.dart';
 import '../downloads/downloads_page.dart';
 import '../../data/services/stream_account_service.dart';
 import '../../data/services/playlist_service.dart';
-import '../player/player_page.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
-import '../downloads/logic/download_initiator.dart';
 import '../../l10n/app_localizations.dart';
+import '../../main.dart';
 
 //############################################################################
 // WIDGET "CONTENEUR" PRINCIPAL (RecherchePage)

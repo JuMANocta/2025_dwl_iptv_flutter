@@ -212,6 +212,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get taskStatusUnknownError => 'Unknown error';
+
+  @override
   String get playlistManagementTitle => 'Playlist Download';
 
   @override
@@ -300,4 +303,70 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountsFab => 'New';
+
+  @override
+  String get editAccountTitleAdd => 'Add Account';
+
+  @override
+  String get editAccountTitleEdit => 'Edit Account';
+
+  @override
+  String get editAccountNameLabel =>
+      'Account name (e.g., Living Room, Vacation...)';
+
+  @override
+  String get editAccountNameHint => 'My IPTV Account';
+
+  @override
+  String get editAccountNameRequired => 'Required';
+
+  @override
+  String get editAccountModeUrl => 'Full URL';
+
+  @override
+  String get editAccountModeCredentials => 'Credentials';
+
+  @override
+  String get editAccountFullUrlLabel => 'Full .m3u URL';
+
+  @override
+  String get editAccountFullUrlInvalid => 'Invalid URL';
+
+  @override
+  String get editAccountServerUrlLabel => 'Server URL (e.g., http://host:port)';
+
+  @override
+  String get editAccountUsernameLabel => 'Username';
+
+  @override
+  String get editAccountPasswordLabel => 'Password';
+
+  @override
+  String get editAccountPlaylistTypeLabel => 'Playlist type';
+
+  @override
+  String get editAccountPlaylistTypeM3u => 'M3U (Standard)';
+
+  @override
+  String get editAccountPlaylistTypeSimple => 'Simple (Single link)';
+
+  @override
+  String get editAccountCookiesLabel => 'Cookies (optional)';
+
+  @override
+  String get editAccountCookiesHint => 'e.g., PHPSESSID=xxxxxx;';
+
+  @override
+  String get editAccountSaveButton => 'Save';
+
+  @override
+  String get playerGenericError => 'Unable to play this media.';
+
+  @override
+  String get playerLoading => 'Initializing player...';
+
+  @override
+  String playerLoadingError(Object error) {
+    return 'Loading error: $error';
+  }
 }

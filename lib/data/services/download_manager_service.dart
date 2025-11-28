@@ -235,11 +235,11 @@ class DownloadManagerService {
         }
       } else if (e.type != DioExceptionType.cancel) {
         debugPrint("💀 Erreur Dio initiale: ${e.message}");
-        await updateTask(task.id, status: DownloadStatus.failed);
+        await updateTask(task.id, status: DownloadStatus.failed, errorMessage: e.message);
       }
     } catch (e) {
       debugPrint("💀 Erreur Système non gérée : $e");
-      await updateTask(task.id, status: DownloadStatus.failed);
+      await updateTask(task.id, status: DownloadStatus.failed, errorMessage: e.toString());
     } finally {
       _cancelTokens.remove(task.id);
     }
@@ -259,7 +259,7 @@ class DownloadManagerService {
   }
 
   /// Met à jour une tâche existante et notifie l'UI.
-  Future<void> updateTask(String taskId, {DownloadStatus? status, double? progress, int? totalSize}) async {
+  Future<void> updateTask(String taskId, {DownloadStatus? status, double? progress, int? totalSize, String? errorMessage}) async {
     // 1. On crée une NOUVELLE liste (une copie) IMMÉDIATEMENT.
     final currentTasks = List<DownloadTask>.from(tasksNotifier.value);
     final index = currentTasks.indexWhere((t) => t.id == taskId);
@@ -273,6 +273,7 @@ class DownloadManagerService {
         status: status,
         progress: progress,
         totalSize: totalSize,
+        errorMessage: errorMessage,
       );
 
       // 4. On assigne notre copie modifiée au notifier.

@@ -434,6 +434,12 @@ abstract class AppLocalizations {
   /// **'Pending • {date}'**
   String taskStatusPending(Object date);
 
+  /// No description provided for @taskStatusUnknownError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown error'**
+  String get taskStatusUnknownError;
+
   /// No description provided for @playlistManagementTitle.
   ///
   /// In en, this message translates to:
@@ -595,6 +601,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'New'**
   String get accountsFab;
+
+  /// No description provided for @editAccountTitleAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Account'**
+  String get editAccountTitleAdd;
+
+  /// No description provided for @editAccountTitleEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Account'**
+  String get editAccountTitleEdit;
+
+  /// No description provided for @editAccountNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Account name (e.g., Living Room, Vacation...)'**
+  String get editAccountNameLabel;
+
+  /// No description provided for @editAccountNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'My IPTV Account'**
+  String get editAccountNameHint;
+
+  /// No description provided for @editAccountNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Required'**
+  String get editAccountNameRequired;
+
+  /// No description provided for @editAccountModeUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'Full URL'**
+  String get editAccountModeUrl;
+
+  /// No description provided for @editAccountModeCredentials.
+  ///
+  /// In en, this message translates to:
+  /// **'Credentials'**
+  String get editAccountModeCredentials;
+
+  /// No description provided for @editAccountFullUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Full .m3u URL'**
+  String get editAccountFullUrlLabel;
+
+  /// No description provided for @editAccountFullUrlInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid URL'**
+  String get editAccountFullUrlInvalid;
+
+  /// No description provided for @editAccountServerUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Server URL (e.g., http://host:port)'**
+  String get editAccountServerUrlLabel;
+
+  /// No description provided for @editAccountUsernameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Username'**
+  String get editAccountUsernameLabel;
+
+  /// No description provided for @editAccountPasswordLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get editAccountPasswordLabel;
+
+  /// No description provided for @editAccountPlaylistTypeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Playlist type'**
+  String get editAccountPlaylistTypeLabel;
+
+  /// No description provided for @editAccountPlaylistTypeM3u.
+  ///
+  /// In en, this message translates to:
+  /// **'M3U (Standard)'**
+  String get editAccountPlaylistTypeM3u;
+
+  /// No description provided for @editAccountPlaylistTypeSimple.
+  ///
+  /// In en, this message translates to:
+  /// **'Simple (Single link)'**
+  String get editAccountPlaylistTypeSimple;
+
+  /// No description provided for @editAccountCookiesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cookies (optional)'**
+  String get editAccountCookiesLabel;
+
+  /// No description provided for @editAccountCookiesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g., PHPSESSID=xxxxxx;'**
+  String get editAccountCookiesHint;
+
+  /// No description provided for @editAccountSaveButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get editAccountSaveButton;
+
+  /// No description provided for @playerGenericError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to play this media.'**
+  String get playerGenericError;
+
+  /// No description provided for @playerLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Initializing player...'**
+  String get playerLoading;
+
+  /// No description provided for @playerLoadingError.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading error: {error}'**
+  String playerLoadingError(Object error);
 }
 
 class _AppLocalizationsDelegate

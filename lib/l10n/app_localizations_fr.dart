@@ -217,6 +217,9 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
+  String get taskStatusUnknownError => 'Erreur inconnue';
+
+  @override
   String get playlistManagementTitle => 'Téléchargement de la playlist';
 
   @override
@@ -305,4 +308,70 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get accountsFab => 'Nouveau';
+
+  @override
+  String get editAccountTitleAdd => 'Ajouter un compte';
+
+  @override
+  String get editAccountTitleEdit => 'Modifier le compte';
+
+  @override
+  String get editAccountNameLabel => 'Nom du compte (ex: Salon, Vacances...)';
+
+  @override
+  String get editAccountNameHint => 'Mon Compte IPTV';
+
+  @override
+  String get editAccountNameRequired => 'Requis';
+
+  @override
+  String get editAccountModeUrl => 'URL Complète';
+
+  @override
+  String get editAccountModeCredentials => 'Identifiants';
+
+  @override
+  String get editAccountFullUrlLabel => 'URL .m3u complète';
+
+  @override
+  String get editAccountFullUrlInvalid => 'URL invalide';
+
+  @override
+  String get editAccountServerUrlLabel =>
+      'URL du serveur (ex: http://host:port)';
+
+  @override
+  String get editAccountUsernameLabel => 'Nom d\'utilisateur';
+
+  @override
+  String get editAccountPasswordLabel => 'Mot de passe';
+
+  @override
+  String get editAccountPlaylistTypeLabel => 'Type de playlist';
+
+  @override
+  String get editAccountPlaylistTypeM3u => 'M3U (Standard)';
+
+  @override
+  String get editAccountPlaylistTypeSimple => 'Simple (Lien unique)';
+
+  @override
+  String get editAccountCookiesLabel => 'Cookies (optionnel)';
+
+  @override
+  String get editAccountCookiesHint => 'ex: PHPSESSID=xxxxxx;';
+
+  @override
+  String get editAccountSaveButton => 'Enregistrer';
+
+  @override
+  String get playerGenericError => 'Impossible de lire ce média.';
+
+  @override
+  String get playerLoading => 'Initialisation du lecteur...';
+
+  @override
+  String playerLoadingError(Object error) {
+    return 'Erreur de chargement: $error';
+  }
 }

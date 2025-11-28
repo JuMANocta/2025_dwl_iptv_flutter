@@ -11,11 +11,11 @@ class PlaylistService {
 
   static Future<String> playlistPath() async {
     final acc = await StreamAccountService.getCurrentAccount();
-    if (acc == null) throw StateError("Aucun compte sélectionné pour déterminer le chemin de la playlist.");
-
+    if (acc == null) {
+      throw const HttpException(
+          "Aucun compte actif sélectionné. Veuillez en choisir un dans les paramètres.");
+    }
     final dir = await getApplicationDocumentsDirectory();
-    // Le nom du fichier inclut l'ID du compte pour un cache unique !
-    // ex: playlist_1a2b3c.m3u
     return '${dir.path}/${_playlistBaseName}_${acc.id}.m3u';
   }
 
@@ -34,10 +34,12 @@ class PlaylistService {
     if (await file.exists()) {
       final lastModified = await file.lastModified();
       if (DateTime.now().difference(lastModified) < playlistCacheDuration) {
-        debugPrint("✅ Playlist trouvée en cache et encore valide. Pas de téléchargement.");
+        debugPrint(
+            "✅ Playlist trouvée en cache et encore valide. Pas de téléchargement.");
         return path;
       } else {
-        debugPrint("⏳ Playlist trouvée en cache mais périmée. Retéléchargement...");
+        debugPrint(
+            "⏳ Playlist trouvée en cache mais périmée. Retéléchargement...");
       }
     } else {
       debugPrint("ℹ️ Aucune playlist en cache. Téléchargement initial...");
@@ -47,54 +49,77 @@ class PlaylistService {
 
   static Future<String> _buildUrlForCurrentAccount() async {
     final acc = await StreamAccountService.getCurrentAccount();
-    if (acc == null) throw StateError("Aucun compte IPTV sélectionné.");
+    // Normalement, playlistPath() a déjà vérifié ça, mais c'est une sécurité.
+    if (acc == null) throw const HttpException("Aucun compte actif sélectionné.");
     final url = acc.buildM3uUrl();
-    if (url == null || url.isEmpty) throw StateError('Configuration de compte invalide.');
+    if (url == null || url.isEmpty) {
+      throw HttpException("L'URL de la playlist pour le compte '${acc.label}' est invalide. Veuillez vérifier sa configuration.");
+    }
     return url;
   }
 
   static Future<String> downloadCurrentM3U() async {
-    final url = await _buildUrlForCurrentAccount();
-    final destinationPath = await playlistPath();
-    final tempPath = '$destinationPath.part';
-
-    final dio = await NetworkUtils.buildDio(url);
+    String url = '';
+    String destinationPath = '';
+    String tempPath = '';
 
     try {
+      url = await _buildUrlForCurrentAccount();
+      destinationPath = await playlistPath();
+      tempPath = '$destinationPath.part';
+
+      final dio = await NetworkUtils.buildDio(url);
+
       await dio.download(
         url,
         tempPath,
         options: Options(
           receiveTimeout: const Duration(seconds: 60),
           followRedirects: true,
-          validateStatus: (status) => status != null && status >= 200 && status < 300,
+          validateStatus: (status) =>
+          status != null && status >= 200 && status < 300,
         ),
       );
 
       final tempFile = File(tempPath);
       if (!await tempFile.exists() || await tempFile.length() == 0) {
-        throw StateError('Le fichier de playlist téléchargé est vide.');
+        throw const HttpException("Le serveur a renvoyé un fichier vide. Vérifiez l'URL de la playlist.");
       }
 
       await tempFile.rename(destinationPath);
-      debugPrint("✅ Playlist téléchargée et mise en cache avec succès pour le compte actuel.");
+      debugPrint("✅ Playlist téléchargée et mise en cache avec succès.");
       return destinationPath;
-
-    } catch (e) {
-      // Nettoyage en cas d'erreur
-      final tempFile = File(tempPath);
-      if (await tempFile.exists()) {
-        try { await tempFile.delete(); } catch (_) {}
-      }
-
-      // Propagation d'une erreur claire
-      if (e is DioException) {
-        if (e.response?.statusCode != null) {
-          throw HttpException('Erreur du serveur (${e.response!.statusCode}) lors du téléchargement.');
+    } on DioException catch (e) {
+      if (tempPath.isNotEmpty) {
+        final tempFile = File(tempPath);
+        if (await tempFile.exists()) {
+          try {
+            await tempFile.delete();
+          } catch (_) {}
         }
-        throw HttpException('Erreur réseau lors du téléchargement: ${e.message}');
       }
-      throw HttpException('Échec du téléchargement de la playlist: ${e.toString()}');
+
+      switch (e.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          throw HttpException("Le serveur a mis trop de temps à répondre (timeout).\nVérifiez votre connexion ou l'adresse du serveur.");
+        case DioExceptionType.badResponse:
+          final statusCode = e.response?.statusCode;
+          if (statusCode != null) {throw HttpException("Le serveur a répondu avec une erreur : $statusCode.\nVérifiez l'URL de la playlist.");
+          }
+          throw HttpException("Réponse invalide du serveur. Vérifiez l'URL de la playlist.");
+        case DioExceptionType.connectionError:
+          throw const HttpException("Erreur de connexion.\nAssurez-vous d'être connecté à internet et que l'hôte est accessible.");
+        case DioExceptionType.cancel:
+          throw const HttpException("Le téléchargement a été annulé.");
+        default:
+          throw HttpException("Erreur réseau inconnue : ${e.message}");
+      }
+    } on HttpException {
+      rethrow;
+    } catch (e) {
+      throw HttpException("Une erreur inattendue est survenue : ${e.toString()}");
     }
   }
 }

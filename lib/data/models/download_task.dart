@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-// Énumération pour représenter l'état d'un téléchargement.
 enum DownloadStatus {
   queued,      // En attente de démarrage
   downloading, // En cours de téléchargement
@@ -8,7 +7,7 @@ enum DownloadStatus {
   failed,      // Échec
   canceled,    // Annulé par l'utilisateur
   paused,      // En pause (pour une future évolution)
-  finalizing,
+  finalizing,  // En cours de finalisation (déplacement du fichier)
 }
 
 @immutable
@@ -16,13 +15,14 @@ class DownloadTask {
   final String id;          // Un identifiant unique, ex: un timestamp ou un UUID
   final String url;         // L'URL source du fichier
   final String displayName; // Le nom du fichier choisi par l'utilisateur
-  final String finalPath;   // ex: /storage/emulated/0/Movies/AetherStream/film.mp4 Le chemin final où le fichier est (ou sera) sauvegardé
+  final String finalPath;   // ex: /storage/emulated/0/Movies/AetherStream/film.mp4
   final String tempPath;    // ex: /data/user/0/com.javu.aetherstream/cache/dl_tmp/task_123.mp4
   final DownloadStatus status; // L'état actuel du téléchargement
   final double progress;       // La progression de 0.0 à 1.0
   final int totalSize;         // La taille totale du fichier en octets
-  final DateTime createdAt; // La date de création de la tâche
-  final DateTime? updatedAt;  // La date de la dernière mise à jour de l'état
+  final DateTime createdAt;    // La date de création de la tâche
+  final DateTime? updatedAt;   // La date de la dernière mise à jour de l'état
+  final String? errorMessage;
 
   const DownloadTask({
     required this.id,
@@ -30,42 +30,42 @@ class DownloadTask {
     required this.displayName,
     required this.finalPath,
     required this.tempPath,
+    required this.createdAt,
     this.status = DownloadStatus.queued,
     this.progress = 0.0,
     this.totalSize = 0,
-    required this.createdAt,
     this.updatedAt,
+    this.errorMessage,
   });
 
-  // Méthode 'copyWith' pour créer une nouvelle instance avec des valeurs modifiées.
   DownloadTask copyWith({
-    String? id,
-    String? url,
-    String? displayName,
-    String? finalPath,
-    String? tempPath,
     DownloadStatus? status,
     double? progress,
     int? totalSize,
-    DateTime? createdAt,
-
+    String? errorMessage,
+    String? finalPath,
+    String? tempPath,
   }) {
+    String? finalErrorMessage = errorMessage;
+    if (status == DownloadStatus.failed && errorMessage == null) {
+      finalErrorMessage = "Une erreur inconnue est survenue.";
+    }
+
     return DownloadTask(
-      id: id ?? this.id,
-      url: url ?? this.url,
-      displayName: displayName ?? this.displayName,
+      id: id,
+      url: url,
+      displayName: displayName,
       finalPath: finalPath ?? this.finalPath,
       tempPath: tempPath ?? this.tempPath,
+      createdAt: createdAt,
+      updatedAt: DateTime.now(),
       status: status ?? this.status,
       progress: progress ?? this.progress,
       totalSize: totalSize ?? this.totalSize,
-      createdAt: createdAt ?? this.createdAt,
-
+      errorMessage: finalErrorMessage,
     );
   }
 
-  // Méthodes pour la sérialisation/désérialisation en JSON.
-  // Essentiel pour sauvegarder la liste des tâches sur le disque.
   factory DownloadTask.fromJson(Map<String, dynamic> json) {
     return DownloadTask(
       id: json['id'] as String,
@@ -78,22 +78,7 @@ class DownloadTask {
       totalSize: json['totalSize'] as int,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'] as String) : null,
-    );
-  }
-
-  /// Crée une instance "vide" de tâche.
-  /// Utile pour les retours de fonctions comme `firstWhere` quand aucun élément n'est trouvé.
-  factory DownloadTask.empty() {
-    return DownloadTask(
-      id: '', // L'ID vide est la clé pour savoir qu'elle est "vide"
-      url: '',
-      displayName: '',
-      finalPath: '',
-      tempPath: '',
-      createdAt: DateTime.fromMicrosecondsSinceEpoch(0),
-      status: DownloadStatus.queued, // Un statut par défaut
-      progress: 0.0,
-      totalSize: 0,
+      errorMessage: json['errorMessage'] as String?,
     );
   }
 
@@ -104,11 +89,24 @@ class DownloadTask {
       'displayName': displayName,
       'finalPath': finalPath,
       'tempPath': tempPath,
-      'status': status.index, // On stocke l'index de l'enum, c'est plus robuste
+      'status': status.index,
       'progress': progress,
       'totalSize': totalSize,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
+      'errorMessage': errorMessage,
     };
+  }
+
+  /// Crée une instance "vide" de tâche.
+  factory DownloadTask.empty() {
+    return DownloadTask(
+      id: '',
+      url: '',
+      displayName: '',
+      finalPath: '',
+      tempPath: '',
+      createdAt: DateTime.fromMicrosecondsSinceEpoch(0),
+    );
   }
 }

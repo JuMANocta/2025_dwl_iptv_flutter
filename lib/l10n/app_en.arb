@@ -63,6 +63,7 @@
     "taskStatusFailed": "Failed {progressInfo} • Tap to retry",
     "taskStatusCanceled": "Canceled {progressInfo} • Tap to retry",
     "taskStatusPending": "Pending • {date}",
+    "taskStatusUnknownError": "Unknown error",
 
     "playlistManagementTitle": "Playlist Download",
     "playlistCardTitle": "Playlist .m3u",
@@ -91,6 +92,29 @@
     "accountModeSeparate": "Mode: Separate — {username}@{host}",
     "accountActionEdit": "Edit",
     "accountActionDelete": "Delete",
-    "accountsFab": "New"
+    "accountsFab": "New",
+
+    "editAccountTitleAdd": "Add Account",
+    "editAccountTitleEdit": "Edit Account",
+    "editAccountNameLabel": "Account name (e.g., Living Room, Vacation...)",
+    "editAccountNameHint": "My IPTV Account",
+    "editAccountNameRequired": "Required",
+    "editAccountModeUrl": "Full URL",
+    "editAccountModeCredentials": "Credentials",
+    "editAccountFullUrlLabel": "Full .m3u URL",
+    "editAccountFullUrlInvalid": "Invalid URL",
+    "editAccountServerUrlLabel": "Server URL (e.g., http://host:port)",
+    "editAccountUsernameLabel": "Username",
+    "editAccountPasswordLabel": "Password",
+    "editAccountPlaylistTypeLabel": "Playlist type",
+    "editAccountPlaylistTypeM3u": "M3U (Standard)",
+    "editAccountPlaylistTypeSimple": "Simple (Single link)",
+    "editAccountCookiesLabel": "Cookies (optional)",
+    "editAccountCookiesHint": "e.g., PHPSESSID=xxxxxx;",
+    "editAccountSaveButton": "Save",
+
+    "playerGenericError": "Unable to play this media.",
+    "playerLoading": "Initializing player...",
+    "playerLoadingError": "Loading error: {error}"
 
 }
