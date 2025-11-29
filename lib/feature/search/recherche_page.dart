@@ -452,11 +452,16 @@ class _RechercheM3UState extends State<RechercheM3U> {
   //############################################################################
   // CARTES & ITEMS
   //############################################################################
-
   Widget _buildFilmCard(String displayName, List<M3uEntry> versions) {
+    // 1. Détection de l'Homonyme
+    final uniqueYears = versions.map((v) => _getYear(v.rawTitle)).where((y) => y != null).toSet();
+    final isHomonymConflict = versions.length > 1 && uniqueYears.length > 1;
+
+    // 2. Construction des Chips Uniques (utilisée si ce n'est PAS un conflit d'homonymes)
     final allQualityChips = versions.map((v) => _getQualityChip(v.rawTitle));
     final allLanguageChips = versions.expand((v) => _getLanguageChips(v.rawTitle));
-    final uniqueChips = <Widget>{...allQualityChips, ...allLanguageChips}.toList();
+    // Utilise Set pour n'avoir qu'un seul [FHD]
+    final uniqueChips = <Widget>{...allQualityChips, ...allLanguageChips}.toList().where((w) => w is! SizedBox).toList();
 
     return Card(
       elevation: 2,
@@ -468,9 +473,10 @@ class _RechercheM3UState extends State<RechercheM3U> {
           padding: const EdgeInsets.all(12.0),
           child: Row(
             children: [
+              // Placeholder icône
               Container(
                 width: 40, height: 40,
-                decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(color: Colors.blue.withAlpha(25), borderRadius: BorderRadius.circular(8)),
                 child: const Icon(Icons.movie, color: Colors.blue),
               ),
               const SizedBox(width: 16),
@@ -479,10 +485,19 @@ class _RechercheM3UState extends State<RechercheM3U> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    if (uniqueChips.isNotEmpty) ...[
-                      const SizedBox(height: 6),
+
+                    const SizedBox(height: 4),
+
+                    // 🎯 CAS 1: CONFLIT D'HOMONYMES (Affiche la liste des années/versions)
+                    if (isHomonymConflict)
+                      Text(
+                          'Versions disponibles: ${uniqueYears.join(', ')}',
+                          style: TextStyle(color: Colors.white70, fontSize: 12)
+                      )
+                    // CAS 2: VERSION MULTIPLE OU UNIQUE (Affiche les tags uniques)
+                    else if (uniqueChips.isNotEmpty)
                       Wrap(spacing: 4, runSpacing: 4, children: uniqueChips),
-                    ]
+
                   ],
                 ),
               ),
@@ -505,7 +520,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
         child: ExpansionTile(
           leading: Container(
             width: 40, height: 40,
-            decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: Colors.purple.withAlpha(25), borderRadius: BorderRadius.circular(8)),
             child: const Icon(Icons.tv, color: Colors.purple),
           ),
           title: Text(serieName, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -766,7 +781,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       label: Text("S${ep.saison} E${ep.episode}"),
       visualDensity: VisualDensity.compact,
       padding: EdgeInsets.zero,
-      backgroundColor: Colors.grey.withOpacity(0.1),
+      backgroundColor: Colors.grey.withAlpha(25),
     );
   }
 
@@ -775,6 +790,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     if (t.contains('4k') || t.contains('2160p')) return _tag('4K', Colors.red);
     if (t.contains('1080p') || t.contains('fhd')) return _tag('FHD', Colors.amber);
     if (t.contains('720p') || t.contains('hd')) return _tag('HD', Colors.blue);
+    if (t.contains('sd')) return _tag('SD', Colors.teal);
     return const SizedBox.shrink();
   }
 
@@ -817,7 +833,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
     final match = RegExp(r'\(?(19|20)\d{2}\)?').firstMatch(rawTitle);
     if (match != null) {
       // On retourne juste l'année propre (sans parenthèses)
-      return match.group(0)?.replaceAll(RegExp(r'[\(\)]'), '');
+      final match = RegExp(r'\b(19|20)\d{2}\b').firstMatch(rawTitle);
+      return match?.group(0);
     }
     return null;
   }
@@ -826,8 +843,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          border: Border.all(color: color.withOpacity(0.5)),
+          color: color.withAlpha(25),
+          border: Border.all(color: color.withAlpha(25)),
           borderRadius: BorderRadius.circular(4)
       ),
       child: Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),

@@ -6,6 +6,7 @@ import '../player/player_page.dart';
 import '../downloads/logic/download_initiator.dart';
 import 'recherche_page.dart';
 import '../../l10n/app_localizations.dart';
+import 'actor_details_page.dart';
 
 class DetailsPage extends StatefulWidget {
   final M3uEntry entry;
@@ -41,13 +42,32 @@ class _DetailsPageState extends State<DetailsPage> {
     }
   }
 
+  // 🎯 NOUVELLE MÉTHODE : Chercher l'ID de l'acteur via TMDB
+  Future<void> _searchActor(String actorName) async {
+    final service = TmdbService.instance;
+    final personId = await service.getPersonId(actorName);
+
+    if (!mounted) return;
+
+    if (personId != null) {
+      debugPrint("🚀 ID acteur trouvé ($personId). Navigation vers la fiche.");
+
+      // 🎯 NAVIGATION FINALE
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: personId)));
+
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("TMDB n'a pas trouvé de fiche pour $actorName.")),
+      );
+    }
+  }
+
   // Fonction pour ouvrir la bande-annonce dans un navigateur/YouTube
   Future<void> _launchTrailer() async {
     if (_tmdbData?.trailerKey == null) return;
     final url = Uri.parse('https://www.youtube.com/watch?v=${_tmdbData!.trailerKey}');
 
     if (await canLaunchUrl(url)) {
-      // 🎯 CHANGEMENT CRITIQUE : Utilisation de platformDefault pour une meilleure compatibilité
       await launchUrl(url, mode: LaunchMode.platformDefault);
     } else {
       debugPrint("❌ ERREUR : Impossible de lancer la bande-annonce à l'URL: $url");
@@ -64,7 +84,6 @@ class _DetailsPageState extends State<DetailsPage> {
     final overview = _tmdbData?.overview;
     final rating = _tmdbData?.voteAverage ?? 0.0;
 
-    // 🎯 NOUVELLE EXTRACTION
     final castList = _tmdbData?.cast;
     final hasTrailer = _tmdbData?.trailerKey != null;
 
@@ -157,7 +176,6 @@ class _DetailsPageState extends State<DetailsPage> {
                           Text(
                             rating.toStringAsFixed(1),
                             style: const TextStyle(
-                                fontSize: 16,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.amber),
                           ),
@@ -167,7 +185,7 @@ class _DetailsPageState extends State<DetailsPage> {
 
                   const SizedBox(height: 24),
 
-                  // BOUTONS D'ACTION (Largeur complète)
+                  // BOUTONS D'ACTION (Jouer / Télécharger)
                   Row(
                     children: [
                       // Bouton JOUER
@@ -209,7 +227,7 @@ class _DetailsPageState extends State<DetailsPage> {
                     ],
                   ),
 
-                  // 🎯 NOUVEAU : BOUTON BANDE-ANNONCE (sous les boutons principaux)
+                  // BOUTON BANDE-ANNONCE
                   if (hasTrailer)
                     Padding(
                       padding: const EdgeInsets.only(top: 12.0),
@@ -240,13 +258,22 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 24),
                   ],
 
-                  // 🎯 NOUVEAU : CASTING PRINCIPAL
+                  // 🎯 CASTING PRINCIPAL (ActionChips cliquables)
                   if (hasTmdbData && castList != null && castList.isNotEmpty) ...[
                     Text("Casting principal", style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white70)),
                     const Divider(color: Colors.white10),
-                    Text(
-                        castList.join(', '),
-                        style: const TextStyle(color: Colors.white70, fontSize: 15, height: 1.5)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: castList.map((actor) {
+                        return ActionChip(
+                          avatar: const Icon(Icons.person, size: 18, color: Colors.amber),
+                          label: Text(actor),
+                          onPressed: () => _searchActor(actor), // 🎯 APPEL VERS TMDB
+                          backgroundColor: Colors.white12,
+                          labelStyle: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                        );
+                      }).toList(),
                     ),
                     const SizedBox(height: 24),
                   ],

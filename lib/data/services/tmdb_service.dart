@@ -1,7 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'tmdb_api_service.dart';
-import '../models/media_model.dart';
+import 'package:aetherStream/data/models/media_model.dart';
+import 'package:aetherStream/data/models/person_model.dart';
 
 class TmdbService {
   Dio? _dio;
@@ -146,6 +147,48 @@ class TmdbService {
 
     } catch (e) {
       debugPrint("❌ Glitch TMDB : $e");
+      return null;
+    }
+  }
+
+  Future<int?> getPersonId(String query) async {
+    if (!await _init()) return null;
+
+    try {
+      debugPrint("🔎 Recherche ID personne pour : '$query'");
+      final response = await _dio!.get('/search/person', queryParameters: {
+        'query': query,
+        'language': 'fr-FR', // Recherche de nom dans le langage ciblé
+      });
+
+      if (response.data['results'].isNotEmpty) {
+        return response.data['results'][0]['id'] as int;
+      }
+    } catch (e) {
+      debugPrint("❌ Erreur recherche personne : $e");
+    }
+    return null;
+  }
+
+  Future<Person?> getPersonDetails(int personId) async {
+    if (!await _init()) return null;
+
+    final endpoint = '/person/$personId';
+
+    try {
+      debugPrint("🎬 Demande détails acteur ID: $personId + filmographie.");
+      final response = await _dio!.get(
+          endpoint,
+          queryParameters: {
+            'language': 'fr-FR',
+            'append_to_response': 'combined_credits' // Filmographie (films et séries)
+          }
+      );
+
+      return Person.fromJson(response.data);
+
+    } catch (e) {
+      debugPrint("❌ Erreur récupération détails acteur : $e");
       return null;
     }
   }
