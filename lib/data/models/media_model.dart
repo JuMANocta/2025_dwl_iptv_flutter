@@ -6,11 +6,11 @@ class Media {
   final String overview;
   final double voteAverage;
   final String? releaseDate;
-
-  // 🎯 NOUVEAUX CHAMPS
-  final List<String> genres; // Liste des noms des genres (ex: "Mystère", "Thriller")
-  final String? runtimeOrEpisodeLength; // Durée du film ou des épisodes (pour TV)
-  final String? productionCompanies; // Noms des principales sociétés
+  final List<String> genres;
+  final String? runtimeOrEpisodeLength;
+  final String? productionCompanies;
+  final List<String> cast;
+  final String? trailerKey;
 
   Media({
     required this.id,
@@ -20,16 +20,42 @@ class Media {
     required this.overview,
     required this.voteAverage,
     this.releaseDate,
-    // NOUVEAU
     required this.genres,
     this.runtimeOrEpisodeLength,
     this.productionCompanies,
+    required this.cast,
+    this.trailerKey,
   });
 
   factory Media.fromJson(Map<String, dynamic> json) {
     final isMovie = json.containsKey('title');
 
-    // Extraction des genres (Conversion de List<Map> en List<String>)
+    // 1. Extraction des 5 premiers acteurs du champ 'credits'
+    final castList = (json['credits']?['cast'] as List<dynamic>?)
+        ?.take(5)
+        .map((a) => a['name'] as String)
+        .toList() ?? [];
+
+    // 2. Recherche de la première bande-annonce (Trailer) en FR ou ANGLAIS
+    String? foundTrailerKey;
+    final videos = json['videos']?['results'] as List<dynamic>?;
+    if (videos != null) {
+      // Tente de trouver la première bande-annonce (Trailer/Teaser) en français
+      final frTrailer = videos.firstWhere(
+              (v) => (v['type'] == 'Trailer' || v['type'] == 'Teaser') && v['iso_639_1'] == 'fr',
+          orElse: () => null);
+
+      // Si pas de français, prend le meilleur trailer global
+      final primaryTrailer = frTrailer ?? videos.firstWhere(
+              (v) => (v['type'] == 'Trailer' || v['type'] == 'Teaser'),
+          orElse: () => null);
+
+      if (primaryTrailer != null) {
+        foundTrailerKey = primaryTrailer['key'] as String;
+      }
+    }
+
+    // Extraction des genres
     final genresList = (json['genres'] as List<dynamic>?)
         ?.map((g) => g['name'] as String)
         .toList() ?? [];
@@ -39,7 +65,7 @@ class Media {
     if (isMovie) {
       final rt = json['runtime'] as int?;
       if (rt != null && rt > 0) {
-        runtime = '${rt ~/ 60}h ${rt % 60}m'; // Format "1h 30m"
+        runtime = '${rt ~/ 60}h ${rt % 60}m';
       }
     } else {
       final epTimes = json['episode_run_time'] as List<dynamic>?;
@@ -48,7 +74,7 @@ class Media {
       }
     }
 
-    // Extraction des compagnies (les 2-3 premières)
+    // Extraction des compagnies (les 3 premières)
     final companies = (json['production_companies'] as List<dynamic>?)
         ?.take(3)
         .map((c) => c['name'] as String)
@@ -65,6 +91,8 @@ class Media {
       genres: genresList,
       runtimeOrEpisodeLength: runtime,
       productionCompanies: companies,
+      cast: castList,
+      trailerKey: foundTrailerKey,
     );
   }
 }

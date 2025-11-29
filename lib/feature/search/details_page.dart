@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../data/services/tmdb_service.dart';
 import '../../data/models/media_model.dart';
 import '../player/player_page.dart';
@@ -26,8 +27,9 @@ class _DetailsPageState extends State<DetailsPage> {
 
   Future<void> _loadData() async {
     final service = TmdbService.instance;
+    // Utilise rawTitle pour que TmdbService puisse extraire l'année
     final data = await service.getFullDetails(
-      widget.entry.displayName,
+      widget.entry.rawTitle,
       isTv: widget.entry.isSerie,
     );
 
@@ -36,6 +38,19 @@ class _DetailsPageState extends State<DetailsPage> {
         _tmdbData = data;
         _isLoading = false;
       });
+    }
+  }
+
+  // Fonction pour ouvrir la bande-annonce dans un navigateur/YouTube
+  Future<void> _launchTrailer() async {
+    if (_tmdbData?.trailerKey == null) return;
+    final url = Uri.parse('https://www.youtube.com/watch?v=${_tmdbData!.trailerKey}');
+
+    if (await canLaunchUrl(url)) {
+      // 🎯 CHANGEMENT CRITIQUE : Utilisation de platformDefault pour une meilleure compatibilité
+      await launchUrl(url, mode: LaunchMode.platformDefault);
+    } else {
+      debugPrint("❌ ERREUR : Impossible de lancer la bande-annonce à l'URL: $url");
     }
   }
 
@@ -49,21 +64,25 @@ class _DetailsPageState extends State<DetailsPage> {
     final overview = _tmdbData?.overview;
     final rating = _tmdbData?.voteAverage ?? 0.0;
 
+    // 🎯 NOUVELLE EXTRACTION
+    final castList = _tmdbData?.cast;
+    final hasTrailer = _tmdbData?.trailerKey != null;
+
     // Formatting
     final runtime = _tmdbData?.runtimeOrEpisodeLength;
-    final releaseDate = _tmdbData?.releaseDate?.split('-').first; // Juste l'année
+    final releaseDate = _tmdbData?.releaseDate?.split('-').first;
     final companies = _tmdbData?.productionCompanies;
 
     // URLs
-    final backdropUrl = TmdbService.getPosterUrl(backdropPath, size: 'original'); // Qualité max pour le fond
+    final backdropUrl = TmdbService.getPosterUrl(backdropPath, size: 'original');
 
     return Scaffold(
-      backgroundColor: Colors.black, // Fond profond
+      backgroundColor: Colors.black,
       body: CustomScrollView(
         slivers: [
           // 1. IMMERSIVE HEADER
           SliverAppBar(
-            expandedHeight: 400.0, // Plus haut pour l'immersion
+            expandedHeight: 400.0,
             pinned: true,
             stretch: true,
             backgroundColor: Colors.black,
@@ -90,15 +109,12 @@ class _DetailsPageState extends State<DetailsPage> {
                         colors: [
                           Colors.transparent,
                           Colors.black45,
-                          Colors.black, // Fondu total vers le noir en bas
+                          Colors.black,
                         ],
                         stops: [0.0, 0.6, 1.0],
                       ),
                     ),
                   ),
-
-                  // Poster flottant et Titre (Optionnel dans le header, ou on le met dans le body)
-                  // Ici on laisse juste l'image propre.
                 ],
               ),
             ),
@@ -154,12 +170,13 @@ class _DetailsPageState extends State<DetailsPage> {
                   // BOUTONS D'ACTION (Largeur complète)
                   Row(
                     children: [
+                      // Bouton JOUER
                       Expanded(
                         child: FilledButton.icon(
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             backgroundColor: Colors.white,
-                            foregroundColor: Colors.black, // Contraste fort
+                            foregroundColor: Colors.black,
                           ),
                           onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => PlayerPage(
@@ -172,7 +189,10 @@ class _DetailsPageState extends State<DetailsPage> {
                           label: Text(l10n.actionSheetPlay.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
+
                       const SizedBox(width: 12),
+
+                      // Bouton TÉLÉCHARGER
                       Expanded(
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
@@ -189,6 +209,24 @@ class _DetailsPageState extends State<DetailsPage> {
                     ],
                   ),
 
+                  // 🎯 NOUVEAU : BOUTON BANDE-ANNONCE (sous les boutons principaux)
+                  if (hasTrailer)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12.0),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.red),
+                            foregroundColor: Colors.red,
+                          ),
+                          onPressed: _launchTrailer,
+                          icon: const Icon(Icons.videocam),
+                          label: const Text("Bande-Annonce"),
+                        ),
+                      ),
+                    ),
+
                   const SizedBox(height: 24),
 
                   // SYNOPSIS
@@ -198,6 +236,17 @@ class _DetailsPageState extends State<DetailsPage> {
                     Text(
                       overview ?? "Données classifiées.",
                       style: const TextStyle(color: Colors.grey, height: 1.5, fontSize: 15),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // 🎯 NOUVEAU : CASTING PRINCIPAL
+                  if (hasTmdbData && castList != null && castList.isNotEmpty) ...[
+                    Text("Casting principal", style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white70)),
+                    const Divider(color: Colors.white10),
+                    Text(
+                        castList.join(', '),
+                        style: const TextStyle(color: Colors.white70, fontSize: 15, height: 1.5)
                     ),
                     const SizedBox(height: 24),
                   ],
@@ -226,10 +275,10 @@ class _DetailsPageState extends State<DetailsPage> {
                       "Production: $companies",
                       style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                     ),
-                    const SizedBox(height: 40), // Espace bas de page
+                    const SizedBox(height: 40),
                   ],
 
-                  // LOADING STATE (Si c'est long, on affiche un petit spinner discret en bas)
+                  // LOADING STATE
                   if (_isLoading)
                     const Center(child: Padding(
                       padding: EdgeInsets.all(20.0),

@@ -204,8 +204,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
     super.dispose();
   }
 
-  //############################################################################
-  // ⚡ LOGIQUE DE TRAITEMENT PAR FLUX (STREAM)
+//############################################################################
+  // ⚡ LOGIQUE DE TRAITEMENT PAR FLUX (STREAM) - DUAL FORMAT
   //############################################################################
 
   Future<void> _processFileStream() async {
@@ -216,10 +216,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
     }
 
     try {
-      String? currentTitle;
-      final regExpSerie = RegExp(r"S(\d{2}) E(\d{2})", caseSensitive: false);
+      String? pendingTitle; // Titre en attente (Pour le format EXTINF classique)
+      final regExpSerie = RegExp(r"S(\d{2})\s*E(\d{2})", caseSensitive: false);
 
-      // Lecture ligne par ligne sans saturer la RAM
       await file.openRead()
           .transform(utf8.decoder)
           .transform(const LineSplitter())
@@ -227,15 +226,36 @@ class _RechercheM3UState extends State<RechercheM3U> {
         final trimmed = line.trim();
         if (trimmed.isEmpty) return;
 
+        // --- CAS 1 : Ligne de métadonnées (Format A) ---
         if (trimmed.startsWith("#EXTINF")) {
+          // Ex: #EXTINF:-1,Titre du film (FR)
           final commaIndex = trimmed.lastIndexOf(',');
           if (commaIndex != -1) {
-            currentTitle = trimmed.substring(commaIndex + 1).trim();
+            pendingTitle = trimmed.substring(commaIndex + 1).trim();
           }
-        } else if (trimmed.startsWith("http")) {
-          if (currentTitle != null && currentTitle!.isNotEmpty) {
-            _addEntry(currentTitle!, trimmed, regExpSerie);
-            currentTitle = null;
+        }
+        // --- CAS 2 : Ligne d'URL (Format A ou B) ---
+        else if (trimmed.startsWith("http")) {
+          String url = trimmed;
+          String currentTitle = "";
+
+          // DÉTECTION FORMAT B (URL #Name: Titre)
+          if (trimmed.contains("#Name:")) {
+            final parts = trimmed.split("#Name:");
+            url = parts[0].trim(); // L'URL est avant
+            if (parts.length > 1) {
+              currentTitle = parts[1].trim(); // Le titre est après
+            }
+          }
+          // UTILISATION FORMAT A (Titre stocké précédement)
+          else if (pendingTitle != null && pendingTitle!.isNotEmpty) {
+            currentTitle = pendingTitle!;
+            pendingTitle = null; // On consomme le titre en attente
+          }
+
+          // Si on a bien un titre et une URL, on ajoute
+          if (currentTitle.isNotEmpty) {
+            _addEntry(currentTitle, url, regExpSerie);
           }
         }
       });
@@ -547,22 +567,72 @@ class _RechercheM3UState extends State<RechercheM3U> {
   Future<M3uEntry?> _showVersionSelector(List<M3uEntry> versions) {
     return showModalBottomSheet<M3uEntry>(
       context: context,
+      showDragHandle: true,
       builder: (ctx) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.only(bottom: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text("Choisir une version", style: Theme.of(context).textTheme.titleMedium),
-            const Divider(),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text("Choisir une version", style: Theme.of(context).textTheme.titleLarge),
+            ),
+            const Divider(height: 1),
             Flexible(
-              child: ListView.builder(
+              child: ListView.separated(
                 shrinkWrap: true,
                 itemCount: versions.length,
+                separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
                 itemBuilder: (ctx, i) {
                   final v = versions[i];
+
+                  // 1. Extraction des données
+                  final year = _getYear(v.rawTitle);       // 📅 Année
+                  final extraInfo = _getVersionLabel(v);   // Texte restant (ex: Director's Cut)
+                  final qualityChip = _getQualityChip(v.rawTitle);
+                  final langChips = _getLanguageChips(v.rawTitle);
+
+                  // 2. Construction de la liste des Badges
+                  final allChips = <Widget>[];
+
+                  // 🚨 L'ANNÉE EN PREMIER (Badge Blanc/Gris)
+                  if (year != null) {
+                    allChips.add(Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white60),
+                          borderRadius: BorderRadius.circular(4)
+                      ),
+                      child: Text(year, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+                    ));
+                  }
+
+                  // Ensuite Qualité et Langues
+                  if (qualityChip is! SizedBox) allChips.add(qualityChip);
+                  allChips.addAll(langChips);
+
+                  // 3. Logique d'affichage Titre/Sous-titre
+                  Widget titleWidget;
+                  Widget? subtitleWidget;
+
+                  if (allChips.isNotEmpty) {
+                    // Les badges deviennent le titre principal
+                    titleWidget = Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: allChips);
+
+                    // Si on a du texte spécifique en plus, il passe en sous-titre
+                    if (extraInfo.isNotEmpty && extraInfo != "Standard / Inconnue") {
+                      subtitleWidget = Text(extraInfo, style: const TextStyle(fontSize: 12, color: Colors.grey));
+                    }
+                  } else {
+                    // Fallback texte brut
+                    titleWidget = Text(extraInfo, style: const TextStyle(fontWeight: FontWeight.bold));
+                  }
+
                   return ListTile(
-                    leading: const Icon(Icons.high_quality),
-                    title: Text(v.rawTitle.replaceAll(v.displayName, '').trim().replaceAll(RegExp(r'^[-_.]'), '').trim()),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                    title: titleWidget,
+                    subtitle: subtitleWidget,
+                    trailing: const Icon(Icons.check_circle_outline, color: Colors.white24, size: 20),
                     onTap: () => Navigator.pop(ctx, v),
                   );
                 },
@@ -643,34 +713,38 @@ class _RechercheM3UState extends State<RechercheM3U> {
   String _getDisplayName(String originalName) {
     String name = originalName;
 
-    // 1. Nettoyage des Préfixes IPTV courants (ex: "|FR| GENERAL", "FR: TF1", "FR - TF1")
+    // 1. Nettoyage Prefixes bizarres (IPTV)
+    // Ex: "|FR| FILM", "FR : FILM"
     name = name.replaceAll(RegExp(r'^(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])\s*', caseSensitive: false), '');
 
+    // 2. Gestion Séries : On coupe tout ce qui est après S01 E01
     final matchSerie = RegExp(r"S\d{2}\s*E\d{2}", caseSensitive: false).firstMatch(name);
     if (matchSerie != null) {
       name = name.substring(0, matchSerie.start).trim();
     }
 
-    // 3. 🎯 CORRECTION : Suppression des tags de QUALITÉ TV
+    // 3. Suppression des tags de QUALITÉ
     const qualityTags = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|H\.265|X265|AAC|DTS)\b';
     name = name.replaceAll(RegExp(qualityTags, caseSensitive: false), '');
 
-    const langTags = r'\b(MULTI|VOSTFR|VF|VO|VFF|FR|EN|VIP|RAW)\b';
+    // 4. Suppression des tags de LANGUE
+    const langTags = r'\b(MULTI|VOSTFR|VOST|VF|VO|VFF|FR|EN|VIP|RAW)\b';
     name = name.replaceAll(RegExp(langTags, caseSensitive: false), '');
 
-    // Ex: "TF1 (FHD)" -> "TF1 "
-    name = name.replaceAll(RegExp(r'[\(\)\[\]]'), ' ');
+    // 5. 🎯 Suppression de l'ANNÉE (ex: 2021, (2019))
+    // On cherche 4 chiffres commençant par 19 ou 20, potentiellement entre parenthèses
+    name = name.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
 
-    // Ex: "TF1 - General" -> "TF1 General"
-    name = name.replaceAll(RegExp(r'\s+[-_]\s+'), ' ');
+    // 6. Nettoyage final des ponctuations résiduelles
+    // On remplace parenthèses, crochets, points, tirets par des espaces
+    name = name.replaceAll(RegExp(r'[\(\)\[\]\.\-_]'), ' ');
 
-    // Ex: "TF1.FHD" -> "TF1"
-    name = name.replaceAll('.', ' ');
-
+    // 7. Trim et réduction des espaces multiples
     name = name.replaceAll(RegExp(r'\s+'), ' ').trim();
 
-    if (name.isEmpty || name.length < 2) {
-      return originalName.replaceAll(RegExp(r'\s+'), ' ').trim();
+    // Sécurité: Si on a tout effacé, on renvoie une version minimaliste de l'original
+    if (name.length < 2) {
+      return originalName.split(RegExp(r"S\d{2}", caseSensitive: false)).first;
     }
 
     return name;
@@ -711,6 +785,41 @@ class _RechercheM3UState extends State<RechercheM3U> {
     if (t.contains('vostfr')) chips.add(_tag('VOSTFR', Colors.orange));
     if (t.contains('vf') || t.contains('french') || t.contains('vff')) chips.add(_tag('VF', Colors.blue));
     return chips;
+  }
+
+  /// Nettoie le titre pour n'afficher que la qualité/langue dans le sélecteur
+  String _getVersionLabel(M3uEntry entry) {
+    String label = entry.rawTitle;
+
+    // 1. Retire le Titre du film
+    label = label.replaceAll(RegExp(RegExp.escape(entry.displayName), caseSensitive: false), '');
+
+    // 2. Retire les Préfixes IPTV
+    label = label.replaceAll(RegExp(r'(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])', caseSensitive: false), '');
+
+    // 3. Retire l'Année
+    label = label.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
+
+    // 4. 🎯 NOUVEAU : Retire les mots-clés de QUALITÉ et LANGUE (car ils seront en Chips)
+    const tagsToRemove = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|X265|MULTI|VOSTFR|VOST|VF|VO|VFF|FR|EN|TRUEFRENCH)\b';
+    label = label.replaceAll(RegExp(tagsToRemove, caseSensitive: false), '');
+
+    // 5. Nettoyage final (ponctuation résiduelle)
+    label = label.replaceAll(RegExp(r'^[ \t\-_.\(\)\[\]]+'), '');
+    label = label.replaceAll(RegExp(r'[ \t\-_.\(\)\[\]]+$'), '');
+    label = label.trim().replaceAll(RegExp(r'\s+'), ' ');
+
+    return label;
+  }
+
+  String? _getYear(String rawTitle) {
+    // Cherche 4 chiffres commençant par 19 ou 20, avec ou sans parenthèses
+    final match = RegExp(r'\(?(19|20)\d{2}\)?').firstMatch(rawTitle);
+    if (match != null) {
+      // On retourne juste l'année propre (sans parenthèses)
+      return match.group(0)?.replaceAll(RegExp(r'[\(\)]'), '');
+    }
+    return null;
   }
 
   Widget _tag(String text, Color color) {
