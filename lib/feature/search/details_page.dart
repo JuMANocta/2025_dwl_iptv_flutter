@@ -46,7 +46,6 @@ class _DetailsPageState extends State<DetailsPage> {
 
     // Data extraction
     final backdropPath = _tmdbData?.backdropPath;
-    final posterPath = _tmdbData?.posterPath;
     final overview = _tmdbData?.overview;
     final rating = _tmdbData?.voteAverage ?? 0.0;
 
@@ -57,7 +56,6 @@ class _DetailsPageState extends State<DetailsPage> {
 
     // URLs
     final backdropUrl = TmdbService.getPosterUrl(backdropPath, size: 'original'); // Qualité max pour le fond
-    final posterUrl = TmdbService.getPosterUrl(posterPath, size: 'w342');
 
     return Scaffold(
       backgroundColor: Colors.black, // Fond profond
