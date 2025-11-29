@@ -66,7 +66,7 @@ class ActorDetailsPage extends StatelessWidget {
                           subtitle: Text("Rôle: ${credit.character ?? 'N/A'}", style: const TextStyle(color: Colors.white70)),
                           trailing: Chip(
                             label: Text(credit.mediaType.toUpperCase(), style: const TextStyle(fontSize: 10)),
-                            backgroundColor: credit.mediaType == 'movie' ? Colors.blue.withOpacity(0.2) : Colors.purple.withOpacity(0.2),
+                            backgroundColor: credit.mediaType == 'movie' ? Colors.blue.withAlpha(51) : Colors.purple.withAlpha(51),
                           ),
                           // Optionnel : Ajouter un onTap pour ouvrir la fiche du film/série
                         )).toList(),
