@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:convert'; // Nécessaire pour l'optimisation Stream
 import 'package:flutter/material.dart';
+import 'edit_account_sheet.dart';
 import '../../data/models/stream_account.dart';
 import '../../data/services/stream_account_service.dart';
 import '../../data/services/playlist_service.dart';
-import 'edit_account_sheet.dart';
 import '../../l10n/app_localizations.dart';
+import '../../data/services/tmdb_api_service.dart';
+import '../../data/services/tmdb_service.dart'; // N'oublie pas d'importer le service pour le reset
 
 class AccountsPage extends StatefulWidget {
   const AccountsPage({super.key, this.initialPlaylistPath});
@@ -15,59 +18,77 @@ class AccountsPage extends StatefulWidget {
 }
 
 class _AccountsPageState extends State<AccountsPage> {
-  late Future<List<StreamAccount>> _future;
+  late Future<List<StreamAccount>> _accountsFuture;
   late Future<_PlaylistInfo?> _playlistInfoFuture;
+
+  final _tmdbApiKeyController = TextEditingController();
+  bool _isTmdbKeyVisible = false;
+  bool _hasSavedKey = false; // État local pour l'UI instantanée
 
   @override
   void initState() {
     super.initState();
-    _future = _load();
-    // On utilise la même logique de chargement intelligente au démarrage.
+    _accountsFuture = _loadAccounts();
+
+    // Logique de chargement playlist
     if (widget.initialPlaylistPath != null) {
       _playlistInfoFuture = _readPlaylistInfo(widget.initialPlaylistPath!);
     } else {
-      // Sinon (si on ouvre la page directement), on garde l'ancienne logique.
       _playlistInfoFuture = _loadAndDisplayPlaylistInfo();
+    }
+
+    _initTmdbState();
+  }
+
+  Future<void> _initTmdbState() async {
+    final key = await TmdbApiService.getApiKey();
+    if (key != null && key.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _tmdbApiKeyController.text = key;
+          _hasSavedKey = true;
+        });
+      }
     }
   }
 
-  Future<List<StreamAccount>> _load() async {
+  Future<List<StreamAccount>> _loadAccounts() async {
     await StreamAccountService.migrateFromLegacyIfNeeded();
     return StreamAccountService.listAccounts();
   }
 
   Future<void> _refresh() async {
     setState(() {
-      _future = _load();
-      // On utilise la même logique de chargement au rafraîchissement.
+      _accountsFuture = _loadAccounts();
       _playlistInfoFuture = _loadAndDisplayPlaylistInfo();
     });
   }
 
+  // --- ACTIONS COMPTES ---
+
   Future<void> _setCurrent(String id) async {
     await StreamAccountService.setCurrentAccount(id);
     if (!mounted) return;
-      debugPrint("✅ Compte sélectionné.");
-      // Signale au parent qu'il doit recharger la playlist, et ferme l'écran
-      Navigator.of(context).pop(true);
+    debugPrint("✅ Compte sélectionné.");
+    Navigator.of(context).pop(true);
   }
 
   Future<void> _delete(String id) async {
-    final l10n = AppLocalizations.of(context);
+    final l10n = AppLocalizations.of(context)!;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(l10n!.deleteAccountDialogTitle),
+        title: Text(l10n.deleteAccountDialogTitle),
         content: Text(l10n.deleteAccountDialogContent),
         actions: [
-          TextButton(onPressed: ()=>Navigator.pop(ctx,false), child: Text(l10n.cancel)),
-          TextButton(onPressed: ()=>Navigator.pop(ctx,true), child: Text(l10n.deleteAccountConfirm, style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.cancel)),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l10n.deleteAccountConfirm, style: const TextStyle(color: Colors.red))),
         ],
       ),
     );
     if (ok == true) {
       await StreamAccountService.deleteAccount(id);
-      await _refresh();
+      _refresh();
     }
   }
 
@@ -80,14 +101,15 @@ class _AccountsPageState extends State<AccountsPage> {
     );
     if (result != null) {
       await StreamAccountService.saveAccount(result);
+      // Si c'est un nouveau compte ou modif, on le set comme courant par confort
       await StreamAccountService.setCurrentAccount(result.id);
       if (!mounted) return;
-      // Ferme en signalant un changement
       Navigator.of(context).pop(true);
     }
   }
 
-  // Comportement du bouton "Recharger" : force le téléchargement.
+  // --- ACTIONS PLAYLIST ---
+
   Future<void> _forceReloadPlaylist() async {
     try {
       final path = await PlaylistService.downloadCurrentM3U();
@@ -98,34 +120,40 @@ class _AccountsPageState extends State<AccountsPage> {
       });
       debugPrint("🔄 Playlist rechargée (${info?.count ?? 0} entrées)");
     } catch (e) {
-      if (!mounted) return;
-        debugPrint("❌ Échec du rechargement : $e");
+      debugPrint("❌ Échec du rechargement : $e");
     }
   }
 
-  // ---------- Playlist info ----------
   Future<_PlaylistInfo?> _loadAndDisplayPlaylistInfo() async {
     try {
       final path = await PlaylistService.getOrDownloadPlaylist();
       return _readPlaylistInfo(path);
     } catch (e) {
-      // Si une erreur se produit (ex: réseau pendant le dl), on la propage au FutureBuilder.
-      if (!mounted) return null;
-        debugPrint("❌ Erreur chargement playlist : $e");
       return null;
     }
   }
 
+  /// 🚀 OPTIMISATION CYBERPUNK : Lecture par Stream
+  /// Évite de charger un fichier de 50Mo en RAM d'un coup.
   Future<_PlaylistInfo?> _readPlaylistInfo(String path) async {
     try {
       final f = File(path);
       if (!await f.exists()) return null;
+
       final stat = await f.stat();
-      final lines = await f.readAsLines();
-      final count = lines.where((l) {
-        final s = l.trim().toLowerCase();
-        return s.startsWith('http://') || s.startsWith('https://');
-      }).length;
+      int count = 0;
+
+      // Lecture ligne par ligne (faible empreinte mémoire)
+      await f.openRead()
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .forEach((line) {
+        final s = line.trim(); // Pas de toLowerCase ici pour la perf, juste check start
+        if (s.startsWith('http://') || s.startsWith('https://')) {
+          count++;
+        }
+      });
+
       return _PlaylistInfo(
         path: path,
         size: stat.size,
@@ -136,6 +164,307 @@ class _AccountsPageState extends State<AccountsPage> {
       return null;
     }
   }
+
+  // --- UI WIDGETS ---
+
+  Widget _buildTmdbCard() {
+    // Si la clé est sauvegardée, on verrouille l'input visuellement
+    final bool isLocked = _hasSavedKey;
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                "API TheMovieDB",
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _tmdbApiKeyController,
+                    obscureText: !_isTmdbKeyVisible,
+                    readOnly: isLocked, // 🔒 Lecture seule si sauvegardé
+                    style: TextStyle(
+                      color: isLocked ? Colors.green.shade300 : null,
+                      fontWeight: isLocked ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: isLocked ? "Clé active" : "Saisir Clé API (v3/v4)",
+                      hintText: "Bearer Token...",
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _isTmdbKeyVisible ? Icons.visibility_off : Icons.visibility,
+                          size: 20,
+                        ),
+                        onPressed: () => setState(() => _isTmdbKeyVisible = !_isTmdbKeyVisible),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // ⚡ BOUTON D'ACTION DYNAMIQUE
+                if (isLocked)
+                // Mode SUPPRESSION
+                  IconButton.filledTonal(
+                    onPressed: () async {
+                      await TmdbApiService.deleteApiKey();
+                      setState(() {
+                        _tmdbApiKeyController.clear();
+                        _hasSavedKey = false;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Clé supprimée."), backgroundColor: Colors.red),
+                      );
+                    },
+                    icon: const Icon(Icons.delete_outline),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.red.withOpacity(0.1),
+                      foregroundColor: Colors.red,
+                    ),
+                    tooltip: "Supprimer la clé",
+                  )
+                else
+                // Mode SAUVEGARDE
+                  IconButton.filled(
+                    onPressed: () async {
+                      final key = _tmdbApiKeyController.text.trim();
+                      if (key.isNotEmpty) {
+                        await TmdbApiService.saveApiKey(key);
+                        // Force le reload du service
+                        TmdbService.resetInstance();
+
+                        FocusScope.of(context).unfocus();
+                        if (!mounted) return;
+
+                        setState(() => _hasSavedKey = true);
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("TMDb connecté !"), backgroundColor: Colors.green),
+                        );
+                        // On quitte pour rafraîchir la recherche parente
+                        Navigator.of(context).pop(true);
+                      }
+                    },
+                    icon: const Icon(Icons.save),
+                    tooltip: "Sauvegarder",
+                  ),
+              ],
+            ),
+            if (!isLocked)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text(
+                  "Requis pour les affiches et synopsis.",
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _playlistInfoCard(AppLocalizations l10n) {
+    return FutureBuilder<_PlaylistInfo?>(
+      future: _playlistInfoFuture,
+      builder: (ctx, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const LinearProgressIndicator(); // Plus discret qu'une card de loading
+        }
+
+        final info = snap.data;
+        return Card(
+          margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(l10n.playlistInfoTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    if (info != null)
+                      Text("${info.count} entrées", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                  ],
+                ),
+                const Divider(),
+                if (info == null) ...[
+                  Text(l10n.playlistInfoUnavailable),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: _forceReloadPlaylist,
+                      icon: const Icon(Icons.download),
+                      label: Text(l10n.playlistInfoTryReload),
+                    ),
+                  ),
+                ] else ...[
+                  // Infos compactes
+                  Row(
+                    children: [
+                      const Icon(Icons.sd_storage_outlined, size: 16, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(_formatBytes(info.size), style: Theme.of(context).textTheme.bodySmall),
+                      const SizedBox(width: 16),
+                      const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(_formatDate(info.modified), style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Actions Playlist
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _forceReloadPlaylist,
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: Text(l10n.playlistInfoReloadButton),
+                        style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () async {
+                          final p = await PlaylistService.playlistPath();
+                          final f = File(p);
+                          if (await f.exists()) await f.delete();
+                          _refresh();
+                        },
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        tooltip: l10n.playlistInfoDeleteButton,
+                      ),
+                    ],
+                  )
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // --- BUILD ---
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.accountsTitle)),
+      body: FutureBuilder<List<StreamAccount>>(
+        future: _accountsFuture,
+        builder: (ctx, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final accounts = snap.data ?? [];
+
+          return Column(
+            children: [
+              // 1. TMDB en premier (Plus important pour la config)
+              _buildTmdbCard(),
+
+              // 2. Playlist Info
+              _playlistInfoCard(l10n),
+
+              const Divider(height: 32),
+
+              // 3. Liste des comptes
+              Expanded(
+                child: accounts.isEmpty
+                    ? Center(
+                  child: FilledButton.icon( // Bouton plus visible
+                    onPressed: () => _openEditor(),
+                    icon: const Icon(Icons.add),
+                    label: Text(l10n.accountsListEmpty),
+                  ),
+                )
+                    : RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 80),
+                    itemCount: accounts.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
+                    itemBuilder: (_, i) {
+                      final a = accounts[i];
+                      return _buildAccountTile(a, l10n);
+                    },
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _openEditor(),
+        icon: const Icon(Icons.add),
+        label: Text(l10n.accountsFab),
+      ),
+    );
+  }
+
+  Widget _buildAccountTile(StreamAccount a, AppLocalizations l10n) {
+    // Extraction pour lisibilité
+    final host = a.mode == StreamAuthMode.separate
+        ? (Uri.tryParse(a.baseUrl ?? "")?.host ?? "?")
+        : (Uri.tryParse(a.completeUrl ?? "")?.host ?? "?");
+
+    return FutureBuilder<StreamAccount?>(
+      future: StreamAccountService.getCurrentAccount(),
+      builder: (ctx, curSnap) {
+        final isCurrent = curSnap.data?.id == a.id;
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: isCurrent ? Colors.green.withOpacity(0.2) : Colors.grey.withOpacity(0.1),
+            child: Icon(
+              isCurrent ? Icons.check : Icons.dns,
+              color: isCurrent ? Colors.green : Colors.grey,
+              size: 20,
+            ),
+          ),
+          title: Text(a.label, style: TextStyle(fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal)),
+          subtitle: Text(
+            a.mode == StreamAuthMode.completeUrl
+                ? host
+                : "${a.username} @ $host",
+            style: const TextStyle(fontSize: 12),
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+          ),
+          onTap: () => _setCurrent(a.id),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit, size: 20),
+                onPressed: () => _openEditor(initial: a),
+                tooltip: l10n.accountActionEdit,
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                onPressed: () => _delete(a.id),
+                tooltip: l10n.accountActionDelete,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // --- UTILITAIRES ---
 
   String _formatBytes(int bytes) {
     if (bytes < 1024) return "$bytes B";
@@ -150,181 +479,7 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   String _formatDate(DateTime dt) {
-    return "${dt.day.toString().padLeft(2,'0')}/${dt.month.toString().padLeft(2,'0')}/${dt.year} "
-        "${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}";
-  }
-
-  Widget _playlistInfoCard() {
-    final l10n = AppLocalizations.of(context);
-    return FutureBuilder<_PlaylistInfo?>(
-      future: _playlistInfoFuture,
-      builder: (ctx, snap) {
-
-        // Gestion de l'état de chargement
-        if (snap.connectionState == ConnectionState.waiting) {
-          return Card(
-            margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Center(child: Text(l10n!.playlistInfoChecking)),
-            ),
-          );
-        }
-
-        final info = snap.data;
-        return Card(
-          margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(l10n!.playlistInfoTitle, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                if (info == null) ...[
-                  Text(l10n.playlistInfoUnavailable),
-                  const SizedBox(height: 8),
-                  FilledButton.icon(
-                    // Ce bouton doit forcer le rechargement
-                    onPressed: _forceReloadPlaylist,
-                    icon: const Icon(Icons.refresh),
-                    label: Text(l10n.playlistInfoTryReload),
-                  ),
-                ] else ...[
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(l10n.playlistInfoLocalFile),
-                    subtitle: Text(
-                      "${l10n.playlistInfoSize} ${_formatBytes(info.size)} • ${l10n.playlistInfoLastUpdate} : ${_formatDate(info.modified)}",
-                    ),
-                    trailing: Chip(label: Text("${l10n.playlistInfoEntries} : ${info.count}")),
-                  ),
-                  Row(
-                    children: [
-                      OutlinedButton.icon(
-                        // Ce bouton force le rechargement
-                        onPressed: _forceReloadPlaylist,
-                        icon: const Icon(Icons.refresh),
-                        label: Text(l10n.playlistInfoReloadButton),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton.icon(
-                        onPressed: () async {
-                          final p = await PlaylistService.playlistPath();
-                          final f = File(p);
-                          if (await f.exists()) {
-                            try { await f.delete(); } catch (_) {}
-                          }
-                          _refresh(); // Rafraîchit l'UI
-                          if (mounted) {
-                            debugPrint("🗑️ Playlist supprimée.");
-                          }
-                        },
-                        icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.red
-                        ),
-                        label: Text(
-                            l10n.playlistInfoDeleteButton,
-                            style: TextStyle(color: Colors.red)
-                        ),
-                      ),
-                    ],
-                  )
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ---------- UI ----------
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n!.accountsTitle)),
-      body: FutureBuilder<List<StreamAccount>>(
-        future: _future,
-        builder: (ctx, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final accounts = snap.data ?? [];
-
-          return Column(
-            children: [
-              _playlistInfoCard(),
-              Expanded(
-                child: accounts.isEmpty
-                    ? Center(
-                  child: TextButton.icon(
-                    onPressed: ()=>_openEditor(),
-                    icon: const Icon(Icons.add),
-                    label: Text(l10n.accountsListEmpty),
-                  ),
-                )
-                    : RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.only(top: 8),
-                    itemCount: accounts.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final a = accounts[i];
-                      return FutureBuilder<StreamAccount?>(
-                        future: StreamAccountService.getCurrentAccount(),
-                        builder: (ctx, curSnap) {
-                          final currentId = curSnap.data?.id;
-                          final isCurrent = currentId == a.id;
-                          final host = a.mode == StreamAuthMode.separate
-                              ? (Uri.tryParse(a.baseUrl ?? "")?.host ?? "?")
-                              : (Uri.tryParse(a.completeUrl ?? "")?.host ?? "?");
-                          return ListTile(
-                            leading: Icon(
-                              isCurrent ? Icons.radio_button_checked : Icons.radio_button_off,
-                              color: isCurrent ? Colors.green : null,
-                            ),
-                            title: Text(a.label),
-                            subtitle: Text(
-                              a.mode == StreamAuthMode.completeUrl
-                                  ? l10n.accountModeComplete(host)
-                                  : l10n.accountModeSeparate(a.username ?? "?", host),
-                            ),
-                            onTap: ()=>_setCurrent(a.id),
-                            trailing: Wrap(spacing: 4, children: [
-                              IconButton(
-                                tooltip: l10n.accountActionEdit,
-                                icon: const Icon(Icons.edit),
-                                onPressed: ()=>_openEditor(initial: a),
-                              ),
-                              IconButton(
-                                tooltip: l10n.accountActionDelete,
-                                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                onPressed: ()=>_delete(a.id),
-                              ),
-                            ]),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: ()=>_openEditor(),
-        icon: const Icon(Icons.add),
-        label: Text(l10n.accountsFab),
-      ),
-    );
+    return "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
   }
 }
 
@@ -334,10 +489,5 @@ class _PlaylistInfo {
   final DateTime modified;
   final int count;
 
-  _PlaylistInfo({
-    required this.path,
-    required this.size,
-    required this.modified,
-    required this.count
-  });
+  _PlaylistInfo({required this.path, required this.size, required this.modified, required this.count});
 }

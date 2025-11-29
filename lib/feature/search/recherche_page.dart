@@ -10,6 +10,9 @@ import '../../data/services/stream_account_service.dart';
 import '../../data/services/playlist_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../main.dart';
+import '../../data/services/tmdb_api_service.dart';
+import '../../data/services/tmdb_service.dart';
+import 'details_page.dart';
 
 //############################################################################
 // WIDGET "CONTENEUR" PRINCIPAL (RecherchePage)
@@ -25,6 +28,7 @@ class RecherchePage extends StatefulWidget {
 class _RecherchePageState extends State<RecherchePage> {
   late Future<String> _playlistPathFuture;
   String? _currentAccountLabel;
+  Key _rechercheM3UKey = UniqueKey();
 
   @override
   void initState() {
@@ -67,7 +71,10 @@ class _RecherchePageState extends State<RecherchePage> {
     );
 
     if (result == true) {
-      _loadPlaylistPath(forceDownload: false);
+      setState(() {
+        _rechercheM3UKey = UniqueKey(); // Force la reconstruction du widget enfant (RechercheM3U)
+        _loadPlaylistPath(forceDownload: false); // Pourrait recharger la playlist si nécessaire
+      });
     }
   }
 
@@ -126,7 +133,7 @@ class _RecherchePageState extends State<RecherchePage> {
             );
           }
           final playlistPath = snapshot.data!;
-          return RechercheM3U(filePath: playlistPath);
+          return RechercheM3U(key: _rechercheM3UKey, filePath: playlistPath);
         },
       ),
     );
@@ -538,7 +545,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
     final url = entry.url.toLowerCase();
     final bool isTvChannel = !url.contains('/movie/') && !url.contains('/series/');
 
-    // --- LOGIQUE CORRIGÉE ---
     M3uEntry? selectedEntry;
 
     if (versions.length == 1) {
@@ -640,7 +646,19 @@ class _RechercheM3UState extends State<RechercheM3U> {
                 children: [_getQualityChip(entry.rawTitle), ..._getLanguageChips(entry.rawTitle)],
               ),
               const Divider(height: 32),
-
+              // --- OPTION 0 : OPTION "PLUS D'INFORMATIONS" ---
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text("Plus d'informations"), // TODO: Localiser
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => DetailsPage(entry: entry),
+                    ),
+                  );
+                },
+              ),
               // --- OPTION 1 : LIRE (maintenant avec cache implicite) ---
               ListTile(
                 leading: const Icon(Icons.play_circle_outline, size: 32),
@@ -658,7 +676,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
                   ));
                 },
               ),
-
               // --- OPTION 2 : TÉLÉCHARGER (sans lire) ---
               ListTile(
                 leading: const Icon(Icons.download_for_offline_outlined, size: 32),
@@ -765,4 +782,5 @@ class _RechercheM3UState extends State<RechercheM3U> {
     }
     return chips;
   }
+
 }
