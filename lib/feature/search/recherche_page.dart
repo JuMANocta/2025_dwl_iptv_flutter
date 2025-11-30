@@ -12,6 +12,7 @@ import '../../data/services/playlist_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../main.dart'; // Pour navigatorKey
 import 'details_page.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 
 //############################################################################
 // WIDGET "CONTENEUR" PRINCIPAL (RecherchePage)
@@ -379,53 +380,63 @@ class _RechercheM3UState extends State<RechercheM3U> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
 
+    // Si le traitement initial est en cours (Tier 1)
     if (_isProcessing) {
       return const Center(child: CircularProgressIndicator());
     }
 
+    // Si une erreur critique s'est produite lors du Stream (Tier 2)
     if (_errorMessage != null) {
-      return Center(child: Text("Erreur: $_errorMessage", style: const TextStyle(color: Colors.red)));
+      return Center(child: Text("Erreur critique: $_errorMessage", style: const TextStyle(color: Colors.red)));
     }
 
     return NestedScrollView(
-      headerSliverBuilder: (context, _) => [
+      headerSliverBuilder: (context, innerBoxIsScrolled) => [
         SliverAppBar(
-          title: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: l10n.searchFieldHint,
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => _searchController.clear()) : null,
-              border: InputBorder.none,
+          // 🎯 LÉGÈRE OMBRE / ÉLÉVATION au scroll pour un effet plus doux
+          elevation: innerBoxIsScrolled ? 4.0 : 0.0,
+          title: Container(
+            // 🎯 Amélioration visuelle de la barre de recherche
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceVariant.withAlpha(200),
+              borderRadius: BorderRadius.circular(25.0),
+            ),
+            child: TextField(
+              controller: _searchController,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              decoration: InputDecoration(
+                hintText: l10n.searchFieldHint,
+                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.6)),
+                prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                suffixIcon: _searchQuery.isNotEmpty ? IconButton(
+                    icon: Icon(Icons.clear, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    onPressed: () => _searchController.clear()
+                ) : null,
+                border: InputBorder.none, // Retirer la bordure par défaut
+                contentPadding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 10.0),
+              ),
             ),
           ),
           pinned: true,
           floating: true,
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(kToolbarHeight),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  FilterChip(label: Text(l10n.searchFilterFilms), selected: _showFilms, onSelected: (s) => setState(() { _showFilms = s; _filterAndGroupResults(); })),
-                  const SizedBox(width: 8),
-                  FilterChip(label: Text(l10n.searchFilterSeries), selected: _showSeries, onSelected: (s) => setState(() { _showSeries = s; _filterAndGroupResults(); })),
-                  const SizedBox(width: 8),
-                  FilterChip(label: Text(l10n.searchFilterTv), selected: _showTv, onSelected: (s) => setState(() { _showTv = s; _filterAndGroupResults(); })),
-                ],
-              ),
-            ),
+            // 🎯 Utilisation du helper refactorisé
+            child: _buildFilterChips(l10n),
           ),
         ),
       ],
+      // 🎯 BODY (Liste ou État Vide Amélioré)
       body: _flatList.isEmpty
           ? Center(child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(Icons.search_off, size: 64, color: Colors.grey),
           const SizedBox(height: 16),
-          Text(_searchQuery.isNotEmpty ? l10n.searchNoResults : l10n.searchNoContent, style: const TextStyle(color: Colors.grey)),
+          Text(
+              _searchQuery.isNotEmpty ? l10n.searchNoResults : l10n.searchNoContent,
+              style: TextStyle(color: Colors.grey, fontSize: 16, fontStyle: FontStyle.italic)
+          ),
         ],
       ))
           : ScrollablePositionedList.builder(
@@ -848,6 +859,63 @@ class _RechercheM3UState extends State<RechercheM3U> {
           borderRadius: BorderRadius.circular(4)
       ),
       child: Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
+    );
+  }
+
+  Widget _buildFilterChips(AppLocalizations l10n) {
+    // Définition des couleurs spécifiques au thème AetherStream
+    const Color selectedBg = kAetherPrimaryPurple; // Fond Violet
+    const Color selectedLabel = kTextDarkPrimary;   // Texte Blanc
+    const Color unselectedBg = kContainerDark;      // Fond Conteneur (Gris très foncé)
+    const Color unselectedBorder = kAetherSecondaryCyan; // Bordure Cyan (pour l'accentuation subtile)
+    const Color unselectedLabel = kTextDarkSecondary; // Texte Gris clair
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          // Film Chip
+          FilterChip(
+            label: Text(l10n.searchFilterFilms),
+            selected: _showFilms,
+            onSelected: (s) => setState(() { _showFilms = s; _filterAndGroupResults(); }),
+
+            // 🎯 STYLING AETHERSTREAM
+            selectedColor: selectedBg,
+            backgroundColor: unselectedBg,
+            labelStyle: _showFilms ? TextStyle(color: selectedLabel, fontWeight: FontWeight.bold) : TextStyle(color: unselectedLabel),
+            side: _showFilms ? BorderSide.none : BorderSide(color: unselectedBorder.withAlpha(100)), // Bordure Cyan subtile
+            // FIN STYLING AETHERSTREAM
+          ),
+          const SizedBox(width: 8),
+
+          // Series Chip
+          FilterChip(
+            label: Text(l10n.searchFilterSeries),
+            selected: _showSeries,
+            onSelected: (s) => setState(() { _showSeries = s; _filterAndGroupResults(); }),
+
+            selectedColor: selectedBg,
+            backgroundColor: unselectedBg,
+            labelStyle: _showSeries ? TextStyle(color: selectedLabel, fontWeight: FontWeight.bold) : TextStyle(color: unselectedLabel),
+            side: _showSeries ? BorderSide.none : BorderSide(color: unselectedBorder.withAlpha(100)),
+          ),
+          const SizedBox(width: 8),
+
+          // TV Chip
+          FilterChip(
+            label: Text(l10n.searchFilterTv),
+            selected: _showTv,
+            onSelected: (s) => setState(() { _showTv = s; _filterAndGroupResults(); }),
+
+            selectedColor: selectedBg,
+            backgroundColor: unselectedBg,
+            labelStyle: _showTv ? TextStyle(color: selectedLabel, fontWeight: FontWeight.bold) : TextStyle(color: unselectedLabel),
+            side: _showTv ? BorderSide.none : BorderSide(color: unselectedBorder.withAlpha(100)),
+          ),
+        ],
+      ),
     );
   }
 }

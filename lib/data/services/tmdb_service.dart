@@ -30,23 +30,47 @@ class TmdbService {
 
   /// 🧹 Nettoyeur de nom de fichier
   String _cleanQuery(String rawName) {
-    String clean = rawName.replaceAll(RegExp(r'(\.|_|\(|\)|\[|\]|-)', caseSensitive: false), ' ').trim();
+    // 1. Mise en minuscule immédiate pour faciliter la comparaison
+    String clean = rawName.toLowerCase();
 
-    // Liste des parasites (Qualités + LANGUES + Codecs)
-    final regexExclusion = RegExp(
-      r'\b(S\d{2}E\d{2}|1080p|720p|4k|2160p|HDR|H\.264|x264|x265|HEVC|mkv|mp4|avi|webrip|bluray|dvdrip|VOSTFR|VOST|VF|VFF|TRUEFRENCH|MULTI|ENGLISH|FRENCH)\b',
-      caseSensitive: false,
-    );
+    // --- ÉTAPE 1: Nettoyage des Préfixes IPTV & Caractères Non-Standard ---
+    // Supprime les tags de pays/langue qui sont au début (ex: |FR|, FR: )
+    clean = clean.replaceAll(RegExp(r'^(\|.*?\||\w{2,}\s*[:-])\s*', caseSensitive: false), ' ');
 
-    if (regexExclusion.hasMatch(clean)) {
-      clean = clean.split(regexExclusion).first.trim();
-    }
+    // Ajout du pipe (|) aux séparateurs pour éviter qu'il ne reste seul
+    clean = clean.replaceAll(RegExp(r'[|]'), ' ');
 
-    // Suppression de l'année à la fin pour ne garder que le titre propre
-    final regexYear = RegExp(r'\s+(19|20)\d{2}\s*$', caseSensitive: false);
-    clean = clean.replaceAll(regexYear, '').trim();
+    // --- ÉTAPE 2: Supprimer les informations techniques et de langue ---
+    final List<String> noiseWords = [
+      // Saisons/Épisodes (Important: regex séparée pour les groupes de mots)
+      r's\d{1,2}e\d{1,2}',
+      // Qualité & Codecs
+      '1080p', '720p', '4k', '2160p', 'uhd', 'hdr', 'webrip', 'bluray', 'dvdrip',
+      'hevc', 'h\.264', 'x264', 'h\.265', 'x265', 'aac', 'dts',
+      // Conteneurs
+      'mkv', 'mp4', 'avi',
+      // Langues
+      'vostfr', 'vost', 'vf', 'vff', 'truefrench', 'multi', 'english', 'french', 'fr', 'en',
+      // Mentions diverses
+      'extended', 'uncut', 'final cut', 'version longue', 'vostf', 'raw'
+    ];
 
-    return clean.replaceAll(RegExp(r'\s+'), ' ');
+    // Construit la Regex avec frontière de mot (\b)
+    final noiseRegex = RegExp(r'\b(' + noiseWords.join('|') + r')\b', caseSensitive: true); // True car on a déjà lowerCase
+    clean = clean.replaceAll(noiseRegex, ' ');
+
+    // --- ÉTAPE 3: Supprimer les séparateurs restants et l'année ---
+    // Remplace les points, crochets, parenthèses, underscores, tirets par des espaces
+    clean = clean.replaceAll(RegExp(r'[\.\[\]\(\)_\-]+'), ' ');
+
+    // Supprime l'année (ex: 2024, 1999)
+    clean = clean.replaceAll(RegExp(r'\b(19|20)\d{2}\b'), ' ');
+
+    // --- ÉTAPE 4: Nettoyage final ---
+    // Supprime les espaces multiples et les espaces au début/fin
+    clean = clean.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    return clean;
   }
 
   Future<void> reinitialize() async => await _init();
