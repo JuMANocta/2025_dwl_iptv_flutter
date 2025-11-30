@@ -42,21 +42,32 @@ class TmdbService {
 
     // --- ÉTAPE 2: Supprimer les informations techniques et de langue ---
     final List<String> noiseWords = [
-      // Saisons/Épisodes (Important: regex séparée pour les groupes de mots)
+      // Saisons/Épisodes (Regex)
       r's\d{1,2}e\d{1,2}',
-      // Qualité & Codecs
-      '1080p', '720p', '4k', '2160p', 'uhd', 'hdr', 'webrip', 'bluray', 'dvdrip',
-      'hevc', 'h\.264', 'x264', 'h\.265', 'x265', 'aac', 'dts',
+
+      // Qualité Vidéo & Résolutions
+      '4k', 'uhd', '2160p', '1080p', '720p', '480p', 'fhd', 'hd', 'sd', 'bdrip', 'webrip',
+      'hdr', 'dv', 'dvdscr', 'cam', 'ts', 'telecine', 'screener',
+
+      // Codecs Vidéo
+      'hevc', 'h\.264', 'x264', 'h\.265', 'x265', 'avc', 'vp9', 'divx', 'xvid', 'mpeg',
+
+      // Codecs Audio & Formats
+      'aac', 'dts', 'dtshd', 'dts-hd', 'atmos', 'truehd', 'dolby', 'ac3', 'dd5\.1', 'mp3', 'flac',
+
       // Conteneurs
-      'mkv', 'mp4', 'avi',
-      // Langues
-      'vostfr', 'vost', 'vf', 'vff', 'truefrench', 'multi', 'english', 'french', 'fr', 'en',
-      // Mentions diverses
-      'extended', 'uncut', 'final cut', 'version longue', 'vostf', 'raw'
+      'mkv', 'mp4', 'avi', 'ts', 'iso', 'img',
+
+      // Langues & Groupes
+      'vostfr', 'vost', 'vf', 'vo', 'vff', 'truefrench', 'multi', 'english', 'french', 'fr', 'en', 'sub',
+
+      // Mentions Diverses (Groupes de release, versions)
+      'extended', 'uncut', 'final cut', 'version longue', 'vostf', 'raw', 'repack', 'proper', 'retail', 'remux',
+      'imax', 'imax enhanced', '4d', '3d', '2d'
     ];
 
     // Construit la Regex avec frontière de mot (\b)
-    final noiseRegex = RegExp(r'\b(' + noiseWords.join('|') + r')\b', caseSensitive: true); // True car on a déjà lowerCase
+    final noiseRegex = RegExp(r'\b(' + noiseWords.join('|') + r')\b', caseSensitive: true);
     clean = clean.replaceAll(noiseRegex, ' ');
 
     // --- ÉTAPE 3: Supprimer les séparateurs restants et l'année ---
