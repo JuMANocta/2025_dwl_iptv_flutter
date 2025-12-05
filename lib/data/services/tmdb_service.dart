@@ -43,7 +43,7 @@ class TmdbService {
     // --- ÉTAPE 2: Supprimer les informations techniques et de langue ---
     final List<String> noiseWords = [
       // Saisons/Épisodes (Regex)
-      r's\d{1,2}e\d{1,2}',
+      r's\d{1,2}\s?e\d{1,2}|\d{1,2}x\d{1,2}|saison\s?\d{1,2}|episode\s?\d{1,2}', // Recherche et supprime SXXEXX, XXxXX, Saison XX, etc.
 
       // Qualité Vidéo & Résolutions
       '4k', 'uhd', '2160p', '1080p', '720p', '480p', 'fhd', 'hd', 'sd', 'bdrip', 'webrip',
@@ -140,7 +140,7 @@ class TmdbService {
 
       // Tente 3: Fallback Type
       if (result == null) {
-        debugPrint("⚠️ Bascule de type (TV <-> Film)...");
+        debugPrint("! Bascule de type (TV <-> Film)...");
         if (year != null) {
           result = await _performSearch(cleanQuery, isTv: !isTv, language: searchLanguage, year: year);
         }

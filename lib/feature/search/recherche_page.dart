@@ -3,15 +3,15 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
-import '../player/player_page.dart';
-import '../downloads/logic/download_initiator.dart';
-import '../accounts/accounts_page.dart';
-import '../downloads/downloads_page.dart';
-import '../../data/services/stream_account_service.dart';
-import '../../data/services/playlist_service.dart';
-import '../../l10n/app_localizations.dart';
-import '../../main.dart'; // Pour navigatorKey
-import 'details_page.dart';
+import 'package:aetherStream/feature/player/player_page.dart';
+import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
+import 'package:aetherStream/feature/accounts/accounts_page.dart';
+import 'package:aetherStream/feature/downloads/downloads_page.dart';
+import 'package:aetherStream/feature/search/details_page.dart';
+import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/data/services/playlist_service.dart';
+import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:aetherStream/main.dart'; // Pour navigatorKey
 import 'package:aetherStream/core/themes/colors.dart';
 
 //############################################################################
@@ -452,7 +452,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
             return _buildFilmCard(item, _groupedFilms[item]!);
           }
           if (_groupedTv.containsKey(item)) {
-            return _buildFilmCard(item, _groupedTv[item]!);
+            return _buildTvCard(item, _groupedTv[item]!);
           }
           return const SizedBox.shrink();
         },
@@ -550,6 +550,44 @@ class _RechercheM3UState extends State<RechercheM3U> {
               )).toList(),
             );
           }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTvCard(String displayName, List<M3uEntry> versions) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _onEntrySelected(versions),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Row(
+            children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(color: Colors.green.withAlpha(25), borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.live_tv, color: Colors.green),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    if (versions.length > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Text('${versions.length} flux disponibles', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      )
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.grey),
+            ],
+          ),
         ),
       ),
     );
