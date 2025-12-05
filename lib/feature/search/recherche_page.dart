@@ -144,6 +144,8 @@ class M3uEntry {
   final String? saison;
   final String? episode;
   final String displayName;
+  final bool canReplay;
+  final String? logoUrl;
 
   M3uEntry({
     required this.rawTitle,
@@ -152,6 +154,8 @@ class M3uEntry {
     this.saison,
     this.episode,
     required this.displayName,
+    this.canReplay = false,
+    this.logoUrl,
   });
 }
 
@@ -217,8 +221,10 @@ class _RechercheM3UState extends State<RechercheM3U> {
     }
 
     try {
-      String? pendingTitle; // Titre en attente (Pour le format EXTINF classique)
+      String? pendingMetadata;
       final regExpSerie = RegExp(r"S(\d{2})\s*E(\d{2})", caseSensitive: false);
+      final regExpReplay = RegExp(r'catchup|timeshift', caseSensitive: false);
+      final regExpLogo = RegExp(r'tvg-logo="([^"]*)"');
 
       await file.openRead()
           .transform(utf8.decoder)
@@ -227,36 +233,43 @@ class _RechercheM3UState extends State<RechercheM3U> {
         final trimmed = line.trim();
         if (trimmed.isEmpty) return;
 
-        // --- CAS 1 : Ligne de métadonnées (Format A) ---
         if (trimmed.startsWith("#EXTINF")) {
-          // Ex: #EXTINF:-1,Titre du film (FR)
-          final commaIndex = trimmed.lastIndexOf(',');
-          if (commaIndex != -1) {
-            pendingTitle = trimmed.substring(commaIndex + 1).trim();
-          }
-        }
-        // --- CAS 2 : Ligne d'URL (Format A ou B) ---
-        else if (trimmed.startsWith("http")) {
+          pendingMetadata = trimmed;
+        } else if (trimmed.startsWith("http")) {
           String url = trimmed;
-          String currentTitle = "";
+          String? title;
+          String? logoUrl;
+          bool canReplay = false;
 
-          // DÉTECTION FORMAT B (URL #Name: Titre)
-          if (trimmed.contains("#Name:")) {
+          // --- LOGIQUE POUR FORMAT A (#EXTINF suivi par URL) ---
+          if (pendingMetadata != null) {
+            final commaIndex = pendingMetadata!.lastIndexOf(',');
+            if (commaIndex != -1) {
+              title = pendingMetadata!.substring(commaIndex + 1).trim();
+              final logoMatch = regExpLogo.firstMatch(pendingMetadata!);
+              logoUrl = logoMatch?.group(1);
+              canReplay = regExpReplay.hasMatch(pendingMetadata!);
+            }
+            pendingMetadata = null; // Consomme les métadonnées
+          }
+          // --- LOGIQUE POUR FORMAT B (URL contient #Name:) ---
+          // Sert de fallback si #EXTINF est absent
+          else if (trimmed.contains("#Name:")) {
             final parts = trimmed.split("#Name:");
-            url = parts[0].trim(); // L'URL est avant
+            url = parts[0].trim();
             if (parts.length > 1) {
-              currentTitle = parts[1].trim(); // Le titre est après
+              title = parts[1].trim();
             }
           }
-          // UTILISATION FORMAT A (Titre stocké précédement)
-          else if (pendingTitle != null && pendingTitle!.isNotEmpty) {
-            currentTitle = pendingTitle!;
-            pendingTitle = null; // On consomme le titre en attente
-          }
 
-          // Si on a bien un titre et une URL, on ajoute
-          if (currentTitle.isNotEmpty) {
-            _addEntry(currentTitle, url, regExpSerie);
+          if (title != null && title.isNotEmpty) {
+            _addEntry(
+              rawTitle: title,
+              url: url,
+              regExpSerie: regExpSerie,
+              canReplay: canReplay,
+              logoUrl: logoUrl,
+            );
           }
         }
       });
@@ -265,17 +278,21 @@ class _RechercheM3UState extends State<RechercheM3U> {
         _filterAndGroupResults();
         setState(() => _isProcessing = false);
       }
-
     } catch (e) {
       debugPrint("❌ Erreur Stream M3U: $e");
       if (mounted) setState(() { _isProcessing = false; _errorMessage = e.toString(); });
     }
   }
 
-  void _addEntry(String rawTitle, String url, RegExp regExpSerie) {
+  void _addEntry({
+    required String rawTitle,
+    required String url,
+    required RegExp regExpSerie,
+    bool canReplay = false,
+    String? logoUrl,
+  }) {
     final lowerUrl = url.toLowerCase();
     final displayName = _getDisplayName(rawTitle);
-
     final matchSerie = regExpSerie.firstMatch(rawTitle);
     final isSerie = matchSerie != null;
 
@@ -286,6 +303,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
       saison: matchSerie?.group(1),
       episode: matchSerie?.group(2),
       displayName: displayName,
+      canReplay: canReplay,
+      logoUrl: logoUrl,
     );
 
     if (isSerie) {
@@ -293,12 +312,12 @@ class _RechercheM3UState extends State<RechercheM3U> {
     } else if (lowerUrl.contains('/movie/')) {
       _filmsList.add(entry);
     } else if (lowerUrl.contains('/series/')) {
-      // Cas rare où le tag URL dit series mais pas de SxxExx dans le titre
       _seriesList.add(entry);
     } else {
       _tvList.add(entry);
     }
   }
+
 
   //############################################################################
   // FILTRAGE ET REGROUPEMENT
@@ -317,16 +336,11 @@ class _RechercheM3UState extends State<RechercheM3U> {
           e.displayName.toLowerCase().contains(query);
     }
 
-    // 1. Filtrage Films
     if (_showFilms) {
       for (var e in _filmsList) {
-        if (matches(e)) {
-          newGroupedFilms.putIfAbsent(e.displayName, () => []).add(e);
-        }
+        if (matches(e)) newGroupedFilms.putIfAbsent(e.displayName, () => []).add(e);
       }
     }
-
-    // 2. Filtrage Séries
     if (_showSeries) {
       for (var e in _seriesList) {
         if (matches(e)) {
@@ -336,23 +350,14 @@ class _RechercheM3UState extends State<RechercheM3U> {
         }
       }
     }
-
-    // 3. Filtrage TV
     if (_showTv) {
       for (var e in _tvList) {
-        if (matches(e)) {
-          newGroupedTv.putIfAbsent(e.displayName, () => []).add(e);
-        }
+        if (matches(e)) newGroupedTv.putIfAbsent(e.displayName, () => []).add(e);
       }
     }
 
-    // Tris internes
-    for (var list in newGroupedFilms.values) {
-      list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
-    }
-    for (var list in newGroupedTv.values) {
-      list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
-    }
+    for (var list in newGroupedFilms.values) list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
+    for (var list in newGroupedTv.values) list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
     for (var seasons in newGroupedSeries.values) {
       for (var episodes in seasons.values) {
         episodes.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
@@ -363,12 +368,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       _groupedSeries = newGroupedSeries;
       _groupedFilms = newGroupedFilms;
       _groupedTv = newGroupedTv;
-
-      _flatList = [
-        ..._groupedFilms.keys,
-        ..._groupedSeries.keys,
-        ..._groupedTv.keys,
-      ];
+      _flatList = [..._groupedFilms.keys, ..._groupedSeries.keys, ..._groupedTv.keys];
     });
   }
 
@@ -380,15 +380,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
 
-    // Si le traitement initial est en cours (Tier 1)
-    if (_isProcessing) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    // Si une erreur critique s'est produite lors du Stream (Tier 2)
-    if (_errorMessage != null) {
-      return Center(child: Text("Erreur critique: $_errorMessage", style: const TextStyle(color: Colors.red)));
-    }
+    if (_isProcessing) return const Center(child: CircularProgressIndicator());
+    if (_errorMessage != null) return Center(child: Text("Erreur critique: $_errorMessage", style: const TextStyle(color: Colors.red)));
 
     return NestedScrollView(
       headerSliverBuilder: (context, innerBoxIsScrolled) => [
@@ -445,15 +438,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
           final item = _flatList[index];
           if (item is! String) return const SizedBox.shrink();
 
-          if (_groupedSeries.containsKey(item)) {
-            return _buildSerieCard(item, _groupedSeries[item]!);
-          }
-          if (_groupedFilms.containsKey(item)) {
-            return _buildFilmCard(item, _groupedFilms[item]!);
-          }
-          if (_groupedTv.containsKey(item)) {
-            return _buildTvCard(item, _groupedTv[item]!);
-          }
+          if (_groupedTv.containsKey(item)) return _buildTvCard(item, _groupedTv[item]!);
+          if (_groupedSeries.containsKey(item)) return _buildSerieCard(item, _groupedSeries[item]!);
+          if (_groupedFilms.containsKey(item)) return _buildFilmCard(item, _groupedFilms[item]!);
           return const SizedBox.shrink();
         },
       ),
@@ -463,6 +450,40 @@ class _RechercheM3UState extends State<RechercheM3U> {
   //############################################################################
   // CARTES & ITEMS
   //############################################################################
+
+  Widget _buildImagePlaceholder({required IconData icon, required Color color}) {
+    return Container(
+      width: 45,
+      height: 65,
+      decoration: BoxDecoration(
+        color: color.withAlpha(25),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(icon, color: color),
+    );
+  }
+
+  Widget _buildCardImage(List<M3uEntry> versions, IconData fallbackIcon, Color fallbackColor) {
+    final logoUrl = versions.isNotEmpty ? versions.first.logoUrl : null;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8.0),
+      child: logoUrl != null && logoUrl.isNotEmpty
+          ? Image.network(
+        logoUrl,
+        width: 45,
+        height: 65,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildImagePlaceholder(icon: fallbackIcon, color: fallbackColor),
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildImagePlaceholder(icon: fallbackIcon, color: fallbackColor);
+        },
+      )
+          : _buildImagePlaceholder(icon: fallbackIcon, color: fallbackColor),
+    );
+  }
+
   Widget _buildFilmCard(String displayName, List<M3uEntry> versions) {
     // 1. Détection de l'Homonyme
     final uniqueYears = versions.map((v) => _getYear(v.rawTitle)).where((y) => y != null).toSet();
@@ -484,31 +505,18 @@ class _RechercheM3UState extends State<RechercheM3U> {
           padding: const EdgeInsets.all(12.0),
           child: Row(
             children: [
-              // Placeholder icône
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(color: Colors.blue.withAlpha(25), borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.movie, color: Colors.blue),
-              ),
+              _buildCardImage(versions, Icons.movie, Colors.blue),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-
                     const SizedBox(height: 4),
-
-                    // 🎯 CAS 1: CONFLIT D'HOMONYMES (Affiche la liste des années/versions)
                     if (isHomonymConflict)
-                      Text(
-                          'Versions disponibles: ${uniqueYears.join(', ')}',
-                          style: TextStyle(color: Colors.white70, fontSize: 12)
-                      )
-                    // CAS 2: VERSION MULTIPLE OU UNIQUE (Affiche les tags uniques)
+                      Text('Versions disponibles: ${uniqueYears.join(', ')}', style: TextStyle(color: Colors.white70, fontSize: 12))
                     else if (uniqueChips.isNotEmpty)
                       Wrap(spacing: 4, runSpacing: 4, children: uniqueChips),
-
                   ],
                 ),
               ),
@@ -522,6 +530,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   Widget _buildSerieCard(String serieName, Map<String, List<M3uEntry>> saisons) {
     final totalEpisodes = saisons.values.fold<int>(0, (prev, epList) => prev + epList.length);
+    final allVersions = saisons.values.expand((list) => list).toList();
 
     return Card(
       elevation: 2,
@@ -529,11 +538,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          leading: Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(color: Colors.purple.withAlpha(25), borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.tv, color: Colors.purple),
-          ),
+          leading: _buildCardImage(allVersions, Icons.tv, Colors.purple),
           title: Text(serieName, style: const TextStyle(fontWeight: FontWeight.bold)),
           subtitle: Text("${saisons.keys.length} Saisons • $totalEpisodes Épisodes", style: const TextStyle(fontSize: 12)),
           children: saisons.entries.map((entry) {
@@ -556,6 +561,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
   }
 
   Widget _buildTvCard(String displayName, List<M3uEntry> versions) {
+    final bool hasReplay = versions.isNotEmpty && versions.first.canReplay;
+
     return Card(
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -566,22 +573,24 @@ class _RechercheM3UState extends State<RechercheM3U> {
           padding: const EdgeInsets.all(12.0),
           child: Row(
             children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(color: Colors.green.withAlpha(25), borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.live_tv, color: Colors.green),
-              ),
+              _buildCardImage(versions, Icons.live_tv, Colors.green),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    if (versions.length > 1)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
-                        child: Text('${versions.length} flux disponibles', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                      )
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        if (versions.length > 1)
+                          Text('${versions.length} flux', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        if (versions.length > 1 && hasReplay)
+                          const Text(" • ", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        if (hasReplay)
+                          Icon(Icons.replay_circle_filled, color: Colors.blueAccent, size: 14),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -602,9 +611,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     FocusManager.instance.primaryFocus?.unfocus();
 
     final entry = versions.first;
-    // Détection basique pour savoir si c'est une chaîne TV en direct
     final bool isTvChannel = !entry.url.contains('/movie/') && !entry.url.contains('/series/');
-
     M3uEntry selectedEntry = versions.first;
 
     if (versions.length > 1) {
@@ -617,11 +624,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
     if (isTvChannel) {
       Navigator.push(context, MaterialPageRoute(
-          builder: (_) => PlayerPage(
-            path: selectedEntry.url,
-            title: selectedEntry.displayName,
-            sourceType: VideoSourceType.network,
-          )
+          builder: (_) => PlayerPage(path: selectedEntry.url, title: selectedEntry.displayName, sourceType: VideoSourceType.network)
       ));
     } else {
       _showActionSheet(selectedEntry);
@@ -649,46 +652,31 @@ class _RechercheM3UState extends State<RechercheM3U> {
                 separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
                 itemBuilder: (ctx, i) {
                   final v = versions[i];
-
-                  // 1. Extraction des données
-                  final year = _getYear(v.rawTitle);       // 📅 Année
-                  final extraInfo = _getVersionLabel(v);   // Texte restant (ex: Director's Cut)
+                  final year = _getYear(v.rawTitle);
+                  final extraInfo = _getVersionLabel(v);
                   final qualityChip = _getQualityChip(v.rawTitle);
                   final langChips = _getLanguageChips(v.rawTitle);
-
-                  // 2. Construction de la liste des Badges
                   final allChips = <Widget>[];
 
-                  // 🚨 L'ANNÉE EN PREMIER (Badge Blanc/Gris)
                   if (year != null) {
                     allChips.add(Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white60),
-                          borderRadius: BorderRadius.circular(4)
-                      ),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.white60), borderRadius: BorderRadius.circular(4)),
                       child: Text(year, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
                     ));
                   }
-
-                  // Ensuite Qualité et Langues
                   if (qualityChip is! SizedBox) allChips.add(qualityChip);
                   allChips.addAll(langChips);
 
-                  // 3. Logique d'affichage Titre/Sous-titre
                   Widget titleWidget;
                   Widget? subtitleWidget;
 
                   if (allChips.isNotEmpty) {
-                    // Les badges deviennent le titre principal
                     titleWidget = Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: allChips);
-
-                    // Si on a du texte spécifique en plus, il passe en sous-titre
                     if (extraInfo.isNotEmpty && extraInfo != "Standard / Inconnue") {
                       subtitleWidget = Text(extraInfo, style: const TextStyle(fontSize: 12, color: Colors.grey));
                     }
                   } else {
-                    // Fallback texte brut
                     titleWidget = Text(extraInfo, style: const TextStyle(fontWeight: FontWeight.bold));
                   }
 
@@ -715,55 +703,66 @@ class _RechercheM3UState extends State<RechercheM3U> {
       showDragHandle: true,
       builder: (ctx) {
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text(entry.displayName, style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
-              ),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, children: [_getQualityChip(entry.rawTitle), ..._getLanguageChips(entry.rawTitle)]),
-              const SizedBox(height: 24),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // AFFICHE (si disponible)
+                if (entry.logoUrl != null && entry.logoUrl!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        entry.logoUrl!,
+                        height: 150,
+                        errorBuilder: (ctx, err, stack) => const SizedBox.shrink(),
+                      ),
+                    ),
+                  ),
 
-              // 1. ACTION PRINCIPALE : DETAILS (Netflix Style)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsPage(entry: entry)));
-                    },
-                    icon: const Icon(Icons.info_outline),
-                    label: const Text("Fiche Détaillée & Infos"),
-                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Text(entry.displayName, style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
+                ),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, children: [_getQualityChip(entry.rawTitle), ..._getLanguageChips(entry.rawTitle)]),
+                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsPage(entry: entry)));
+                      },
+                      icon: const Icon(Icons.info_outline),
+                      label: const Text("Fiche Détaillée & Infos"),
+                      style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                    ),
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // 2. ACTIONS SECONDAIRES
-              ListTile(
-                leading: const Icon(Icons.play_arrow),
-                title: Text(l10n.actionSheetPlay),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(path: entry.url, title: entry.displayName, sourceType: VideoSourceType.networkWithCache)));
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.download),
-                title: Text(l10n.actionSheetDownload),
-                onTap: () {
-                  Navigator.pop(context);
-                  verifierEtTelecharger(url: entry.url, nom: entry.displayName, context: navigatorKey.currentContext!);
-                },
-              ),
-              const SizedBox(height: 16),
-            ],
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: const Icon(Icons.play_arrow),
+                  title: Text(l10n.actionSheetPlay),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(path: entry.url, title: entry.displayName, sourceType: VideoSourceType.networkWithCache)));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.download),
+                  title: Text(l10n.actionSheetDownload),
+                  onTap: () {
+                    Navigator.pop(context);
+                    verifierEtTelecharger(url: entry.url, nom: entry.displayName, context: navigatorKey.currentContext!);
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
         );
       },
@@ -776,41 +775,21 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   String _getDisplayName(String originalName) {
     String name = originalName;
-
-    // 1. Nettoyage Prefixes bizarres (IPTV)
-    // Ex: "|FR| FILM", "FR : FILM"
     name = name.replaceAll(RegExp(r'^(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])\s*', caseSensitive: false), '');
-
-    // 2. Gestion Séries : On coupe tout ce qui est après S01 E01
     final matchSerie = RegExp(r"S\d{2}\s*E\d{2}", caseSensitive: false).firstMatch(name);
     if (matchSerie != null) {
       name = name.substring(0, matchSerie.start).trim();
     }
-
-    // 3. Suppression des tags de QUALITÉ
     const qualityTags = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|H\.265|X265|AAC|DTS)\b';
     name = name.replaceAll(RegExp(qualityTags, caseSensitive: false), '');
-
-    // 4. Suppression des tags de LANGUE
     const langTags = r'\b(MULTI|VOSTFR|VOST|VF|VO|VFF|FR|EN|VIP|RAW)\b';
     name = name.replaceAll(RegExp(langTags, caseSensitive: false), '');
-
-    // 5. 🎯 Suppression de l'ANNÉE (ex: 2021, (2019))
-    // On cherche 4 chiffres commençant par 19 ou 20, potentiellement entre parenthèses
     name = name.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
-
-    // 6. Nettoyage final des ponctuations résiduelles
-    // On remplace parenthèses, crochets, points, tirets par des espaces
     name = name.replaceAll(RegExp(r'[\(\)\[\]\.\-_]'), ' ');
-
-    // 7. Trim et réduction des espaces multiples
     name = name.replaceAll(RegExp(r'\s+'), ' ').trim();
-
-    // Sécurité: Si on a tout effacé, on renvoie une version minimaliste de l'original
     if (name.length < 2) {
       return originalName.split(RegExp(r"S\d{2}", caseSensitive: false)).first;
     }
-
     return name;
   }
 
@@ -852,36 +831,22 @@ class _RechercheM3UState extends State<RechercheM3U> {
     return chips;
   }
 
-  /// Nettoie le titre pour n'afficher que la qualité/langue dans le sélecteur
   String _getVersionLabel(M3uEntry entry) {
     String label = entry.rawTitle;
-
-    // 1. Retire le Titre du film
     label = label.replaceAll(RegExp(RegExp.escape(entry.displayName), caseSensitive: false), '');
-
-    // 2. Retire les Préfixes IPTV
     label = label.replaceAll(RegExp(r'(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])', caseSensitive: false), '');
-
-    // 3. Retire l'Année
     label = label.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
-
-    // 4. 🎯 NOUVEAU : Retire les mots-clés de QUALITÉ et LANGUE (car ils seront en Chips)
     const tagsToRemove = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|X265|MULTI|VOSTFR|VOST|VF|VO|VFF|FR|EN|TRUEFRENCH)\b';
     label = label.replaceAll(RegExp(tagsToRemove, caseSensitive: false), '');
-
-    // 5. Nettoyage final (ponctuation résiduelle)
     label = label.replaceAll(RegExp(r'^[ \t\-_.\(\)\[\]]+'), '');
     label = label.replaceAll(RegExp(r'[ \t\-_.\(\)\[\]]+$'), '');
     label = label.trim().replaceAll(RegExp(r'\s+'), ' ');
-
     return label;
   }
 
   String? _getYear(String rawTitle) {
-    // Cherche 4 chiffres commençant par 19 ou 20, avec ou sans parenthèses
     final match = RegExp(r'\(?(19|20)\d{2}\)?').firstMatch(rawTitle);
     if (match != null) {
-      // On retourne juste l'année propre (sans parenthèses)
       final match = RegExp(r'\b(19|20)\d{2}\b').firstMatch(rawTitle);
       return match?.group(0);
     }
@@ -901,52 +866,41 @@ class _RechercheM3UState extends State<RechercheM3U> {
   }
 
   Widget _buildFilterChips(AppLocalizations l10n) {
-    // Définition des couleurs spécifiques au thème AetherStream
-    const Color selectedBg = kAetherPrimaryPurple; // Fond Violet
-    const Color selectedLabel = kTextDarkPrimary;   // Texte Blanc
-    const Color unselectedBg = kContainerDark;      // Fond Conteneur (Gris très foncé)
-    const Color unselectedBorder = kAetherSecondaryCyan; // Bordure Cyan (pour l'accentuation subtile)
-    const Color unselectedLabel = kTextDarkSecondary; // Texte Gris clair
+    const Color selectedBg = kAetherPrimaryPurple;
+    const Color selectedLabel = kTextDarkPrimary;
+    const Color unselectedBg = kContainerDark;
+    const Color unselectedBorder = kAetherSecondaryCyan;
+    const Color unselectedLabel = kTextDarkSecondary;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          // Film Chip
           FilterChip(
             label: Text(l10n.searchFilterFilms),
             selected: _showFilms,
             onSelected: (s) => setState(() { _showFilms = s; _filterAndGroupResults(); }),
-
-            // 🎯 STYLING AETHERSTREAM
             selectedColor: selectedBg,
             backgroundColor: unselectedBg,
             labelStyle: _showFilms ? TextStyle(color: selectedLabel, fontWeight: FontWeight.bold) : TextStyle(color: unselectedLabel),
-            side: _showFilms ? BorderSide.none : BorderSide(color: unselectedBorder.withAlpha(100)), // Bordure Cyan subtile
-            // FIN STYLING AETHERSTREAM
+            side: _showFilms ? BorderSide.none : BorderSide(color: unselectedBorder.withAlpha(100)),
           ),
           const SizedBox(width: 8),
-
-          // Series Chip
           FilterChip(
             label: Text(l10n.searchFilterSeries),
             selected: _showSeries,
             onSelected: (s) => setState(() { _showSeries = s; _filterAndGroupResults(); }),
-
             selectedColor: selectedBg,
             backgroundColor: unselectedBg,
             labelStyle: _showSeries ? TextStyle(color: selectedLabel, fontWeight: FontWeight.bold) : TextStyle(color: unselectedLabel),
             side: _showSeries ? BorderSide.none : BorderSide(color: unselectedBorder.withAlpha(100)),
           ),
           const SizedBox(width: 8),
-
-          // TV Chip
           FilterChip(
             label: Text(l10n.searchFilterTv),
             selected: _showTv,
             onSelected: (s) => setState(() { _showTv = s; _filterAndGroupResults(); }),
-
             selectedColor: selectedBg,
             backgroundColor: unselectedBg,
             labelStyle: _showTv ? TextStyle(color: selectedLabel, fontWeight: FontWeight.bold) : TextStyle(color: unselectedLabel),
