@@ -14,6 +14,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
+  http: ^1.6.0
   dio: ^5.5.0                       # téléchargement avec suivi de progression
   path_provider: ^2.1.5             # accéder aux répertoires locaux
   flutter_secure_storage: ^9.2.4    # stockage sécurisé

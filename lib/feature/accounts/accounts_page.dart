@@ -1,13 +1,15 @@
 import 'dart:io';
 import 'dart:convert'; // Nécessaire pour l'optimisation Stream
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
-import 'edit_account_sheet.dart';
-import '../../data/models/stream_account.dart';
-import '../../data/services/stream_account_service.dart';
-import '../../data/services/playlist_service.dart';
-import '../../l10n/app_localizations.dart';
-import '../../data/services/tmdb_api_service.dart';
-import '../../data/services/tmdb_service.dart'; // N'oublie pas d'importer le service pour le reset
+import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
+import 'package:aetherStream/data/models/stream_account.dart';
+import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/data/services/playlist_service.dart';
+import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:aetherStream/data/services/tmdb_api_service.dart';
+import 'package:aetherStream/data/services/tmdb_service.dart';
+import 'package:aetherStream/data/models/account_info.dart';
 
 class AccountsPage extends StatefulWidget {
   const AccountsPage({super.key, this.initialPlaylistPath});
@@ -19,7 +21,7 @@ class AccountsPage extends StatefulWidget {
 
 class _AccountsPageState extends State<AccountsPage> {
   late Future<List<StreamAccount>> _accountsFuture;
-  late Future<_PlaylistInfo?> _playlistInfoFuture;
+  late Future<_CombinedCardInfo> _combinedInfoFuture;
 
   final _tmdbApiKeyController = TextEditingController();
   bool _isTmdbKeyVisible = false;
@@ -29,14 +31,7 @@ class _AccountsPageState extends State<AccountsPage> {
   void initState() {
     super.initState();
     _accountsFuture = _loadAccounts();
-
-    // Logique de chargement playlist
-    if (widget.initialPlaylistPath != null) {
-      _playlistInfoFuture = _readPlaylistInfo(widget.initialPlaylistPath!);
-    } else {
-      _playlistInfoFuture = _loadAndDisplayPlaylistInfo();
-    }
-
+    _combinedInfoFuture = _loadCardInfo(initialPath: widget.initialPlaylistPath);
     _initTmdbState();
   }
 
@@ -57,10 +52,32 @@ class _AccountsPageState extends State<AccountsPage> {
     return StreamAccountService.listAccounts();
   }
 
+  Future<_CombinedCardInfo> _loadCardInfo({String? initialPath}) async {
+    // 1. Charger les infos de la playlist (logique existante)
+    _PlaylistInfo? pInfo;
+    try {
+      final path = initialPath ?? await PlaylistService.getOrDownloadPlaylist();
+      pInfo = await _readPlaylistInfo(path);
+    } catch (_) {
+      pInfo = null; // En cas d'erreur, on continue sans les infos de playlist
+    }
+
+    // 2. Charger les infos du compte courant
+    final account = await StreamAccountService.getCurrentAccount();
+    AccountInfo? aInfo;
+    if (account != null) {
+      // On récupère les détails de l'API pour ce compte
+      aInfo = await StreamAccountService.fetchAccountInfo(account);
+    }
+
+    // 3. Retourner l'objet combiné
+    return _CombinedCardInfo(playlistInfo: pInfo, accountInfo: aInfo, account: account);
+  }
+
   Future<void> _refresh() async {
     setState(() {
       _accountsFuture = _loadAccounts();
-      _playlistInfoFuture = _loadAndDisplayPlaylistInfo();
+      _combinedInfoFuture = _loadCardInfo();
     });
   }
 
@@ -112,13 +129,10 @@ class _AccountsPageState extends State<AccountsPage> {
 
   Future<void> _forceReloadPlaylist() async {
     try {
-      final path = await PlaylistService.downloadCurrentM3U();
-      final info = await _readPlaylistInfo(path);
+      await PlaylistService.downloadCurrentM3U();
       if (!mounted) return;
-      setState(() {
-        _playlistInfoFuture = Future.value(info);
-      });
-      debugPrint("🔄 Playlist rechargée (${info?.count ?? 0} entrées)");
+      await _refresh();
+      debugPrint("🔄 Playlist rechargée et affichage mis à jour.");
     } catch (e) {
       debugPrint("❌ Échec du rechargement : $e");
     }
@@ -275,14 +289,17 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Widget _playlistInfoCard(AppLocalizations l10n) {
-    return FutureBuilder<_PlaylistInfo?>(
-      future: _playlistInfoFuture,
+    return FutureBuilder<_CombinedCardInfo>(
+      future: _combinedInfoFuture,
       builder: (ctx, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const LinearProgressIndicator(); // Plus discret qu'une card de loading
+          return const LinearProgressIndicator();
         }
 
-        final info = snap.data;
+        final playlistInfo = snap.data?.playlistInfo;
+        final accountInfo = snap.data?.accountInfo;
+        final account = snap.data?.account;
+
         return Card(
           margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: Padding(
@@ -290,16 +307,56 @@ class _AccountsPageState extends State<AccountsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // --- TITRE ---
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(l10n.playlistInfoTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    if (info != null)
-                      Text("${info.count} entrées", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                    if (playlistInfo != null)
+                      Text("${playlistInfo.count} entrées", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                   ],
                 ),
                 const Divider(),
-                if (info == null) ...[
+
+                // --- INFOS DU COMPTE (si disponibles) ---
+                if (account != null && accountInfo != null) ...[
+                  Row(
+                    children: [
+                      Icon(Icons.person_outline, size: 16, color: Colors.grey.shade700),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          account.label,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(
+                        "Expiration : ${accountInfo.expirationDate != null ? DateFormat('dd/MM/yyyy').format(accountInfo.expirationDate!) : 'N/A'}",
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const Spacer(),
+                      const Icon(Icons.wifi_tethering, size: 14, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(
+                        "Connexions : ${accountInfo.activeConnections}/${accountInfo.maxConnections}",
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 16),
+                ],
+
+                // --- INFOS DE LA PLAYLIST (si disponibles) ---
+                if (playlistInfo == null) ...[
                   Text(l10n.playlistInfoUnavailable),
                   const SizedBox(height: 8),
                   Center(
@@ -310,20 +367,18 @@ class _AccountsPageState extends State<AccountsPage> {
                     ),
                   ),
                 ] else ...[
-                  // Infos compactes
                   Row(
                     children: [
                       const Icon(Icons.sd_storage_outlined, size: 16, color: Colors.grey),
                       const SizedBox(width: 4),
-                      Text(_formatBytes(info.size), style: Theme.of(context).textTheme.bodySmall),
+                      Text(_formatBytes(playlistInfo.size), style: Theme.of(context).textTheme.bodySmall),
                       const SizedBox(width: 16),
                       const Icon(Icons.access_time, size: 16, color: Colors.grey),
                       const SizedBox(width: 4),
-                      Text(_formatDate(info.modified), style: Theme.of(context).textTheme.bodySmall),
+                      Text(_formatDate(playlistInfo.modified), style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // Actions Playlist
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -490,4 +545,12 @@ class _PlaylistInfo {
   final int count;
 
   _PlaylistInfo({required this.path, required this.size, required this.modified, required this.count});
+}
+
+class _CombinedCardInfo {
+  final _PlaylistInfo? playlistInfo;
+  final AccountInfo? accountInfo;
+  final StreamAccount? account; // Pour afficher le nom du compte
+
+  _CombinedCardInfo({this.playlistInfo, this.accountInfo, this.account});
 }

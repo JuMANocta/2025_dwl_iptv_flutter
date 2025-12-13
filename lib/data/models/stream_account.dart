@@ -56,10 +56,32 @@ class StreamAccount {
     // Normalise le slash
     final hasSlash = b.endsWith('/');
     final base = hasSlash ? b.substring(0, b.length - 1) : b;
-    final String typeValue = playlistType == PlaylistType.simple ? 'simple' : 'm3u';
+    final String typeValue = playlistType == PlaylistType.simple ? 'simple' : 'm3u_plus';
 
     return "$base/get.php?username=$u&password=$p&type=$typeValue&output=ts";
 
+  }
+
+  String? buildPlayerApiUrl() {
+    if (mode != StreamAuthMode.separate || (baseUrl ?? '').trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      final uri = Uri.parse(baseUrl!);
+      // On reconstruit l'URL en ne gardant que le scheme, l'host, le port
+      // et on ajoute le chemin standard de l'API.
+      final apiUrl = Uri(
+        scheme: uri.scheme,
+        host: uri.host,
+        port: uri.port,
+        path: '/player_api.php',
+      );
+      return apiUrl.toString();
+    } catch (e) {
+      // Si le baseUrl est mal formé, on ne peut rien faire.
+      return null;
+    }
   }
 
   /// Indique si le compte a de quoi construire une URL .m3u.

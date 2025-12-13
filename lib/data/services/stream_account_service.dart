@@ -1,7 +1,11 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../models/stream_account.dart';
-import '../../core/utils/secure_storage_compte.dart';
+import 'package:aetherStream/core/utils/secure_storage_compte.dart';
+import 'package:aetherStream/data/models/stream_account.dart';
+import 'package:aetherStream/data/models/account_info.dart';
+import 'package:aetherStream/core/utils/network.dart';
 
 /// Service de gestion **multi-comptes**
 /// Stockage : `flutter_secure_storage` (mêmes fondations que ton SecureStorageService)
@@ -158,5 +162,43 @@ class StreamAccountService {
 
     await saveAccount(acc);
     await setCurrentAccount(acc.id);
+  }
+
+  /// Méthode pour récupérer les informations d'un compte utilisateur
+  static Future<AccountInfo?> fetchAccountInfo(StreamAccount account) async {
+    // 1. Nouvelle méthode robuste pour obtenir l'URL de l'API
+    final apiUrl = account.buildPlayerApiUrl();
+    if (apiUrl == null || account.username == null || account.password == null) {
+      // Le compte n'est pas compatible avec cette API
+      return null;
+    }
+
+    // 2. Préparer les paramètres
+    final params = {
+      'username': account.username!,
+      'password': account.password!,
+      'action': 'get_account_info',
+    };
+
+    try {
+      // 3. On utilise NetworkUtils pour obtenir une instance de Dio pré-configurée
+      final dio = NetworkUtils.buildBaseDio();
+
+      // 4. On exécute la requête GET
+      final response = await dio.get(apiUrl, queryParameters: params);
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        debugPrint("✅ Infos du compte '${account.label}' récupérées.");
+        return AccountInfo.fromJson(data);
+      } else {
+        // Log d'erreur avec plus de détails
+        debugPrint("❌ Erreur API Info Compte (${response.statusCode}): ${response.data}");
+        return null;
+      }
+    } catch (e) {
+      debugPrint("❌ Exception lors du fetch des infos du compte '${account.label}': $e");
+      return null;
+    }
   }
 }
