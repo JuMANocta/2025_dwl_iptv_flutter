@@ -56,3 +56,4 @@ macos/
 linux/
 ios/
 android/
+*.m3u
