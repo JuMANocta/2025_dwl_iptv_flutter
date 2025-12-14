@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
-import '../../l10n/app_localizations.dart';
+import 'package:aetherStream/l10n/app_localizations.dart';
 
 enum VideoSourceType { network, file, networkWithCache }
 
@@ -31,8 +31,6 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _isLoading = true;
   bool _hasError = false;
   late String _errorMessage;
-  bool _enteredFullScreen = false;
-  bool _isClosing = false;
 
   @override
   void initState() {
@@ -92,7 +90,6 @@ class _PlayerPageState extends State<PlayerPage> {
           iconColor: Colors.white,
         ),
       );
-      _chewieController!.addListener(_handleChewieFullscreenChange);
 
       if (mounted) {
         setState(() {
@@ -115,7 +112,6 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
-    _chewieController?.removeListener(_handleChewieFullscreenChange);
     _videoPlayerController?.dispose();
     _chewieController?.dispose();
     _cachedVideoPlayerPlus?.dispose();
@@ -139,9 +135,8 @@ class _PlayerPageState extends State<PlayerPage> {
         actions: const [],
       ),
       body: Center(
-        child: _isClosing
-            ? const SizedBox.shrink()
-            : _isLoading
+        child:
+            _isLoading
             ? _buildLoading(l10n)
             : _hasError
             ? _buildError()
@@ -170,22 +165,4 @@ class _PlayerPageState extends State<PlayerPage> {
       ],
     ),
   );
-
-  void _handleChewieFullscreenChange() {
-    if (!mounted || _chewieController == null) return;
-    final isFull = _chewieController!.isFullScreen;
-    if (isFull) {
-      _enteredFullScreen = true;
-      return;
-    }
-    if (_enteredFullScreen) {
-      _enteredFullScreen = false;
-      setState(() => _isClosing = true);
-      Future.microtask(() {
-        if (mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      });
-    }
-  }
 }
