@@ -228,6 +228,42 @@ class TmdbService {
     }
   }
 
+  /// Détails d'un épisode précis : recherche la série, puis récupère l'épisode.
+  Future<Map<String, dynamic>?> getEpisodeDetails(
+    String showQuery,
+    int seasonNumber,
+    int episodeNumber, {
+    String? yearFilter,
+  }) async {
+    if (!await _init()) return null;
+
+    try {
+      final searchResult = await _performSearch(
+        showQuery,
+        isTv: true,
+        language: 'fr-FR',
+        year: yearFilter,
+      );
+      if (searchResult == null) return null;
+      final id = searchResult['id'] as int;
+
+      final resp = await _dio!.get(
+        '/tv/$id/season/$seasonNumber/episode/$episodeNumber',
+        queryParameters: {
+          'language': 'fr-FR',
+          'append_to_response': 'credits,images,videos',
+        },
+      );
+
+      if (resp.statusCode == 200) {
+        return resp.data as Map<String, dynamic>?;
+      }
+    } catch (e) {
+      debugPrint("❌ Erreur récupération épisode TMDB : $e");
+    }
+    return null;
+  }
+
   /// Recherche atomique avec paramètres optionnels
   Future<Map<String, dynamic>?> _performSearch(String query, {
     required bool isTv,

@@ -463,11 +463,6 @@ class _AccountsPageState extends State<AccountsPage> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openEditor(),
-        icon: const Icon(Icons.add),
-        label: Text(l10n.accountsFab),
-      ),
     );
   }
 

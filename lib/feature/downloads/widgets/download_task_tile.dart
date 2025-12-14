@@ -1,14 +1,14 @@
 import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
-import '../../../core/utils/formatters.dart';
-import '../../../main.dart';
-import '../../../data/models/download_task.dart';
-import '../../../data/services/download_manager_service.dart';
-import '../../../widgets/info_row.dart';
-import '../../../widgets/terminal_download_dialog.dart';
-import '../../player/player_page.dart';
-import '../../../l10n/app_localizations.dart';
+import 'package:aetherStream/core/utils/formatters.dart';
+import 'package:aetherStream/main.dart';
+import 'package:aetherStream/data/models/download_task.dart';
+import 'package:aetherStream/data/services/download_manager_service.dart';
+import 'package:aetherStream/widgets/info_row.dart';
+import 'package:aetherStream/widgets/terminal_download_dialog.dart';
+import 'package:aetherStream/feature/player/player_page.dart';
+import 'package:aetherStream/l10n/app_localizations.dart';
 
 class DownloadTaskTile extends StatelessWidget {
   final DownloadTask task;
@@ -263,10 +263,16 @@ class DownloadTaskTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Construire le titre avec l'année si disponible
+    String titleText = task.displayName;
+    if (task.releaseYear != null && task.releaseYear!.isNotEmpty) {
+      titleText = '$titleText (${task.releaseYear})';
+    }
+
     final l10n = AppLocalizations.of(context)!;
     return ListTile(
       leading: _getLeadingIcon(),
-      title: Text(task.displayName, maxLines: 2, overflow: TextOverflow.ellipsis),
+      title: Text(titleText, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: _buildSubtitle(context),
       trailing: IconButton(
         icon: const Icon(Icons.delete_forever_outlined),

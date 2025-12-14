@@ -31,6 +31,7 @@ String _ext(String name) {
 Future<void> verifierEtTelecharger({
   required String url,
   required String nom,
+  String? releaseYear, // NOUVEAU PARAMÈTRE
   required BuildContext context
 }) async {
   if (!context.mounted) return;
@@ -88,7 +89,7 @@ Future<void> verifierEtTelecharger({
 
   // Si on arrive ici, c'est qu'aucune tâche n'existait pour cette URL.
   debugPrint("🚀 Lancement d'un nouveau téléchargement pour : $nom");
-  await _telechargerFichierVideo(url: url, nom: nom, context: context);
+  await _telechargerFichierVideo(url: url, nom: nom, releaseYear: releaseYear, context: context);
 }
 
 Future<int?> probeContentLength(Dio dio, String url) async {
@@ -136,7 +137,7 @@ Future<int?> probeContentLength(Dio dio, String url) async {
 }
 
 /// --- FONCTION DE TÉLÉCHARGEMENT (REVUE POUR DÉLÉGUER) ---
-Future<void> _telechargerFichierVideo({required String url, required String nom, required BuildContext context}) async {
+Future<void> _telechargerFichierVideo({required String url, required String nom, String? releaseYear, required BuildContext context}) async {
   final l10n = AppLocalizations.of(context)!;
   final downloadManager = DownloadManagerService();
 
@@ -152,7 +153,6 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   // 2. On affiche l'AlertDialog de confirmation.
   if (!context.mounted) return;
 
-  // 3. On affiche l'AlertDialog de confirmation.
   // On prépare l'extension pour l'afficher dans le dialogue
   final String extension = _ext(url).toUpperCase();
 
@@ -234,13 +234,18 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
 
   // 6. CRÉATION DE LA TÂCHE AVEC LE BON CHEMIN
   final String tempDirectory = await _getTempDirectory();
-  String fileName = sanitizeFilename(nom);
+  String baseFileName = sanitizeFilename(nom);
+  // Ajout de l'année au nom de fichier si disponible
+  if (releaseYear != null && releaseYear.isNotEmpty) {
+    baseFileName = '$baseFileName ($releaseYear)';
+  }
+
   final fileExt = extension.isNotEmpty ? extension.toLowerCase() : 'mp4';
-  if (_ext(fileName).isEmpty) fileName = '$fileName.$fileExt';
+  if (_ext(baseFileName).isEmpty) baseFileName = '$baseFileName.$fileExt';
 
   // On construit le chemin final en utilisant le dossier obtenu par notre service.
-  final finalPath = "$finalSaveDirectory/$fileName";
-  final tempPath = "$tempDirectory/$fileName"; // Chemin dans le cache privé
+  final finalPath = "$finalSaveDirectory/$baseFileName";
+  final tempPath = "$tempDirectory/$baseFileName"; // Chemin dans le cache privé
   final taskId = 'task_${DateTime.now().millisecondsSinceEpoch}';
 
   final newTask = DownloadTask(
@@ -252,6 +257,7 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
     totalSize: totalSize ?? 0,
     status: DownloadStatus.queued,
     createdAt: DateTime.now(),
+    releaseYear: releaseYear,
   );
 
   // 7. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN

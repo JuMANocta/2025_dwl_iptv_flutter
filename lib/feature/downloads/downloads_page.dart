@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'widgets/download_task_tile.dart';
-import '../../data/models/download_task.dart';
-import '../../data/services/download_manager_service.dart';
-import '../../../l10n/app_localizations.dart';
+import 'package:aetherStream/data/models/download_task.dart';
+import 'package:aetherStream/data/services/download_manager_service.dart';
+import 'package:aetherStream/l10n/app_localizations.dart';
 
 
 class DownloadsPage extends StatefulWidget {

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_video_player_plus/cached_video_player_plus.dart';
 import '../../l10n/app_localizations.dart';
@@ -30,10 +31,17 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _isLoading = true;
   bool _hasError = false;
   late String _errorMessage;
+  bool _enteredFullScreen = false;
+  bool _isClosing = false;
 
   @override
   void initState() {
     super.initState();
+    // Force le paysage pendant la lecture.
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     initializePlayer();
   }
 
@@ -63,12 +71,12 @@ class _PlayerPageState extends State<PlayerPage> {
         await _videoPlayerController!.initialize();
       }
 
-      _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController!,
-        autoPlay: true,
-        looping: false,
-        aspectRatio: _videoPlayerController!.value.aspectRatio,
-        materialProgressColors: ChewieProgressColors(
+    _chewieController = ChewieController(
+      videoPlayerController: _videoPlayerController!,
+      autoPlay: true,
+      looping: false,
+      aspectRatio: _videoPlayerController!.value.aspectRatio,
+      materialProgressColors: ChewieProgressColors(
           playedColor: Colors.greenAccent,
           handleColor: Colors.greenAccent,
           bufferedColor: Colors.grey,
@@ -78,11 +86,13 @@ class _PlayerPageState extends State<PlayerPage> {
         autoInitialize: true,
         allowedScreenSleep: false,
         allowFullScreen: true,
+        fullScreenByDefault: true,
         customControls: const CupertinoControls(
           backgroundColor: Color.fromRGBO(41, 41, 41, 0.7),
           iconColor: Colors.white,
         ),
       );
+      _chewieController!.addListener(_handleChewieFullscreenChange);
 
       if (mounted) {
         setState(() {
@@ -105,9 +115,15 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
+    _chewieController?.removeListener(_handleChewieFullscreenChange);
     _videoPlayerController?.dispose();
     _chewieController?.dispose();
     _cachedVideoPlayerPlus?.dispose();
+    // Restaure l'orientation par défaut (portrait) en quittant le player.
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
     super.dispose();
   }
 
@@ -123,7 +139,9 @@ class _PlayerPageState extends State<PlayerPage> {
         actions: const [],
       ),
       body: Center(
-        child: _isLoading
+        child: _isClosing
+            ? const SizedBox.shrink()
+            : _isLoading
             ? _buildLoading(l10n)
             : _hasError
             ? _buildError()
@@ -152,4 +170,22 @@ class _PlayerPageState extends State<PlayerPage> {
       ],
     ),
   );
+
+  void _handleChewieFullscreenChange() {
+    if (!mounted || _chewieController == null) return;
+    final isFull = _chewieController!.isFullScreen;
+    if (isFull) {
+      _enteredFullScreen = true;
+      return;
+    }
+    if (_enteredFullScreen) {
+      _enteredFullScreen = false;
+      setState(() => _isClosing = true);
+      Future.microtask(() {
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      });
+    }
+  }
 }

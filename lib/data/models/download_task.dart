@@ -23,6 +23,7 @@ class DownloadTask {
   final DateTime createdAt;    // La date de création de la tâche
   final DateTime? updatedAt;   // La date de la dernière mise à jour de l'état
   final String? errorMessage;
+  final String? releaseYear;   // L'année de sortie du contenu
 
   const DownloadTask({
     required this.id,
@@ -36,6 +37,7 @@ class DownloadTask {
     this.totalSize = 0,
     this.updatedAt,
     this.errorMessage,
+    this.releaseYear,
   });
 
   DownloadTask copyWith({
@@ -45,6 +47,7 @@ class DownloadTask {
     String? errorMessage,
     String? finalPath,
     String? tempPath,
+    String? releaseYear,
   }) {
     String? finalErrorMessage = errorMessage;
     if (status == DownloadStatus.failed && errorMessage == null) {
@@ -63,6 +66,7 @@ class DownloadTask {
       progress: progress ?? this.progress,
       totalSize: totalSize ?? this.totalSize,
       errorMessage: finalErrorMessage,
+      releaseYear: releaseYear ?? this.releaseYear,
     );
   }
 
@@ -79,6 +83,7 @@ class DownloadTask {
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'] as String) : null,
       errorMessage: json['errorMessage'] as String?,
+      releaseYear: json['releaseYear'] as String?,
     );
   }
 
@@ -95,6 +100,7 @@ class DownloadTask {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
       'errorMessage': errorMessage,
+      'releaseYear': releaseYear,
     };
   }
 
@@ -107,6 +113,7 @@ class DownloadTask {
       finalPath: '',
       tempPath: '',
       createdAt: DateTime.fromMicrosecondsSinceEpoch(0),
+      releaseYear: null,
     );
   }
 }

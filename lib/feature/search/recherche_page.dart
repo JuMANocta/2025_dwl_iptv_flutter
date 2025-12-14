@@ -10,6 +10,8 @@ import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/search/details_page.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
+import 'package:aetherStream/data/services/tmdb_service.dart';
+import 'package:aetherStream/data/models/media_model.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/main.dart'; // Pour navigatorKey
 import 'package:aetherStream/core/themes/colors.dart';
@@ -137,26 +139,133 @@ class _RecherchePageState extends State<RecherchePage> {
 // WIDGET D'UI POUR LA RECHERCHE (RechercheM3U)
 //############################################################################
 
-class M3uEntry {
+enum M3uContentType { movie, series, tv }
+
+/// Métadonnées complètes extraites d'un titre M3U (qualité, année, langues, etc.).
+class TitleMetadata {
   final String rawTitle;
+  final String baseTitle;
+  final String? year;
+  final int? seasonNumber;
+  final int? episodeNumber;
+  final String? quality;
+  final List<String> languages;
+  final String? versionLabel;
+
+  bool get isSeriesEpisode => seasonNumber != null && episodeNumber != null;
+
+  const TitleMetadata({
+    required this.rawTitle,
+    required this.baseTitle,
+    this.year,
+    this.seasonNumber,
+    this.episodeNumber,
+    this.quality,
+    this.languages = const [],
+    this.versionLabel,
+  });
+
+  factory TitleMetadata.parse(String rawTitle) {
+    final lower = rawTitle.toLowerCase();
+
+    // Saison / Épisode
+    int? seasonNumber;
+    int? episodeNumber;
+      final seasonMatch = RegExp(r's\s*(\d{1,2})\s*e\s*(\d{1,2})', caseSensitive: false).firstMatch(rawTitle);
+    if (seasonMatch != null) {
+      seasonNumber = int.tryParse(seasonMatch.group(1) ?? '');
+      episodeNumber = int.tryParse(seasonMatch.group(2) ?? '');
+    }
+
+    // Année
+    final yearMatch = RegExp(r'\b(19|20)\d{2}\b').firstMatch(rawTitle);
+    final year = yearMatch?.group(0);
+
+    // Qualité
+    String? quality;
+    if (lower.contains('4k') || lower.contains('2160p')) quality = '4K';
+    else if (lower.contains('1080p') || lower.contains('fhd')) quality = 'FHD';
+    else if (lower.contains('720p') || lower.contains('hd')) quality = 'HD';
+    else if (lower.contains('sd')) quality = 'SD';
+
+    // Langues
+    final langs = <String>[];
+    if (lower.contains('multi')) langs.add('MULTI');
+    if (lower.contains('vostfr')) langs.add('VOSTFR');
+    if (lower.contains('vf') || lower.contains('french') || lower.contains('vff')) langs.add('VF');
+
+    // Nettoyage du titre
+    String base = rawTitle;
+    base = base.replaceAll(RegExp(r'^(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])\s*', caseSensitive: false), '');
+    if (seasonMatch != null && seasonMatch.start <= base.length) {
+      base = base.substring(0, seasonMatch.start).trim();
+    }
+    const qualityTags = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|H\.265|X265|AAC|DTS)\b';
+    base = base.replaceAll(RegExp(qualityTags, caseSensitive: false), '');
+    const langTags = r'\b(MULTI|VOSTFR|VOST|VF|VO|VFF|FR|EN|VIP|RAW)\b';
+    base = base.replaceAll(RegExp(langTags, caseSensitive: false), '');
+    base = base.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
+    base = base.replaceAll(RegExp(r'[\(\)\[\]\.\-_]'), ' ');
+    // Supprime toute marque Sxx Exx restante (avec ou sans espaces)
+    base = base.replaceAll(RegExp(r"S\s*\d{1,2}\s*E\s*\d{1,2}", caseSensitive: false), ' ');
+    base = base.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (base.length < 2) {
+      // Fallback : on découpe sur le motif saison même s'il est écrit avec espaces
+      base = rawTitle.split(RegExp(r"S\\s*\\d{1,2}", caseSensitive: false)).first;
+    }
+    if (base.isEmpty) {
+      base = rawTitle.trim();
+    }
+
+    // Version label (ce qui reste après nettoyage pour distinguer les variantes)
+    String? versionLabel;
+    if (base.isNotEmpty) {
+      String label = rawTitle;
+      label = label.replaceAll(RegExp(RegExp.escape(base), caseSensitive: false), '');
+      label = label.replaceAll(RegExp(r'(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])', caseSensitive: false), '');
+      label = label.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
+      const tagsToRemove = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|X265|MULTI|VOSTFR|VOST|VF|VO|VFF|FR|EN|TRUEFRENCH)\b';
+      label = label.replaceAll(RegExp(tagsToRemove, caseSensitive: false), '');
+      label = label.replaceAll(RegExp(r'^[ \t\-_.\(\)\[\]]+'), '');
+      label = label.replaceAll(RegExp(r'[ \t\-_.\(\)\[\]]+$'), '');
+      label = label.trim().replaceAll(RegExp(r'\s+'), ' ');
+      if (label.isNotEmpty) versionLabel = label;
+    }
+
+    return TitleMetadata(
+      rawTitle: rawTitle,
+      baseTitle: base,
+      year: year,
+      seasonNumber: seasonNumber,
+      episodeNumber: episodeNumber,
+      quality: quality,
+      languages: langs,
+      versionLabel: versionLabel,
+    );
+  }
+}
+
+class M3uEntry {
   final String url;
-  final bool isSerie;
-  final String? saison;
-  final String? episode;
-  final String displayName;
+  final M3uContentType type;
+  final TitleMetadata title;
   final bool canReplay;
   final String? logoUrl;
 
-  M3uEntry({
-    required this.rawTitle,
+  const M3uEntry({
     required this.url,
-    this.isSerie = false,
-    this.saison,
-    this.episode,
-    required this.displayName,
+    required this.type,
+    required this.title,
     this.canReplay = false,
     this.logoUrl,
   });
+
+  // Accesseurs de compat
+  String get rawTitle => title.rawTitle;
+  String get displayName => title.baseTitle;
+  bool get isSerie => type == M3uContentType.series;
+  String? get saison => title.seasonNumber?.toString().padLeft(2, '0');
+  String? get episode => title.episodeNumber?.toString().padLeft(2, '0');
 }
 
 class RechercheM3U extends StatefulWidget {
@@ -222,7 +331,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
     try {
       String? pendingMetadata;
-      final regExpSerie = RegExp(r"S(\d{2})\s*E(\d{2})", caseSensitive: false);
+      final regExpSerie = RegExp(r"S\s*(\d{1,2})\s*E\s*(\d{1,2})", caseSensitive: false);
       final regExpReplay = RegExp(r'catchup|timeshift', caseSensitive: false);
       final regExpLogo = RegExp(r'tvg-logo="([^"]*)"');
 
@@ -292,27 +401,32 @@ class _RechercheM3UState extends State<RechercheM3U> {
     String? logoUrl,
   }) {
     final lowerUrl = url.toLowerCase();
-    final displayName = _getDisplayName(rawTitle);
-    final matchSerie = regExpSerie.firstMatch(rawTitle);
-    final isSerie = matchSerie != null;
+    final metadata = TitleMetadata.parse(rawTitle);
+
+    // Priorité : pattern saison/épisode > heuristique URL > fallback TV
+    M3uContentType type;
+    if (metadata.isSeriesEpisode || regExpSerie.firstMatch(rawTitle) != null) {
+      type = M3uContentType.series;
+    } else if (lowerUrl.contains('/movie/')) {
+      type = M3uContentType.movie;
+    } else if (lowerUrl.contains('/series/')) {
+      type = M3uContentType.series;
+    } else {
+      type = M3uContentType.tv;
+    }
 
     final entry = M3uEntry(
-      rawTitle: rawTitle,
       url: url,
-      isSerie: isSerie,
-      saison: matchSerie?.group(1),
-      episode: matchSerie?.group(2),
-      displayName: displayName,
+      type: type,
+      title: metadata,
       canReplay: canReplay,
       logoUrl: logoUrl,
     );
 
-    if (isSerie) {
+    if (type == M3uContentType.series) {
       _seriesList.add(entry);
-    } else if (lowerUrl.contains('/movie/')) {
+    } else if (type == M3uContentType.movie) {
       _filmsList.add(entry);
-    } else if (lowerUrl.contains('/series/')) {
-      _seriesList.add(entry);
     } else {
       _tvList.add(entry);
     }
@@ -391,7 +505,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
           title: Container(
             // 🎯 Amélioration visuelle de la barre de recherche
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant.withAlpha(200),
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(200),
               borderRadius: BorderRadius.circular(25.0),
             ),
             child: TextField(
@@ -413,7 +527,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
           pinned: true,
           floating: true,
           bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(kToolbarHeight),
+            preferredSize: const Size.fromHeight(kToolbarHeight + 12),
             // 🎯 Utilisation du helper refactorisé
             child: _buildFilterChips(l10n),
           ),
@@ -486,12 +600,12 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   Widget _buildFilmCard(String displayName, List<M3uEntry> versions) {
     // 1. Détection de l'Homonyme
-    final uniqueYears = versions.map((v) => _getYear(v.rawTitle)).where((y) => y != null).toSet();
+    final uniqueYears = versions.map((v) => v.title.year).where((y) => y != null).toSet();
     final isHomonymConflict = versions.length > 1 && uniqueYears.length > 1;
 
     // 2. Construction des Chips Uniques (utilisée si ce n'est PAS un conflit d'homonymes)
-    final allQualityChips = versions.map((v) => _getQualityChip(v.rawTitle));
-    final allLanguageChips = versions.expand((v) => _getLanguageChips(v.rawTitle));
+    final allQualityChips = versions.map((v) => _qualityChip(v.title));
+    final allLanguageChips = versions.expand((v) => _languageChips(v.title));
     // Utilise Set pour n'avoir qu'un seul [FHD]
     final uniqueChips = <Widget>{...allQualityChips, ...allLanguageChips}.toList().where((w) => w is! SizedBox).toList();
 
@@ -611,7 +725,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     FocusManager.instance.primaryFocus?.unfocus();
 
     final entry = versions.first;
-    final bool isTvChannel = !entry.url.contains('/movie/') && !entry.url.contains('/series/');
+    final bool isTvChannel = entry.type == M3uContentType.tv;
     M3uEntry selectedEntry = versions.first;
 
     if (versions.length > 1) {
@@ -635,6 +749,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     return showModalBottomSheet<M3uEntry>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (ctx) => Container(
         padding: const EdgeInsets.only(bottom: 20),
         child: Column(
@@ -652,10 +767,10 @@ class _RechercheM3UState extends State<RechercheM3U> {
                 separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
                 itemBuilder: (ctx, i) {
                   final v = versions[i];
-                  final year = _getYear(v.rawTitle);
-                  final extraInfo = _getVersionLabel(v);
-                  final qualityChip = _getQualityChip(v.rawTitle);
-                  final langChips = _getLanguageChips(v.rawTitle);
+                  final year = v.title.year;
+                  final extraInfo = v.title.versionLabel ?? "Standard / Inconnue";
+                  final qualityChip = _qualityChip(v.title);
+                  final langChips = _languageChips(v.title);
                   final allChips = <Widget>[];
 
                   if (year != null) {
@@ -698,9 +813,26 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   Future<void> _showActionSheet(M3uEntry entry) async {
     final l10n = AppLocalizations.of(context)!;
+    final bool hasEpisode = entry.title.isSeriesEpisode;
+
+    Future<dynamic>? tmdbFuture;
+    if (hasEpisode && entry.title.seasonNumber != null && entry.title.episodeNumber != null) {
+      tmdbFuture = TmdbService.instance.getEpisodeDetails(
+        entry.displayName,
+        entry.title.seasonNumber!,
+        entry.title.episodeNumber!,
+        yearFilter: entry.title.year,
+      );
+    } else if (entry.type == M3uContentType.movie) {
+      tmdbFuture = TmdbService.instance.getFullDetails(entry.displayName, isTv: false);
+    } else if (entry.type == M3uContentType.series) {
+      tmdbFuture = TmdbService.instance.getFullDetails(entry.displayName, isTv: true);
+    }
+
     await showModalBottomSheet(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (ctx) {
         return SafeArea(
           child: SingleChildScrollView(
@@ -726,7 +858,92 @@ class _RechercheM3UState extends State<RechercheM3U> {
                   child: Text(entry.displayName, style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
                 ),
                 const SizedBox(height: 8),
-                Wrap(spacing: 8, children: [_getQualityChip(entry.rawTitle), ..._getLanguageChips(entry.rawTitle)]),
+                if (entry.title.isSeriesEpisode)
+                  FutureBuilder<dynamic>(
+                    future: tmdbFuture,
+                    builder: (context, snap) {
+                      if (snap.connectionState != ConnectionState.done) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: SizedBox(
+                            height: 4,
+                            width: 80,
+                            child: LinearProgressIndicator(),
+                          ),
+                        );
+                      }
+                      final data = snap.data;
+                      if (data == null) return const SizedBox.shrink();
+
+                      String? title;
+                      String? overview;
+                      String? airDate;
+
+                      if (data is Map<String, dynamic>) {
+                        title = data['name'] as String?;
+                        overview = data['overview'] as String?;
+                        airDate = data['air_date'] as String?;
+                      } else if (data is Media) {
+                        title = data.title;
+                        overview = data.overview;
+                      }
+
+                      // Évite de répéter le titre de la série : on n'affiche le titre d'épisode que s'il diffère.
+                      final parsedEpisodeName = _getEpisodeName(entry);
+                      if (title == null || title.isEmpty) {
+                        title = parsedEpisodeName;
+                      } else if (title == entry.displayName) {
+                        title = parsedEpisodeName;
+                      }
+
+                      final hasTitle = title != null && title.isNotEmpty;
+                      final hasOverview = overview != null && overview.isNotEmpty;
+
+                      if (!hasTitle && !hasOverview) return const SizedBox.shrink();
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (hasTitle) ...[
+                              Text(
+                                title!,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                            if (airDate != null && airDate.isNotEmpty) ...[
+                              Text(
+                                "Diffusé le: $airDate",
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                            if (hasOverview) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                overview!,
+                                style: Theme.of(context).textTheme.bodySmall,
+                                maxLines: 5,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                if (entry.title.isSeriesEpisode) const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    _qualityChip(entry.title),
+                    ..._languageChips(entry.title),
+                    if (entry.title.isSeriesEpisode)
+                      _episodeMetaChip(entry.title),
+                  ],
+                ),
                 const SizedBox(height: 24),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -757,7 +974,14 @@ class _RechercheM3UState extends State<RechercheM3U> {
                   title: Text(l10n.actionSheetDownload),
                   onTap: () {
                     Navigator.pop(context);
-                    verifierEtTelecharger(url: entry.url, nom: entry.displayName, context: navigatorKey.currentContext!);
+                    final downloadName = _buildDownloadName(entry);
+                    final releaseYear = entry.type == M3uContentType.movie ? entry.title.year : null;
+                    verifierEtTelecharger(
+                      url: entry.url,
+                      nom: downloadName,
+                      releaseYear: releaseYear,
+                      context: navigatorKey.currentContext!,
+                    );
                   },
                 ),
                 const SizedBox(height: 16),
@@ -773,28 +997,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
   // HELPERS (Regex & Parsing)
   //############################################################################
 
-  String _getDisplayName(String originalName) {
-    String name = originalName;
-    name = name.replaceAll(RegExp(r'^(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])\s*', caseSensitive: false), '');
-    final matchSerie = RegExp(r"S\d{2}\s*E\d{2}", caseSensitive: false).firstMatch(name);
-    if (matchSerie != null) {
-      name = name.substring(0, matchSerie.start).trim();
-    }
-    const qualityTags = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|H\.265|X265|AAC|DTS)\b';
-    name = name.replaceAll(RegExp(qualityTags, caseSensitive: false), '');
-    const langTags = r'\b(MULTI|VOSTFR|VOST|VF|VO|VFF|FR|EN|VIP|RAW)\b';
-    name = name.replaceAll(RegExp(langTags, caseSensitive: false), '');
-    name = name.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
-    name = name.replaceAll(RegExp(r'[\(\)\[\]\.\-_]'), ' ');
-    name = name.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (name.length < 2) {
-      return originalName.split(RegExp(r"S\d{2}", caseSensitive: false)).first;
-    }
-    return name;
-  }
-
   String _getEpisodeName(M3uEntry entry) {
-    final regex = RegExp(r"S\d{2}\s*E\d{2}", caseSensitive: false);
+    final regex = RegExp(r"S\s*\d{1,2}\s*E\s*\d{1,2}", caseSensitive: false);
     final match = regex.firstMatch(entry.rawTitle);
     if (match != null && match.end < entry.rawTitle.length) {
       String rest = entry.rawTitle.substring(match.end).trim();
@@ -813,44 +1017,55 @@ class _RechercheM3UState extends State<RechercheM3U> {
     );
   }
 
-  Widget _getQualityChip(String title) {
-    final t = title.toLowerCase();
-    if (t.contains('4k') || t.contains('2160p')) return _tag('4K', Colors.red);
-    if (t.contains('1080p') || t.contains('fhd')) return _tag('FHD', Colors.amber);
-    if (t.contains('720p') || t.contains('hd')) return _tag('HD', Colors.blue);
-    if (t.contains('sd')) return _tag('SD', Colors.teal);
-    return const SizedBox.shrink();
+  Widget _qualityChip(TitleMetadata meta) {
+    switch (meta.quality) {
+      case '4K':
+        return _tag('4K', Colors.red);
+      case 'FHD':
+        return _tag('FHD', Colors.amber);
+      case 'HD':
+        return _tag('HD', Colors.blue);
+      case 'SD':
+        return _tag('SD', Colors.teal);
+      default:
+        return const SizedBox.shrink();
+    }
   }
 
-  List<Widget> _getLanguageChips(String title) {
-    final t = title.toLowerCase();
+  List<Widget> _languageChips(TitleMetadata meta) {
     final chips = <Widget>[];
-    if (t.contains('multi')) chips.add(_tag('MULTI', Colors.purple));
-    if (t.contains('vostfr')) chips.add(_tag('VOSTFR', Colors.orange));
-    if (t.contains('vf') || t.contains('french') || t.contains('vff')) chips.add(_tag('VF', Colors.blue));
+    final seen = <String>{};
+    for (final lang in meta.languages) {
+      if (!seen.add(lang)) continue;
+      if (lang == 'MULTI') chips.add(_tag('MULTI', Colors.purple));
+      if (lang == 'VOSTFR') chips.add(_tag('VOSTFR', Colors.orange));
+      if (lang == 'VF') chips.add(_tag('VF', Colors.blue));
+    }
     return chips;
   }
 
-  String _getVersionLabel(M3uEntry entry) {
-    String label = entry.rawTitle;
-    label = label.replaceAll(RegExp(RegExp.escape(entry.displayName), caseSensitive: false), '');
-    label = label.replaceAll(RegExp(r'(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])', caseSensitive: false), '');
-    label = label.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
-    const tagsToRemove = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|X265|MULTI|VOSTFR|VOST|VF|VO|VFF|FR|EN|TRUEFRENCH)\b';
-    label = label.replaceAll(RegExp(tagsToRemove, caseSensitive: false), '');
-    label = label.replaceAll(RegExp(r'^[ \t\-_.\(\)\[\]]+'), '');
-    label = label.replaceAll(RegExp(r'[ \t\-_.\(\)\[\]]+$'), '');
-    label = label.trim().replaceAll(RegExp(r'\s+'), ' ');
-    return label;
+  Widget _episodeMetaChip(TitleMetadata meta) {
+    final season = meta.seasonNumber?.toString().padLeft(2, '0') ?? '--';
+    final episode = meta.episodeNumber?.toString().padLeft(2, '0') ?? '--';
+    return _tag('S$season E$episode', Colors.cyan);
   }
 
-  String? _getYear(String rawTitle) {
-    final match = RegExp(r'\(?(19|20)\d{2}\)?').firstMatch(rawTitle);
-    if (match != null) {
-      final match = RegExp(r'\b(19|20)\d{2}\b').firstMatch(rawTitle);
-      return match?.group(0);
+  /// Construit un nom de fichier riche (titre + SxxEyy éventuel + label de version).
+  String _buildDownloadName(M3uEntry entry) {
+    final parts = <String>[];
+    parts.add(entry.displayName);
+
+    if (entry.type == M3uContentType.series && entry.title.isSeriesEpisode) {
+      final s = entry.saison ?? '00';
+      final e = entry.episode ?? '00';
+      parts.add('S$s E$e');
     }
-    return null;
+
+    if (entry.title.versionLabel != null && entry.title.versionLabel!.isNotEmpty) {
+      parts.add(entry.title.versionLabel!);
+    }
+
+    return parts.join(' ').trim();
   }
 
   Widget _tag(String text, Color color) {
