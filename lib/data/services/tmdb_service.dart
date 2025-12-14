@@ -50,10 +50,10 @@ class TmdbService {
       'hdr', 'dv', 'dvdscr', 'cam', 'ts', 'telecine', 'screener',
 
       // Codecs Vidéo
-      'hevc', 'h\.264', 'x264', 'h\.265', 'x265', 'avc', 'vp9', 'divx', 'xvid', 'mpeg',
+      'hevc', 'h.264', 'x264', 'h.265', 'x265', 'avc', 'vp9', 'divx', 'xvid', 'mpeg',
 
       // Codecs Audio & Formats
-      'aac', 'dts', 'dtshd', 'dts-hd', 'atmos', 'truehd', 'dolby', 'ac3', 'dd5\.1', 'mp3', 'flac',
+      'aac', 'dts', 'dtshd', 'dts-hd', 'atmos', 'truehd', 'dolby', 'ac3', 'dd5.1', 'mp3', 'flac',
 
       // Conteneurs
       'mkv', 'mp4', 'avi', 'ts', 'iso', 'img',
@@ -144,9 +144,7 @@ class TmdbService {
         if (year != null) {
           result = await _performSearch(cleanQuery, isTv: !isTv, language: searchLanguage, year: year);
         }
-        if (result == null) {
-          result = await _performSearch(cleanQuery, isTv: !isTv, language: searchLanguage);
-        }
+        result ??= await _performSearch(cleanQuery, isTv: !isTv, language: searchLanguage);
       }
 
       // Tente 4: Fallback Langue Ultime

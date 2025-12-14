@@ -138,15 +138,6 @@ class _AccountsPageState extends State<AccountsPage> {
     }
   }
 
-  Future<_PlaylistInfo?> _loadAndDisplayPlaylistInfo() async {
-    try {
-      final path = await PlaylistService.getOrDownloadPlaylist();
-      return _readPlaylistInfo(path);
-    } catch (e) {
-      return null;
-    }
-  }
-
   /// 🚀 OPTIMISATION CYBERPUNK : Lecture par Stream
   /// Évite de charger un fichier de 50Mo en RAM d'un coup.
   Future<_PlaylistInfo?> _readPlaylistInfo(String path) async {

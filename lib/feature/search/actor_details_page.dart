@@ -69,8 +69,7 @@ class ActorDetailsPage extends StatelessWidget {
                             backgroundColor: credit.mediaType == 'movie' ? Colors.blue.withAlpha(51) : Colors.purple.withAlpha(51),
                           ),
                           // Optionnel : Ajouter un onTap pour ouvrir la fiche du film/série
-                        )).toList(),
-
+                        ))
                       ],
                     ),
                   ),

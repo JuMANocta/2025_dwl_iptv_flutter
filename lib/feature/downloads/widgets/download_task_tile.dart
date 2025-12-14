@@ -201,7 +201,6 @@ class DownloadTaskTile extends StatelessWidget {
           LinearProgressIndicator(value: task.progress, backgroundColor: Colors.grey.shade300, color: Colors.greenAccent),
         ]);
       case DownloadStatus.completed:
-        final size = formatFileSize(task.totalSize);
         return Text(
             l10n.taskStatusCompleted(formatFileSize(task.totalSize), formattedDate),
             style: const TextStyle(fontSize: 12, color: Colors.grey)

@@ -183,10 +183,10 @@ class TitleMetadata {
 
     // Qualité
     String? quality;
-    if (lower.contains('4k') || lower.contains('2160p')) quality = '4K';
-    else if (lower.contains('1080p') || lower.contains('fhd')) quality = 'FHD';
-    else if (lower.contains('720p') || lower.contains('hd')) quality = 'HD';
-    else if (lower.contains('sd')) quality = 'SD';
+    if (lower.contains('4k') || lower.contains('2160p')) {quality = '4K';}
+    else if (lower.contains('1080p') || lower.contains('fhd')) { quality = 'FHD';}
+    else if (lower.contains('720p') || lower.contains('hd')) {quality = 'HD';}
+    else if (lower.contains('sd')) {quality = 'SD';}
 
     // Langues
     final langs = <String>[];
@@ -470,8 +470,12 @@ class _RechercheM3UState extends State<RechercheM3U> {
       }
     }
 
-    for (var list in newGroupedFilms.values) list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
-    for (var list in newGroupedTv.values) list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
+    for (var list in newGroupedFilms.values) {
+      list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
+    }
+    for (var list in newGroupedTv.values) {
+      list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
+    }
     for (var seasons in newGroupedSeries.values) {
       for (var episodes in seasons.values) {
         episodes.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
@@ -896,7 +900,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                         title = parsedEpisodeName;
                       }
 
-                      final hasTitle = title != null && title.isNotEmpty;
+                      final hasTitle = title.isNotEmpty;
                       final hasOverview = overview != null && overview.isNotEmpty;
 
                       if (!hasTitle && !hasOverview) return const SizedBox.shrink();
@@ -908,7 +912,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                           children: [
                             if (hasTitle) ...[
                               Text(
-                                title!,
+                                title,
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                               const SizedBox(height: 6),
@@ -923,7 +927,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                             if (hasOverview) ...[
                               const SizedBox(height: 8),
                               Text(
-                                overview!,
+                                overview,
                                 style: Theme.of(context).textTheme.bodySmall,
                                 maxLines: 5,
                                 overflow: TextOverflow.ellipsis,

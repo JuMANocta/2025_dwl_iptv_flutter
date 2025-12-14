@@ -120,7 +120,7 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
         ),
         const SizedBox(height: 24),
         DropdownButtonFormField<PlaylistType>(
-          value: _playlistType,
+          initialValue: _playlistType,
           decoration: InputDecoration(
             labelText: l10n.editAccountPlaylistTypeLabel,
             border: const OutlineInputBorder(),
