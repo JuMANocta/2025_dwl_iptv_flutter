@@ -12,6 +12,8 @@ import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/models/media_model.dart';
+import 'package:aetherStream/feature/replay/replay_widget.dart';
+import 'package:aetherStream/data/services/replay_service.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/main.dart'; // Pour navigatorKey
 import 'package:aetherStream/core/themes/colors.dart';
@@ -251,6 +253,7 @@ class M3uEntry {
   final TitleMetadata title;
   final bool canReplay;
   final String? logoUrl;
+  final int? streamId; // stream_id extrait de l'URL (utile pour EPG/replay)
 
   const M3uEntry({
     required this.url,
@@ -258,6 +261,7 @@ class M3uEntry {
     required this.title,
     this.canReplay = false,
     this.logoUrl,
+    this.streamId,
   });
 
   // Accesseurs de compat
@@ -280,7 +284,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
   // --- UI State ---
   bool _showFilms = true;
   bool _showSeries = true;
-  bool _showTv = false;
+  bool _showTv = true;
   String _searchQuery = "";
   final TextEditingController _searchController = TextEditingController();
 
@@ -403,17 +407,20 @@ class _RechercheM3UState extends State<RechercheM3U> {
     final lowerUrl = url.toLowerCase();
     final metadata = TitleMetadata.parse(rawTitle);
 
-    // Priorité : pattern saison/épisode > heuristique URL > fallback TV
+    // Classification simple : film/series par URL, sinon TV (avec fallback série si motif SxxExx).
     M3uContentType type;
-    if (metadata.isSeriesEpisode || regExpSerie.firstMatch(rawTitle) != null) {
-      type = M3uContentType.series;
-    } else if (lowerUrl.contains('/movie/')) {
+    if (lowerUrl.contains('/movie/')) {
       type = M3uContentType.movie;
     } else if (lowerUrl.contains('/series/')) {
+      type = M3uContentType.series;
+    } else if (metadata.isSeriesEpisode || regExpSerie.firstMatch(rawTitle) != null) {
       type = M3uContentType.series;
     } else {
       type = M3uContentType.tv;
     }
+
+    // Extraction du stream_id (plus robuste : live/user/pass/<id>.<ext>, ou dernier segment numérique)
+    final streamId = _extractStreamId(url);
 
     final entry = M3uEntry(
       url: url,
@@ -421,6 +428,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       title: metadata,
       canReplay: canReplay,
       logoUrl: logoUrl,
+      streamId: streamId,
     );
 
     if (type == M3uContentType.series) {
@@ -729,7 +737,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
     FocusManager.instance.primaryFocus?.unfocus();
 
     final entry = versions.first;
-    final bool isTvChannel = entry.type == M3uContentType.tv;
     M3uEntry selectedEntry = versions.first;
 
     if (versions.length > 1) {
@@ -740,10 +747,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
     if (!mounted) return;
 
-    if (isTvChannel) {
-      Navigator.push(context, MaterialPageRoute(
-          builder: (_) => PlayerPage(path: selectedEntry.url, title: selectedEntry.displayName, sourceType: VideoSourceType.network)
-      ));
+    if (selectedEntry.type == M3uContentType.tv) {
+      await _showTvActionSheet(selectedEntry);
     } else {
       _showActionSheet(selectedEntry);
     }
@@ -820,6 +825,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     final bool hasEpisode = entry.title.isSeriesEpisode;
 
     Future<dynamic>? tmdbFuture;
+    Future<bool>? replayAvailableFuture;
     if (hasEpisode && entry.title.seasonNumber != null && entry.title.episodeNumber != null) {
       tmdbFuture = TmdbService.instance.getEpisodeDetails(
         entry.displayName,
@@ -831,6 +837,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
       tmdbFuture = TmdbService.instance.getFullDetails(entry.displayName, isTv: false);
     } else if (entry.type == M3uContentType.series) {
       tmdbFuture = TmdbService.instance.getFullDetails(entry.displayName, isTv: true);
+    }
+    if (entry.type == M3uContentType.tv && entry.streamId != null) {
+      replayAvailableFuture = ReplayService().hasReplay(entry.streamId!, streamUrl: entry.url);
     }
 
     await showModalBottomSheet(
@@ -973,6 +982,48 @@ class _RechercheM3UState extends State<RechercheM3U> {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(path: entry.url, title: entry.displayName, sourceType: VideoSourceType.networkWithCache)));
                   },
                 ),
+                if (entry.type == M3uContentType.tv && entry.streamId != null)
+                  FutureBuilder<bool>(
+                    future: replayAvailableFuture,
+                    builder: (context, snap) {
+                      if (snap.connectionState != ConnectionState.done) {
+                        return const SizedBox.shrink();
+                      }
+                      if (snap.data != true) return const SizedBox.shrink();
+                      return ListTile(
+                        leading: const Icon(Icons.replay),
+                        title: const Text("Replays"),
+                        onTap: () async {
+                          Navigator.pop(context);
+                          final replayProgram = await showModalBottomSheet<ReplayProgram>(
+                            context: context,
+                            showDragHandle: true,
+                            isScrollControlled: true,
+                            builder: (_) => ReplaySheet(streamId: entry.streamId!),
+                          );
+                          if (replayProgram != null) {
+                            final timeshiftUrl = await ReplayService().buildTimeshiftUrl(
+                              streamId: entry.streamId!,
+                              start: replayProgram.start,
+                              end: replayProgram.end,
+                            );
+                            if (timeshiftUrl != null && mounted) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PlayerPage(
+                                    path: timeshiftUrl,
+                                    title: replayProgram.title,
+                                    sourceType: VideoSourceType.network,
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      );
+                    },
+                  ),
                 ListTile(
                   leading: const Icon(Icons.download),
                   title: Text(l10n.actionSheetDownload),
@@ -997,9 +1048,119 @@ class _RechercheM3UState extends State<RechercheM3U> {
     );
   }
 
+  Future<void> _showTvActionSheet(M3uEntry entry) async {
+    final replayFuture = (entry.streamId != null) ? ReplayService().hasReplay(entry.streamId!, streamUrl: entry.url) : Future.value(false);
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(entry.displayName, style: Theme.of(context).textTheme.headlineSmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    _qualityChip(entry.title),
+                    ..._languageChips(entry.title),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: const Icon(Icons.play_arrow),
+                  title: Text(AppLocalizations.of(context)!.actionSheetPlay),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PlayerPage(
+                          path: entry.url,
+                          title: entry.displayName,
+                          sourceType: VideoSourceType.network,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                if (entry.streamId != null)
+                  ListTile(
+                    leading: const Icon(Icons.replay_circle_filled),
+                    title: const Text("Replays"),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final replayProgram = await showModalBottomSheet<ReplayProgram>(
+                        context: context,
+                        showDragHandle: true,
+                        isScrollControlled: true,
+                        builder: (_) => ReplaySheet(streamId: entry.streamId!, streamUrl: entry.url),
+                      );
+                      if (replayProgram != null) {
+                        final timeshiftUrl = await ReplayService().buildTimeshiftUrl(
+                          streamId: entry.streamId!,
+                          start: replayProgram.start,
+                          end: replayProgram.end,
+                          streamUrl: entry.url,
+                        );
+                        if (timeshiftUrl != null && mounted) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PlayerPage(
+                                path: timeshiftUrl,
+                                title: replayProgram.title,
+                                sourceType: VideoSourceType.network,
+                              ),
+                            ),
+                          );
+                        } else if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Replay indisponible pour ce flux")),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   //############################################################################
   // HELPERS (Regex & Parsing)
   //############################################################################
+
+  /// Tente d'extraire un stream_id depuis l'URL Xtream (live/user/pass/<id>.<ext> ou query ?stream=).
+  int? _extractStreamId(String url) {
+    try {
+      final uri = Uri.parse(url);
+      // 1) Query param stream
+      final qpId = int.tryParse(uri.queryParameters['stream'] ?? '');
+      if (qpId != null) return qpId;
+
+      // 2) Segment live/username/password/<id>.<ext>
+      for (final segment in uri.pathSegments.reversed) {
+        // retire extension éventuelle
+        final base = segment.split('.').first;
+        final id = int.tryParse(base);
+        if (id != null) return id;
+      }
+    } catch (_) {}
+    // 3) Regex de secours sur la chaîne brute
+    final m = RegExp(r'/live/[^/]+/[^/]+/(\d+)', caseSensitive: false).firstMatch(url);
+    if (m != null) return int.tryParse(m.group(1) ?? '');
+    return null;
+  }
 
   String _getEpisodeName(M3uEntry entry) {
     final regex = RegExp(r"S\s*\d{1,2}\s*E\s*\d{1,2}", caseSensitive: false);
