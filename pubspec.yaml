@@ -32,6 +32,7 @@ dependencies:
   scrollable_positioned_list: ^0.3.8
   cached_video_player_plus: ^4.0.4
   url_launcher: ^6.3.2
+  xml: ^6.5.0                       # parsing XMLTV (EPG)
 
 dev_dependencies:
   flutter_test:

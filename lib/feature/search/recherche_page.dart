@@ -13,7 +13,10 @@ import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/models/media_model.dart';
 import 'package:aetherStream/feature/replay/replay_widget.dart';
+import 'package:aetherStream/feature/replay/replay_date_picker_sheet.dart';
 import 'package:aetherStream/data/services/replay_service.dart';
+import 'package:aetherStream/data/services/xmltv_service.dart';
+import 'package:aetherStream/data/models/xmltv_program.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/main.dart'; // Pour navigatorKey
 import 'package:aetherStream/core/themes/colors.dart';
@@ -190,11 +193,11 @@ class TitleMetadata {
     else if (lower.contains('720p') || lower.contains('hd')) {quality = 'HD';}
     else if (lower.contains('sd')) {quality = 'SD';}
 
-    // Langues
+    // Langues — word boundaries pour éviter les faux positifs
     final langs = <String>[];
-    if (lower.contains('multi')) langs.add('MULTI');
-    if (lower.contains('vostfr')) langs.add('VOSTFR');
-    if (lower.contains('vf') || lower.contains('french') || lower.contains('vff')) langs.add('VF');
+    if (RegExp(r'\bmulti\b').hasMatch(lower)) langs.add('MULTI');
+    if (RegExp(r'\bvostfr\b').hasMatch(lower)) langs.add('VOSTFR');
+    if (RegExp(r'\b(vf|vff|truefrench|french)\b').hasMatch(lower)) langs.add('VF');
 
     // Nettoyage du titre
     String base = rawTitle;
@@ -202,10 +205,14 @@ class TitleMetadata {
     if (seasonMatch != null && seasonMatch.start <= base.length) {
       base = base.substring(0, seasonMatch.start).trim();
     }
-    const qualityTags = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|H\.265|X265|AAC|DTS)\b';
+    const qualityTags = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|H\.265|X265|AAC|DTS|HDR|DV|HLG)\b';
     base = base.replaceAll(RegExp(qualityTags, caseSensitive: false), '');
-    const langTags = r'\b(MULTI|VOSTFR|VOST|VF|VO|VFF|FR|EN|VIP|RAW)\b';
-    base = base.replaceAll(RegExp(langTags, caseSensitive: false), '');
+    // Codes langue sans ambiguïté : word boundary suffisant, ne sont jamais des mots dans un titre
+    const safeLangTags = r'\b(MULTI|VOSTFR|VOST|VF|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH)\b';
+    base = base.replaceAll(RegExp(safeLangTags, caseSensitive: false), '');
+    // FR et EN sont ambigus : "En vacances", "Fr..." peuvent être dans un titre.
+    // On les retire UNIQUEMENT quand ils sont encadrés par () ou [] comme dans "(FR)" ou "[EN]".
+    base = base.replaceAll(RegExp(r'[\(\[]\s*(FR|EN)\s*[\)\]]', caseSensitive: false), ' ');
     base = base.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
     base = base.replaceAll(RegExp(r'[\(\)\[\]\.\-_]'), ' ');
     // Supprime toute marque Sxx Exx restante (avec ou sans espaces)
@@ -226,8 +233,9 @@ class TitleMetadata {
       label = label.replaceAll(RegExp(RegExp.escape(base), caseSensitive: false), '');
       label = label.replaceAll(RegExp(r'(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])', caseSensitive: false), '');
       label = label.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
-      const tagsToRemove = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|X265|MULTI|VOSTFR|VOST|VF|VO|VFF|FR|EN|TRUEFRENCH)\b';
+      const tagsToRemove = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|X265|HDR|DV|HLG|MULTI|VOSTFR|VOST|VF|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH)\b';
       label = label.replaceAll(RegExp(tagsToRemove, caseSensitive: false), '');
+      label = label.replaceAll(RegExp(r'[\(\[]\s*(FR|EN)\s*[\)\]]', caseSensitive: false), ' ');
       label = label.replaceAll(RegExp(r'^[ \t\-_.\(\)\[\]]+'), '');
       label = label.replaceAll(RegExp(r'[ \t\-_.\(\)\[\]]+$'), '');
       label = label.trim().replaceAll(RegExp(r'\s+'), ' ');
@@ -339,6 +347,18 @@ class _RechercheM3UState extends State<RechercheM3U> {
     }
 
     try {
+      // Lecture encodage-safe : tente UTF-8, fallback Latin-1 (ISO-8859-1).
+      // Certains providers IPTV encodent leurs playlists en Latin-1 (serveurs anciens).
+      final bytes = await file.readAsBytes();
+      String fileContent;
+      try {
+        fileContent = utf8.decode(bytes);
+        debugPrint('✅ M3U: encodage UTF-8 détecté');
+      } catch (_) {
+        fileContent = latin1.decode(bytes);
+        debugPrint('⚠️ M3U: fallback Latin-1 (fichier non-UTF-8)');
+      }
+
       String? pendingMetadata;
       final regExpSerie = RegExp(r"S\s*(\d{1,2})\s*E\s*(\d{1,2})", caseSensitive: false);
       final regExpLogo = RegExp(r'tvg-logo="([^"]*)"');
@@ -346,10 +366,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       final regExpCatchup = RegExp(r'catchup="([^"]*)"', caseSensitive: false);
       final regExpCatchupDays = RegExp(r'catchup-days="(\d+)"', caseSensitive: false);
 
-      await file.openRead()
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .forEach((line) {
+      for (final line in const LineSplitter().convert(fileContent)) {
         final trimmed = line.trim();
         if (trimmed.isEmpty) return;
 
@@ -406,7 +423,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
             );
           }
         }
-      });
+      }
 
       if (mounted) {
         _filterAndGroupResults();
@@ -1072,8 +1089,12 @@ class _RechercheM3UState extends State<RechercheM3U> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(entry.displayName, style: Theme.of(context).textTheme.headlineSmall, maxLines: 2, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 8),
+                // ---- Nom de la chaîne + chips qualité/langue ----
+                Text(entry.displayName,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
                   children: [
@@ -1081,7 +1102,15 @@ class _RechercheM3UState extends State<RechercheM3U> {
                     ..._languageChips(entry.title),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
+
+                // ---- Bloc EPG (actuel + suivant) depuis XMLTV ----
+                if (entry.tvgId != null)
+                  _EpgNowNextBlock(tvgId: entry.tvgId!),
+
+                const SizedBox(height: 4),
+
+                // ---- Lire en direct ----
                 ListTile(
                   leading: const Icon(Icons.play_arrow),
                   title: Text(AppLocalizations.of(context)!.actionSheetPlay),
@@ -1099,20 +1128,26 @@ class _RechercheM3UState extends State<RechercheM3U> {
                     );
                   },
                 ),
+
+                // ---- Replay (picker manuel) ----
                 if (entry.streamId != null)
                   ListTile(
                     leading: const Icon(Icons.replay_circle_filled),
-                    title: Text("Replay${entry.catchupDays != null ? ' (${entry.catchupDays}j)' : ''}"),
+                    title: Text(
+                        "Replay${entry.catchupDays != null ? ' (${entry.catchupDays}j)' : ''}"),
                     onTap: () async {
                       Navigator.pop(context);
-                      final replayProgram = await showModalBottomSheet<ReplayProgram>(
+                      final replayProgram =
+                          await showModalBottomSheet<ReplayProgram>(
                         context: context,
                         showDragHandle: true,
                         isScrollControlled: true,
-                        builder: (_) => ReplaySheet(streamId: entry.streamId!, streamUrl: entry.url),
+                        builder: (_) => ReplayDatePickerSheet(
+                            catchupDays: entry.catchupDays),
                       );
                       if (replayProgram != null) {
-                        final timeshiftUrl = await ReplayService().buildTimeshiftUrl(
+                        final timeshiftUrl =
+                            await ReplayService().buildTimeshiftUrl(
                           streamId: entry.streamId!,
                           start: replayProgram.start,
                           end: replayProgram.end,
@@ -1131,7 +1166,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
                           );
                         } else if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Replay indisponible pour ce flux")),
+                            const SnackBar(
+                                content: Text("Replay indisponible pour ce flux")),
                           );
                         }
                       }
@@ -1295,6 +1331,155 @@ class _RechercheM3UState extends State<RechercheM3U> {
             backgroundColor: unselectedBg,
             labelStyle: _showTv ? TextStyle(color: selectedLabel, fontWeight: FontWeight.bold) : TextStyle(color: unselectedLabel),
             side: _showTv ? BorderSide.none : BorderSide(color: unselectedBorder.withAlpha(100)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// Bloc EPG "En ce moment / Ensuite" (données XMLTV)
+// ============================================================================
+
+class _EpgNowNextBlock extends StatefulWidget {
+  final String tvgId;
+  const _EpgNowNextBlock({required this.tvgId});
+
+  @override
+  State<_EpgNowNextBlock> createState() => _EpgNowNextBlockState();
+}
+
+class _EpgNowNextBlockState extends State<_EpgNowNextBlock> {
+  XmltvProgram? _current;
+  XmltvProgram? _next;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final current = await XmltvService.getCurrentProgram(widget.tvgId);
+    final next = await XmltvService.getNextProgram(widget.tvgId);
+    if (mounted) setState(() { _current = current; _next = next; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: LinearProgressIndicator(minHeight: 2),
+      );
+    }
+    if (_current == null && _next == null) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: kContainerDark.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: kAetherPrimaryPurple.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          if (_current != null)
+            _EpgProgramRow(program: _current!, isNow: true),
+          if (_current != null && _next != null)
+            const Divider(height: 1, indent: 12, endIndent: 12),
+          if (_next != null)
+            _EpgProgramRow(program: _next!, isNow: false),
+        ],
+      ),
+    );
+  }
+}
+
+class _EpgProgramRow extends StatelessWidget {
+  final XmltvProgram program;
+  final bool isNow;
+  const _EpgProgramRow({required this.program, required this.isNow});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Affiche du programme (si disponible)
+          if (program.iconUrl != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.network(
+                program.iconUrl!,
+                width: 54,
+                height: 38,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            )
+          else
+            const SizedBox(width: 54, height: 38),
+          const SizedBox(width: 10),
+          // Infos programme
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isNow
+                            ? kAetherVibrantMagenta.withOpacity(0.9)
+                            : kAetherPrimaryPurple.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        isNow ? '● EN COURS' : 'ENSUITE',
+                        style: const TextStyle(
+                          color: kWhite,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      program.timeRange,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: kMediumGrey,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '(${program.durationLabel})',
+                      style: const TextStyle(fontSize: 10, color: kMediumGrey),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  program.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                if (program.category != null)
+                  Text(
+                    program.category!,
+                    style: const TextStyle(fontSize: 11, color: kMediumGrey),
+                    maxLines: 1,
+                  ),
+              ],
+            ),
           ),
         ],
       ),
