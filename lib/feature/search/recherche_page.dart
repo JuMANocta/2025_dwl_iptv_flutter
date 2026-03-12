@@ -251,18 +251,23 @@ class M3uEntry {
   final String url;
   final M3uContentType type;
   final TitleMetadata title;
-  final bool canReplay;
   final String? logoUrl;
-  final int? streamId; // stream_id extrait de l'URL (utile pour EPG/replay)
+  final int? streamId;    // stream_id extrait de l'URL (utile pour EPG/replay)
+  final String? tvgId;    // tvg-id depuis #EXTINF (pour matching EPG/XMLTV)
+  final int? catchupDays; // Nombre de jours de replay (null = non supporté)
 
   const M3uEntry({
     required this.url,
     required this.type,
     required this.title,
-    this.canReplay = false,
     this.logoUrl,
     this.streamId,
+    this.tvgId,
+    this.catchupDays,
   });
+
+  /// Vrai si le stream supporte le catchup/replay selon les métadonnées M3U.
+  bool get supportsCatchup => catchupDays != null && catchupDays! > 0;
 
   // Accesseurs de compat
   String get rawTitle => title.rawTitle;
@@ -336,8 +341,10 @@ class _RechercheM3UState extends State<RechercheM3U> {
     try {
       String? pendingMetadata;
       final regExpSerie = RegExp(r"S\s*(\d{1,2})\s*E\s*(\d{1,2})", caseSensitive: false);
-      final regExpReplay = RegExp(r'catchup|timeshift', caseSensitive: false);
       final regExpLogo = RegExp(r'tvg-logo="([^"]*)"');
+      final regExpTvgId = RegExp(r'tvg-id="([^"]*)"');
+      final regExpCatchup = RegExp(r'catchup="([^"]*)"', caseSensitive: false);
+      final regExpCatchupDays = RegExp(r'catchup-days="(\d+)"', caseSensitive: false);
 
       await file.openRead()
           .transform(utf8.decoder)
@@ -352,16 +359,29 @@ class _RechercheM3UState extends State<RechercheM3U> {
           String url = trimmed;
           String? title;
           String? logoUrl;
-          bool canReplay = false;
+          String? tvgId;
+          int? catchupDays;
 
           // --- LOGIQUE POUR FORMAT A (#EXTINF suivi par URL) ---
           if (pendingMetadata != null) {
             final commaIndex = pendingMetadata!.lastIndexOf(',');
             if (commaIndex != -1) {
               title = pendingMetadata!.substring(commaIndex + 1).trim();
-              final logoMatch = regExpLogo.firstMatch(pendingMetadata!);
-              logoUrl = logoMatch?.group(1);
-              canReplay = regExpReplay.hasMatch(pendingMetadata!);
+              logoUrl = regExpLogo.firstMatch(pendingMetadata!)?.group(1);
+              tvgId = regExpTvgId.firstMatch(pendingMetadata!)?.group(1)?.trim();
+
+              // catchup="default/append/flussonic/xtream" = replay supporté
+              // catchup="" / catchup="false" / catchup="no" = non supporté
+              final catchupValue = regExpCatchup.firstMatch(pendingMetadata!)?.group(1)?.toLowerCase() ?? '';
+              final hasCatchup = catchupValue.isNotEmpty
+                  && catchupValue != 'false'
+                  && catchupValue != 'no'
+                  && catchupValue != '0';
+              if (hasCatchup) {
+                final daysStr = regExpCatchupDays.firstMatch(pendingMetadata!)?.group(1);
+                // Si catchup-days absent mais catchup présent : on assume 7j par défaut
+                catchupDays = int.tryParse(daysStr ?? '') ?? 7;
+              }
             }
             pendingMetadata = null; // Consomme les métadonnées
           }
@@ -380,8 +400,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
               rawTitle: title,
               url: url,
               regExpSerie: regExpSerie,
-              canReplay: canReplay,
               logoUrl: logoUrl,
+              tvgId: tvgId,
+              catchupDays: catchupDays,
             );
           }
         }
@@ -401,8 +422,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
     required String rawTitle,
     required String url,
     required RegExp regExpSerie,
-    bool canReplay = false,
     String? logoUrl,
+    String? tvgId,
+    int? catchupDays,
   }) {
     final lowerUrl = url.toLowerCase();
     final metadata = TitleMetadata.parse(rawTitle);
@@ -426,9 +448,10 @@ class _RechercheM3UState extends State<RechercheM3U> {
       url: url,
       type: type,
       title: metadata,
-      canReplay: canReplay,
       logoUrl: logoUrl,
       streamId: streamId,
+      tvgId: tvgId,
+      catchupDays: catchupDays,
     );
 
     if (type == M3uContentType.series) {
@@ -687,7 +710,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
   }
 
   Widget _buildTvCard(String displayName, List<M3uEntry> versions) {
-    final bool hasReplay = versions.isNotEmpty && versions.first.canReplay;
+    final bool hasReplay = versions.isNotEmpty && versions.first.supportsCatchup;
 
     return Card(
       elevation: 2,
@@ -825,7 +848,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
     final bool hasEpisode = entry.title.isSeriesEpisode;
 
     Future<dynamic>? tmdbFuture;
-    Future<bool>? replayAvailableFuture;
     if (hasEpisode && entry.title.seasonNumber != null && entry.title.episodeNumber != null) {
       tmdbFuture = TmdbService.instance.getEpisodeDetails(
         entry.displayName,
@@ -837,9 +859,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
       tmdbFuture = TmdbService.instance.getFullDetails(entry.displayName, isTv: false);
     } else if (entry.type == M3uContentType.series) {
       tmdbFuture = TmdbService.instance.getFullDetails(entry.displayName, isTv: true);
-    }
-    if (entry.type == M3uContentType.tv && entry.streamId != null) {
-      replayAvailableFuture = ReplayService().hasReplay(entry.streamId!, streamUrl: entry.url);
     }
 
     await showModalBottomSheet(
@@ -983,45 +1002,37 @@ class _RechercheM3UState extends State<RechercheM3U> {
                   },
                 ),
                 if (entry.type == M3uContentType.tv && entry.streamId != null)
-                  FutureBuilder<bool>(
-                    future: replayAvailableFuture,
-                    builder: (context, snap) {
-                      if (snap.connectionState != ConnectionState.done) {
-                        return const SizedBox.shrink();
-                      }
-                      if (snap.data != true) return const SizedBox.shrink();
-                      return ListTile(
-                        leading: const Icon(Icons.replay),
-                        title: const Text("Replays"),
-                        onTap: () async {
-                          Navigator.pop(context);
-                          final replayProgram = await showModalBottomSheet<ReplayProgram>(
-                            context: context,
-                            showDragHandle: true,
-                            isScrollControlled: true,
-                            builder: (_) => ReplaySheet(streamId: entry.streamId!),
-                          );
-                          if (replayProgram != null) {
-                            final timeshiftUrl = await ReplayService().buildTimeshiftUrl(
-                              streamId: entry.streamId!,
-                              start: replayProgram.start,
-                              end: replayProgram.end,
-                            );
-                            if (timeshiftUrl != null && mounted) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => PlayerPage(
-                                    path: timeshiftUrl,
-                                    title: replayProgram.title,
-                                    sourceType: VideoSourceType.network,
-                                  ),
-                                ),
-                              );
-                            }
-                          }
-                        },
+                  ListTile(
+                    leading: const Icon(Icons.replay),
+                    title: Text("Replay${entry.catchupDays != null ? ' (${entry.catchupDays}j)' : ''}"),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final replayProgram = await showModalBottomSheet<ReplayProgram>(
+                        context: context,
+                        showDragHandle: true,
+                        isScrollControlled: true,
+                        builder: (_) => ReplaySheet(streamId: entry.streamId!, streamUrl: entry.url),
                       );
+                      if (replayProgram != null) {
+                        final timeshiftUrl = await ReplayService().buildTimeshiftUrl(
+                          streamId: entry.streamId!,
+                          start: replayProgram.start,
+                          end: replayProgram.end,
+                          streamUrl: entry.url,
+                        );
+                        if (timeshiftUrl != null && mounted) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PlayerPage(
+                                path: timeshiftUrl,
+                                title: replayProgram.title,
+                                sourceType: VideoSourceType.network,
+                              ),
+                            ),
+                          );
+                        }
+                      }
                     },
                   ),
                 ListTile(
@@ -1049,7 +1060,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
   }
 
   Future<void> _showTvActionSheet(M3uEntry entry) async {
-    final replayFuture = (entry.streamId != null) ? ReplayService().hasReplay(entry.streamId!, streamUrl: entry.url) : Future.value(false);
     await showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -1092,7 +1102,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                 if (entry.streamId != null)
                   ListTile(
                     leading: const Icon(Icons.replay_circle_filled),
-                    title: const Text("Replays"),
+                    title: Text("Replay${entry.catchupDays != null ? ' (${entry.catchupDays}j)' : ''}"),
                     onTap: () async {
                       Navigator.pop(context);
                       final replayProgram = await showModalBottomSheet<ReplayProgram>(
