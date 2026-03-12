@@ -10,7 +10,8 @@ import '../models/xmltv_program.dart';
 /// Télécharge et cache le fichier 12h. Expose les programmes par chaîne via tvg-id.
 class XmltvService {
   static const _url = 'https://xmltvfr.fr/xmltv/xmltv_tnt.xml';
-  static const _cacheFile = 'xmltv_tnt_cache.xml';
+  // v2 : invalide l'ancien cache (encodage corrompu possible)
+  static const _cacheFile = 'xmltv_tnt_cache_v2.xml';
   static const _cacheTtl = Duration(hours: 12);
 
   // Cache mémoire
@@ -102,6 +103,45 @@ class XmltvService {
 
   static String _normalize(String s) => s.toLowerCase().trim();
 
+  // ---- Décodage encodage-safe ----
+
+  /// Décode un fichier XML en respectant sa déclaration d'encodage.
+  ///
+  /// Stratégie :
+  /// 1. Lit les 300 premiers octets comme ASCII (la déclaration XML est toujours ASCII).
+  /// 2. Extrait l'encodage déclaré : `<?xml ... encoding="ISO-8859-1"?>`.
+  /// 3. Décode tout le fichier avec cet encodage.
+  /// 4. Fallback : UTF-8 strict, puis Latin-1 si exception.
+  ///
+  /// Sans cette lecture, utf8.decode() peut réussir silencieusement sur du Latin-1
+  /// (certaines séquences de bytes Latin-1 forment des UTF-8 valides mais incorrects).
+  static String _decodeXmlBytes(List<int> bytes) {
+    // Lit l'en-tête en ASCII pur (les 300 premiers bytes sont toujours ASCII dans une déclaration XML)
+    final header = String.fromCharCodes(
+      bytes.take(300).where((b) => b < 128),
+    );
+    // Cherche encoding="..." ou encoding='...' (double quotes = standard XML)
+    final encodingMatch = RegExp(r'encoding="([^"]+)"', caseSensitive: false)
+            .firstMatch(header) ??
+        RegExp(r"encoding='([^']+)'", caseSensitive: false).firstMatch(header);
+    final declared = encodingMatch?.group(1)?.toLowerCase() ?? 'utf-8';
+
+    if (declared == 'iso-8859-1' ||
+        declared == 'latin-1' ||
+        declared == 'windows-1252') {
+      debugPrint('📺 XmltvService: encodage XML déclaré → $declared → décodage Latin-1');
+      return latin1.decode(bytes);
+    }
+
+    // UTF-8 déclaré (ou non déclaré) : tente strict, fallback Latin-1
+    try {
+      return utf8.decode(bytes);
+    } catch (_) {
+      debugPrint('⚠️ XmltvService: UTF-8 invalide malgré déclaration → fallback Latin-1');
+      return latin1.decode(bytes);
+    }
+  }
+
   // ---- Téléchargement / cache fichier ----
 
   static Future<String?> _getContent() async {
@@ -123,16 +163,13 @@ class XmltvService {
       final resp = await http.get(Uri.parse(_url))
           .timeout(const Duration(seconds: 30));
       if (resp.statusCode == 200) {
-        // ⚠️ resp.body utilise ISO-8859-1 par défaut si le serveur n'indique pas charset.
-        // On décode les bytes manuellement : UTF-8 strict, sinon Latin-1.
-        String content;
-        try {
-          content = utf8.decode(resp.bodyBytes);
-        } catch (_) {
-          content = latin1.decode(resp.bodyBytes);
-          debugPrint('⚠️ XmltvService: fallback Latin-1 pour le décodage');
-        }
-        // Sauvegarde en UTF-8 explicite pour le cache fichier
+        // Décode en respectant la déclaration d'encodage du fichier XML.
+        // ⚠️ resp.body est trompeur : il utilise Latin-1 si pas de charset HTTP.
+        // ⚠️ utf8.decode() peut réussir silencieusement sur du Latin-1 (faux positif)
+        //    si les bytes forment par coïncidence des séquences UTF-8 valides.
+        // → On lit la déclaration XML en ASCII (toujours ASCII) pour connaître l'encodage réel.
+        final content = _decodeXmlBytes(resp.bodyBytes);
+        // Sauvegarde toujours en UTF-8 pour le cache (encodage normalisé)
         await file.writeAsBytes(utf8.encode(content));
         debugPrint('✅ XmltvService: fichier téléchargé (${resp.bodyBytes.length ~/ 1024} Ko)');
         return content;

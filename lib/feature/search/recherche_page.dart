@@ -514,7 +514,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
     }
     if (_showTv) {
       for (var e in _tvList) {
-        if (matches(e)) newGroupedTv.putIfAbsent(e.displayName, () => []).add(e);
+        if (matches(e) && !_isHiddenTvVariant(e.displayName))
+          newGroupedTv.putIfAbsent(_tvGroupKey(e.displayName), () => []).add(e);
       }
     }
 
@@ -777,19 +778,22 @@ class _RechercheM3UState extends State<RechercheM3U> {
     FocusManager.instance.primaryFocus?.unfocus();
 
     final entry = versions.first;
-    M3uEntry selectedEntry = versions.first;
-
-    if (versions.length > 1) {
-      final choice = await _showVersionSelector(versions);
-      if (choice == null) return;
-      selectedEntry = choice;
-    }
 
     if (!mounted) return;
 
-    if (selectedEntry.type == M3uContentType.tv) {
-      await _showTvActionSheet(selectedEntry);
+    if (entry.type == M3uContentType.tv) {
+      // TV : on passe toutes les versions — la sélection de qualité se fait
+      // directement dans la fiche via les boutons qualité.
+      await _showTvActionSheet(versions);
     } else {
+      // Films / Séries : sélecteur de version séparé conservé
+      M3uEntry selectedEntry = entry;
+      if (versions.length > 1) {
+        final choice = await _showVersionSelector(versions);
+        if (choice == null) return;
+        selectedEntry = choice;
+      }
+      if (!mounted) return;
       _showActionSheet(selectedEntry);
     }
   }
@@ -1076,7 +1080,32 @@ class _RechercheM3UState extends State<RechercheM3U> {
     );
   }
 
-  Future<void> _showTvActionSheet(M3uEntry entry) async {
+  Future<void> _showTvActionSheet(List<M3uEntry> versions) async {
+    // Préfère une version avec tvgId pour l'EPG ; sinon la première
+    final entry = versions.firstWhere(
+      (v) => v.tvgId != null,
+      orElse: () => versions.first,
+    );
+    // Pour le replay, préfère une version avec streamId
+    final entryForReplay = versions.firstWhere(
+      (v) => v.streamId != null,
+      orElse: () => entry,
+    );
+
+    void playVersion(M3uEntry v) {
+      Navigator.pop(context);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PlayerPage(
+            path: v.url,
+            title: v.displayName,
+            sourceType: VideoSourceType.network,
+          ),
+        ),
+      );
+    }
+
     await showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -1089,52 +1118,36 @@ class _RechercheM3UState extends State<RechercheM3U> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ---- Nom de la chaîne + chips qualité/langue ----
+                // ---- Nom de la chaîne ----
                 Text(entry.displayName,
                     style: Theme.of(context).textTheme.headlineSmall,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    _qualityChip(entry.title),
-                    ..._languageChips(entry.title),
-                  ],
-                ),
                 const SizedBox(height: 12),
 
-                // ---- Bloc EPG (actuel + suivant) depuis XMLTV ----
+                // ---- Bloc EPG + boutons qualité (si tvgId disponible) ----
                 if (entry.tvgId != null)
-                  _EpgNowNextBlock(tvgId: entry.tvgId!),
+                  _EpgNowNextBlock(
+                    tvgId: entry.tvgId!,
+                    versions: versions,
+                    onPlayVersion: playVersion,
+                  ),
+
+                // ---- Fallback sans EPG : boutons qualité directs ----
+                if (entry.tvgId == null)
+                  _QualityButtonsRow(
+                    versions: versions,
+                    onPlay: playVersion,
+                  ),
 
                 const SizedBox(height: 4),
 
-                // ---- Lire en direct ----
-                ListTile(
-                  leading: const Icon(Icons.play_arrow),
-                  title: Text(AppLocalizations.of(context)!.actionSheetPlay),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PlayerPage(
-                          path: entry.url,
-                          title: entry.displayName,
-                          sourceType: VideoSourceType.network,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-
                 // ---- Replay (picker manuel) ----
-                if (entry.streamId != null)
+                if (entryForReplay.streamId != null)
                   ListTile(
                     leading: const Icon(Icons.replay_circle_filled),
                     title: Text(
-                        "Replay${entry.catchupDays != null ? ' (${entry.catchupDays}j)' : ''}"),
+                        "Replay${entryForReplay.catchupDays != null ? ' (${entryForReplay.catchupDays}j)' : ''}"),
                     onTap: () async {
                       Navigator.pop(context);
                       final replayProgram =
@@ -1143,15 +1156,15 @@ class _RechercheM3UState extends State<RechercheM3U> {
                         showDragHandle: true,
                         isScrollControlled: true,
                         builder: (_) => ReplayDatePickerSheet(
-                            catchupDays: entry.catchupDays),
+                            catchupDays: entryForReplay.catchupDays),
                       );
                       if (replayProgram != null) {
                         final timeshiftUrl =
                             await ReplayService().buildTimeshiftUrl(
-                          streamId: entry.streamId!,
+                          streamId: entryForReplay.streamId!,
                           start: replayProgram.start,
                           end: replayProgram.end,
-                          streamUrl: entry.url,
+                          streamUrl: entryForReplay.url,
                         );
                         if (timeshiftUrl != null && mounted) {
                           Navigator.push(
@@ -1183,7 +1196,48 @@ class _RechercheM3UState extends State<RechercheM3U> {
   }
 
   //############################################################################
-  // HELPERS (Regex & Parsing)
+  // HELPERS (Groupement & Parsing)
+
+  /// Clé de regroupement pour les chaînes TV.
+  ///
+  /// Plus agressive que [TitleMetadata.baseTitle] : retire les suffixes
+  /// qualité/version propres aux providers IPTV qui ne font pas partie du
+  /// vrai nom de la chaîne ("Résolution Exclu", "Exclu", "Backup"...).
+  /// Appliquée uniquement à la clé de groupement, pas à l'affichage.
+  ///
+  /// ⚠️ On ne retire PAS les chiffres seuls (ex: "France 2", "M6+1", "BFM 24")
+  /// pour ne pas confondre des chaînes distinctes.
+  static String _tvGroupKey(String name) {
+    var key = name;
+
+    // 1. Suffixes providers courants en fin de nom (case-insensitive)
+    //    "Résolution Exclu", "Résolution 4K", "Exclu", "Exclusif",
+    //    "Backup", "Bkp", "Bak", "Back"
+    key = key.replaceAll(
+      RegExp(
+        r'\s+(R[eé]solution\b.*|Exclu[a-z]*|Backup|Bkp|Bak|Back)\s*$',
+        caseSensitive: false,
+      ),
+      '',
+    );
+
+    // 2. Tags qualité restants que baseTitle aurait dû enlever
+    //    (sécurité : certains titres TV n'ont pas d'année/saison donc le
+    //     path de nettoyage peut être différent)
+    key = key.replaceAll(
+      RegExp(r'\s+(4K|UHD|FHD|HD|SD|1080p|720p|480p)\s*$', caseSensitive: false),
+      '',
+    );
+
+    return key.trim().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  /// Retourne true si la chaîne est une variante "Résolution Exclu" à masquer.
+  /// Ces chaînes ne fonctionnent qu'occasionnellement et polluent la liste.
+  static bool _isHiddenTvVariant(String name) {
+    return RegExp(r'\bR[eé]solution\b', caseSensitive: false).hasMatch(name);
+  }
+
   //############################################################################
 
   /// Tente d'extraire un stream_id depuis l'URL Xtream (live/user/pass/<id>.<ext> ou query ?stream=).
@@ -1339,12 +1393,104 @@ class _RechercheM3UState extends State<RechercheM3U> {
 }
 
 // ============================================================================
+// Boutons de sélection de qualité (flux TV)
+// ============================================================================
+
+/// Trie les versions par qualité décroissante et génère un label lisible.
+List<(M3uEntry, String)> _labeledVersions(List<M3uEntry> versions) {
+  const order = {'4K': 0, 'UHD': 0, 'FHD': 1, 'HD': 2, 'SD': 3};
+  final sorted = List<M3uEntry>.from(versions)
+    ..sort((a, b) => (order[a.title.quality] ?? 99)
+        .compareTo(order[b.title.quality] ?? 99));
+
+  return sorted.indexed.map((e) {
+    final i = e.$1;
+    final v = e.$2;
+    String label = v.title.quality ??
+        (v.title.languages.isNotEmpty ? v.title.languages.first : null) ??
+        v.title.versionLabel ??
+        'Flux ${i + 1}';
+    return (v, label);
+  }).toList();
+}
+
+class _QualityButtonsRow extends StatelessWidget {
+  final List<M3uEntry> versions;
+  final void Function(M3uEntry) onPlay;
+
+  const _QualityButtonsRow({required this.versions, required this.onPlay});
+
+  @override
+  Widget build(BuildContext context) {
+    final labeled = _labeledVersions(versions);
+    // Une seule version → un bouton "Regarder" pleine largeur
+    if (labeled.length == 1) {
+      return SizedBox(
+        width: double.infinity,
+        child: _playButton(labeled.first.$1, labeled.first.$2, full: true),
+      );
+    }
+    // Plusieurs versions → rangée de boutons
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: labeled
+          .map((e) => _playButton(e.$1, e.$2))
+          .toList(),
+    );
+  }
+
+  Widget _playButton(M3uEntry v, String label, {bool full = false}) {
+    return SizedBox(
+      height: 36,
+      width: full ? double.infinity : null,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: kAetherGradient,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => onPlay(v),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                mainAxisSize: full ? MainAxisSize.max : MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.play_arrow_rounded, color: kWhite, size: 16),
+                  const SizedBox(width: 4),
+                  Text(label,
+                      style: const TextStyle(
+                          color: kWhite,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
 // Bloc EPG "En ce moment / Ensuite" (données XMLTV)
 // ============================================================================
 
 class _EpgNowNextBlock extends StatefulWidget {
   final String tvgId;
-  const _EpgNowNextBlock({required this.tvgId});
+  final List<M3uEntry> versions;
+  final void Function(M3uEntry)? onPlayVersion;
+
+  const _EpgNowNextBlock({
+    required this.tvgId,
+    this.versions = const [],
+    this.onPlayVersion,
+  });
 
   @override
   State<_EpgNowNextBlock> createState() => _EpgNowNextBlockState();
@@ -1384,15 +1530,23 @@ class _EpgNowNextBlockState extends State<_EpgNowNextBlock> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: kAetherPrimaryPurple.withOpacity(0.3)),
       ),
-      child: Column(
-        children: [
-          if (_current != null)
-            _EpgProgramRow(program: _current!, isNow: true),
-          if (_current != null && _next != null)
-            const Divider(height: 1, indent: 12, endIndent: 12),
-          if (_next != null)
-            _EpgProgramRow(program: _next!, isNow: false),
-        ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Column(
+          children: [
+            if (_current != null)
+              _EpgProgramRow(
+                program: _current!,
+                isNow: true,
+                versions: widget.versions,
+                onPlayVersion: widget.onPlayVersion,
+              ),
+            if (_current != null && _next != null)
+              const Divider(height: 1, indent: 12, endIndent: 12),
+            if (_next != null)
+              _EpgProgramRow(program: _next!, isNow: false),
+          ],
+        ),
       ),
     );
   }
@@ -1401,86 +1555,97 @@ class _EpgNowNextBlockState extends State<_EpgNowNextBlock> {
 class _EpgProgramRow extends StatelessWidget {
   final XmltvProgram program;
   final bool isNow;
-  const _EpgProgramRow({required this.program, required this.isNow});
+  final List<M3uEntry> versions;
+  final void Function(M3uEntry)? onPlayVersion;
+
+  const _EpgProgramRow({
+    required this.program,
+    required this.isNow,
+    this.versions = const [],
+    this.onPlayVersion,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final showQualityButtons = isNow && versions.isNotEmpty && onPlayVersion != null;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Affiche du programme (si disponible)
-          if (program.iconUrl != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.network(
-                program.iconUrl!,
-                width: 54,
-                height: 38,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            )
-          else
-            const SizedBox(width: 54, height: 38),
-          const SizedBox(width: 10),
-          // Infos programme
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          // ---- Infos programme ----
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (program.iconUrl != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(
+                    program.iconUrl!,
+                    width: 54,
+                    height: 38,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox(width: 54, height: 38),
+                  ),
+                )
+              else
+                const SizedBox(width: 54, height: 38),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: isNow
-                            ? kAetherVibrantMagenta.withOpacity(0.9)
-                            : kAetherPrimaryPurple.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        isNow ? '● EN COURS' : 'ENSUITE',
-                        style: const TextStyle(
-                          color: kWhite,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isNow
+                                ? kAetherVibrantMagenta.withOpacity(0.9)
+                                : kAetherPrimaryPurple.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            isNow ? '● EN COURS' : 'ENSUITE',
+                            style: const TextStyle(
+                              color: kWhite,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 6),
+                        Text(program.timeRange,
+                            style: const TextStyle(fontSize: 11, color: kMediumGrey)),
+                        const SizedBox(width: 4),
+                        Text('(${program.durationLabel})',
+                            style: const TextStyle(fontSize: 10, color: kMediumGrey)),
+                      ],
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(height: 3),
                     Text(
-                      program.timeRange,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: kMediumGrey,
-                      ),
+                      program.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '(${program.durationLabel})',
-                      style: const TextStyle(fontSize: 10, color: kMediumGrey),
-                    ),
+                    if (program.category != null)
+                      Text(program.category!,
+                          style: const TextStyle(fontSize: 11, color: kMediumGrey),
+                          maxLines: 1),
                   ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  program.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-                if (program.category != null)
-                  Text(
-                    program.category!,
-                    style: const TextStyle(fontSize: 11, color: kMediumGrey),
-                    maxLines: 1,
-                  ),
-              ],
-            ),
+              ),
+            ],
           ),
+
+          // ---- Boutons qualité (EN COURS uniquement) ----
+          if (showQualityButtons) ...[
+            const SizedBox(height: 10),
+            _QualityButtonsRow(versions: versions, onPlay: onPlayVersion!),
+          ],
         ],
       ),
     );
