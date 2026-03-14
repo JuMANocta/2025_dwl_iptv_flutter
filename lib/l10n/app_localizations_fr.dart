@@ -49,7 +49,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String terminalStartMessage(Object fileName) {
-    return '🤖 Lancement du téléchargement :\n🎞️ $fileName';
+    return 'ℹ️ Lancement du téléchargement :\n🎞️ $fileName';
   }
 
   @override
@@ -59,7 +59,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get terminalFinalizingMessage =>
-      '\n⚙️ Finalisation...\nDéplacement du fichier vers le stockage public. Veuillez patienter.';
+      '\n⚙️ Finalisation...\nDéplacement du fichier vers le stockage interne. Veuillez patienter.';
 
   @override
   String get terminalSuccessMessage => '\n🟢 SUCCÈS : Téléchargement terminé !';

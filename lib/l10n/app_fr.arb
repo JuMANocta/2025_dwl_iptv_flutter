@@ -16,9 +16,9 @@
 
     "terminalTitle": "//:INTERFACE_FLUX_TELECHARGEMENT",
     "terminalResumeMessage": "🔄 Reprise du téléchargement :\n🎞️ {fileName}",
-    "terminalStartMessage": "🤖 Lancement du téléchargement :\n🎞️ {fileName}",
+    "terminalStartMessage": "ℹ️ Lancement du téléchargement :\n🎞️ {fileName}",
     "terminalFileSizeMessage": "📦 Taille du fichier : {fileSize}",
-    "terminalFinalizingMessage": "\n⚙️ Finalisation...\nDéplacement du fichier vers le stockage public. Veuillez patienter.",
+    "terminalFinalizingMessage": "\n⚙️ Finalisation...\nDéplacement du fichier vers le stockage interne. Veuillez patienter.",
     "terminalSuccessMessage": "\n🟢 SUCCÈS : Téléchargement terminé !",
     "terminalFatalErrorMessage": "\n☣️ FATAL : Une erreur est survenue",
     "terminalSpeedMessage": "Vitesse",
