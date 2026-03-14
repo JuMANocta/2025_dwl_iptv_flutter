@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0+3-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.2.0+4-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -151,6 +151,7 @@ lib/
 - [ ] **Mise à jour in-app** — téléchargement APK depuis GitHub Releases
 - [ ] **Refactoring** — découpage `recherche_page.dart`, parsing M3U en isolate
 - [ ] **Page d'accueil** — trending TMDB + derniers ajoutés, navigation bottom bar, design glassmorphism
+- [ ] **Catégories M3U** — sections par genre sur la page d'accueil (Action, 3D, Comédie...) extraites des séparateurs provider
 - [ ] **Grille EPG XMLTV** — sélection programme pour le replay
 - [ ] **Favoris** — films, séries et chaînes
 - [ ] **En cours de lecture** — reprise depuis la dernière position

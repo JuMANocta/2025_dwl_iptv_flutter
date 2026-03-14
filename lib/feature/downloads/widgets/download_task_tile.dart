@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:media_store_plus/media_store_plus.dart';
 import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/main.dart';
 import 'package:aetherStream/data/models/download_task.dart';
@@ -34,7 +36,8 @@ class DownloadTaskTile extends StatelessWidget {
 
         // On ne supprime PAS la tâche.
         // On demande simplement au manager de relancer CETTE tâche existante.
-        downloadManager.startDownloadTask(task);
+        // Lancement intentionnel en arrière-plan — les erreurs sont gérées dans startDownloadTask.
+        unawaited(downloadManager.startDownloadTask(task));
 
         // On affiche le moniteur pour que l'utilisateur voie la reprise.
         final rootContext = navigatorKey.currentContext;
@@ -57,6 +60,7 @@ class DownloadTaskTile extends StatelessWidget {
 
   Future<void> _deleteTask(BuildContext context) async {
     final l10n = AppLocalizations.of(context)!;
+    final downloadManager = DownloadManagerService();
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -115,16 +119,28 @@ class DownloadTaskTile extends StatelessWidget {
     );
 
     if (confirm == true) {
-      await DownloadManagerService().removeTask(task.id);
+      await downloadManager.removeTask(task.id);
+
+      // Suppression du fichier final via MediaStore (Android 10+)
       try {
-        final file = File(task.finalPath);
-        final tempFile = File('${task.finalPath}.downloading');
-        if (await file.exists()) await file.delete();
+        final fileName = task.finalPath.split('/').last;
+        if (fileName.isNotEmpty) {
+          await MediaStore().deleteFile(
+            fileName: fileName,
+            dirType: DirType.video,
+            dirName: DirName.movies,
+          );
+        }
+      } catch (e) {
+        debugPrint("⚠️ Suppression MediaStore échouée : $e");
+      }
+
+      // Suppression du fichier temporaire s'il existe encore
+      try {
+        final tempFile = File(task.tempPath);
         if (await tempFile.exists()) await tempFile.delete();
       } catch (e) {
-        if (context.mounted) {
-          debugPrint("Erreur lors de la suppression du fichier : $e");
-        }
+        debugPrint("⚠️ Suppression fichier temporaire échouée : $e");
       }
     }
   }

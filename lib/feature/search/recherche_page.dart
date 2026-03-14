@@ -373,7 +373,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
       for (final line in const LineSplitter().convert(fileContent)) {
         final trimmed = line.trim();
-        if (trimmed.isEmpty) return;
+        if (trimmed.isEmpty) continue;
 
         if (trimmed.startsWith("#EXTINF")) {
           pendingMetadata = trimmed;
