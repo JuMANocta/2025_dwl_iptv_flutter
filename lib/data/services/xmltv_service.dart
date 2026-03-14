@@ -14,20 +14,46 @@ class XmltvService {
   static const _cacheFile = 'xmltv_tnt_cache_v2.xml';
   static const _cacheTtl = Duration(hours: 12);
 
+  /// Timeout global pour `ensureLoaded()` (téléchargement + parsing inclus).
+  static const _loadTimeout = Duration(seconds: 20);
+
   // Cache mémoire
   static Map<String, List<XmltvProgram>>? _programs; // tvgId normalisé → programmes
   static Map<String, String>? _channelIcons;          // tvgId normalisé → URL icône
   static DateTime? _loadedAt;
+  static bool _isLoading = false; // garde contre les chargements concurrents
 
   // -------------------------------------------------------------------------
   // API publique
   // -------------------------------------------------------------------------
 
   /// Charge le fichier XMLTV si nécessaire (en mémoire ou depuis le cache fichier).
+  /// Timeout global : $_loadTimeout. Protégé contre les appels concurrents.
   static Future<void> ensureLoaded() async {
     if (_programs != null && _loadedAt != null &&
         DateTime.now().difference(_loadedAt!) < _cacheTtl) { return; }
 
+    // Si un chargement est déjà en cours, on attend qu'il se termine (max timeout).
+    if (_isLoading) {
+      final deadline = DateTime.now().add(_loadTimeout);
+      while (_isLoading && DateTime.now().isBefore(deadline)) {
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+      return;
+    }
+
+    _isLoading = true;
+    try {
+      await Future.any([
+        _doLoad(),
+        Future.delayed(_loadTimeout),
+      ]);
+    } finally {
+      _isLoading = false;
+    }
+  }
+
+  static Future<void> _doLoad() async {
     try {
       final content = await _getContent();
       if (content != null) await _parse(content);
@@ -69,7 +95,9 @@ class XmltvService {
   }
 
   /// Vide le cache mémoire (force un rechargement au prochain appel).
+  /// Ne fait rien si un chargement est en cours.
   static void invalidate() {
+    if (_isLoading) return;
     _programs = null;
     _channelIcons = null;
     _loadedAt = null;

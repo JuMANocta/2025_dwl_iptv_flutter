@@ -55,7 +55,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
     final maxDays = _selectedStream?.catchupDays ?? widget.catchupDays ?? 7;
 
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -200,13 +200,18 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
   }
 
   void _confirm() {
-    final start = DateTime(
+    var start = DateTime(
       _selectedDay.year,
       _selectedDay.month,
       _selectedDay.day,
       _selectedTime.hour,
       _selectedTime.minute,
     );
+    // Si l'heure choisie est dans le futur, on ramène à 5min avant maintenant.
+    final now = DateTime.now();
+    if (start.isAfter(now)) {
+      start = now.subtract(const Duration(minutes: 5));
+    }
     final end = start.add(Duration(minutes: _durationMinutes));
     final label = _buildLabel();
     final stream = _selectedStream;

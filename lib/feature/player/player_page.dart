@@ -15,26 +15,33 @@ enum VideoSourceType {
   // networkWithCache supprimé : media_kit gère le cache nativement
 }
 
+/// Badge affiché en haut à droite du player.
+enum PlayerBadgeType {
+  none,    // aucun badge (fichier local…)
+  live,    // ● DIRECT rouge (flux TV en direct)
+  replay,  // ↩ REPLAY violet (timeshift)
+  movie,   // FILM bleu
+  series,  // SÉRIE violet
+}
+
 class PlayerPage extends StatefulWidget {
   final String path;
   final String title;
   final VideoSourceType sourceType;
+  /// Badge affiché en haut à droite.
+  final PlayerBadgeType badgeType;
   /// Heure de début du replay — alimente la barre replay (optionnel).
   final DateTime? replayStart;
   /// Durée totale du replay — alimente la barre replay (optionnel).
   final Duration? replayDuration;
-  /// Callback déclenché par le bouton "Retour au direct" dans la barre replay.
-  /// Par défaut : pop la page.
-  final VoidCallback? onReturnToLive;
-
   const PlayerPage({
     super.key,
     required this.path,
     required this.title,
     this.sourceType = VideoSourceType.network,
+    this.badgeType = PlayerBadgeType.none,
     this.replayStart,
     this.replayDuration,
-    this.onReturnToLive,
   });
 
   @override
@@ -51,6 +58,8 @@ class _PlayerPageState extends State<PlayerPage> {
   String _errorMessage = '';
   int _retryCount = 0;
   static const _maxRetries = 3;
+  // Chemin courant utilisé pour le retry (peut alterner .m3u8 ↔ .ts).
+  late String _currentPath;
 
   // Luminosité courante (0.0–1.0), initialisée à 0.5 par défaut.
   double _brightness = 0.5;
@@ -66,6 +75,7 @@ class _PlayerPageState extends State<PlayerPage> {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
+    _currentPath = widget.path;
     _ctrl = AetherPlayerController();
     _listenErrors();
     _openMedia();
@@ -82,13 +92,20 @@ class _PlayerPageState extends State<PlayerPage> {
   Future<void> _openMedia() async {
     try {
       if (widget.sourceType == VideoSourceType.file) {
-        await _ctrl.openFile(widget.path);
+        await _ctrl.openFile(_currentPath);
       } else {
-        await _ctrl.open(widget.path);
+        await _ctrl.open(_currentPath);
       }
     } catch (e) {
       _handleError(e.toString());
     }
+  }
+
+  /// Retourne l'URL avec l'extension alternative (.m3u8 ↔ .ts), ou null si non applicable.
+  String? _altExtUrl(String url) {
+    if (url.contains('.m3u8')) return url.replaceFirst(RegExp(r'\.m3u8$'), '.ts');
+    if (url.contains('.ts')) return url.replaceFirst(RegExp(r'\.ts$'), '.m3u8');
+    return null;
   }
 
   void _listenErrors() {
@@ -99,13 +116,26 @@ class _PlayerPageState extends State<PlayerPage> {
     });
   }
 
-  /// Reconnexion automatique (×3, délai 2s entre chaque tentative).
+  /// Reconnexion automatique (×3, délai 5s).
+  /// Retry 1 : même URL (serveur pas encore prêt).
+  /// Retry 2 : extension alternative (.m3u8 ↔ .ts) — certains serveurs ne supportent qu'un format.
+  /// Retry 3 : retour à l'URL originale.
   void _handleError(String error) {
     if (_retryCount < _maxRetries) {
       _retryCount++;
+      // Retry 2 : tente l'extension alternative
+      if (_retryCount == 2) {
+        final alt = _altExtUrl(widget.path);
+        if (alt != null) {
+          _currentPath = alt;
+          debugPrint('⚠️ PlayerPage: retry $_retryCount/$_maxRetries — extension alternative: $alt');
+        }
+      } else {
+        _currentPath = widget.path; // retour à l'URL originale
+      }
       debugPrint(
-          '⚠️ PlayerPage: erreur stream — retry $_retryCount/$_maxRetries dans 2s\n$error');
-      Future.delayed(const Duration(seconds: 2), () {
+          '⚠️ PlayerPage: erreur stream — retry $_retryCount/$_maxRetries dans 5s\n$error');
+      Future.delayed(const Duration(seconds: 5), () {
         if (mounted) _openMedia();
       });
     } else {
@@ -153,6 +183,7 @@ class _PlayerPageState extends State<PlayerPage> {
     setState(() {
       _hasError = false;
       _retryCount = 0;
+      _currentPath = widget.path;
     });
     _openMedia();
   }
@@ -196,6 +227,7 @@ class _PlayerPageState extends State<PlayerPage> {
             player: _ctrl.player,
             title: widget.title,
             visible: _controlsVisible,
+            badgeType: widget.badgeType,
             onBack: () => Navigator.of(context).pop(),
             onInteraction: _showControls,
           ),
@@ -211,8 +243,6 @@ class _PlayerPageState extends State<PlayerPage> {
                 replayStart: widget.replayStart,
                 replayDuration: widget.replayDuration,
                 visible: _controlsVisible,
-                onReturnToLive:
-                    widget.onReturnToLive ?? () => Navigator.of(context).pop(),
               ),
             ),
         ],

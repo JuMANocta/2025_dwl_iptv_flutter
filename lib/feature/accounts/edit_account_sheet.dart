@@ -23,17 +23,16 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
   bool _isPasswordObscured = true;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final l10n = AppLocalizations.of(context)!;
+  void initState() {
+    super.initState();
     final i = widget.initial;
-    _label = TextEditingController(text: i?.label ?? l10n.editAccountNameHint);
-    _completeUrl = TextEditingController(text: i?.completeUrl ?? "");
-    _baseUrl = TextEditingController(text: i?.baseUrl ?? "");
-    _username = TextEditingController(text: i?.username ?? "");
-    _password = TextEditingController(text: i?.password ?? "");
+    _label = TextEditingController(text: i?.label ?? '');
+    _completeUrl = TextEditingController(text: i?.completeUrl ?? '');
+    _baseUrl = TextEditingController(text: i?.baseUrl ?? '');
+    _username = TextEditingController(text: i?.username ?? '');
+    _password = TextEditingController(text: i?.password ?? '');
     _playlistType = i?.playlistType ?? PlaylistType.m3u;
-    _cookies = TextEditingController(text: i?.cookies ?? "");
+    _cookies = TextEditingController(text: i?.cookies ?? '');
     _mode = i?.mode ?? StreamAuthMode.completeUrl;
   }
 

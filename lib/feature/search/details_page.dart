@@ -201,6 +201,7 @@ class _DetailsPageState extends State<DetailsPage> {
                               path: widget.entry.url,
                               title: widget.entry.displayName,
                               sourceType: VideoSourceType.network,
+                              badgeType: widget.entry.type == M3uContentType.series ? PlayerBadgeType.series : PlayerBadgeType.movie,
                             ),
                           )),
                           icon: const Icon(Icons.play_arrow),

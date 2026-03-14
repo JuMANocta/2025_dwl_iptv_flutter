@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.4+5-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.2.0+3-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -26,9 +26,14 @@
 ## Fonctionnalités
 
 ### 📺 Lecture
-- Lecture de flux réseau (HLS, MPEG-TS), fichiers locaux
-- Player plein écran paysage avec contrôles Cupertino
-- Reprise automatique du buffer
+- Lecture de flux réseau (HLS, MPEG-TS) et fichiers locaux via **libmpv** (`media_kit`)
+- Player plein écran paysage avec contrôles entièrement custom
+- **Gestures** : double-tap ±10s, swipe horizontal seek, swipe vertical volume/luminosité
+- Vitesse de lecture : 0.5x / 0.75x / 1x / 1.25x / 1.5x / 2x
+- Verrouillage écran (mode lock — désactive tous les gestures)
+- Reconnexion automatique ×3 avec swap automatique d'extension `.ts` ↔ `.m3u8` (compatibilité maximale serveurs)
+- Badge contextuel : 🔴 DIRECT / 🟡 REPLAY / 🔵 FILM / 🟣 SÉRIE
+- Barre de progression replay (mode timeshift)
 
 ### 📋 Playlist & Comptes
 - **Multi-comptes** : plusieurs fournisseurs IPTV simultanément
@@ -38,7 +43,8 @@
 - Regroupement automatique des chaînes par qualité (4K / FHD / HD / SD)
 
 ### ⏪ Replay / EPG
-- Timeshift Xtream Codes avec picker manuel (jour + heure + durée + qualité)
+- Timeshift Xtream Codes avec picker manuel (jour + heure + durée + qualité FHD/HD/SD)
+- Détection automatique du meilleur format de flux (`.ts` prioritaire, fallback `.m3u8`)
 - EPG "En cours / Ensuite" via XMLTV (source TNT France, cache 12h)
 - Support des formats catchup : Xtream Codes path-based et Flussonic (`{utc}/{lutc}`)
 
@@ -127,7 +133,8 @@ lib/
 | Composant | Package |
 |-----------|---------|
 | HTTP / Téléchargements | `dio` |
-| Player vidéo | `video_player` + `chewie` |
+| Player vidéo | `media_kit` + `media_kit_video` (libmpv) |
+| Luminosité | `screen_brightness` |
 | Stockage sécurisé | `flutter_secure_storage` |
 | Préférences | `shared_preferences` |
 | MediaStore Android | `media_store_plus` |
@@ -140,7 +147,7 @@ lib/
 
 ## Roadmap
 
-- [ ] **Refonte complète du player** — migration `media_kit`, contrôles custom, gestures, PiP, reconnexion auto
+- [x] **Refonte complète du player** — `media_kit`, contrôles custom, gestures, reconnexion auto *(PiP reporté)*
 - [ ] **Mise à jour in-app** — téléchargement APK depuis GitHub Releases
 - [ ] **Refactoring** — découpage `recherche_page.dart`, parsing M3U en isolate
 - [ ] **Page d'accueil** — trending TMDB + derniers ajoutés, navigation bottom bar, design glassmorphism

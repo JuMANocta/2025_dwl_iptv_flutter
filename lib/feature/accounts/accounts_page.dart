@@ -468,6 +468,11 @@ class _AccountsPageState extends State<AccountsPage> {
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.accountsTitle)),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _openEditor(),
+        tooltip: l10n.accountsListEmpty,
+        child: const Icon(Icons.add),
+      ),
       body: FutureBuilder<List<StreamAccount>>(
         future: _accountsFuture,
         builder: (ctx, snap) {

@@ -186,12 +186,14 @@ class TitleMetadata {
     final yearMatch = RegExp(r'\b(19|20)\d{2}\b').firstMatch(rawTitle);
     final year = yearMatch?.group(0);
 
-    // Qualité
+    // Qualité — ordre du plus précis au plus générique.
+    // Utilise \b (word boundary) pour éviter les faux positifs :
+    // "fhd".contains("hd") = true → sans \b, HD mangerait FHD si l'ordre était inversé.
     String? quality;
-    if (lower.contains('4k') || lower.contains('2160p')) {quality = '4K';}
-    else if (lower.contains('1080p') || lower.contains('fhd')) { quality = 'FHD';}
-    else if (lower.contains('720p') || lower.contains('hd')) {quality = 'HD';}
-    else if (lower.contains('sd')) {quality = 'SD';}
+    if (RegExp(r'\b(4k|uhd|2160p)\b').hasMatch(lower))        { quality = '4K'; }
+    else if (RegExp(r'\b(fhd|1080p)\b').hasMatch(lower))      { quality = 'FHD'; }
+    else if (RegExp(r'\b(hd|720p)\b').hasMatch(lower))        { quality = 'HD'; }
+    else if (RegExp(r'\b(sd|480p)\b').hasMatch(lower))        { quality = 'SD'; }
 
     // Langues — word boundaries pour éviter les faux positifs
     final langs = <String>[];
@@ -1028,7 +1030,12 @@ class _RechercheM3UState extends State<RechercheM3U> {
                   title: Text(l10n.actionSheetPlay),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(path: entry.url, title: entry.displayName, sourceType: VideoSourceType.network)));
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
+                      path: entry.url,
+                      title: entry.displayName,
+                      sourceType: VideoSourceType.network,
+                      badgeType: entry.type == M3uContentType.series ? PlayerBadgeType.series : PlayerBadgeType.movie,
+                    )));
                   },
                 ),
                 if (entry.type == M3uContentType.tv && entry.streamId != null)
@@ -1059,6 +1066,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                                 path: timeshiftUrl,
                                 title: replayProgram.title,
                                 sourceType: VideoSourceType.networkReplay,
+                                badgeType: PlayerBadgeType.replay,
                                 replayStart: replayProgram.start,
                                 replayDuration: replayProgram.end.difference(replayProgram.start),
                               ),
@@ -1098,13 +1106,28 @@ class _RechercheM3UState extends State<RechercheM3U> {
       (v) => v.tvgId != null,
       orElse: () => versions.first,
     );
-    // Pour le replay, préfère une version avec streamId
+    // Pour le replay, préfère FHD > HD > SD (4K exclu — pas d'archive replay).
     final entryForReplay = versions.firstWhere(
-      (v) => v.streamId != null,
-      orElse: () => entry,
+      (v) => v.streamId != null && v.title.quality == 'FHD',
+      orElse: () => versions.firstWhere(
+        (v) => v.streamId != null && v.title.quality == 'HD',
+        orElse: () => versions.firstWhere(
+          (v) => v.streamId != null && v.title.quality == 'SD',
+          orElse: () => versions.firstWhere((v) => v.streamId != null, orElse: () => entry),
+        ),
+      ),
     );
-    // Liste des flux dispo pour le replay (streamId requis), triés par qualité
-    final replayEntries = versions.where((v) => v.streamId != null).toList();
+    // Liste des flux dispo pour le replay (streamId requis), triés par qualité.
+    // FHD/4K peuvent être sur un serveur distinct — le retry à 5s dans PlayerPage
+    // laisse au serveur le temps de générer le segment HLS.
+    // 4K exclu : ces flux n'ont pas d'archive replay côté serveur.
+    const _replayQualities = {'FHD', 'HD', 'SD'};
+    const _qualityOrder = {'FHD': 0, 'HD': 1, 'SD': 2};
+    final replayEntries = versions
+        .where((v) => v.streamId != null && _replayQualities.contains(v.title.quality))
+        .toList()
+      ..sort((a, b) => (_qualityOrder[a.title.quality] ?? 99)
+          .compareTo(_qualityOrder[b.title.quality] ?? 99));
     final replayStreams = _labeledVersions(replayEntries)
         .map((e) => ReplayStreamOption(
               label: e.$2,
@@ -1124,6 +1147,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
             path: v.url,
             title: v.displayName,
             sourceType: VideoSourceType.network,
+            badgeType: PlayerBadgeType.live,
           ),
         ),
       );
@@ -1135,11 +1159,15 @@ class _RechercheM3UState extends State<RechercheM3U> {
       isScrollControlled: true,
       builder: (ctx) {
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ---- Nom de la chaîne ----
                 Text(entry.displayName,
@@ -1200,6 +1228,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                                 path: timeshiftUrl,
                                 title: replayProgram.title,
                                 sourceType: VideoSourceType.networkReplay,
+                                badgeType: PlayerBadgeType.replay,
                                 replayStart: replayProgram.start,
                                 replayDuration: replayProgram.end.difference(replayProgram.start),
                               ),
@@ -1218,6 +1247,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
               ],
             ),
           ),
+        ),
         );
       },
     );
@@ -1545,6 +1575,19 @@ class _EpgNowNextBlockState extends State<_EpgNowNextBlock> {
   }
 
   Future<void> _load() async {
+    // Timeout de sécurité : si le XMLTV prend trop longtemps,
+    // on passe directement au fallback (boutons qualité) sans bloquer l'UI.
+    await Future.any([
+      _doLoad(),
+      Future.delayed(const Duration(seconds: 12)),
+    ]);
+    // Si _doLoad() n'a pas fini à temps, on force la fin du loading.
+    if (mounted && _loading) {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _doLoad() async {
     final current = await XmltvService.getCurrentProgram(widget.tvgId);
     final next = await XmltvService.getNextProgram(widget.tvgId);
     final channelIcon = await XmltvService.getChannelIconUrl(widget.tvgId);

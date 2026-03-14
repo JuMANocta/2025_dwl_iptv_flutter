@@ -24,15 +24,16 @@ class XtreamCredentials {
   }
 
   /// Format path-based Xtream Codes (le plus compatible).
-  /// http://server/timeshift/{user}/{pass}/{duration_min}/{YYYY-MM-DD:HH-mm}/{stream_id}.m3u8
-  /// On utilise .m3u8 (HLS) : le serveur génère une playlist bornée à durationMinutes,
-  /// contrairement au .ts qui peut streamer indéfiniment jusqu'à la fin du catchup.
+  /// http://server/timeshift/{user}/{pass}/{duration_min}/{YYYY-MM-DD:HH-mm}/{stream_id}.{ext}
+  /// [ext] : extension du stream original (.m3u8 ou .ts) — certains serveurs ne supportent
+  /// le timeshift que dans un seul format, on réutilise donc l'extension du flux live.
   String buildTimeshiftPathUrl({
     required int streamId,
     required String startFormatted, // "YYYY-MM-DD:HH-mm" heure locale
     required int durationMinutes,
+    String ext = 'm3u8',
   }) =>
-      '$server/timeshift/$username/$password/$durationMinutes/$startFormatted/$streamId.m3u8';
+      '$server/timeshift/$username/$password/$durationMinutes/$startFormatted/$streamId.$ext';
 
   static XtreamCredentials? fromAccount(StreamAccount? acc) {
     if (acc == null || acc.baseUrl == null || acc.username == null || acc.password == null) return null;
@@ -55,11 +56,13 @@ class XtreamCredentials {
         return XtreamCredentials(server: server, username: usernameQp, password: passwordQp);
       }
 
-      // Format 2 : path Xtream Codes (/{username}/{password}/{stream_id})
+      // Format 2 : path Xtream Codes (/{type}/{username}/{password}/{stream_id})
+      // Le premier segment peut être un préfixe de type : live, movie, series → à ignorer.
       final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
-      if (segments.length >= 3) {
-        // Le dernier segment est le stream_id (numérique), les deux avant sont username/password
-        return XtreamCredentials(server: server, username: segments[0], password: segments[1]);
+      const typePrefixes = {'live', 'movie', 'series', 'timeshift'};
+      final start = (segments.isNotEmpty && typePrefixes.contains(segments[0])) ? 1 : 0;
+      if (segments.length >= start + 3) {
+        return XtreamCredentials(server: server, username: segments[start], password: segments[start + 1]);
       }
     } catch (_) {}
     return null;
@@ -118,18 +121,22 @@ class ReplayProgram {
 
 class ReplayService {
   Future<XtreamCredentials?> _resolveCreds({String? streamUrl}) async {
-    final acc = await StreamAccountService.getCurrentAccount();
-    final fromAcc = XtreamCredentials.fromAccount(acc);
-    if (fromAcc != null) {
-      debugPrint('🔑 ReplayService: Crédentiels résolus depuis le compte courant.');
-      return fromAcc;
-    }
+    // Priorité 1 : l'URL du stream — elle contient le BON serveur pour cette qualité.
+    // Les variants FHD/4K peuvent être servis par un serveur différent du compte principal.
+    // Utiliser le compte en priorité enverrait le timeshift au mauvais serveur.
     if (streamUrl != null) {
       final fromStream = XtreamCredentials.fromStreamUrl(streamUrl);
       if (fromStream != null) {
-        debugPrint('🔑 ReplayService: Crédentiels résolus depuis l\'URL du stream (path Xtream).');
+        debugPrint('🔑 ReplayService: Crédentiels résolus depuis l\'URL du stream → serveur: ${fromStream.server}');
         return fromStream;
       }
+    }
+    // Priorité 2 : compte courant (fallback si l'URL ne contient pas de crédentiels lisibles).
+    final acc = await StreamAccountService.getCurrentAccount();
+    final fromAcc = XtreamCredentials.fromAccount(acc);
+    if (fromAcc != null) {
+      debugPrint('🔑 ReplayService: Crédentiels résolus depuis le compte courant → serveur: ${fromAcc.server}');
+      return fromAcc;
     }
     debugPrint('❌ ReplayService: Aucuns crédentiels Xtream trouvés.');
     return null;
@@ -257,10 +264,13 @@ class ReplayService {
     // envoyer UTC provoquerait un décalage de +1h/+2h selon la saison.
     final startFormatted = DateFormat('yyyy-MM-dd:HH-mm').format(start);
 
+    // .ts en priorité : plus compatible avec les serveurs Xtream (FHD/4K notamment).
+    // Si le serveur ne supporte pas .ts, le retry dans PlayerPage bascule sur .m3u8.
     final url = creds.buildTimeshiftPathUrl(
       streamId: streamId,
       startFormatted: startFormatted,
       durationMinutes: durationMinutes,
+      ext: 'ts',
     );
     debugPrint('⏪ ReplayService (xtream): start=$startFormatted, durée=${durationMinutes}min → $url');
     return url;
