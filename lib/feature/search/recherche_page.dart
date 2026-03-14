@@ -214,7 +214,7 @@ class TitleMetadata {
     // On les retire UNIQUEMENT quand ils sont encadrés par () ou [] comme dans "(FR)" ou "[EN]".
     base = base.replaceAll(RegExp(r'[\(\[]\s*(FR|EN)\s*[\)\]]', caseSensitive: false), ' ');
     base = base.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
-    base = base.replaceAll(RegExp(r'[\(\)\[\]\.\-_]'), ' ');
+    base = base.replaceAll(RegExp(r'[\(\)\[\]\.\-_/]'), ' ');
     // Supprime toute marque Sxx Exx restante (avec ou sans espaces)
     base = base.replaceAll(RegExp(r"S\s*\d{1,2}\s*E\s*\d{1,2}", caseSensitive: false), ' ');
     base = base.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -262,7 +262,8 @@ class M3uEntry {
   final String? logoUrl;
   final int? streamId;    // stream_id extrait de l'URL (utile pour EPG/replay)
   final String? tvgId;    // tvg-id depuis #EXTINF (pour matching EPG/XMLTV)
-  final int? catchupDays; // Nombre de jours de replay (null = non supporté)
+  final int? catchupDays;    // Nombre de jours de replay (null = non supporté)
+  final String? catchupSource; // Template URL catchup (ex: "?utc={utc}&lutc={lutc}" Flussonic)
 
   const M3uEntry({
     required this.url,
@@ -272,6 +273,7 @@ class M3uEntry {
     this.streamId,
     this.tvgId,
     this.catchupDays,
+    this.catchupSource,
   });
 
   /// Vrai si le stream supporte le catchup/replay selon les métadonnées M3U.
@@ -365,6 +367,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       final regExpTvgId = RegExp(r'tvg-id="([^"]*)"');
       final regExpCatchup = RegExp(r'catchup="([^"]*)"', caseSensitive: false);
       final regExpCatchupDays = RegExp(r'catchup-days="(\d+)"', caseSensitive: false);
+      final regExpCatchupSource = RegExp(r'catchup-source="([^"]*)"', caseSensitive: false);
 
       for (final line in const LineSplitter().convert(fileContent)) {
         final trimmed = line.trim();
@@ -378,6 +381,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
           String? logoUrl;
           String? tvgId;
           int? catchupDays;
+          String? catchupSource;
 
           // --- LOGIQUE POUR FORMAT A (#EXTINF suivi par URL) ---
           if (pendingMetadata != null) {
@@ -398,6 +402,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
                 final daysStr = regExpCatchupDays.firstMatch(pendingMetadata!)?.group(1);
                 // Si catchup-days absent mais catchup présent : on assume 7j par défaut
                 catchupDays = int.tryParse(daysStr ?? '') ?? 7;
+                // Template URL catchup (Flussonic: "?utc={utc}&lutc={lutc}", append, etc.)
+                catchupSource = regExpCatchupSource.firstMatch(pendingMetadata!)?.group(1);
               }
             }
             pendingMetadata = null; // Consomme les métadonnées
@@ -420,6 +426,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
               logoUrl: logoUrl,
               tvgId: tvgId,
               catchupDays: catchupDays,
+              catchupSource: catchupSource,
             );
           }
         }
@@ -442,6 +449,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     String? logoUrl,
     String? tvgId,
     int? catchupDays,
+    String? catchupSource,
   }) {
     final lowerUrl = url.toLowerCase();
     final metadata = TitleMetadata.parse(rawTitle);
@@ -469,6 +477,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       streamId: streamId,
       tvgId: tvgId,
       catchupDays: catchupDays,
+      catchupSource: catchupSource,
     );
 
     if (type == M3uContentType.series) {
@@ -514,7 +523,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     }
     if (_showTv) {
       for (var e in _tvList) {
-        if (matches(e) && !_isHiddenTvVariant(e.displayName))
+        if (matches(e) && !_isHiddenTvVariant(e.title.rawTitle))
           newGroupedTv.putIfAbsent(_tvGroupKey(e.displayName), () => []).add(e);
       }
     }
@@ -1040,6 +1049,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                           start: replayProgram.start,
                           end: replayProgram.end,
                           streamUrl: entry.url,
+                          catchupSource: entry.catchupSource,
                         );
                         if (timeshiftUrl != null && mounted) {
                           Navigator.push(
@@ -1091,6 +1101,17 @@ class _RechercheM3UState extends State<RechercheM3U> {
       (v) => v.streamId != null,
       orElse: () => entry,
     );
+    // Liste des flux dispo pour le replay (streamId requis), triés par qualité
+    final replayEntries = versions.where((v) => v.streamId != null).toList();
+    final replayStreams = _labeledVersions(replayEntries)
+        .map((e) => ReplayStreamOption(
+              label: e.$2,
+              streamId: e.$1.streamId!,
+              streamUrl: e.$1.url,
+              catchupSource: e.$1.catchupSource,
+              catchupDays: e.$1.catchupDays,
+            ))
+        .toList();
 
     void playVersion(M3uEntry v) {
       Navigator.pop(context);
@@ -1156,15 +1177,18 @@ class _RechercheM3UState extends State<RechercheM3U> {
                         showDragHandle: true,
                         isScrollControlled: true,
                         builder: (_) => ReplayDatePickerSheet(
-                            catchupDays: entryForReplay.catchupDays),
+                            catchupDays: entryForReplay.catchupDays,
+                            streams: replayStreams),
                       );
                       if (replayProgram != null) {
+                        // Utilise le stream sélectionné dans le picker, sinon fallback sur entryForReplay
                         final timeshiftUrl =
                             await ReplayService().buildTimeshiftUrl(
-                          streamId: entryForReplay.streamId!,
+                          streamId: replayProgram.selectedStreamId ?? entryForReplay.streamId!,
                           start: replayProgram.start,
                           end: replayProgram.end,
-                          streamUrl: entryForReplay.url,
+                          streamUrl: replayProgram.selectedStreamUrl ?? entryForReplay.url,
+                          catchupSource: replayProgram.selectedCatchupSource ?? entryForReplay.catchupSource,
                         );
                         if (timeshiftUrl != null && mounted) {
                           Navigator.push(
@@ -1232,10 +1256,18 @@ class _RechercheM3UState extends State<RechercheM3U> {
     return key.trim().replaceAll(RegExp(r'\s+'), ' ');
   }
 
-  /// Retourne true si la chaîne est une variante "Résolution Exclu" à masquer.
-  /// Ces chaînes ne fonctionnent qu'occasionnellement et polluent la liste.
+  /// Retourne true si l'entrée TV doit être masquée :
+  /// - Variantes "Résolution Exclu" (fonctionnent qu'occasionnellement)
+  /// - Entrées décoratives / séparateurs du provider (▀▄, ▼, ------)
   static bool _isHiddenTvVariant(String name) {
-    return RegExp(r'\bR[eé]solution\b', caseSensitive: false).hasMatch(name);
+    // Séparateurs décoratifs insérés par certains providers
+    if (name.contains('▀') || name.contains('▄') ||
+        name.contains('▼') || name.contains('------')) {
+      return true;
+    }
+    // Variantes Résolution / Exclu
+    return RegExp(r'\bR[eé]solutions?\b|\bExclu[a-z]*\b', caseSensitive: false)
+        .hasMatch(name);
   }
 
   //############################################################################
@@ -1499,6 +1531,7 @@ class _EpgNowNextBlock extends StatefulWidget {
 class _EpgNowNextBlockState extends State<_EpgNowNextBlock> {
   XmltvProgram? _current;
   XmltvProgram? _next;
+  String? _channelIconUrl; // icône de la chaîne (fallback si pas d'icône programme)
   bool _loading = true;
 
   @override
@@ -1510,7 +1543,13 @@ class _EpgNowNextBlockState extends State<_EpgNowNextBlock> {
   Future<void> _load() async {
     final current = await XmltvService.getCurrentProgram(widget.tvgId);
     final next = await XmltvService.getNextProgram(widget.tvgId);
-    if (mounted) setState(() { _current = current; _next = next; _loading = false; });
+    final channelIcon = await XmltvService.getChannelIconUrl(widget.tvgId);
+    if (mounted) setState(() {
+      _current = current;
+      _next = next;
+      _channelIconUrl = channelIcon;
+      _loading = false;
+    });
   }
 
   @override
@@ -1521,7 +1560,19 @@ class _EpgNowNextBlockState extends State<_EpgNowNextBlock> {
         child: LinearProgressIndicator(minHeight: 2),
       );
     }
-    if (_current == null && _next == null) return const SizedBox.shrink();
+    if (_current == null && _next == null) {
+      // XMLTV ne couvre pas cette chaîne → fallback boutons qualité pour lancer le direct
+      if (widget.versions.isEmpty || widget.onPlayVersion == null) {
+        return const SizedBox.shrink();
+      }
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: _QualityButtonsRow(
+          versions: widget.versions,
+          onPlay: widget.onPlayVersion!,
+        ),
+      );
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1540,11 +1591,16 @@ class _EpgNowNextBlockState extends State<_EpgNowNextBlock> {
                 isNow: true,
                 versions: widget.versions,
                 onPlayVersion: widget.onPlayVersion,
+                channelIconUrl: _channelIconUrl,
               ),
             if (_current != null && _next != null)
               const Divider(height: 1, indent: 12, endIndent: 12),
             if (_next != null)
-              _EpgProgramRow(program: _next!, isNow: false),
+              _EpgProgramRow(
+                program: _next!,
+                isNow: false,
+                channelIconUrl: _channelIconUrl,
+              ),
           ],
         ),
       ),
@@ -1557,12 +1613,14 @@ class _EpgProgramRow extends StatelessWidget {
   final bool isNow;
   final List<M3uEntry> versions;
   final void Function(M3uEntry)? onPlayVersion;
+  final String? channelIconUrl; // icône chaîne (fallback si pas d'icône programme)
 
   const _EpgProgramRow({
     required this.program,
     required this.isNow,
     this.versions = const [],
     this.onPlayVersion,
+    this.channelIconUrl,
   });
 
   @override
@@ -1578,15 +1636,27 @@ class _EpgProgramRow extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (program.iconUrl != null)
+              if (program.iconUrl != null || channelIconUrl != null)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: Image.network(
-                    program.iconUrl!,
+                    program.iconUrl ?? channelIconUrl!,
                     width: 54,
                     height: 38,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox(width: 54, height: 38),
+                    errorBuilder: (_, __, ___) {
+                      // Si icône programme échoue et icône chaîne dispo → tente le fallback
+                      if (program.iconUrl != null && channelIconUrl != null) {
+                        return Image.network(
+                          channelIconUrl!,
+                          width: 54,
+                          height: 38,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const SizedBox(width: 54, height: 38),
+                        );
+                      }
+                      return const SizedBox(width: 54, height: 38);
+                    },
                   ),
                 )
               else

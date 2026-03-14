@@ -54,9 +54,13 @@ class _PlayerPageState extends State<PlayerPage> {
       switch (widget.sourceType) {
         case VideoSourceType.network:
           _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(widget.path));
+          // Pas d'await initialize() : Chewie (autoInitialize: true) gère l'init en arrière-plan.
+          // La page s'affiche immédiatement → le spinner Chewie apparaît pendant le chargement.
+          _attachErrorListener();
           break;
         case VideoSourceType.file:
           _videoPlayerController = VideoPlayerController.file(File(widget.path));
+          await _videoPlayerController!.initialize();
           break;
         case VideoSourceType.networkWithCache:
           _cachedVideoPlayerPlus = CachedVideoPlayerPlus.networkUrl(Uri.parse(widget.path));
@@ -65,22 +69,18 @@ class _PlayerPageState extends State<PlayerPage> {
           break;
       }
 
-      if (widget.sourceType != VideoSourceType.networkWithCache) {
-        await _videoPlayerController!.initialize();
-      }
-
-    _chewieController = ChewieController(
-      videoPlayerController: _videoPlayerController!,
-      autoPlay: true,
-      looping: false,
-      aspectRatio: _videoPlayerController!.value.aspectRatio,
-      materialProgressColors: ChewieProgressColors(
+      _chewieController = ChewieController(
+        videoPlayerController: _videoPlayerController!,
+        autoPlay: true,
+        looping: false,
+        // aspectRatio non forcé : Chewie le détecte automatiquement une fois la vidéo prête.
+        materialProgressColors: ChewieProgressColors(
           playedColor: Colors.greenAccent,
           handleColor: Colors.greenAccent,
           bufferedColor: Colors.grey,
           backgroundColor: Colors.black45,
         ),
-        placeholder: const Center(child: CircularProgressIndicator()),
+        placeholder: const Center(child: CircularProgressIndicator(color: Colors.white)),
         autoInitialize: true,
         allowedScreenSleep: false,
         allowFullScreen: true,
@@ -108,6 +108,20 @@ class _PlayerPageState extends State<PlayerPage> {
         });
       }
     }
+  }
+
+  /// Écoute les erreurs ExoPlayer pour les streams network (init non-bloquante).
+  void _attachErrorListener() {
+    _videoPlayerController!.addListener(() {
+      if (_videoPlayerController!.value.hasError && mounted && !_hasError) {
+        final l10n = AppLocalizations.of(context)!;
+        setState(() {
+          _hasError = true;
+          _errorMessage = l10n.playerLoadingError(
+              _videoPlayerController!.value.errorDescription ?? '');
+        });
+      }
+    });
   }
 
   @override

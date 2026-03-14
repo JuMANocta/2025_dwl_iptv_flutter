@@ -6,12 +6,18 @@ import '../../data/services/replay_service.dart';
 /// Sheet permettant à l'utilisateur de choisir manuellement
 /// un jour, une heure et une durée pour lancer un replay.
 ///
-/// Retourne un [ReplayProgram] synthétique (title = label affiché dans le player).
-/// Ce widget est conçu pour être remplacé plus tard par une vraie grille EPG.
+/// Si [streams] contient plusieurs options, un sélecteur de qualité est affiché.
+/// Retourne un [ReplayProgram] synthétique avec le stream sélectionné.
 class ReplayDatePickerSheet extends StatefulWidget {
   final int? catchupDays;
+  /// Liste des streams disponibles pour le replay (multi-qualité).
+  final List<ReplayStreamOption> streams;
 
-  const ReplayDatePickerSheet({super.key, this.catchupDays});
+  const ReplayDatePickerSheet({
+    super.key,
+    this.catchupDays,
+    this.streams = const [],
+  });
 
   @override
   State<ReplayDatePickerSheet> createState() => _ReplayDatePickerSheetState();
@@ -22,8 +28,12 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
   late DateTime _selectedDay;   // minuit du jour choisi
   late TimeOfDay _selectedTime; // heure de début
   int _durationMinutes = 60;    // durée sélectionnée
+  int _selectedStreamIndex = 0; // index dans widget.streams
 
   static const _durations = [30, 60, 90, 120, 180];
+
+  ReplayStreamOption? get _selectedStream =>
+      widget.streams.isEmpty ? null : widget.streams[_selectedStreamIndex];
 
   @override
   void initState() {
@@ -41,7 +51,8 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final maxDays = widget.catchupDays ?? 7;
+    // Utilise le catchupDays du stream sélectionné en priorité, sinon le paramètre global
+    final maxDays = _selectedStream?.catchupDays ?? widget.catchupDays ?? 7;
 
     return SafeArea(
       child: Padding(
@@ -70,6 +81,19 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
             ),
             const Divider(height: 1),
             const SizedBox(height: 20),
+
+            // ---- Sélecteur de qualité (si plusieurs flux disponibles) ----
+            if (widget.streams.length > 1) ...[
+              _sectionLabel(context, 'Qualité', Icons.hd_outlined),
+              const SizedBox(height: 10),
+              _ChipRow<int>(
+                items: List.generate(widget.streams.length, (i) => i),
+                selected: _selectedStreamIndex,
+                label: (i) => widget.streams[i].label,
+                onSelected: (i) => setState(() => _selectedStreamIndex = i),
+              ),
+              const SizedBox(height: 20),
+            ],
 
             // ---- Sélecteur de jour ----
             _sectionLabel(context, 'Jour', Icons.calendar_today_outlined),
@@ -185,12 +209,16 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
     );
     final end = start.add(Duration(minutes: _durationMinutes));
     final label = _buildLabel();
+    final stream = _selectedStream;
     Navigator.of(context).pop(ReplayProgram(
       title: 'Replay — $label',
       start: start,
       end: end,
       description: '',
       hasArchive: true,
+      selectedStreamId: stream?.streamId,
+      selectedStreamUrl: stream?.streamUrl,
+      selectedCatchupSource: stream?.catchupSource,
     ));
   }
 }

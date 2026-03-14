@@ -24,13 +24,15 @@ class XtreamCredentials {
   }
 
   /// Format path-based Xtream Codes (le plus compatible).
-  /// http://server/timeshift/{user}/{pass}/{duration_min}/{YYYY-MM-DD:HH-mm}/{stream_id}.ts
+  /// http://server/timeshift/{user}/{pass}/{duration_min}/{YYYY-MM-DD:HH-mm}/{stream_id}.m3u8
+  /// On utilise .m3u8 (HLS) : le serveur génère une playlist bornée à durationMinutes,
+  /// contrairement au .ts qui peut streamer indéfiniment jusqu'à la fin du catchup.
   String buildTimeshiftPathUrl({
     required int streamId,
-    required String startFormatted, // "YYYY-MM-DD:HH-mm" UTC
+    required String startFormatted, // "YYYY-MM-DD:HH-mm" heure locale
     required int durationMinutes,
   }) =>
-      '$server/timeshift/$username/$password/$durationMinutes/$startFormatted/$streamId.ts';
+      '$server/timeshift/$username/$password/$durationMinutes/$startFormatted/$streamId.m3u8';
 
   static XtreamCredentials? fromAccount(StreamAccount? acc) {
     if (acc == null || acc.baseUrl == null || acc.username == null || acc.password == null) return null;
@@ -64,6 +66,24 @@ class XtreamCredentials {
   }
 }
 
+/// Option de stream disponible pour le replay (qualité / URL).
+/// Utilisé pour passer les flux à [ReplayDatePickerSheet] sans dépendre de M3uEntry.
+class ReplayStreamOption {
+  final String label;       // ex: "FHD", "HD", "4K", "Flux 1"
+  final int streamId;
+  final String streamUrl;
+  final String? catchupSource;
+  final int? catchupDays;
+
+  const ReplayStreamOption({
+    required this.label,
+    required this.streamId,
+    required this.streamUrl,
+    this.catchupSource,
+    this.catchupDays,
+  });
+}
+
 class ReplayProgram {
   final String title;
   final DateTime start;
@@ -71,6 +91,10 @@ class ReplayProgram {
   final String description;
   /// Indique si ce programme est disponible en replay côté serveur.
   final bool hasArchive;
+  /// Stream sélectionné dans le picker (override de l'entrée par défaut).
+  final int? selectedStreamId;
+  final String? selectedStreamUrl;
+  final String? selectedCatchupSource;
 
   ReplayProgram({
     required this.title,
@@ -78,6 +102,9 @@ class ReplayProgram {
     required this.end,
     required this.description,
     this.hasArchive = false,
+    this.selectedStreamId,
+    this.selectedStreamUrl,
+    this.selectedCatchupSource,
   });
 
   String get startLabel => DateFormat('dd/MM HH:mm').format(start);
@@ -179,31 +206,63 @@ class ReplayService {
     }
   }
 
-  /// Construit une URL timeshift standard pour un programme donné.
+  /// Construit une URL timeshift pour un programme donné.
+  ///
+  /// Supporte deux formats selon le [catchupSource] M3U :
+  ///
+  /// 1. **Mode append / Flussonic** — si [catchupSource] contient `{utc}` ou `{lutc}` :
+  ///    Le template est appliqué directement sur l'URL du stream (UTC timestamps en secondes).
+  ///    Ex : `catchup-source="?utc={utc}&lutc={lutc}"` → stream_url + "?utc=1234&lutc=1294"
+  ///
+  /// 2. **Mode Xtream Codes path-based** (par défaut) :
+  ///    `{server}/timeshift/{user}/{pass}/{duration_min}/{YYYY-MM-DD:HH-mm}/{stream_id}.m3u8`
+  ///    Utilise l'heure **locale** (pas UTC) — la grande majorité des serveurs IPTV
+  ///    régionaux configurés en CET/CEST interprètent le timestamp en heure locale.
   Future<String?> buildTimeshiftUrl({
     required int streamId,
     required DateTime start,
     required DateTime end,
     String? streamUrl,
+    String? catchupSource,
   }) async {
+    final durationMinutes = end.difference(start).inMinutes;
+
+    // --- Mode append (Flussonic / Wowza / catchup-source template) ---
+    if (catchupSource != null &&
+        (catchupSource.contains('{utc}') || catchupSource.contains('{lutc}'))) {
+      if (streamUrl == null) {
+        debugPrint('❌ ReplayService: buildTimeshiftUrl append — streamUrl requis.');
+        return null;
+      }
+      final utcTs = (start.toUtc().millisecondsSinceEpoch ~/ 1000).toString();
+      final lutcTs = (end.toUtc().millisecondsSinceEpoch ~/ 1000).toString();
+      final appendedUrl = streamUrl +
+          catchupSource
+              .replaceAll('{utc}', utcTs)
+              .replaceAll('{lutc}', lutcTs)
+              .replaceAll('{duration}', durationMinutes.toString());
+      debugPrint('⏪ ReplayService (append): utc=$utcTs, lutc=$lutcTs, durée=${durationMinutes}min → $appendedUrl');
+      return appendedUrl;
+    }
+
+    // --- Mode Xtream Codes path-based ---
     final creds = await _resolveCreds(streamUrl: streamUrl);
     if (creds == null) {
-      debugPrint('❌ ReplayService: buildTimeshiftUrl — pas de crédentiels.');
+      debugPrint('❌ ReplayService: buildTimeshiftUrl — pas de crédentiels Xtream.');
       return null;
     }
 
-    // Xtream Codes : durée en MINUTES, start en UTC format "YYYY-MM-DD:HH-mm"
-    final durationMinutes = end.difference(start).inMinutes;
-    final startFormatted = DateFormat('yyyy-MM-dd:HH-mm').format(start.toUtc());
+    // Utilisation de l'heure LOCALE (pas UTC).
+    // Les serveurs IPTV régionaux (CET/CEST) interprètent le timestamp en heure locale :
+    // envoyer UTC provoquerait un décalage de +1h/+2h selon la saison.
+    final startFormatted = DateFormat('yyyy-MM-dd:HH-mm').format(start);
 
-    // Format path-based (prioritaire) : évite l'encodage %3A du ':' dans les query params
-    // et est plus compatible avec la majorité des providers Xtream Codes.
     final url = creds.buildTimeshiftPathUrl(
       streamId: streamId,
       startFormatted: startFormatted,
       durationMinutes: durationMinutes,
     );
-    debugPrint('⏪ ReplayService: URL timeshift → start=$startFormatted, durée=${durationMinutes}min → $url');
+    debugPrint('⏪ ReplayService (xtream): start=$startFormatted, durée=${durationMinutes}min → $url');
     return url;
   }
 

@@ -9,6 +9,7 @@ import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
+import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/data/models/account_info.dart';
 
 class AccountsPage extends StatefulWidget {
@@ -26,6 +27,7 @@ class _AccountsPageState extends State<AccountsPage> {
   final _tmdbApiKeyController = TextEditingController();
   bool _isTmdbKeyVisible = false;
   bool _hasSavedKey = false; // État local pour l'UI instantanée
+  bool _xmltvLoading = false;
 
   @override
   void initState() {
@@ -279,6 +281,63 @@ class _AccountsPageState extends State<AccountsPage> {
     );
   }
 
+  Future<void> _forceReloadXmltv() async {
+    setState(() => _xmltvLoading = true);
+    try {
+      XmltvService.invalidate();
+      await XmltvService.ensureLoaded();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Guide des chaînes mis à jour."), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Échec mise à jour XMLTV : $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _xmltvLoading = false);
+    }
+  }
+
+  Widget _buildXmltvCard() {
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        child: Row(
+          children: [
+            const Icon(Icons.tv, size: 20, color: Colors.grey),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Guide des chaînes (XMLTV)",
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  SizedBox(height: 2),
+                  Text("TNT France — cache 12h",
+                      style: TextStyle(fontSize: 10, color: Colors.grey)),
+                ],
+              ),
+            ),
+            _xmltvLoading
+                ? const SizedBox(
+                    width: 24, height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : IconButton.filledTonal(
+                    onPressed: _forceReloadXmltv,
+                    icon: const Icon(Icons.refresh),
+                    tooltip: "Forcer la mise à jour du guide",
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _playlistInfoCard(AppLocalizations l10n) {
     return FutureBuilder<_CombinedCardInfo>(
       future: _combinedInfoFuture,
@@ -422,7 +481,10 @@ class _AccountsPageState extends State<AccountsPage> {
               // 1. TMDB en premier (Plus important pour la config)
               _buildTmdbCard(),
 
-              // 2. Playlist Info
+              // 2. Guide des chaînes XMLTV
+              _buildXmltvCard(),
+
+              // 3. Playlist Info
               _playlistInfoCard(l10n),
 
               const Divider(height: 32),

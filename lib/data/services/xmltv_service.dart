@@ -89,13 +89,30 @@ class XmltvService {
         [];
   }
 
-  /// Fuzzy match : cherche une clé dont le début correspond.
+  /// Fuzzy match en deux passes.
+  /// Passe 1 : égalité alphanumérique stricte (ex : "tf1fr" == "tf1fr").
+  /// Passe 2 : startsWith sans suffixes qualité — "tf1fhd" → base "tf1" → préfixe de "tf1fr".
   static List<XmltvProgram>? _fuzzyMatch(String key) {
     if (_programs == null) return null;
     final short = key.replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+    // Passe 1 : égalité alphanumérique exacte
     for (final k in _programs!.keys) {
       if (_normalize(k).replaceAll(RegExp(r'[^a-z0-9]'), '') == short) {
         return _programs![k];
+      }
+    }
+
+    // Passe 2 : retire les suffixes qualité du tvgId, puis startsWith bidirectionnel
+    final base = short
+        .replaceAll(RegExp(r'(4k|uhd|fhd|hd|sd|bkp|backup|exclu[a-z]*)$'), '');
+    if (base.length >= 2) {
+      for (final k in _programs!.keys) {
+        final kShort = _normalize(k).replaceAll(RegExp(r'[^a-z0-9]'), '');
+        if (kShort.length >= 2 &&
+            (kShort.startsWith(base) || base.startsWith(kShort))) {
+          return _programs![k];
+        }
       }
     }
     return null;
