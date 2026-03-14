@@ -200,7 +200,7 @@ class _DetailsPageState extends State<DetailsPage> {
                             builder: (_) => PlayerPage(
                               path: widget.entry.url,
                               title: widget.entry.displayName,
-                              sourceType: VideoSourceType.networkWithCache,
+                              sourceType: VideoSourceType.network,
                             ),
                           )),
                           icon: const Icon(Icons.play_arrow),

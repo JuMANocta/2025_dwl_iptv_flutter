@@ -1028,7 +1028,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                   title: Text(l10n.actionSheetPlay),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(path: entry.url, title: entry.displayName, sourceType: VideoSourceType.networkWithCache)));
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(path: entry.url, title: entry.displayName, sourceType: VideoSourceType.network)));
                   },
                 ),
                 if (entry.type == M3uContentType.tv && entry.streamId != null)
@@ -1058,7 +1058,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
                               builder: (_) => PlayerPage(
                                 path: timeshiftUrl,
                                 title: replayProgram.title,
-                                sourceType: VideoSourceType.network,
+                                sourceType: VideoSourceType.networkReplay,
+                                replayStart: replayProgram.start,
+                                replayDuration: replayProgram.end.difference(replayProgram.start),
                               ),
                             ),
                           );
@@ -1197,7 +1199,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
                               builder: (_) => PlayerPage(
                                 path: timeshiftUrl,
                                 title: replayProgram.title,
-                                sourceType: VideoSourceType.network,
+                                sourceType: VideoSourceType.networkReplay,
+                                replayStart: replayProgram.start,
+                                replayDuration: replayProgram.end.difference(replayProgram.start),
                               ),
                             ),
                           );

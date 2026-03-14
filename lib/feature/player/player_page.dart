@@ -1,23 +1,40 @@
-import 'dart:io';
-import 'package:chewie/chewie.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:video_player/video_player.dart';
-import 'package:cached_video_player_plus/cached_video_player_plus.dart';
-import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+import 'package:screen_brightness/screen_brightness.dart';
+import 'player_controller.dart';
+import 'widgets/player_controls.dart';
+import 'widgets/player_gestures.dart';
+import 'widgets/player_replay_bar.dart';
 
-enum VideoSourceType { network, file, networkWithCache }
+enum VideoSourceType {
+  network,       // live / VOD réseau (et timeshift simple)
+  networkReplay, // timeshift avec barre replay + bouton "Retour au direct"
+  file,          // fichier local
+  // networkWithCache supprimé : media_kit gère le cache nativement
+}
 
 class PlayerPage extends StatefulWidget {
   final String path;
   final String title;
   final VideoSourceType sourceType;
+  /// Heure de début du replay — alimente la barre replay (optionnel).
+  final DateTime? replayStart;
+  /// Durée totale du replay — alimente la barre replay (optionnel).
+  final Duration? replayDuration;
+  /// Callback déclenché par le bouton "Retour au direct" dans la barre replay.
+  /// Par défaut : pop la page.
+  final VoidCallback? onReturnToLive;
 
   const PlayerPage({
     super.key,
     required this.path,
     required this.title,
     this.sourceType = VideoSourceType.network,
+    this.replayStart,
+    this.replayDuration,
+    this.onReturnToLive,
   });
 
   @override
@@ -25,158 +42,225 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> {
-  CachedVideoPlayerPlus? _cachedVideoPlayerPlus;
-  VideoPlayerController? _videoPlayerController;
-  ChewieController? _chewieController;
-  bool _isLoading = true;
+  late final AetherPlayerController _ctrl;
+
+  bool _controlsVisible = true;
+  Timer? _hideTimer;
+
   bool _hasError = false;
-  late String _errorMessage;
+  String _errorMessage = '';
+  int _retryCount = 0;
+  static const _maxRetries = 3;
+
+  // Luminosité courante (0.0–1.0), initialisée à 0.5 par défaut.
+  double _brightness = 0.5;
+  // Volume courant (0.0–100.0).
+  double _volume = 100.0;
 
   @override
   void initState() {
     super.initState();
-    // Force le paysage pendant la lecture.
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    initializePlayer();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    _ctrl = AetherPlayerController();
+    _listenErrors();
+    _openMedia();
+    _startHideTimer();
+    _initBrightness();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _errorMessage = AppLocalizations.of(context)!.playerGenericError;
-  }
-
-  Future<void> initializePlayer() async {
+  Future<void> _initBrightness() async {
     try {
-      switch (widget.sourceType) {
-        case VideoSourceType.network:
-          _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(widget.path));
-          // Pas d'await initialize() : Chewie (autoInitialize: true) gère l'init en arrière-plan.
-          // La page s'affiche immédiatement → le spinner Chewie apparaît pendant le chargement.
-          _attachErrorListener();
-          break;
-        case VideoSourceType.file:
-          _videoPlayerController = VideoPlayerController.file(File(widget.path));
-          await _videoPlayerController!.initialize();
-          break;
-        case VideoSourceType.networkWithCache:
-          _cachedVideoPlayerPlus = CachedVideoPlayerPlus.networkUrl(Uri.parse(widget.path));
-          await _cachedVideoPlayerPlus!.initialize();
-          _videoPlayerController = _cachedVideoPlayerPlus!.controller;
-          break;
+      _brightness = await ScreenBrightness().current;
+    } catch (_) {}
+  }
+
+  Future<void> _openMedia() async {
+    try {
+      if (widget.sourceType == VideoSourceType.file) {
+        await _ctrl.openFile(widget.path);
+      } else {
+        await _ctrl.open(widget.path);
       }
+    } catch (e) {
+      _handleError(e.toString());
+    }
+  }
 
-      _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController!,
-        autoPlay: true,
-        looping: false,
-        // aspectRatio non forcé : Chewie le détecte automatiquement une fois la vidéo prête.
-        materialProgressColors: ChewieProgressColors(
-          playedColor: Colors.greenAccent,
-          handleColor: Colors.greenAccent,
-          bufferedColor: Colors.grey,
-          backgroundColor: Colors.black45,
-        ),
-        placeholder: const Center(child: CircularProgressIndicator(color: Colors.white)),
-        autoInitialize: true,
-        allowedScreenSleep: false,
-        allowFullScreen: true,
-        fullScreenByDefault: true,
-        customControls: const CupertinoControls(
-          backgroundColor: Color.fromRGBO(41, 41, 41, 0.7),
-          iconColor: Colors.white,
-        ),
-      );
+  void _listenErrors() {
+    _ctrl.player.stream.error.listen((error) {
+      if (error.isNotEmpty && mounted) {
+        _handleError(error);
+      }
+    });
+  }
 
+  /// Reconnexion automatique (×3, délai 2s entre chaque tentative).
+  void _handleError(String error) {
+    if (_retryCount < _maxRetries) {
+      _retryCount++;
+      debugPrint(
+          '⚠️ PlayerPage: erreur stream — retry $_retryCount/$_maxRetries dans 2s\n$error');
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _openMedia();
+      });
+    } else {
+      debugPrint('❌ PlayerPage: échec définitif après $_maxRetries tentatives\n$error');
       if (mounted) {
         setState(() {
-          _isLoading = false;
-          _hasError = false;
-        });
-      }
-    } catch (error) {
-      debugPrint("Erreur Chewie/VideoPlayer: $error");
-      if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
-        setState(() {
-          _isLoading = false;
           _hasError = true;
-          _errorMessage = l10n.playerLoadingError(error.toString());
+          _errorMessage = error;
         });
       }
     }
   }
 
-  /// Écoute les erreurs ExoPlayer pour les streams network (init non-bloquante).
-  void _attachErrorListener() {
-    _videoPlayerController!.addListener(() {
-      if (_videoPlayerController!.value.hasError && mounted && !_hasError) {
-        final l10n = AppLocalizations.of(context)!;
-        setState(() {
-          _hasError = true;
-          _errorMessage = l10n.playerLoadingError(
-              _videoPlayerController!.value.errorDescription ?? '');
-        });
-      }
+  void _showControls() {
+    if (!mounted) return;
+    setState(() => _controlsVisible = true);
+    _startHideTimer();
+  }
+
+  void _startHideTimer() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _controlsVisible = false);
     });
+  }
+
+  void _handleSeek(Duration delta) {
+    final pos = _ctrl.player.state.position + delta;
+    _ctrl.player.seek(pos.isNegative ? Duration.zero : pos);
+    _showControls();
+  }
+
+  void _handleVolumeChange(double delta) {
+    _volume = (_volume + delta).clamp(0.0, 100.0);
+    _ctrl.player.setVolume(_volume);
+  }
+
+  void _handleBrightnessChange(double delta) {
+    _brightness = (_brightness + delta).clamp(0.0, 1.0);
+    // fire-and-forget : dispose() restore de toute façon la luminosité d'origine.
+    ScreenBrightness().setScreenBrightness(_brightness).catchError((_) {});
+  }
+
+  void _retry() {
+    setState(() {
+      _hasError = false;
+      _retryCount = 0;
+    });
+    _openMedia();
   }
 
   @override
   void dispose() {
-    _videoPlayerController?.dispose();
-    _chewieController?.dispose();
-    _cachedVideoPlayerPlus?.dispose();
-    // Restaure l'orientation par défaut (portrait) en quittant le player.
+    _hideTimer?.cancel();
+    _ctrl.dispose();
+    ScreenBrightness().resetScreenBrightness().catchError((_) {});
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
+    if (_hasError) return _buildErrorScreen();
+
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(widget.title, style: const TextStyle(fontSize: 16)),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        actions: const [],
-      ),
-      body: Center(
-        child:
-            _isLoading
-            ? _buildLoading(l10n)
-            : _hasError
-            ? _buildError()
-            : Chewie(controller: _chewieController!),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. Rendu vidéo plein écran.
+          Video(controller: _ctrl.videoController),
+
+          // 2. Couche gesture (transparente, capte tout sauf les contrôles).
+          PlayerGestures(
+            player: _ctrl.player,
+            onTap: _showControls,
+            onSeek: _handleSeek,
+            onVolumeChange: _handleVolumeChange,
+            onBrightnessChange: _handleBrightnessChange,
+          ),
+
+          // 3. Overlay contrôles.
+          PlayerControls(
+            player: _ctrl.player,
+            title: widget.title,
+            visible: _controlsVisible,
+            onBack: () => Navigator.of(context).pop(),
+            onInteraction: _showControls,
+          ),
+
+          // 4. Barre replay (uniquement en mode networkReplay).
+          if (widget.sourceType == VideoSourceType.networkReplay)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 90,
+              child: PlayerReplayBar(
+                player: _ctrl.player,
+                replayStart: widget.replayStart,
+                replayDuration: widget.replayDuration,
+                visible: _controlsVisible,
+                onReturnToLive:
+                    widget.onReturnToLive ?? () => Navigator.of(context).pop(),
+              ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _buildLoading(AppLocalizations l10n) => Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      const CircularProgressIndicator(color: Colors.white),
-      const SizedBox(height: 16),
-      Text(l10n.playerLoading, style: const TextStyle(color: Colors.white))
-    ],
-  );
-
-  Widget _buildError() => Padding(
-    padding: const EdgeInsets.all(24.0),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.error_outline, color: Colors.red, size: 48),
-        const SizedBox(height: 16),
-        Text(_errorMessage, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
-      ],
-    ),
-  );
+  Widget _buildErrorScreen() {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 56),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage,
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _retry,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Réessayer'),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Quitter',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

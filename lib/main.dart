@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
@@ -17,6 +18,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   // Séquence d'initialisation critique avant le lancement de l'UI.
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   await MediaStore.ensureInitialized();
   MediaStore.appFolder = 'AetherStream';
   await StreamAccountService.migrateFromLegacyIfNeeded();
