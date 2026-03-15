@@ -28,10 +28,11 @@ class _DetailsPageState extends State<DetailsPage> {
 
   Future<void> _loadData() async {
     final service = TmdbService.instance;
-    // Utilise rawTitle pour que TmdbService puisse extraire l'année
     final data = await service.getFullDetails(
-      widget.entry.rawTitle,
+      widget.entry.displayName,
       isTv: widget.entry.isSerie,
+      explicitYear: widget.entry.title.year,
+      groupTitle: widget.entry.groupTitle,
     );
 
     if (mounted) {
@@ -295,6 +296,34 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 24),
                   ],
 
+                  // PLATEFORMES DE STREAMING
+                  Builder(builder: (context) {
+                    final platforms = _parsePlatforms(widget.entry.groupTitle);
+                    if (platforms.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Disponible sur", style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white70)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: platforms.map((p) {
+                            final color = _platformColor(p);
+                            return Chip(
+                              label: Text(p),
+                              backgroundColor: color.withAlpha(40),
+                              labelStyle: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
+                              side: BorderSide(color: color.withAlpha(100)),
+                              padding: EdgeInsets.zero,
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    );
+                  }),
+
                   // PRODUCTION & COMPAGNIES
                   if (companies != null && companies.isNotEmpty) ...[
                     const Divider(color: Colors.white10),
@@ -319,6 +348,52 @@ class _DetailsPageState extends State<DetailsPage> {
         ],
       ),
     );
+  }
+
+  /// Extrait la liste des plateformes depuis le group-title M3U.
+  /// Ex: "ACTION ( NETFLIX| PRIME | HBO | APPLE TV+ )" → ["Netflix", "Prime Video", "HBO", "Apple TV+"]
+  static List<String> _parsePlatforms(String? groupTitle) {
+    if (groupTitle == null || groupTitle.isEmpty) return [];
+    final match = RegExp(r'\(([^)]+)\)').firstMatch(groupTitle);
+    if (match == null) return [];
+    return match.group(1)!
+        .split('|')
+        .map((s) => _normalizePlatform(s.trim()))
+        .where((s) => s.isNotEmpty)
+        .toSet() // dédoublonne
+        .toList();
+  }
+
+  static String _normalizePlatform(String raw) {
+    final r = raw.toUpperCase();
+    if (r.contains('NETFLIX')) return 'Netflix';
+    if (r.contains('PRIME')) return 'Prime Video';
+    if (r.contains('HBO')) return 'HBO Max';
+    if (r.contains('APPLE')) return 'Apple TV+';
+    if (r.contains('STARZPLAY') || r.contains('STARZ')) return 'Starz';
+    if (r.contains('PARAMOUNT')) return 'Paramount+';
+    if (r.contains('DISNEY')) return 'Disney+';
+    if (r.contains('PEACOCK')) return 'Peacock';
+    if (r.contains('CANAL')) return 'Canal+';
+    if (r.contains('DAZN')) return 'DAZN';
+    if (r.contains('HULU')) return 'Hulu';
+    if (r.contains('RAKUTEN')) return 'Rakuten TV';
+    return ''; // entrée non reconnue → filtrée
+  }
+
+  static Color _platformColor(String platform) {
+    switch (platform) {
+      case 'Netflix':      return const Color(0xFFE50914);
+      case 'Prime Video':  return const Color(0xFF00A8E1);
+      case 'HBO Max':      return const Color(0xFF5B2D8E);
+      case 'Apple TV+':    return const Color(0xFF555555);
+      case 'Starz':        return const Color(0xFF00B4D8);
+      case 'Paramount+':   return const Color(0xFF0064FF);
+      case 'Disney+':      return const Color(0xFF0063E5);
+      case 'Canal+':       return const Color(0xFF000000);
+      case 'Peacock':      return const Color(0xFF000000);
+      default:             return Colors.grey.shade700;
+    }
   }
 
   // Petit widget utilitaire pour les tags de métadonnées

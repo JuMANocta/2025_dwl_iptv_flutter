@@ -83,7 +83,7 @@ class _LaunchDecider extends StatefulWidget {
 }
 
 class _LaunchDeciderState extends State<_LaunchDecider> {
-  late Future<bool> _initFuture;
+  late Future<String?> _initFuture;
 
   @override
   void initState() {
@@ -91,14 +91,13 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     _initFuture = _initializeApp();
   }
 
-  /// Valide la configuration initiale (comptes + playlist).
-  Future<bool> _initializeApp() async {
+  /// Valide la configuration initiale et retourne le chemin de la playlist (null = pas de compte).
+  Future<String?> _initializeApp() async {
     final accounts = await StreamAccountService.listAccounts();
-    if (accounts.isEmpty) return false;
+    if (accounts.isEmpty) return null;
 
     // Propage l'erreur au FutureBuilder si la playlist échoue.
-    await PlaylistService.getOrDownloadPlaylist();
-    return true;
+    return PlaylistService.getOrDownloadPlaylist();
   }
 
   /// Permet de relancer la validation, typiquement après une action de l'utilisateur.
@@ -118,11 +117,35 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   Widget build(BuildContext context) {
     // Le FutureBuilder gère nativement les différents états (chargement, erreur, succès)
     // de notre logique d'initialisation asynchrone.
-    return FutureBuilder<bool>(
+    return FutureBuilder<String?>(
       future: _initFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(), SizedBox(height: 16), Text("Initialisation...")])));
+          return Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'AetherStream',
+                      style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                    ),
+                    const SizedBox(height: 32),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: const LinearProgressIndicator(minHeight: 3, backgroundColor: Colors.white12),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Vérification du compte…', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                  ],
+                ),
+              ),
+            ),
+          );
         }
         if (snapshot.hasError) {
           return Scaffold(body: Center(child: Padding(padding: const EdgeInsets.all(24.0), child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -137,9 +160,9 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
             TextButton(onPressed: _recheckAfterSettings, child: const Text("Vérifier les comptes"))
           ]))));
         }
-        final hasAccountAndPlaylistIsReady = snapshot.data ?? false;
-        if (hasAccountAndPlaylistIsReady) {
-          return const RecherchePage();
+        final playlistPath = snapshot.data;
+        if (playlistPath != null) {
+          return RecherchePage(initialPlaylistPath: playlistPath);
         }
         return Scaffold(appBar: AppBar(title: const Text('AetherStream')), body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.settings, size: 64),

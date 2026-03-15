@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0+5-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.2.0+8-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -41,6 +41,7 @@
 - Cache playlist 24h (1 fichier par compte)
 - Recherche et filtres en temps réel — Films / Séries / Chaînes TV
 - Regroupement automatique des chaînes par qualité (4K / FHD / HD / SD)
+- Séparation des homonymes par catégorie `group-title` (ex: anime vs live-action) avec badge visuel
 
 ### ⏪ Replay / EPG
 - Timeshift Xtream Codes avec picker manuel (jour + heure + durée + qualité FHD/HD/SD)
@@ -51,6 +52,8 @@
 ### 🎬 TMDB
 - Enrichissement automatique : affiches, synopsis, casting, bande-annonce YouTube
 - Recherche intelligente en 4 passes (type, année, langue...)
+- Désambiguïsation par année et genre `group-title` (évite les confusions films/séries homonymes)
+- Fiche épisode : still TMDB, titre épisode, note ★, date de diffusion, synopsis
 - Fiche détail film/série avec crédits complets
 
 ### ⬇️ Téléchargements

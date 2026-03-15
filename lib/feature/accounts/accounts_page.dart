@@ -148,16 +148,19 @@ class _AccountsPageState extends State<AccountsPage> {
       if (!await f.exists()) return null;
 
       final stat = await f.stat();
-      int count = 0;
+      int filmCount = 0, seriesCount = 0, tvCount = 0;
 
       // Lecture ligne par ligne (faible empreinte mémoire)
       await f.openRead()
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .forEach((line) {
-        final s = line.trim(); // Pas de toLowerCase ici pour la perf, juste check start
+        final s = line.trim();
         if (s.startsWith('http://') || s.startsWith('https://')) {
-          count++;
+          final lower = s.toLowerCase();
+          if (lower.contains('/movie/')) filmCount++;
+          else if (lower.contains('/series/')) seriesCount++;
+          else tvCount++;
         }
       });
 
@@ -165,7 +168,9 @@ class _AccountsPageState extends State<AccountsPage> {
         path: path,
         size: stat.size,
         modified: stat.modified,
-        count: count,
+        filmCount: filmCount,
+        seriesCount: seriesCount,
+        tvCount: tvCount,
       );
     } catch (_) {
       return null;
@@ -359,14 +364,33 @@ class _AccountsPageState extends State<AccountsPage> {
               children: [
                 // --- TITRE ---
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(l10n.playlistInfoTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    if (playlistInfo != null)
-                      Text("${playlistInfo.count} entrées", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                    const Spacer(),
+                    if (playlistInfo != null) ...[
+                      const Icon(Icons.sd_storage_outlined, size: 14, color: Colors.grey),
+                      const SizedBox(width: 3),
+                      Text(_formatBytes(playlistInfo.size), style: Theme.of(context).textTheme.bodySmall),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                      const SizedBox(width: 3),
+                      Text(_formatDate(playlistInfo.modified), style: Theme.of(context).textTheme.bodySmall),
+                    ],
                   ],
                 ),
                 const Divider(),
+                if (playlistInfo != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _StatChip(Icons.movie_outlined, 'Films', playlistInfo.filmCount),
+                        _StatChip(Icons.tv_outlined, 'Séries', playlistInfo.seriesCount),
+                        _StatChip(Icons.live_tv_outlined, 'Chaînes', playlistInfo.tvCount),
+                      ],
+                    ),
+                  ),
 
                 // --- INFOS DU COMPTE (si disponibles) ---
                 if (account != null && accountInfo != null) ...[
@@ -417,18 +441,6 @@ class _AccountsPageState extends State<AccountsPage> {
                     ),
                   ),
                 ] else ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.sd_storage_outlined, size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(_formatBytes(playlistInfo.size), style: Theme.of(context).textTheme.bodySmall),
-                      const SizedBox(width: 16),
-                      const Icon(Icons.access_time, size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(_formatDate(playlistInfo.modified), style: Theme.of(context).textTheme.bodySmall),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -595,9 +607,36 @@ class _PlaylistInfo {
   final String path;
   final int size;
   final DateTime modified;
-  final int count;
+  final int filmCount;
+  final int seriesCount;
+  final int tvCount;
 
-  _PlaylistInfo({required this.path, required this.size, required this.modified, required this.count});
+  int get count => filmCount + seriesCount + tvCount;
+
+  _PlaylistInfo({required this.path, required this.size, required this.modified,
+    required this.filmCount, required this.seriesCount, required this.tvCount});
+}
+
+class _StatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final int count;
+  const _StatChip(this.icon, this.label, this.count);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, size: 20, color: Colors.blue.shade300),
+        const SizedBox(height: 4),
+        Text(
+          count.toString(),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+      ],
+    );
+  }
 }
 
 class _CombinedCardInfo {

@@ -107,8 +107,53 @@ class TmdbService {
     return true;
   }
 
-  /// 🧠 SMART SEARCH V3 : Langue + Type + ANNÉE
-  Future<Media?> getFullDetails(String rawQuery, {required bool isTv}) async {
+  /// 🎭 Mappe les mots-clés du group-title M3U vers des genre_ids TMDB.
+  /// Utilisé pour désambiguïser les homonymes sans année (ex: anime vs live-action).
+  static List<int> _groupTitleToGenreHints(String groupTitle) {
+    final g = groupTitle.toUpperCase();
+    final hints = <int>[];
+    // Animation / Manga — id 16 (commun films ET séries TMDB)
+    if (g.contains('MANGA') || g.contains('ANIME') || g.contains('ANIMÉ') ||
+        g.contains('ANIMAT') || g.contains('CARTOON')) {
+      hints.add(16);
+    }
+    // Documentaire
+    if (g.contains('DOCU')) hints.add(99);
+    // Comédie
+    if (g.contains('COMÉD') || g.contains('COMED') || g.contains('HUMOUR')) hints.add(35);
+    // Horreur
+    if (g.contains('HORREUR') || g.contains('HORROR') || g.contains('ÉPOUVANTE')) hints.add(27);
+    // Action (28 = film, 10759 = TV)
+    if (g.contains('ACTION')) hints.addAll([28, 10759]);
+    // Science-fiction (878 = film, 10765 = TV)
+    if (g.contains('SCI-FI') || g.contains('SCIENCE-FI') || g.contains('SF ') ||
+        g.contains(' SF') || g.contains('SCIFI')) {
+      hints.addAll([878, 10765]);
+    }
+    // Fantastique (14 = film, 10765 = TV)
+    if (g.contains('FANTAST') || g.contains('FANTASY')) hints.addAll([14, 10765]);
+    // Famille / Enfants
+    if (g.contains('FAMIL') || g.contains('ENFANT') || g.contains('KIDS')) {
+      hints.addAll([10751, 10762]);
+    }
+    // Romance
+    if (g.contains('ROMAN') || g.contains('ROMANCE')) hints.add(10749);
+    // Thriller
+    if (g.contains('THRILLER')) hints.add(53);
+    // Drame
+    if (g.contains('DRAME') || g.contains('DRAMA')) hints.add(18);
+    // Western
+    if (g.contains('WESTERN')) hints.add(37);
+    // Crime
+    if (g.contains('CRIME') || g.contains('POLICIER') || g.contains('POLAR')) hints.add(80);
+    return hints;
+  }
+
+  /// 🧠 SMART SEARCH V3 : Langue + Type + ANNÉE + GENRE
+  /// [explicitYear] : année déjà extraite par TitleMetadata (prioritaire sur l'extraction depuis rawQuery).
+  /// [groupTitle]   : group-title M3U → converti en hints de genre pour désambiguïser les homonymes.
+  /// Permet de désambiguïser les homonymes (ex: One Piece anime 1999 vs live-action 2023).
+  Future<Media?> getFullDetails(String rawQuery, {required bool isTv, String? explicitYear, String? groupTitle}) async {
     if (!await _init()) return null;
 
     // 1. Détections Préalables
@@ -116,11 +161,16 @@ class TmdbService {
     final String searchLanguage = appearsEnglish ? 'en-US' : 'fr-FR';
 
     // 📅 Extraction de l'année (Crucial pour les homonymes)
-    final String? year = _extractYear(rawQuery);
+    // L'année explicite (issue de TitleMetadata) est prioritaire — elle est déjà proprement parsée.
+    // Fallback : extraction depuis rawQuery (cas où getFullDetails est appelé sans contexte).
+    final String? year = explicitYear ?? _extractYear(rawQuery);
 
     // 2. Nettoyage
     final cleanQuery = _cleanQuery(rawQuery);
-    debugPrint("🔍 Scan TMDB | Titre: '$cleanQuery' | Année: ${year ?? 'N/A'} | Lang: $searchLanguage");
+
+    // 🎭 Hints de genre issus du group-title (pour désambiguïser sans année)
+    final List<int> genreHints = groupTitle != null ? _groupTitleToGenreHints(groupTitle) : [];
+    debugPrint("🔍 Scan TMDB | Titre: '$cleanQuery' | Année: ${year ?? 'N/A'} | Lang: $searchLanguage | Genre hints: $genreHints");
 
     try {
       Map<String, dynamic>? result;
@@ -129,25 +179,25 @@ class TmdbService {
 
       // Tente 1: Strict (Année + Type)
       if (year != null) {
-        result = await _performSearch(cleanQuery, isTv: isTv, language: searchLanguage, year: year);
+        result = await _performSearch(cleanQuery, isTv: isTv, language: searchLanguage, year: year, genreHints: genreHints);
       }
 
-      // Tente 2: Souple (Type seul)
+      // Tente 2: Souple (Type seul, genre hints actifs)
       if (result == null) {
         if (year != null) debugPrint("⚠️ Pas de match avec l'année $year. Tentative sans année...");
-        result = await _performSearch(cleanQuery, isTv: isTv, language: searchLanguage);
+        result = await _performSearch(cleanQuery, isTv: isTv, language: searchLanguage, genreHints: genreHints);
       }
 
       // Tente 3: Fallback Type
       if (result == null) {
         debugPrint("! Bascule de type (TV <-> Film)...");
         if (year != null) {
-          result = await _performSearch(cleanQuery, isTv: !isTv, language: searchLanguage, year: year);
+          result = await _performSearch(cleanQuery, isTv: !isTv, language: searchLanguage, year: year, genreHints: genreHints);
         }
-        result ??= await _performSearch(cleanQuery, isTv: !isTv, language: searchLanguage);
+        result ??= await _performSearch(cleanQuery, isTv: !isTv, language: searchLanguage, genreHints: genreHints);
       }
 
-      // Tente 4: Fallback Langue Ultime
+      // Tente 4: Fallback Langue Ultime (sans genre hints — dernier recours)
       if (result == null && appearsEnglish) {
         debugPrint("⚠️ Échec VO. Tentative repli FR...");
         result = await _performSearch(cleanQuery, isTv: isTv, language: 'fr-FR');
@@ -227,13 +277,17 @@ class TmdbService {
   }
 
   /// Détails d'un épisode précis : recherche la série, puis récupère l'épisode.
+  /// [groupTitle] : group-title M3U transmis pour désambiguïser la série (ex: "MANGAS" → genre Animation).
   Future<Map<String, dynamic>?> getEpisodeDetails(
     String showQuery,
     int seasonNumber,
     int episodeNumber, {
     String? yearFilter,
+    String? groupTitle,
   }) async {
     if (!await _init()) return null;
+
+    final List<int> genreHints = groupTitle != null ? _groupTitleToGenreHints(groupTitle) : [];
 
     try {
       final searchResult = await _performSearch(
@@ -241,6 +295,7 @@ class TmdbService {
         isTv: true,
         language: 'fr-FR',
         year: yearFilter,
+        genreHints: genreHints,
       );
       if (searchResult == null) return null;
       final id = searchResult['id'] as int;
@@ -262,37 +317,52 @@ class TmdbService {
     return null;
   }
 
-  /// Recherche atomique avec paramètres optionnels
+  /// Recherche atomique avec paramètres optionnels.
+  /// [genreHints] : liste de genre_ids TMDB préférés — si non vide, on regarde jusqu'à 5 résultats
+  ///               et on préfère le premier dont les genres matchent. Fallback sur results[0].
   Future<Map<String, dynamic>?> _performSearch(String query, {
     required bool isTv,
     required String language,
-    String? year // 📅 Nouveau paramètre
+    String? year,
+    List<int> genreHints = const [],
   }) async {
     try {
       final endpoint = isTv ? '/search/tv' : '/search/movie';
 
-      // Construction des paramètres
       final params = <String, dynamic>{
         'query': query,
         'language': language,
       };
 
-      // Ajout de l'année si présente
       if (year != null) {
         if (isTv) {
-          // Pour les séries, c'est la date de première diffusion
           params['first_air_date_year'] = year;
         } else {
-          // Pour les films
-          params['year'] = year; // Filtre strict
-          // params['primary_release_year'] = year; // Alternative si 'year' est trop strict
+          params['year'] = year;
         }
       }
 
       final response = await _dio!.get(endpoint, queryParameters: params);
 
-      if (response.statusCode == 200 && response.data['results'].isNotEmpty) {
-        final item = response.data['results'][0];
+      if (response.statusCode == 200) {
+        final results = response.data['results'] as List?;
+        if (results == null || results.isEmpty) return null;
+
+        Map<String, dynamic>? best;
+
+        // Désambiguïsation par genre : on parcourt jusqu'à 5 résultats
+        if (genreHints.isNotEmpty) {
+          for (final r in results.take(5)) {
+            final genres = ((r as Map)['genre_ids'] as List?)?.cast<int>() ?? [];
+            if (genres.any(genreHints.contains)) {
+              best = r.cast<String, dynamic>();
+              debugPrint("🎭 Genre match: '${r['name'] ?? r['title']}' genres=$genres hints=$genreHints");
+              break;
+            }
+          }
+        }
+
+        final item = (best ?? results[0]) as Map<String, dynamic>;
         item['media_type'] = isTv ? 'tv' : 'movie';
         return item;
       }

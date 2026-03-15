@@ -26,7 +26,9 @@ import 'package:aetherStream/core/themes/colors.dart';
 //############################################################################
 
 class RecherchePage extends StatefulWidget {
-  const RecherchePage({super.key});
+  /// Chemin de playlist pré-chargé par _LaunchDecider — évite un double appel à getOrDownloadPlaylist().
+  final String? initialPlaylistPath;
+  const RecherchePage({super.key, this.initialPlaylistPath});
 
   @override
   State<RecherchePage> createState() => _RecherchePageState();
@@ -36,6 +38,7 @@ class _RecherchePageState extends State<RecherchePage> {
   late Future<String> _playlistPathFuture;
   String? _currentAccountLabel;
   Key _rechercheM3UKey = UniqueKey(); // Force le reload propre du widget enfant
+  bool _initialPathConsumed = false;
 
   @override
   void initState() {
@@ -47,6 +50,10 @@ class _RecherchePageState extends State<RecherchePage> {
     setState(() {
       if (forceDownload) {
         _playlistPathFuture = PlaylistService.downloadCurrentM3U();
+      } else if (!_initialPathConsumed && widget.initialPlaylistPath != null) {
+        // Chemin déjà résolu par _LaunchDecider → pas de second appel réseau
+        _initialPathConsumed = true;
+        _playlistPathFuture = Future.value(widget.initialPlaylistPath);
       } else {
         _playlistPathFuture = PlaylistService.getOrDownloadPlaylist();
       }
@@ -170,77 +177,87 @@ class TitleMetadata {
     this.versionLabel,
   });
 
+  // Patterns compilés une seule fois pour toute la durée de l'app.
+  // CRITIQUE : TitleMetadata.parse() est appelée pour chaque entrée M3U.
+  // Recréer un RegExp() à chaque appel = recompilation → ~200 000 compilations pour 10 000 entrées.
+  static final _reSeason       = RegExp(r's\s*(\d{1,2})\s*e\s*(\d{1,2})', caseSensitive: false);
+  static final _reYear         = RegExp(r'\b(19|20)\d{2}\b');
+  static final _reQ4K          = RegExp(r'\b(4k|uhd|2160p)\b');
+  static final _reQFhd         = RegExp(r'\b(fhd|1080p)\b');
+  static final _reQHd          = RegExp(r'\b(hd|720p)\b');
+  static final _reQSd          = RegExp(r'\b(sd|480p)\b');
+  static final _reLangMulti    = RegExp(r'\bmulti\b');
+  static final _reLangVostfr   = RegExp(r'\bvostfr\b');
+  static final _reLangVf       = RegExp(r'\b(vf|vff|truefrench|french)\b');
+  static final _rePrefix       = RegExp(r'^(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])\s*', caseSensitive: false);
+  static final _reQualityTags  = RegExp(r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|H\.265|X265|AAC|DTS|HDR|DV|HLG)\b', caseSensitive: false);
+  static final _reLangTags     = RegExp(r'\b(MULTI|VOSTFR|VOST|VF|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH)\b', caseSensitive: false);
+  static final _reFrEn         = RegExp(r'[\(\[]\s*(FR|EN)\s*[\)\]]', caseSensitive: false);
+  static final _reYearClean    = RegExp(r'\(?(19|20)\d{2}\)?');
+  static final _rePunct        = RegExp(r'[\(\)\[\]\.\-_/]');
+  static final _reSeasonClean  = RegExp(r'S\s*\d{1,2}\s*E\s*\d{1,2}', caseSensitive: false);
+  static final _reSpaces       = RegExp(r'\s+');
+  static final _reSeasonFb     = RegExp(r'S\s*\d{1,2}', caseSensitive: false);
+  static final _reLabelPrefix  = RegExp(r'^(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])', caseSensitive: false);
+  static final _reAllTags      = RegExp(r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|X265|HDR|DV|HLG|MULTI|VOSTFR|VOST|VF|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH)\b', caseSensitive: false);
+  static final _reTrimStart    = RegExp(r'^[ \t\-_.\(\)\[\]]+');
+  static final _reTrimEnd      = RegExp(r'[ \t\-_.\(\)\[\]]+$');
+
   factory TitleMetadata.parse(String rawTitle) {
     final lower = rawTitle.toLowerCase();
 
     // Saison / Épisode
-    int? seasonNumber;
-    int? episodeNumber;
-      final seasonMatch = RegExp(r's\s*(\d{1,2})\s*e\s*(\d{1,2})', caseSensitive: false).firstMatch(rawTitle);
-    if (seasonMatch != null) {
-      seasonNumber = int.tryParse(seasonMatch.group(1) ?? '');
-      episodeNumber = int.tryParse(seasonMatch.group(2) ?? '');
-    }
+    final seasonMatch = _reSeason.firstMatch(rawTitle);
+    final seasonNumber  = seasonMatch != null ? int.tryParse(seasonMatch.group(1) ?? '') : null;
+    final episodeNumber = seasonMatch != null ? int.tryParse(seasonMatch.group(2) ?? '') : null;
 
     // Année
-    final yearMatch = RegExp(r'\b(19|20)\d{2}\b').firstMatch(rawTitle);
-    final year = yearMatch?.group(0);
+    final year = _reYear.firstMatch(rawTitle)?.group(0);
 
-    // Qualité — ordre du plus précis au plus générique.
-    // Utilise \b (word boundary) pour éviter les faux positifs :
-    // "fhd".contains("hd") = true → sans \b, HD mangerait FHD si l'ordre était inversé.
+    // Qualité — ordre du plus précis au plus générique
     String? quality;
-    if (RegExp(r'\b(4k|uhd|2160p)\b').hasMatch(lower))        { quality = '4K'; }
-    else if (RegExp(r'\b(fhd|1080p)\b').hasMatch(lower))      { quality = 'FHD'; }
-    else if (RegExp(r'\b(hd|720p)\b').hasMatch(lower))        { quality = 'HD'; }
-    else if (RegExp(r'\b(sd|480p)\b').hasMatch(lower))        { quality = 'SD'; }
+    if (_reQ4K.hasMatch(lower))       { quality = '4K'; }
+    else if (_reQFhd.hasMatch(lower)) { quality = 'FHD'; }
+    else if (_reQHd.hasMatch(lower))  { quality = 'HD'; }
+    else if (_reQSd.hasMatch(lower))  { quality = 'SD'; }
 
-    // Langues — word boundaries pour éviter les faux positifs
+    // Langues
     final langs = <String>[];
-    if (RegExp(r'\bmulti\b').hasMatch(lower)) langs.add('MULTI');
-    if (RegExp(r'\bvostfr\b').hasMatch(lower)) langs.add('VOSTFR');
-    if (RegExp(r'\b(vf|vff|truefrench|french)\b').hasMatch(lower)) langs.add('VF');
+    if (_reLangMulti.hasMatch(lower))  langs.add('MULTI');
+    if (_reLangVostfr.hasMatch(lower)) langs.add('VOSTFR');
+    if (_reLangVf.hasMatch(lower))     langs.add('VF');
 
     // Nettoyage du titre
     String base = rawTitle;
-    base = base.replaceAll(RegExp(r'^(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])\s*', caseSensitive: false), '');
+    base = base.replaceAll(_rePrefix, '');
     if (seasonMatch != null && seasonMatch.start <= base.length) {
       base = base.substring(0, seasonMatch.start).trim();
     }
-    const qualityTags = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|H\.265|X265|AAC|DTS|HDR|DV|HLG)\b';
-    base = base.replaceAll(RegExp(qualityTags, caseSensitive: false), '');
-    // Codes langue sans ambiguïté : word boundary suffisant, ne sont jamais des mots dans un titre
-    const safeLangTags = r'\b(MULTI|VOSTFR|VOST|VF|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH)\b';
-    base = base.replaceAll(RegExp(safeLangTags, caseSensitive: false), '');
-    // FR et EN sont ambigus : "En vacances", "Fr..." peuvent être dans un titre.
-    // On les retire UNIQUEMENT quand ils sont encadrés par () ou [] comme dans "(FR)" ou "[EN]".
-    base = base.replaceAll(RegExp(r'[\(\[]\s*(FR|EN)\s*[\)\]]', caseSensitive: false), ' ');
-    base = base.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
-    base = base.replaceAll(RegExp(r'[\(\)\[\]\.\-_/]'), ' ');
-    // Supprime toute marque Sxx Exx restante (avec ou sans espaces)
-    base = base.replaceAll(RegExp(r"S\s*\d{1,2}\s*E\s*\d{1,2}", caseSensitive: false), ' ');
-    base = base.replaceAll(RegExp(r'\s+'), ' ').trim();
+    base = base.replaceAll(_reQualityTags, '');
+    base = base.replaceAll(_reLangTags, '');
+    base = base.replaceAll(_reFrEn, ' ');
+    base = base.replaceAll(_reYearClean, '');
+    base = base.replaceAll(_rePunct, ' ');
+    base = base.replaceAll(_reSeasonClean, ' ');
+    base = base.replaceAll(_reSpaces, ' ').trim();
     if (base.length < 2) {
-      // Fallback : on découpe sur le motif saison même s'il est écrit avec espaces
-      base = rawTitle.split(RegExp(r"S\\s*\\d{1,2}", caseSensitive: false)).first;
+      base = rawTitle.split(_reSeasonFb).first;
     }
-    if (base.isEmpty) {
-      base = rawTitle.trim();
-    }
+    if (base.isEmpty) base = rawTitle.trim();
 
     // Version label (ce qui reste après nettoyage pour distinguer les variantes)
+    // Note : RegExp.escape(base) est dynamique → ne peut pas être mis en static final
     String? versionLabel;
     if (base.isNotEmpty) {
       String label = rawTitle;
       label = label.replaceAll(RegExp(RegExp.escape(base), caseSensitive: false), '');
-      label = label.replaceAll(RegExp(r'(\|[A-Z0-9\s]+\||\w{2,}\s*[:-])', caseSensitive: false), '');
-      label = label.replaceAll(RegExp(r'\(?(19|20)\d{2}\)?'), '');
-      const tagsToRemove = r'\b(4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|HEVC|H265|X265|HDR|DV|HLG|MULTI|VOSTFR|VOST|VF|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH)\b';
-      label = label.replaceAll(RegExp(tagsToRemove, caseSensitive: false), '');
-      label = label.replaceAll(RegExp(r'[\(\[]\s*(FR|EN)\s*[\)\]]', caseSensitive: false), ' ');
-      label = label.replaceAll(RegExp(r'^[ \t\-_.\(\)\[\]]+'), '');
-      label = label.replaceAll(RegExp(r'[ \t\-_.\(\)\[\]]+$'), '');
-      label = label.trim().replaceAll(RegExp(r'\s+'), ' ');
+      label = label.replaceAll(_reLabelPrefix, '');
+      label = label.replaceAll(_reYearClean, '');
+      label = label.replaceAll(_reAllTags, '');
+      label = label.replaceAll(_reFrEn, ' ');
+      label = label.replaceAll(_reTrimStart, '');
+      label = label.replaceAll(_reTrimEnd, '');
+      label = label.trim().replaceAll(_reSpaces, ' ');
       if (label.isNotEmpty) versionLabel = label;
     }
 
@@ -262,11 +279,11 @@ class M3uEntry {
   final M3uContentType type;
   final TitleMetadata title;
   final String? logoUrl;
-  final int? streamId;    // stream_id extrait de l'URL (utile pour EPG/replay)
-  final String? tvgId;    // tvg-id depuis #EXTINF (pour matching EPG/XMLTV)
+  final int? streamId;       // stream_id extrait de l'URL (utile pour EPG/replay)
+  final String? tvgId;       // tvg-id depuis #EXTINF (pour matching EPG/XMLTV)
   final int? catchupDays;    // Nombre de jours de replay (null = non supporté)
   final String? catchupSource; // Template URL catchup (ex: "?utc={utc}&lutc={lutc}" Flussonic)
-
+  final String? groupTitle;  // group-title depuis #EXTINF (ex: "MANGAS", "ANIMATION | FAMILIALE | ENFANTS")
   const M3uEntry({
     required this.url,
     required this.type,
@@ -276,6 +293,7 @@ class M3uEntry {
     this.tvgId,
     this.catchupDays,
     this.catchupSource,
+    this.groupTitle,
   });
 
   /// Vrai si le stream supporte le catchup/replay selon les métadonnées M3U.
@@ -316,6 +334,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   List<dynamic> _flatList = [];
   bool _isProcessing = true;
+  double _loadingProgress = 0.0;
   String? _errorMessage;
 
   @override
@@ -346,55 +365,69 @@ class _RechercheM3UState extends State<RechercheM3U> {
   Future<void> _processFileStream() async {
     final file = File(widget.filePath);
     if (!await file.exists()) {
-      if (mounted) setState(() { _isProcessing = false; _errorMessage = "Fichier introuvable"; });
+      if (mounted) setState(() { _isProcessing = false; _errorMessage = 'Fichier introuvable'; });
       return;
     }
-
     try {
-      // Lecture encodage-safe : tente UTF-8, fallback Latin-1 (ISO-8859-1).
-      // Certains providers IPTV encodent leurs playlists en Latin-1 (serveurs anciens).
       final bytes = await file.readAsBytes();
-      String fileContent;
+      String content;
       try {
-        fileContent = utf8.decode(bytes);
+        content = utf8.decode(bytes);
         debugPrint('✅ M3U: encodage UTF-8 détecté');
       } catch (_) {
-        fileContent = latin1.decode(bytes);
+        content = latin1.decode(bytes);
         debugPrint('⚠️ M3U: fallback Latin-1 (fichier non-UTF-8)');
       }
 
-      String? pendingMetadata;
-      final regExpSerie = RegExp(r"S\s*(\d{1,2})\s*E\s*(\d{1,2})", caseSensitive: false);
-      final regExpLogo = RegExp(r'tvg-logo="([^"]*)"');
-      final regExpTvgId = RegExp(r'tvg-id="([^"]*)"');
-      final regExpCatchup = RegExp(r'catchup="([^"]*)"', caseSensitive: false);
+      final regExpSerie       = RegExp(r"S\s*(\d{1,2})\s*E\s*(\d{1,2})", caseSensitive: false);
+      final regExpLogo        = RegExp(r'tvg-logo="([^"]*)"');
+      final regExpTvgId       = RegExp(r'tvg-id="([^"]*)"');
+      final regExpGroupTitle  = RegExp(r'group-title="([^"]*)"');
+      final regExpCatchup     = RegExp(r'catchup="([^"]*)"', caseSensitive: false);
       final regExpCatchupDays = RegExp(r'catchup-days="(\d+)"', caseSensitive: false);
-      final regExpCatchupSource = RegExp(r'catchup-source="([^"]*)"', caseSensitive: false);
+      final regExpCatchupSrc  = RegExp(r'catchup-source="([^"]*)"', caseSensitive: false);
 
-      for (final line in const LineSplitter().convert(fileContent)) {
+      String? pendingMetadata;
+      // Compte le total d'entrées pour la barre de progression (le fichier est déjà en mémoire)
+      final lines = const LineSplitter().convert(content);
+      final totalEntries = lines.where((l) => l.trimLeft().startsWith('#EXTINF')).length;
+      int parsedEntries = 0;
+
+      // Yield basé sur le temps écoulé : on redonne la main à Flutter dès qu'on a
+      // consommé ~8ms (demi-frame à 60fps) — s'adapte automatiquement à la vitesse du device.
+      final sw = Stopwatch()..start();
+
+      for (final line in lines) {
+        if (sw.elapsedMilliseconds > 8) {
+          await Future.delayed(Duration.zero);
+          sw.reset();
+          if (mounted) setState(() {
+            _loadingProgress = totalEntries > 0 ? parsedEntries / totalEntries : 0.0;
+          });
+        }
+
         final trimmed = line.trim();
         if (trimmed.isEmpty) continue;
 
-        if (trimmed.startsWith("#EXTINF")) {
+        if (trimmed.startsWith('#EXTINF')) {
           pendingMetadata = trimmed;
-        } else if (trimmed.startsWith("http")) {
+          parsedEntries++;
+        } else if (trimmed.startsWith('http')) {
           String url = trimmed;
           String? title;
           String? logoUrl;
           String? tvgId;
-          int? catchupDays;
+          String? groupTitle;
+          int?    catchupDays;
           String? catchupSource;
 
-          // --- LOGIQUE POUR FORMAT A (#EXTINF suivi par URL) ---
           if (pendingMetadata != null) {
             final commaIndex = pendingMetadata!.lastIndexOf(',');
             if (commaIndex != -1) {
-              title = pendingMetadata!.substring(commaIndex + 1).trim();
-              logoUrl = regExpLogo.firstMatch(pendingMetadata!)?.group(1);
-              tvgId = regExpTvgId.firstMatch(pendingMetadata!)?.group(1)?.trim();
-
-              // catchup="default/append/flussonic/xtream" = replay supporté
-              // catchup="" / catchup="false" / catchup="no" = non supporté
+              title      = pendingMetadata!.substring(commaIndex + 1).trim();
+              logoUrl    = regExpLogo.firstMatch(pendingMetadata!)?.group(1);
+              tvgId      = regExpTvgId.firstMatch(pendingMetadata!)?.group(1)?.trim();
+              groupTitle = regExpGroupTitle.firstMatch(pendingMetadata!)?.group(1)?.trim();
               final catchupValue = regExpCatchup.firstMatch(pendingMetadata!)?.group(1)?.toLowerCase() ?? '';
               final hasCatchup = catchupValue.isNotEmpty
                   && catchupValue != 'false'
@@ -402,22 +435,15 @@ class _RechercheM3UState extends State<RechercheM3U> {
                   && catchupValue != '0';
               if (hasCatchup) {
                 final daysStr = regExpCatchupDays.firstMatch(pendingMetadata!)?.group(1);
-                // Si catchup-days absent mais catchup présent : on assume 7j par défaut
-                catchupDays = int.tryParse(daysStr ?? '') ?? 7;
-                // Template URL catchup (Flussonic: "?utc={utc}&lutc={lutc}", append, etc.)
-                catchupSource = regExpCatchupSource.firstMatch(pendingMetadata!)?.group(1);
+                catchupDays   = int.tryParse(daysStr ?? '') ?? 7;
+                catchupSource = regExpCatchupSrc.firstMatch(pendingMetadata!)?.group(1);
               }
             }
-            pendingMetadata = null; // Consomme les métadonnées
-          }
-          // --- LOGIQUE POUR FORMAT B (URL contient #Name:) ---
-          // Sert de fallback si #EXTINF est absent
-          else if (trimmed.contains("#Name:")) {
-            final parts = trimmed.split("#Name:");
-            url = parts[0].trim();
-            if (parts.length > 1) {
-              title = parts[1].trim();
-            }
+            pendingMetadata = null;
+          } else if (trimmed.contains('#Name:')) {
+            final parts = trimmed.split('#Name:');
+            url   = parts[0].trim();
+            title = parts.length > 1 ? parts[1].trim() : null;
           }
 
           if (title != null && title.isNotEmpty) {
@@ -427,6 +453,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
               regExpSerie: regExpSerie,
               logoUrl: logoUrl,
               tvgId: tvgId,
+              groupTitle: groupTitle,
               catchupDays: catchupDays,
               catchupSource: catchupSource,
             );
@@ -435,11 +462,14 @@ class _RechercheM3UState extends State<RechercheM3U> {
       }
 
       if (mounted) {
+        // Yield avant le groupage — _filterAndGroupResults() est aussi CPU-intensif
+        setState(() => _loadingProgress = 1.0);
+        await Future.delayed(Duration.zero);
         _filterAndGroupResults();
         setState(() => _isProcessing = false);
       }
     } catch (e) {
-      debugPrint("❌ Erreur Stream M3U: $e");
+      debugPrint('❌ Erreur parsing M3U: $e');
       if (mounted) setState(() { _isProcessing = false; _errorMessage = e.toString(); });
     }
   }
@@ -450,6 +480,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
     required RegExp regExpSerie,
     String? logoUrl,
     String? tvgId,
+    String? groupTitle,
     int? catchupDays,
     String? catchupSource,
   }) {
@@ -478,6 +509,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       logoUrl: logoUrl,
       streamId: streamId,
       tvgId: tvgId,
+      groupTitle: groupTitle,
       catchupDays: catchupDays,
       catchupSource: catchupSource,
     );
@@ -496,6 +528,120 @@ class _RechercheM3UState extends State<RechercheM3U> {
   // FILTRAGE ET REGROUPEMENT
   //############################################################################
 
+  /// Retourne un label d'affichage depuis le group-title M3U.
+  /// Priorité : mappings sémantiques connus → fallback nettoyage automatique.
+  /// Null uniquement si le group-title est vide ou non informatif.
+  static String? _contentCategoryLabel(String? groupTitle) {
+    if (groupTitle == null || groupTitle.isEmpty) return null;
+    final g = groupTitle.toUpperCase();
+
+    // ── Mappings sémantiques précis (labels FR courts et propres) ─────────────
+    if (g.contains('MANGA') || g.contains('ANIMÉ') || g.contains('ANIME')) return 'Manga';
+    if (g.contains('ANIMAT') || g.contains('CARTOON')) return 'Animation';
+    if (g.contains('DOCU')) return 'Documentaire';
+    if (g.contains('BIOPIC')) return 'Biopic';
+    if (g.contains('ENFANT') || g.contains('KIDS') || g.contains('JEUNESSE') ||
+        g.contains('FAMILIALE') || g.contains('FAMILLE')) return 'Jeunesse';
+    if (g.contains('CORÉEN') || g.contains('KOREAN') || g.contains('KOREA')) return 'Coréen';
+    if (g.contains('TURC') || g.contains('TURQU') || g.contains('TÜRK')) return 'Turc';
+    if (g.contains('MAGHRÉB') || g.contains('MAGHRÈB') || g.contains('MAGHREB')) return 'Maghrébin';
+    if (g.contains('RAMADAN')) return 'Ramadan';
+    if (g.contains('ARAB') || g.contains('العربية') || g.contains('عربية')) return 'Arabe';
+    if (g.contains('INDIA') || g.contains('INDE') || g.contains('भारतीय')) return 'Indien';
+    if (g.contains('DISNEY')) return 'Disney+';
+    if (g.contains('PARAMOUNT')) return 'Paramount+';
+    if (g.contains('BRUTX')) return 'BrutX';
+    if (g.startsWith('3D')) return '3D';
+    if (g.contains('IMAX')) return 'IMAX';
+    if (g.contains('4K HDR') || (g.contains('4K') && g.contains('HDR'))) return '4K HDR';
+    if (g.contains('SUPER-HÉR') || g.contains('SUPER-HER')) return 'Super-Héros';
+    if (g.contains('SCIENCE FICTION') || g.contains('SC FICTION') || g.contains('SCI-FI')) return 'Sci-Fi';
+    if (g.contains('FANTASTIQUE') || g.contains('FANTASY')) return 'Fantastique';
+    if (g.contains('HORREUR') || g.contains('HORROR') || g.contains('ÉPOUVANTE')) return 'Horreur';
+    if (g.contains('THRILLER')) return 'Thriller';
+    if (g.contains('ACTION')) return 'Action';
+    if (g.contains('AVENTURE') || g.contains('ADVENTURE')) return 'Aventure';
+    if (g.contains('COMÉDIE') || g.contains('COMEDIE') || g.contains('COMEDY')) return 'Comédie';
+    if (g.contains('DRAME') || g.contains('DRAMA')) return 'Drame';
+    if (g.contains('ROMANCE')) return 'Romance';
+    if (g.contains('WESTERN')) return 'Western';
+    if (g.contains('POLICIER')) return 'Policier';
+    if (g.contains('MAFIA') || g.contains('GANG')) return 'Mafia';
+    if (g.contains('ESPIONNAGE') || g.contains('ESPIONN')) return 'Espionnage';
+    if (g.contains('JURIDIQUE')) return 'Juridique';
+    if (g.contains('PRISON')) return 'Prison';
+    if (g.contains('MEDIEVAL') || g.contains('MÉDIÉVAL') || g.contains('MOYEN AGE')) return 'Médiéval';
+    if (g.contains('MUSICAL')) return 'Musical';
+    if (g.contains('BRAQUAGE') || g.contains('ARNAQUE')) return 'Braquage';
+    if (g.contains('TUEUR EN SERIE') || g.contains('TUEUR EN SÉRIE')) return 'Tueur en série';
+    if (g.contains('SURVIVAL') || g.contains('SURVIE')) return 'Survie';
+    if (g.contains('CATASTROPHE')) return 'Catastrophe';
+    if (g.contains('VENGEANCE')) return 'Vengeance';
+    if (g.contains('MARITIME')) return 'Maritime';
+    if (g.contains('SPECTACLE') || g.contains('CONCERT')) return 'Spectacle';
+    if (g.contains('TÉLÉFILM') || g.contains('TELEFILM')) return 'Téléfilm';
+    if (g.contains('VOITURE') || g.contains('CARS')) return 'Voitures';
+    if (g.contains('LÉGENDAIRE') || g.contains('LEGENDAIRE') || g.contains('CULTE')) return 'Cultes';
+    if (g.contains('CLASSIQUE') || g.contains('CLASSIC') || g.contains("70'S") || g.contains("80'S")) return 'Classiques';
+    if (g.contains('OSCAR')) return 'Oscar';
+    if (g.contains('BOX OFFICE')) return 'Box Office';
+    if (g.contains('RECEM') || g.contains('RÉCEMM')) return 'New';
+    if (g.contains('SÉLECTION') || g.contains('SELECTION')) return 'Sélection';
+    if (g.contains('COUP DE COEUR')) return 'Coup de cœur';
+    if (g.contains('FIN D\'AN') || g.contains('FIN D\'ANN')) return 'Fêtes';
+    if (g.contains('MÉDECINE') || g.contains('MEDECINE')) return 'Médecine';
+    if (g.contains('COMÉDIE MUSICAL') || g.contains('COMEDIE MUSICAL')) return 'Comédie musicale';
+    if (g.contains('RÉALITÉ') || g.contains('REALITE')) return 'Téléréalité';
+    if (g.contains('CRIME')) return 'Crime';
+    if (g.contains('ARTS MARTIAUX')) return 'Arts martiaux';
+    if (g.contains('DANSE') || g.contains('DANCE')) return 'Danse';
+    if (g.contains('WORKOUT') || g.contains('SPORT')) return 'Sport';
+    if (g.contains('GUERRE') || g.contains('WAR')) return 'Guerre';
+    if (g.contains('HISTOIRE') || g.contains('HISTORIQUE')) return 'Histoire';
+    if (g.contains('RAKUTEN')) return 'Rakuten TV';
+    // ── Origines géographiques ────────────────────────────────────────────────
+    if (g.contains('ALLEMAND') || g.contains('DEUTSCH')) return 'Allemagne';
+    if (g.contains('ANGLAIS') || g.contains(' UK') || g.contains('(UK)')) return 'UK';
+    if (g.contains('ESPAGNOL') || g.contains('ESPAÑA') || g.contains('SPAIN')) return 'Espagne';
+    if (g.contains('ITALIEN')) return 'Italie';
+    if (g.contains('RUSSE') || g.contains('РОССИЯ')) return 'Russie';
+    if (g.contains('BRÉSIL') || g.contains('BRESIL') || g.contains('BRASILEIRO')) return 'Brésil';
+    if (g.contains('BELG')) return 'Belgique';
+    if (g.contains('POLONAIS') || g.contains('POLONEZ')) return 'Pologne';
+    if (g.contains('PORTUGAIS') || g.contains('PORTUGUÊS')) return 'Portugal';
+    if (g.contains('SUISSE') || g.contains('SWITZERLAND')) return 'Suisse';
+    if (g.contains('SCANDINAV') || g.contains('DANEMARK') || g.contains('NORWAY') || g.contains('SWEDEN')) return 'Scandinavie';
+    if (g.contains('TCHÈQU') || g.contains('TCHEQU') || g.contains('ČESKO')) return 'Tchéquie';
+    if (g.contains('CROAT') || g.contains('HRVAT')) return 'Croatie';
+    if (g.contains('GREC') || g.contains('ΕΛΛΗΝΙΚ')) return 'Grèce';
+    if (g.contains('ALBANI') || g.contains('SHQIPTAR')) return 'Albanie';
+    if (g.contains('ARMÉNI') || g.contains('ARMENI') || g.contains('ՀԱՅԵՐԵՆ')) return 'Arménie';
+    if (g.contains('ROUMAIN') || g.contains('ROMANIAN')) return 'Roumanie';
+    if (g.contains('BOSNIAK') || g.contains('BOSNIAQUE') || g.contains('BOSNA')) return 'Bosnie';
+    if (g.contains('CANADA') || g.contains(' CA ') || g.contains('( CA )')) return 'Canada';
+    if (g.contains('USA') || g.contains('ETATS-UNIS') || g.contains('ÉTATS-UNIS')) return 'USA';
+    if (g.contains('PAYS-BAS') || g.contains('NETHERLANDS')) return 'Pays-Bas';
+
+    // ── Fallback : nettoyage automatique du group-title brut ──────────────────
+    // 1. Retire les listes de plateformes entre parenthèses : "( NETFLIX| PRIME | HBO...)"
+    // 2. Prend le premier segment avant '|'
+    // 3. Conserve la casse d'origine, trim, tronque à 20 chars max
+    String clean = groupTitle
+        .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
+        .split('|').first
+        .trim();
+    if (clean.length > 20) clean = '${clean.substring(0, 18)}…';
+    return clean.isNotEmpty ? clean : null;
+  }
+
+  /// Clé de regroupement partagée films ET séries.
+  /// Format : "Titre" ou "Titre||Catégorie" quand le group-title est sémantiquement reconnu.
+  /// Permet de séparer les homonymes (ex: "One Piece||Manga" vs "One Piece" live-action).
+  static String _contentGroupKey(M3uEntry e) {
+    final category = _contentCategoryLabel(e.groupTitle);
+    return category != null ? '${e.displayName}||$category' : e.displayName;
+  }
+
   void _filterAndGroupResults() {
     final query = _searchQuery.toLowerCase();
 
@@ -511,15 +657,16 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
     if (_showFilms) {
       for (var e in _filmsList) {
-        if (matches(e)) newGroupedFilms.putIfAbsent(e.displayName, () => []).add(e);
+        if (matches(e)) newGroupedFilms.putIfAbsent(_contentGroupKey(e), () => []).add(e);
       }
     }
     if (_showSeries) {
       for (var e in _seriesList) {
         if (matches(e)) {
-          newGroupedSeries.putIfAbsent(e.displayName, () => {});
+          final key = _contentGroupKey(e);
+          newGroupedSeries.putIfAbsent(key, () => {});
           final s = e.saison ?? '00';
-          newGroupedSeries[e.displayName]!.putIfAbsent(s, () => []).add(e);
+          newGroupedSeries[key]!.putIfAbsent(s, () => []).add(e);
         }
       }
     }
@@ -546,8 +693,61 @@ class _RechercheM3UState extends State<RechercheM3U> {
       _groupedSeries = newGroupedSeries;
       _groupedFilms = newGroupedFilms;
       _groupedTv = newGroupedTv;
+      // Ordre M3U naturel — le provider place déjà les ajouts récents en tête de fichier
       _flatList = [..._groupedFilms.keys, ..._groupedSeries.keys, ..._groupedTv.keys];
     });
+  }
+
+  //############################################################################
+  // LOADING SCREEN
+  //############################################################################
+
+  // Label qui s'allume (blanc) quand sa catégorie commence à être chargée
+  Widget _LoadingLabel(String label, bool active) {
+    return AnimatedDefaultTextStyle(
+      duration: const Duration(milliseconds: 400),
+      style: TextStyle(
+        color: active ? Colors.white70 : Colors.white24,
+        fontSize: 13,
+        fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+      ),
+      child: Text(label),
+    );
+  }
+
+  Widget _buildLoadingScreen() {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: _loadingProgress,
+                  minHeight: 3,
+                  backgroundColor: Colors.white12,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  _LoadingLabel('Films', _filmsList.isNotEmpty),
+                  const SizedBox(width: 16),
+                  _LoadingLabel('Séries', _seriesList.isNotEmpty),
+                  const SizedBox(width: 16),
+                  _LoadingLabel('Chaînes', _tvList.isNotEmpty),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   //############################################################################
@@ -558,7 +758,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
 
-    if (_isProcessing) return const Center(child: CircularProgressIndicator());
+    if (_isProcessing) return _buildLoadingScreen();
     if (_errorMessage != null) return Center(child: Text("Erreur critique: $_errorMessage", style: const TextStyle(color: Colors.red)));
 
     return NestedScrollView(
@@ -662,15 +862,19 @@ class _RechercheM3UState extends State<RechercheM3U> {
     );
   }
 
-  Widget _buildFilmCard(String displayName, List<M3uEntry> versions) {
-    // 1. Détection de l'Homonyme
+  Widget _buildFilmCard(String filmKey, List<M3uEntry> versions) {
+    // Extraction du nom d'affichage et du badge catégorie depuis la clé composite "Titre||Catégorie"
+    final keyParts = filmKey.split('||');
+    final displayTitle = keyParts[0];
+    final categoryLabel = keyParts.length > 1 ? keyParts[1] : null;
+
+    // Détection de l'Homonyme (même titre, années différentes)
     final uniqueYears = versions.map((v) => v.title.year).where((y) => y != null).toSet();
     final isHomonymConflict = versions.length > 1 && uniqueYears.length > 1;
 
-    // 2. Construction des Chips Uniques (utilisée si ce n'est PAS un conflit d'homonymes)
+    // Chips qualité/langue (si pas de conflit d'homonymes)
     final allQualityChips = versions.map((v) => _qualityChip(v.title));
     final allLanguageChips = versions.expand((v) => _languageChips(v.title));
-    // Utilise Set pour n'avoir qu'un seul [FHD]
     final uniqueChips = <Widget>{...allQualityChips, ...allLanguageChips}.toList().where((w) => w is! SizedBox).toList();
 
     return Card(
@@ -689,7 +893,23 @@ class _RechercheM3UState extends State<RechercheM3U> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Row(
+                      children: [
+                        Expanded(child: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                        if (categoryLabel != null) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withAlpha(40),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.blue.withAlpha(80)),
+                            ),
+                            child: Text(categoryLabel, style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                          ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 4),
                     if (isHomonymConflict)
                       Text('Versions disponibles: ${uniqueYears.join(', ')}', style: TextStyle(color: Colors.white70, fontSize: 12))
@@ -706,7 +926,12 @@ class _RechercheM3UState extends State<RechercheM3U> {
     );
   }
 
-  Widget _buildSerieCard(String serieName, Map<String, List<M3uEntry>> saisons) {
+  Widget _buildSerieCard(String seriesKey, Map<String, List<M3uEntry>> saisons) {
+    // Extraction du nom d'affichage et de la catégorie depuis la clé composite "Titre||Catégorie"
+    final keyParts = seriesKey.split('||');
+    final displayTitle = keyParts[0];
+    final categoryLabel = keyParts.length > 1 ? keyParts[1] : null;
+
     final totalEpisodes = saisons.values.fold<int>(0, (prev, epList) => prev + epList.length);
     final allVersions = saisons.values.expand((list) => list).toList();
 
@@ -717,7 +942,23 @@ class _RechercheM3UState extends State<RechercheM3U> {
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           leading: _buildCardImage(allVersions, Icons.tv, Colors.purple),
-          title: Text(serieName, style: const TextStyle(fontWeight: FontWeight.bold)),
+          title: Row(
+            children: [
+              Expanded(child: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+              if (categoryLabel != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withAlpha(40),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.purple.withAlpha(80)),
+                  ),
+                  child: Text(categoryLabel, style: const TextStyle(fontSize: 11, color: Colors.purple)),
+                ),
+              ],
+            ],
+          ),
           subtitle: Text("${saisons.keys.length} Saisons • $totalEpisodes Épisodes", style: const TextStyle(fontSize: 12)),
           children: saisons.entries.map((entry) {
             return ExpansionTile(
@@ -886,11 +1127,22 @@ class _RechercheM3UState extends State<RechercheM3U> {
         entry.title.seasonNumber!,
         entry.title.episodeNumber!,
         yearFilter: entry.title.year,
+        groupTitle: entry.groupTitle,
       );
     } else if (entry.type == M3uContentType.movie) {
-      tmdbFuture = TmdbService.instance.getFullDetails(entry.displayName, isTv: false);
+      tmdbFuture = TmdbService.instance.getFullDetails(
+        entry.displayName,
+        isTv: false,
+        explicitYear: entry.title.year,
+        groupTitle: entry.groupTitle,
+      );
     } else if (entry.type == M3uContentType.series) {
-      tmdbFuture = TmdbService.instance.getFullDetails(entry.displayName, isTv: true);
+      tmdbFuture = TmdbService.instance.getFullDetails(
+        entry.displayName,
+        isTv: true,
+        explicitYear: entry.title.year,
+        groupTitle: entry.groupTitle,
+      );
     }
 
     await showModalBottomSheet(
@@ -903,109 +1155,135 @@ class _RechercheM3UState extends State<RechercheM3U> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // AFFICHE (si disponible)
-                if (entry.logoUrl != null && entry.logoUrl!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16.0),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        entry.logoUrl!,
-                        height: 150,
-                        errorBuilder: (ctx, err, stack) => const SizedBox.shrink(),
-                      ),
-                    ),
-                  ),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text(entry.displayName, style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
-                ),
-                const SizedBox(height: 8),
+                // ── HEADER : épisodes de série vs films/TV ──────────────────────────────
                 if (entry.title.isSeriesEpisode)
+                  // Pour les épisodes : FutureBuilder gère toute la section header.
+                  // Still TMDB en priorité sur le logo M3U, titre épisode en principal.
                   FutureBuilder<dynamic>(
                     future: tmdbFuture,
                     builder: (context, snap) {
-                      if (snap.connectionState != ConnectionState.done) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8.0),
-                          child: SizedBox(
-                            height: 4,
-                            width: 80,
-                            child: LinearProgressIndicator(),
+                      final isLoading = snap.connectionState != ConnectionState.done;
+                      final data = snap.data as Map<String, dynamic>?;
+
+                      // Image : still_path TMDB (paysage) > logo M3U (portrait) > rien
+                      final String? stillPath = data?['still_path'] as String?;
+                      final String? imageUrl = stillPath != null
+                          ? TmdbService.getPosterUrl(stillPath, size: 'w780')
+                          : (entry.logoUrl?.isNotEmpty == true ? entry.logoUrl : null);
+
+                      // Titre épisode : TMDB > nom parsé M3U > displayName
+                      String episodeName = data?['name'] as String? ?? '';
+                      if (episodeName.isEmpty || episodeName == entry.displayName) {
+                        episodeName = _getEpisodeName(entry);
+                      }
+
+                      final double? voteAvg = (data?['vote_average'] as num?)?.toDouble();
+                      final String? airDate = data?['air_date'] as String?;
+                      final String? overview = data?['overview'] as String?;
+                      final s = (entry.title.seasonNumber ?? 0).toString().padLeft(2, '0');
+                      final e = (entry.title.episodeNumber ?? 0).toString().padLeft(2, '0');
+                      final dimColor = Theme.of(context).colorScheme.onSurface.withAlpha(128);
+
+                      return Column(
+                        children: [
+                          // Image (still TMDB ou logo M3U en fallback)
+                          if (imageUrl != null)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(
+                                  imageUrl,
+                                  height: stillPath != null ? 160 : 140,
+                                  width: double.infinity,
+                                  fit: stillPath != null ? BoxFit.cover : BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 12),
+                          // Fil d'Ariane : "Nom Série · S01 E04"
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Text(
+                              '${entry.displayName}  ·  S$s E$e',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: dimColor),
+                              textAlign: TextAlign.center,
+                            ),
                           ),
-                        );
-                      }
-                      final data = snap.data;
-                      if (data == null) return const SizedBox.shrink();
-
-                      String? title;
-                      String? overview;
-                      String? airDate;
-
-                      if (data is Map<String, dynamic>) {
-                        title = data['name'] as String?;
-                        overview = data['overview'] as String?;
-                        airDate = data['air_date'] as String?;
-                      } else if (data is Media) {
-                        title = data.title;
-                        overview = data.overview;
-                      }
-
-                      // Évite de répéter le titre de la série : on n'affiche le titre d'épisode que s'il diffère.
-                      final parsedEpisodeName = _getEpisodeName(entry);
-                      if (title == null || title.isEmpty) {
-                        title = parsedEpisodeName;
-                      } else if (title == entry.displayName) {
-                        title = parsedEpisodeName;
-                      }
-
-                      final hasTitle = title.isNotEmpty;
-                      final hasOverview = overview != null && overview.isNotEmpty;
-
-                      if (!hasTitle && !hasOverview) return const SizedBox.shrink();
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (hasTitle) ...[
-                              Text(
-                                title,
-                                style: Theme.of(context).textTheme.titleMedium,
+                          const SizedBox(height: 4),
+                          // Titre de l'épisode (principal)
+                          if (isLoading)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8.0),
+                              child: SizedBox(height: 4, width: 100, child: LinearProgressIndicator()),
+                            )
+                          else
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                              child: Text(episodeName, style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
+                            ),
+                          // Note ★ + Date de diffusion
+                          if (!isLoading && (voteAvg != null && voteAvg > 0 || airDate != null))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (voteAvg != null && voteAvg > 0) ...[
+                                    const Icon(Icons.star_rounded, size: 15, color: Colors.amber),
+                                    const SizedBox(width: 3),
+                                    Text(voteAvg.toStringAsFixed(1), style: Theme.of(context).textTheme.bodySmall),
+                                    if (airDate != null) const SizedBox(width: 12),
+                                  ],
+                                  if (airDate != null)
+                                    Text(airDate, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: dimColor)),
+                                ],
                               ),
-                              const SizedBox(height: 6),
-                            ],
-                            if (airDate != null && airDate.isNotEmpty) ...[
-                              Text(
-                                "Diffusé le: $airDate",
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                              ),
-                              const SizedBox(height: 6),
-                            ],
-                            if (hasOverview) ...[
-                              const SizedBox(height: 8),
-                              Text(
+                            ),
+                          // Synopsis
+                          if (!isLoading && overview != null && overview.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                              child: Text(
                                 overview,
                                 style: Theme.of(context).textTheme.bodySmall,
-                                maxLines: 5,
+                                maxLines: 4,
                                 overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
                               ),
-                            ],
-                          ],
-                        ),
+                            ),
+                          const SizedBox(height: 8),
+                        ],
                       );
                     },
+                  )
+                else ...[
+                  // Films / séries (non-épisode) : logo M3U statique + titre
+                  if (entry.logoUrl != null && entry.logoUrl!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16.0),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(
+                          entry.logoUrl!,
+                          height: 150,
+                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Text(entry.displayName, style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
                   ),
-                if (entry.title.isSeriesEpisode) const SizedBox(height: 8),
+                  const SizedBox(height: 8),
+                ],
+                // Chips qualité / langue (S01E02 est maintenant dans le fil d'Ariane)
                 Wrap(
                   spacing: 8,
                   children: [
                     _qualityChip(entry.title),
                     ..._languageChips(entry.title),
-                    if (entry.title.isSeriesEpisode)
-                      _episodeMetaChip(entry.title),
                   ],
                 ),
                 const SizedBox(height: 24),
