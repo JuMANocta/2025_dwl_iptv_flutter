@@ -1485,6 +1485,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                         showDragHandle: true,
                         isScrollControlled: true,
                         builder: (_) => ReplayDatePickerSheet(
+                            tvgId: entry.tvgId,
                             catchupDays: entryForReplay.catchupDays,
                             streams: replayStreams),
                       );

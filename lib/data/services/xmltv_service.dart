@@ -88,6 +88,15 @@ class XmltvService {
     }).toList();
   }
 
+  /// Jours (minuit local) pour lesquels la chaîne [tvgId] a au moins un programme.
+  /// Utile pour indiquer visuellement les jours avec données EPG dans le picker replay.
+  static Future<Set<DateTime>> getAvailableDays(String tvgId) async {
+    await ensureLoaded();
+    return _forChannel(tvgId)
+        .map((p) => DateTime(p.start.year, p.start.month, p.start.day))
+        .toSet();
+  }
+
   /// URL de l'icône de la chaîne, ou null si non trouvée.
   static Future<String?> getChannelIconUrl(String tvgId) async {
     await ensureLoaded();

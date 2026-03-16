@@ -2,9 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/themes/colors.dart';
 import '../../data/services/replay_service.dart';
+import '../../data/services/xmltv_service.dart';
+import '../../data/models/xmltv_program.dart';
 
 /// Sheet permettant à l'utilisateur de choisir manuellement
 /// un jour, une heure et une durée pour lancer un replay.
+///
+/// Si [tvgId] est fourni et que des données XMLTV sont disponibles,
+/// une grille de programmes est affichée au-dessus du picker manuel.
+/// Tapper un programme lance directement le replay.
 ///
 /// Si [streams] contient plusieurs options, un sélecteur de qualité est affiché.
 /// Retourne un [ReplayProgram] synthétique avec le stream sélectionné.
@@ -12,11 +18,14 @@ class ReplayDatePickerSheet extends StatefulWidget {
   final int? catchupDays;
   /// Liste des streams disponibles pour le replay (multi-qualité).
   final List<ReplayStreamOption> streams;
+  /// tvg-id de la chaîne — utilisé pour charger les programmes XMLTV.
+  final String? tvgId;
 
   const ReplayDatePickerSheet({
     super.key,
     this.catchupDays,
     this.streams = const [],
+    this.tvgId,
   });
 
   @override
@@ -24,11 +33,18 @@ class ReplayDatePickerSheet extends StatefulWidget {
 }
 
 class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
-  // ---- Sélections ----
+  // ---- Sélections partagées ----
   late DateTime _selectedDay;   // minuit du jour choisi
+
+  // ---- Picker manuel ----
   late TimeOfDay _selectedTime; // heure de début
   int _durationMinutes = 60;    // durée sélectionnée
   int _selectedStreamIndex = 0; // index dans widget.streams
+
+  // ---- XMLTV ----
+  List<XmltvProgram> _xmltvPrograms = [];
+  bool _isLoadingXmltv = false;
+  Set<DateTime> _daysWithData = {};
 
   static const _durations = [30, 60, 90, 120, 180];
 
@@ -44,6 +60,64 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
         .subtract(const Duration(days: 1));
     final roundedMinute = now.minute >= 30 ? 30 : 0;
     _selectedTime = TimeOfDay(hour: now.hour, minute: roundedMinute);
+    _initXmltv();
+  }
+
+  // ---- XMLTV ----
+
+  /// Charge en parallèle les jours disponibles + les programmes du jour initial.
+  Future<void> _initXmltv() async {
+    if (widget.tvgId == null) return;
+    setState(() => _isLoadingXmltv = true);
+    final results = await Future.wait([
+      XmltvService.getAvailableDays(widget.tvgId!),
+      XmltvService.getProgramsForDay(widget.tvgId!, _selectedDay),
+    ]);
+    if (mounted) {
+      setState(() {
+        _daysWithData = results[0] as Set<DateTime>;
+        _xmltvPrograms = results[1] as List<XmltvProgram>;
+        _isLoadingXmltv = false;
+      });
+    }
+  }
+
+  Future<void> _loadXmltvPrograms() async {
+    if (widget.tvgId == null) return;
+    setState(() => _isLoadingXmltv = true);
+    final programs = await XmltvService.getProgramsForDay(widget.tvgId!, _selectedDay);
+    if (mounted) {
+      setState(() {
+        _xmltvPrograms = programs;
+        _isLoadingXmltv = false;
+      });
+    }
+  }
+
+  void _onDayChanged(DateTime d) {
+    setState(() => _selectedDay = d);
+    _loadXmltvPrograms();
+  }
+
+  // Appelé quand l'utilisateur tape sur un programme dans la grille XMLTV.
+  void _confirmFromXmltv(XmltvProgram program) {
+    final now = DateTime.now();
+    var start = program.start;
+    // Sécurité : start ne peut pas être dans le futur
+    if (start.isAfter(now)) start = now.subtract(const Duration(minutes: 5));
+    // Pour un programme encore en cours, on borne la fin à maintenant
+    final end = program.stop.isAfter(now) ? now : program.stop;
+    final stream = _selectedStream;
+    Navigator.of(context).pop(ReplayProgram(
+      title: program.title,
+      start: start,
+      end: end,
+      description: program.description ?? '',
+      hasArchive: true,
+      selectedStreamId: stream?.streamId,
+      selectedStreamUrl: stream?.streamUrl,
+      selectedCatchupSource: stream?.catchupSource,
+    ));
   }
 
   // ---- Build ----
@@ -53,6 +127,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // Utilise le catchupDays du stream sélectionné en priorité, sinon le paramètre global
     final maxDays = _selectedStream?.catchupDays ?? widget.catchupDays ?? 7;
+    final hasXmltv = widget.tvgId != null;
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -95,15 +170,51 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
               const SizedBox(height: 20),
             ],
 
-            // ---- Sélecteur de jour ----
+            // ---- Sélecteur de jour (partagé) ----
             _sectionLabel(context, 'Jour', Icons.calendar_today_outlined),
             const SizedBox(height: 10),
             _DaySelector(
               maxDays: maxDays,
               selected: _selectedDay,
-              onChanged: (d) => setState(() => _selectedDay = d),
+              daysWithData: _daysWithData,
+              onChanged: _onDayChanged,
             ),
             const SizedBox(height: 20),
+
+            // ---- Grille XMLTV ----
+            if (hasXmltv) ...[
+              _sectionLabel(context, 'Programmes', Icons.tv_outlined),
+              const SizedBox(height: 10),
+              _XmltvProgramList(
+                programs: _xmltvPrograms,
+                isLoading: _isLoadingXmltv,
+                onProgramSelected: _confirmFromXmltv,
+              ),
+              const SizedBox(height: 20),
+              // Séparation avec le picker manuel
+              Row(
+                children: [
+                  const Expanded(child: Divider()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      'OU CHOISIR MANUELLEMENT',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.35),
+                      ),
+                    ),
+                  ),
+                  const Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
 
             // ---- Sélecteur d'heure ----
             _sectionLabel(context, 'Heure de début', Icons.schedule_outlined),
@@ -229,19 +340,235 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
 }
 
 // ============================================================================
-// Widgets internes
+// Grille XMLTV
+// ============================================================================
+
+/// Liste des programmes XMLTV pour le jour sélectionné.
+/// Chaque programme passé ou en cours est cliquable → lance le replay.
+class _XmltvProgramList extends StatelessWidget {
+  final List<XmltvProgram> programs;
+  final bool isLoading;
+  final void Function(XmltvProgram) onProgramSelected;
+
+  const _XmltvProgramList({
+    required this.programs,
+    required this.isLoading,
+    required this.onProgramSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const SizedBox(
+        height: 56,
+        child: Center(
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    if (programs.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline,
+                size: 16,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withOpacity(0.35)),
+            const SizedBox(width: 8),
+            Text(
+              'Aucune donnée EPG disponible',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withOpacity(0.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final now = DateTime.now();
+    return Column(
+      children: programs.map((p) {
+        final isNow = p.start.isBefore(now) && p.stop.isAfter(now);
+        final isFuture = p.start.isAfter(now);
+        return _XmltvProgramRow(
+          program: p,
+          isNow: isNow,
+          isPlayable: !isFuture,
+          onTap: isFuture ? null : () => onProgramSelected(p),
+        );
+      }).toList(),
+    );
+  }
+}
+
+/// Ligne d'un programme dans la grille XMLTV.
+class _XmltvProgramRow extends StatelessWidget {
+  final XmltvProgram program;
+  final bool isNow;
+  final bool isPlayable;
+  final VoidCallback? onTap;
+
+  const _XmltvProgramRow({
+    required this.program,
+    required this.isNow,
+    required this.isPlayable,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final timeFmt = DateFormat('HH:mm');
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: isNow
+              ? kAetherPrimaryPurple.withOpacity(0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: isNow
+              ? Border.all(
+                  color: kAetherPrimaryPurple.withOpacity(0.35), width: 1)
+              : null,
+        ),
+        child: Row(
+          children: [
+            // Colonne heure + durée
+            SizedBox(
+              width: 44,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    timeFmt.format(program.start),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: isPlayable
+                          ? onSurface
+                          : onSurface.withOpacity(0.35),
+                    ),
+                  ),
+                  Text(
+                    program.durationLabel,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isPlayable
+                          ? onSurface.withOpacity(0.5)
+                          : onSurface.withOpacity(0.25),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Titre + badge EN COURS + catégorie
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (isNow) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: kAetherVibrantMagenta.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            '● EN COURS',
+                            style: TextStyle(
+                              color: kWhite,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(
+                        child: Text(
+                          program.title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight:
+                                isNow ? FontWeight.bold : FontWeight.normal,
+                            color: isPlayable
+                                ? onSurface
+                                : onSurface.withOpacity(0.35),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (program.category != null)
+                    Text(
+                      program.category!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isPlayable
+                            ? onSurface.withOpacity(0.45)
+                            : onSurface.withOpacity(0.2),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            // Icône lecture (programmes jouables uniquement)
+            if (isPlayable)
+              Icon(
+                Icons.play_circle_outline_rounded,
+                size: 22,
+                color: isNow
+                    ? kAetherSecondaryCyan
+                    : onSurface.withOpacity(0.4),
+              )
+            else
+              const SizedBox(width: 22),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// Widgets internes (picker manuel)
 // ============================================================================
 
 /// Sélecteur de jours sous forme de chips scrollables.
+/// [daysWithData] : jours pour lesquels des données XMLTV existent — affiche un ● cyan.
 class _DaySelector extends StatelessWidget {
   final int maxDays;
   final DateTime selected;
+  final Set<DateTime> daysWithData;
   final ValueChanged<DateTime> onChanged;
 
   const _DaySelector({
     required this.maxDays,
     required this.selected,
     required this.onChanged,
+    this.daysWithData = const {},
   });
 
   @override
@@ -263,6 +590,7 @@ class _DaySelector extends StatelessWidget {
           final isToday = d.day == today.day && d.month == today.month;
           final isYesterday = d.day == today.day - 1 &&
               d.month == today.month;
+          final hasEpg = daysWithData.contains(d);
 
           String label;
           if (isToday) {
@@ -275,16 +603,33 @@ class _DaySelector extends StatelessWidget {
 
           return Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: Text(label),
-              selected: isSelected,
-              onSelected: (_) => onChanged(d),
-              selectedColor: kAetherPrimaryPurple,
-              labelStyle: TextStyle(
-                color: isSelected ? kWhite : null,
-                fontWeight:
-                    isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ChoiceChip(
+                  label: Text(label),
+                  selected: isSelected,
+                  onSelected: (_) => onChanged(d),
+                  selectedColor: kAetherPrimaryPurple,
+                  labelStyle: TextStyle(
+                    color: isSelected ? kWhite : null,
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                // Indicateur EPG disponible
+                const SizedBox(height: 3),
+                Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: hasEpg
+                        ? kAetherSecondaryCyan
+                        : Colors.transparent,
+                  ),
+                ),
+              ],
             ),
           );
         }).toList(),
