@@ -10,6 +10,8 @@ import 'feature/accounts/accounts_page.dart';
 import 'data/services/playlist_service.dart';
 import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
+import 'data/services/update_service.dart';
+import 'feature/update/update_dialog.dart';
 
 /// Clé globale pour le Navigator, permettant une navigation programmatique sans `BuildContext`.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -25,6 +27,20 @@ void main() async {
   await DownloadManagerService().init();
 
   runApp(const MyApp());
+
+  // Vérification silencieuse des mises à jour après le démarrage (non-bloquant).
+  // Délai court pour laisser l'UI s'afficher avant la requête réseau.
+  Future.delayed(const Duration(seconds: 3), _checkForUpdate);
+}
+
+/// Vérifie silencieusement si une mise à jour est disponible.
+/// Affiche le dialogue uniquement si une nouvelle version existe.
+Future<void> _checkForUpdate() async {
+  final info = await UpdateService.checkForUpdate();
+  if (info == null) return;
+  final context = navigatorKey.currentContext;
+  if (context == null) return;
+  await UpdateDialog.show(context, info);
 }
 
 /// Widget racine de l'application.
