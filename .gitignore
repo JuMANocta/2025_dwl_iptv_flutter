@@ -56,7 +56,9 @@ web/
 macos/
 linux/
 ios/
-android/
+# android/ — dossier commité (nécessaire pour CI)
+android/local.properties
+android/.gradle/
 *.m3u
 .claude
 
