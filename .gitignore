@@ -61,3 +61,5 @@ android/
 .claude
 
 /lib/iptv_exemple/
+/aetherstream.jks
+/android/key.properties
