@@ -25,13 +25,7 @@ class PlayerSeekOverlay extends StatelessWidget {
       SeekOverlayType.volume => Icons.volume_up,
     };
 
-    return Positioned(
-      top: 0,
-      bottom: 0,
-      left: isLeft ? 0 : null,
-      right: isLeft ? null : 0,
-      width: MediaQuery.of(context).size.width * 0.35,
-      child: Container(
+    return Container(
         decoration: BoxDecoration(
           borderRadius: isLeft
               ? const BorderRadius.horizontal(right: Radius.circular(80))
@@ -55,7 +49,6 @@ class PlayerSeekOverlay extends StatelessWidget {
             ],
           ],
         ),
-      ),
     );
   }
 }

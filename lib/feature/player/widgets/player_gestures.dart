@@ -131,12 +131,25 @@ class _PlayerGesturesState extends State<PlayerGestures> {
           const ColoredBox(color: Colors.transparent),
           // Feedback seek / volume / luminosité.
           if (_overlayVisible && _overlayType != null)
-            AnimatedOpacity(
-              opacity: _overlayVisible ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 150),
-              child: PlayerSeekOverlay(
-                type: _overlayType!,
-                label: _overlayLabel,
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: (_overlayType == SeekOverlayType.seekLeft ||
+                      _overlayType == SeekOverlayType.brightness)
+                  ? 0
+                  : null,
+              right: (_overlayType == SeekOverlayType.seekLeft ||
+                      _overlayType == SeekOverlayType.brightness)
+                  ? null
+                  : 0,
+              width: MediaQuery.of(context).size.width * 0.35,
+              child: AnimatedOpacity(
+                opacity: _overlayVisible ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 150),
+                child: PlayerSeekOverlay(
+                  type: _overlayType!,
+                  label: _overlayLabel,
+                ),
               ),
             ),
         ],
