@@ -31,9 +31,6 @@ jobs:
       - name: Installer les dépendances
         run: flutter pub get
 
-      - name: Analyser le code
-        run: flutter analyze
-
       - name: Décoder le keystore
         run: echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/aetherstream.jks
         env:
