@@ -34,6 +34,9 @@ jobs:
       - name: Build APK release (arm64, non signé)
         run: flutter build apk --split-per-abi --release
 
+      - name: Installer Android build-tools 29.0.3 (requis par r0adkll)
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;29.0.3"
+
       - name: Signer l'APK avec le keystore
         uses: r0adkll/sign-android-release@v1
         id: sign_apk
@@ -43,7 +46,6 @@ jobs:
           alias: ${{ vars.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
-          buildToolsVersion: '34.0.0'
 
       - name: Renommer l'APK signé
         run: |
