@@ -31,29 +31,31 @@ jobs:
       - name: Installer les dépendances
         run: flutter pub get
 
-      - name: Décoder le keystore
-        run: echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/aetherstream.jks
+      - name: Analyser le code
+        run: flutter analyze --no-fatal-warnings
+
+      - name: Build APK release non signé (arm64)
+        run: flutter build apk --split-per-abi --release
+
+      - name: Décoder le keystore PKCS12
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/aetherstream.p12
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
 
-      - name: Créer android/key.properties
+      - name: Signer l'APK avec apksigner
         run: |
-          echo "storeFile=/tmp/aetherstream.jks" > android/key.properties
-          echo "storePassword=$STORE_PASSWORD"   >> android/key.properties
-          echo "keyAlias=$KEY_ALIAS"             >> android/key.properties
-          echo "keyPassword=$KEY_PASSWORD"       >> android/key.properties
+          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          echo "Build tools: $BUILD_TOOLS"
+          $BUILD_TOOLS/apksigner sign \
+            --ks /tmp/aetherstream.p12 \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass pass:"$STORE_PASSWORD" \
+            --key-pass pass:"$STORE_PASSWORD" \
+            --out build/app/outputs/flutter-apk/aetherstream.apk \
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
         env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ vars.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-
-      - name: Build APK release (arm64)
-        run: flutter build apk --split-per-abi --release
-
-      - name: Renommer l'APK
-        run: |
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
-             build/app/outputs/flutter-apk/aetherstream.apk
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
 
       - name: Créer la release GitHub et uploader l'APK
         uses: softprops/action-gh-release@v2
