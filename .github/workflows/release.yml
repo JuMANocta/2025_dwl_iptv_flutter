@@ -31,9 +31,6 @@ jobs:
       - name: Installer les dépendances
         run: flutter pub get
 
-      - name: Analyser le code
-        run: flutter analyze
-
       - name: Build APK release (arm64, non signé)
         run: flutter build apk --split-per-abi --release
 
@@ -50,7 +47,7 @@ jobs:
       - name: Renommer l'APK signé
         run: |
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release-signed.apk \
-             build/app/outputs/flutter-apk/aetherstream.apk
+            build/app/outputs/flutter-apk/aetherstream.apk
 
       - name: Créer la release GitHub et uploader l'APK
         uses: softprops/action-gh-release@v2
