@@ -7,12 +7,11 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Charge les propriétés de signature depuis android/key.properties (local uniquement)
+// Charge les propriétés de signature depuis android/key.properties (local + CI)
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties().apply {
     if (keystorePropertiesFile.exists()) load(FileInputStream(keystorePropertiesFile))
 }
-val hasSigningConfig = keystorePropertiesFile.exists() && keystoreProperties["keyAlias"] != null
 
 android {
     namespace =  "com.juman.aetherstream"
@@ -37,21 +36,17 @@ android {
     }
 
     signingConfigs {
-        if (hasSigningConfig) {
-            create("release") {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["storePassword"] as String
-            }
+        create("release") {
+            keyAlias = keystoreProperties["keyAlias"] as String
+            keyPassword = keystoreProperties["keyPassword"] as String
+            storeFile = file(keystoreProperties["storeFile"] as String)
+            storePassword = keystoreProperties["storePassword"] as String
         }
     }
 
     buildTypes {
         release {
-            // En local avec key.properties → signing release
-            // En CI sans key.properties → APK non signé, r0adkll signe après
-            signingConfig = if (hasSigningConfig) signingConfigs.getByName("release") else null
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

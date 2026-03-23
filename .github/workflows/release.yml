@@ -31,26 +31,32 @@ jobs:
       - name: Installer les dépendances
         run: flutter pub get
 
-      - name: Build APK release (arm64, non signé)
+      - name: Analyser le code
+        run: flutter analyze
+
+      - name: Décoder le keystore
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/aetherstream.jks
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+
+      - name: Créer android/key.properties
+        run: |
+          echo "storeFile=/tmp/aetherstream.jks" > android/key.properties
+          echo "storePassword=$STORE_PASSWORD"   >> android/key.properties
+          echo "keyAlias=$KEY_ALIAS"             >> android/key.properties
+          echo "keyPassword=$KEY_PASSWORD"       >> android/key.properties
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ vars.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Build APK release (arm64)
         run: flutter build apk --split-per-abi --release
 
-      - name: Installer Android build-tools 29.0.3 (requis par r0adkll)
-        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;29.0.3"
-
-      - name: Signer l'APK avec le keystore
-        uses: r0adkll/sign-android-release@v1
-        id: sign_apk
-        with:
-          releaseDirectory: build/app/outputs/flutter-apk
-          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
-          alias: ${{ vars.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-
-      - name: Renommer l'APK signé
+      - name: Renommer l'APK
         run: |
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release-signed.apk \
-            build/app/outputs/flutter-apk/aetherstream.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+             build/app/outputs/flutter-apk/aetherstream.apk
 
       - name: Créer la release GitHub et uploader l'APK
         uses: softprops/action-gh-release@v2
