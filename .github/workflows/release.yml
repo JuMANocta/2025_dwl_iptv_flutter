@@ -43,6 +43,7 @@ jobs:
           alias: ${{ vars.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
+          buildToolsVersion: '34.0.0'
 
       - name: Renommer l'APK signé
         run: |
