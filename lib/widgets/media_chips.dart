@@ -1,0 +1,75 @@
+import 'package:flutter/material.dart';
+import 'package:aetherStream/data/models/m3u_entry.dart';
+
+Widget tagChip(String text, Color color) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withAlpha(25),
+      border: Border.all(color: color.withAlpha(25)),
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
+  );
+}
+
+Widget qualityChip(TitleMetadata meta) {
+  switch (meta.quality) {
+    case '4K':   return tagChip('4K', Colors.red);
+    case 'FHD':  return tagChip('FHD', Colors.amber);
+    case 'HD':   return tagChip('HD', Colors.blue);
+    case 'SD':   return tagChip('SD', Colors.teal);
+    default:     return const SizedBox.shrink();
+  }
+}
+
+List<Widget> languageChips(TitleMetadata meta) {
+  final chips = <Widget>[];
+  final seen = <String>{};
+  for (final lang in meta.languages) {
+    if (!seen.add(lang)) continue;
+    if (lang == 'MULTI')  chips.add(tagChip('MULTI', Colors.purple));
+    if (lang == 'VOSTFR') chips.add(tagChip('VOSTFR', Colors.orange));
+    if (lang == 'VF')     chips.add(tagChip('VF', Colors.blue));
+  }
+  return chips;
+}
+
+Widget episodeMetaChip(TitleMetadata meta) {
+  final season  = meta.seasonNumber?.toString().padLeft(2, '0') ?? '--';
+  final episode = meta.episodeNumber?.toString().padLeft(2, '0') ?? '--';
+  return tagChip('S$season E$episode', Colors.cyan);
+}
+
+Chip episodeChip(M3uEntry ep) {
+  return Chip(
+    label: Text("S${ep.saison} E${ep.episode}"),
+    visualDensity: VisualDensity.compact,
+    padding: EdgeInsets.zero,
+    backgroundColor: Colors.grey.withAlpha(25),
+  );
+}
+
+/// Extrait le titre lisible d'un épisode depuis le rawTitle (ce qui suit SxxExx).
+String episodeName(M3uEntry entry) {
+  final regex = RegExp(r"S\s*\d{1,2}\s*E\s*\d{1,2}", caseSensitive: false);
+  final match = regex.firstMatch(entry.rawTitle);
+  if (match != null && match.end < entry.rawTitle.length) {
+    String rest = entry.rawTitle.substring(match.end).trim();
+    rest = rest.replaceAll(RegExp(r'\.(mkv|mp4|avi)$', caseSensitive: false), '');
+    if (rest.isNotEmpty && rest.length > 2) return rest.replaceAll(RegExp(r'^[-_.]'), '').trim();
+  }
+  return entry.displayName;
+}
+
+/// Construit un nom de fichier riche pour le téléchargement.
+String buildDownloadName(M3uEntry entry) {
+  final parts = <String>[entry.displayName];
+  if (entry.type == M3uContentType.series && entry.title.isSeriesEpisode) {
+    parts.add('S${entry.saison ?? '00'} E${entry.episode ?? '00'}');
+  }
+  if (entry.title.versionLabel != null && entry.title.versionLabel!.isNotEmpty) {
+    parts.add(entry.title.versionLabel!);
+  }
+  return parts.join(' ').trim();
+}

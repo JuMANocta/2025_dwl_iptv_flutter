@@ -4,7 +4,7 @@ import '../../data/services/tmdb_service.dart';
 import '../../data/models/media_model.dart';
 import '../player/player_page.dart';
 import '../downloads/logic/download_initiator.dart';
-import 'recherche_page.dart';
+import '../../data/models/m3u_entry.dart';
 import '../../l10n/app_localizations.dart';
 import 'actor_details_page.dart';
 
