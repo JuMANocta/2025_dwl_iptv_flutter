@@ -38,9 +38,27 @@ jobs:
         run: flutter build apk --split-per-abi --release
 
       - name: Décoder le keystore PKCS12
-        run: echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/aetherstream.p12
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/aetherstream_raw.p12
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+
+      - name: Re-encoder le keystore en format compatible Java (PBE-SHA1-3DES)
+        run: |
+          # OpenSSL 3.x crée des PKCS12 avec des OIDs modernes (tag ASN.1 > 30)
+          # incompatibles avec le parser DER de Java → re-export en algorithmes legacy
+          openssl pkcs12 -in /tmp/aetherstream_raw.p12 \
+            -passin pass:"$STORE_PASSWORD" \
+            -nodes -out /tmp/aetherstream_key.pem
+          openssl pkcs12 -export \
+            -in /tmp/aetherstream_key.pem \
+            -passout pass:"$STORE_PASSWORD" \
+            -keypbe PBE-SHA1-3DES \
+            -certpbe PBE-SHA1-3DES \
+            -macalg SHA1 \
+            -out /tmp/aetherstream.p12
+          rm /tmp/aetherstream_key.pem /tmp/aetherstream_raw.p12
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
 
       - name: Signer l'APK avec apksigner
         run: |
