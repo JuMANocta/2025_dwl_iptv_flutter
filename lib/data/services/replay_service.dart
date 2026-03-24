@@ -115,7 +115,7 @@ class ReplayProgram {
     final duration = end.difference(start);
     final h = duration.inHours;
     final m = duration.inMinutes.remainder(60);
-    return h > 0 ? '${h}h${m.toString().padLeft(2, '0')}' : '${m} min';
+    return h > 0 ? '${h}h${m.toString().padLeft(2, '0')}' : '$m min';
   }
 }
 
@@ -192,7 +192,7 @@ class ReplayService {
             : _parseDateTimeString(item['end']?.toString());
 
         if (start == null || end == null) {
-          debugPrint('⚠️ ReplayService: Timestamps invalides pour "${title}". start=${item['start']}, end=${item['end']}');
+          debugPrint('⚠️ ReplayService: Timestamps invalides pour "$title". start=${item['start']}, end=${item['end']}');
         }
 
         // has_archive: 1 = replay disponible côté serveur pour ce programme

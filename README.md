@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0+9-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.2.0+14-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -45,8 +45,9 @@
 
 ### ⏪ Replay / EPG
 - Timeshift Xtream Codes avec picker manuel (jour + heure + durée + qualité FHD/HD/SD)
+- **Grille EPG XMLTV** : sélection directe d'un programme dans la grille pour le replay
+- EPG "En cours / Ensuite" dans la fiche chaîne via XMLTV (source TNT France, cache 12h)
 - Détection automatique du meilleur format de flux (`.ts` prioritaire, fallback `.m3u8`)
-- EPG "En cours / Ensuite" via XMLTV (source TNT France, cache 12h)
 - Support des formats catchup : Xtream Codes path-based et Flussonic (`{utc}/{lutc}`)
 
 ### 🎬 TMDB
@@ -60,6 +61,10 @@
 - Téléchargement avec suivi de progression
 - Reprise sur interruption (header `Range`)
 - Sauvegarde dans `/Movies/AetherStream/` via MediaStore Android
+
+### 🔄 Mise à jour in-app
+- Vérification automatique au démarrage via l'API GitHub Releases
+- Téléchargement et installation de l'APK directement depuis l'application
 
 ---
 
@@ -120,14 +125,16 @@ lib/
 │   ├── themes/                        # Couleurs et thèmes (clair/sombre)
 │   └── utils/                         # NetworkUtils, SecureStorage, ...
 ├── data/
-│   ├── models/                        # StreamAccount, Media, DownloadTask, XmltvProgram...
+│   ├── models/                        # StreamAccount, M3uEntry, Media, DownloadTask, XmltvProgram...
 │   └── services/                      # PlaylistService, TmdbService, ReplayService, XmltvService...
 ├── feature/
 │   ├── accounts/                      # Gestion des comptes IPTV
 │   ├── downloads/                     # Gestionnaire de téléchargements
-│   ├── player/                        # Lecteur vidéo
-│   ├── replay/                        # Picker replay + widget EPG
-│   └── search/                        # Page de recherche principale
+│   ├── player/                        # Lecteur vidéo (media_kit, contrôles custom, gestures)
+│   ├── replay/                        # Picker replay + grille EPG XMLTV
+│   ├── search/                        # Recherche : RechercheM3U, M3uParser, M3uFilter
+│   └── update/                        # Mise à jour in-app (GitHub Releases)
+├── widgets/                           # Widgets réutilisables : cartes, action sheets, EPG, chips
 └── l10n/                              # Traductions FR / EN
 ```
 
@@ -151,11 +158,13 @@ lib/
 ## Roadmap
 
 - [x] **Refonte complète du player** — `media_kit`, contrôles custom, gestures, reconnexion auto *(PiP reporté)*
-- [ ] **Mise à jour in-app** — téléchargement APK depuis GitHub Releases
-- [ ] **Refactoring** — découpage `recherche_page.dart`, parsing M3U en isolate
+- [x] **Mise à jour in-app** — vérification + téléchargement APK depuis GitHub Releases
+- [x] **Grille EPG XMLTV** — sélection programme dans la grille pour le replay
+- [x] **Refactoring** — découpage `recherche_page.dart` en modules séparés (parser, filter, widgets)
+- [ ] **Parsing M3U en isolate** — `compute()` pour ne plus bloquer le thread principal
 - [ ] **Page d'accueil** — trending TMDB + derniers ajoutés, navigation bottom bar, design glassmorphism
-- [ ] **Catégories M3U** — sections par genre sur la page d'accueil (Action, 3D, Comédie...) extraites des séparateurs provider
-- [ ] **Grille EPG XMLTV** — sélection programme pour le replay
+- [ ] **Thème personnalisable** — `AppThemeConfig` configurable in-app
+- [ ] **Catégories M3U** — sections par genre sur la page d'accueil extraites des `group-title` provider
 - [ ] **Favoris** — films, séries et chaînes
 - [ ] **En cours de lecture** — reprise depuis la dernière position
 

@@ -66,21 +66,22 @@ class M3uParser {
         String? catchupSource;
 
         if (pendingMetadata != null) {
-          final commaIndex = pendingMetadata!.lastIndexOf(',');
+          final meta = pendingMetadata;
+          final commaIndex = meta.lastIndexOf(',');
           if (commaIndex != -1) {
-            title      = pendingMetadata!.substring(commaIndex + 1).trim();
-            logoUrl    = regExpLogo.firstMatch(pendingMetadata!)?.group(1);
-            tvgId      = regExpTvgId.firstMatch(pendingMetadata!)?.group(1)?.trim();
-            groupTitle = regExpGroupTitle.firstMatch(pendingMetadata!)?.group(1)?.trim();
-            final catchupValue = regExpCatchup.firstMatch(pendingMetadata!)?.group(1)?.toLowerCase() ?? '';
+            title      = meta.substring(commaIndex + 1).trim();
+            logoUrl    = regExpLogo.firstMatch(meta)?.group(1);
+            tvgId      = regExpTvgId.firstMatch(meta)?.group(1)?.trim();
+            groupTitle = regExpGroupTitle.firstMatch(meta)?.group(1)?.trim();
+            final catchupValue = regExpCatchup.firstMatch(meta)?.group(1)?.toLowerCase() ?? '';
             final hasCatchup = catchupValue.isNotEmpty
                 && catchupValue != 'false'
                 && catchupValue != 'no'
                 && catchupValue != '0';
             if (hasCatchup) {
-              final daysStr = regExpCatchupDays.firstMatch(pendingMetadata!)?.group(1);
+              final daysStr = regExpCatchupDays.firstMatch(meta)?.group(1);
               catchupDays   = int.tryParse(daysStr ?? '') ?? 7;
-              catchupSource = regExpCatchupSrc.firstMatch(pendingMetadata!)?.group(1);
+              catchupSource = regExpCatchupSrc.firstMatch(meta)?.group(1);
             }
           }
           pendingMetadata = null;

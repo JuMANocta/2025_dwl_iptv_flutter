@@ -110,15 +110,16 @@ class _RechercheM3UState extends State<RechercheM3U> {
     }
     if (_showTv) {
       for (var e in _tvList) {
-        if (matches(e) && !isHiddenTvVariant(e.title.rawTitle))
+        if (matches(e) && !isHiddenTvVariant(e.title.rawTitle)) {
           newGroupedTv.putIfAbsent(tvGroupKey(e.displayName), () => []).add(e);
+        }
       }
     }
 
-    for (var list in newGroupedFilms.values) list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
-    for (var list in newGroupedTv.values)    list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
+    for (var list in newGroupedFilms.values) { list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle)); }
+    for (var list in newGroupedTv.values) { list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle)); }
     for (var seasons in newGroupedSeries.values) {
-      for (var episodes in seasons.values) episodes.sort((a, b) => a.rawTitle.compareTo(b.rawTitle));
+      for (var episodes in seasons.values) { episodes.sort((a, b) => a.rawTitle.compareTo(b.rawTitle)); }
     }
 
     setState(() {
@@ -175,7 +176,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               decoration: InputDecoration(
                 hintText: l10n.searchFieldHint,
-                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.6)),
+                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                 prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -209,12 +210,15 @@ class _RechercheM3UState extends State<RechercheM3U> {
               itemBuilder: (context, index) {
                 final item = _flatList[index];
                 if (item is! String) return const SizedBox.shrink();
-                if (_groupedTv.containsKey(item))
+                if (_groupedTv.containsKey(item)) {
                   return TvCard(displayName: item, versions: _groupedTv[item]!, onTap: _onEntrySelected);
-                if (_groupedSeries.containsKey(item))
+                }
+                if (_groupedSeries.containsKey(item)) {
                   return SerieCard(seriesKey: item, saisons: _groupedSeries[item]!, onEntrySelected: _onEntrySelected);
-                if (_groupedFilms.containsKey(item))
+                }
+                if (_groupedFilms.containsKey(item)) {
                   return FilmCard(filmKey: item, versions: _groupedFilms[item]!, onTap: _onEntrySelected);
+                }
                 return const SizedBox.shrink();
               },
             ),
@@ -224,8 +228,8 @@ class _RechercheM3UState extends State<RechercheM3U> {
   // ── Loading screen ──────────────────────────────────────────────────────────
 
   Widget _buildLoadingScreen() {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Scaffold(
-      backgroundColor: Colors.black,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -235,7 +239,11 @@ class _RechercheM3UState extends State<RechercheM3U> {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(value: _loadingProgress, minHeight: 3, backgroundColor: Colors.white12),
+                child: LinearProgressIndicator(
+                  value: _loadingProgress,
+                  minHeight: 3,
+                  backgroundColor: onSurface.withAlpha(30),
+                ),
               ),
               const SizedBox(height: 16),
               Row(children: [
@@ -253,10 +261,11 @@ class _RechercheM3UState extends State<RechercheM3U> {
   }
 
   Widget _loadingLabel(String label, bool active) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return AnimatedDefaultTextStyle(
       duration: const Duration(milliseconds: 400),
       style: TextStyle(
-        color: active ? Colors.white70 : Colors.white24,
+        color: active ? onSurface.withAlpha(180) : onSurface.withAlpha(60),
         fontSize: 13,
         fontWeight: active ? FontWeight.w600 : FontWeight.normal,
       ),

@@ -57,18 +57,18 @@ class _UpdateDialogState extends State<UpdateDialog> {
       if (mounted) Navigator.of(context).pop();
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) {
-        if (mounted) setState(() => _state = _DownloadState.idle);
+        if (mounted) { setState(() => _state = _DownloadState.idle); }
       } else {
-        if (mounted) setState(() {
+        if (mounted) { setState(() {
           _state = _DownloadState.error;
           _errorMessage = 'Erreur réseau : ${e.message}';
-        });
+        }); }
       }
     } catch (e) {
-      if (mounted) setState(() {
+      if (mounted) { setState(() {
         _state = _DownloadState.error;
         _errorMessage = e.toString();
-      });
+      }); }
     }
   }
 
@@ -106,7 +106,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 '${(widget.info.sizeBytes! / 1024 / 1024).toStringAsFixed(1)} MB',
                 style: TextStyle(
                   fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                 ),
               ),
             const SizedBox(height: 12),
@@ -128,7 +128,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       color: Theme.of(context)
                           .colorScheme
                           .onSurface
-                          .withOpacity(0.75),
+                          .withValues(alpha: 0.75),
                     ),
                   ),
                 ),
@@ -140,7 +140,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
             if (_state == _DownloadState.downloading) ...[
               LinearProgressIndicator(
                 value: _progress,
-                backgroundColor: kAetherPrimaryPurple.withOpacity(0.2),
+                backgroundColor: kAetherPrimaryPurple.withValues(alpha: 0.2),
                 valueColor:
                     const AlwaysStoppedAnimation<Color>(kAetherSecondaryCyan),
                 minHeight: 6,

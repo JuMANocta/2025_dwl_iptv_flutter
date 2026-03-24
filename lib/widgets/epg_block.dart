@@ -45,12 +45,12 @@ class _EpgNowNextBlockState extends State<EpgNowNextBlock> {
     final current     = await XmltvService.getCurrentProgram(widget.tvgId);
     final next        = await XmltvService.getNextProgram(widget.tvgId);
     final channelIcon = await XmltvService.getChannelIconUrl(widget.tvgId);
-    if (mounted) setState(() {
+    if (mounted) { setState(() {
       _current       = current;
       _next          = next;
       _channelIconUrl = channelIcon;
       _loading       = false;
-    });
+    }); }
   }
 
   @override
@@ -74,9 +74,9 @@ class _EpgNowNextBlockState extends State<EpgNowNextBlock> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: kContainerDark.withOpacity(0.7),
+        color: kContainerDark.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: kAetherPrimaryPurple.withOpacity(0.3)),
+        border: Border.all(color: kAetherPrimaryPurple.withValues(alpha: 0.3)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
@@ -166,8 +166,8 @@ class EpgProgramRow extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: isNow
-                                ? kAetherVibrantMagenta.withOpacity(0.9)
-                                : kAetherPrimaryPurple.withOpacity(0.7),
+                                ? kAetherVibrantMagenta.withValues(alpha: 0.9)
+                                : kAetherPrimaryPurple.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(

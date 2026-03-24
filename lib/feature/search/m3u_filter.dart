@@ -11,7 +11,7 @@ String? contentCategoryLabel(String? groupTitle) {
   if (g.contains('DOCU')) return 'Documentaire';
   if (g.contains('BIOPIC')) return 'Biopic';
   if (g.contains('ENFANT') || g.contains('KIDS') || g.contains('JEUNESSE') ||
-      g.contains('FAMILIALE') || g.contains('FAMILLE')) return 'Jeunesse';
+      g.contains('FAMILIALE') || g.contains('FAMILLE')) { return 'Jeunesse'; }
   if (g.contains('CORÉEN') || g.contains('KOREAN') || g.contains('KOREA')) return 'Coréen';
   if (g.contains('TURC') || g.contains('TURQU') || g.contains('TÜRK')) return 'Turc';
   if (g.contains('MAGHRÉB') || g.contains('MAGHRÈB') || g.contains('MAGHREB')) return 'Maghrébin';

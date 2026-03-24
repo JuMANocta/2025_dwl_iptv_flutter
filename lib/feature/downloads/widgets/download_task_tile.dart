@@ -247,7 +247,7 @@ class DownloadTaskTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 11,
-                color: Theme.of(context).colorScheme.error.withOpacity(0.9),
+                color: Theme.of(context).colorScheme.error.withValues(alpha: 0.9),
               ),
             ),
           ],

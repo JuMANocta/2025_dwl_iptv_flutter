@@ -39,7 +39,7 @@ Future<void> _checkForUpdate() async {
   final info = await UpdateService.checkForUpdate();
   if (info == null) return;
   final context = navigatorKey.currentContext;
-  if (context == null) return;
+  if (context == null || !context.mounted) return;
   await UpdateDialog.show(context, info);
 }
 

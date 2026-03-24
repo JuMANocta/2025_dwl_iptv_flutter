@@ -206,7 +206,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
                         color: Theme.of(context)
                             .colorScheme
                             .onSurface
-                            .withOpacity(0.35),
+                            .withValues(alpha: 0.35),
                       ),
                     ),
                   ),
@@ -377,7 +377,7 @@ class _XmltvProgramList extends StatelessWidget {
                 color: Theme.of(context)
                     .colorScheme
                     .onSurface
-                    .withOpacity(0.35)),
+                    .withValues(alpha: 0.35)),
             const SizedBox(width: 8),
             Text(
               'Aucune donnée EPG disponible',
@@ -386,7 +386,7 @@ class _XmltvProgramList extends StatelessWidget {
                 color: Theme.of(context)
                     .colorScheme
                     .onSurface
-                    .withOpacity(0.4),
+                    .withValues(alpha: 0.4),
               ),
             ),
           ],
@@ -437,12 +437,12 @@ class _XmltvProgramRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
           color: isNow
-              ? kAetherPrimaryPurple.withOpacity(0.15)
+              ? kAetherPrimaryPurple.withValues(alpha: 0.15)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: isNow
               ? Border.all(
-                  color: kAetherPrimaryPurple.withOpacity(0.35), width: 1)
+                  color: kAetherPrimaryPurple.withValues(alpha: 0.35), width: 1)
               : null,
         ),
         child: Row(
@@ -460,7 +460,7 @@ class _XmltvProgramRow extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                       color: isPlayable
                           ? onSurface
-                          : onSurface.withOpacity(0.35),
+                          : onSurface.withValues(alpha: 0.35),
                     ),
                   ),
                   Text(
@@ -468,8 +468,8 @@ class _XmltvProgramRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10,
                       color: isPlayable
-                          ? onSurface.withOpacity(0.5)
-                          : onSurface.withOpacity(0.25),
+                          ? onSurface.withValues(alpha: 0.5)
+                          : onSurface.withValues(alpha: 0.25),
                     ),
                   ),
                 ],
@@ -488,7 +488,7 @@ class _XmltvProgramRow extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
-                            color: kAetherVibrantMagenta.withOpacity(0.9),
+                            color: kAetherVibrantMagenta.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
@@ -512,7 +512,7 @@ class _XmltvProgramRow extends StatelessWidget {
                                 isNow ? FontWeight.bold : FontWeight.normal,
                             color: isPlayable
                                 ? onSurface
-                                : onSurface.withOpacity(0.35),
+                                : onSurface.withValues(alpha: 0.35),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -526,8 +526,8 @@ class _XmltvProgramRow extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         color: isPlayable
-                            ? onSurface.withOpacity(0.45)
-                            : onSurface.withOpacity(0.2),
+                            ? onSurface.withValues(alpha: 0.45)
+                            : onSurface.withValues(alpha: 0.2),
                       ),
                     ),
                 ],
@@ -541,7 +541,7 @@ class _XmltvProgramRow extends StatelessWidget {
                 size: 22,
                 color: isNow
                     ? kAetherSecondaryCyan
-                    : onSurface.withOpacity(0.4),
+                    : onSurface.withValues(alpha: 0.4),
               )
             else
               const SizedBox(width: 22),
@@ -695,7 +695,7 @@ class _TimeSelector extends StatelessWidget {
                 color: bg,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                    color: kAetherPrimaryPurple.withOpacity(0.6), width: 1.5),
+                    color: kAetherPrimaryPurple.withValues(alpha: 0.6), width: 1.5),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -736,7 +736,7 @@ class _ArrowButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: kAetherPrimaryPurple.withOpacity(0.15),
+      color: kAetherPrimaryPurple.withValues(alpha: 0.15),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),

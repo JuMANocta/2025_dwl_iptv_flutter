@@ -158,9 +158,9 @@ class _AccountsPageState extends State<AccountsPage> {
         final s = line.trim();
         if (s.startsWith('http://') || s.startsWith('https://')) {
           final lower = s.toLowerCase();
-          if (lower.contains('/movie/')) filmCount++;
-          else if (lower.contains('/series/')) seriesCount++;
-          else tvCount++;
+          if (lower.contains('/movie/')) { filmCount++; }
+          else if (lower.contains('/series/')) { seriesCount++; }
+          else { tvCount++; }
         }
       });
 
@@ -229,18 +229,19 @@ class _AccountsPageState extends State<AccountsPage> {
                 // Mode SUPPRESSION
                   IconButton.filledTonal(
                     onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       await TmdbApiService.deleteApiKey();
                       setState(() {
                         _tmdbApiKeyController.clear();
                         _hasSavedKey = false;
                       });
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         const SnackBar(content: Text("Clé supprimée."), backgroundColor: Colors.red),
                       );
                     },
                     icon: const Icon(Icons.delete_outline),
                     style: IconButton.styleFrom(
-                      backgroundColor: Colors.red.withOpacity(0.1),
+                      backgroundColor: Colors.red.withValues(alpha: 0.1),
                       foregroundColor: Colors.red,
                     ),
                     tooltip: "Supprimer la clé",
@@ -251,20 +252,23 @@ class _AccountsPageState extends State<AccountsPage> {
                     onPressed: () async {
                       final key = _tmdbApiKeyController.text.trim();
                       if (key.isNotEmpty) {
+                        final focusScope = FocusScope.of(context);
+                        final messenger = ScaffoldMessenger.of(context);
+                        final navigator = Navigator.of(context);
                         await TmdbApiService.saveApiKey(key);
                         // Force le reload du service
                         TmdbService.resetInstance();
 
-                        FocusScope.of(context).unfocus();
+                        focusScope.unfocus();
                         if (!mounted) return;
 
                         setState(() => _hasSavedKey = true);
 
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           const SnackBar(content: Text("TMDb connecté !"), backgroundColor: Colors.green),
                         );
                         // On quitte pour rafraîchir la recherche parente
-                        Navigator.of(context).pop(true);
+                        navigator.pop(true);
                       }
                     },
                     icon: const Icon(Icons.save),
@@ -548,7 +552,7 @@ class _AccountsPageState extends State<AccountsPage> {
         final isCurrent = curSnap.data?.id == a.id;
         return ListTile(
           leading: CircleAvatar(
-            backgroundColor: isCurrent ? Colors.green.withOpacity(0.2) : Colors.grey.withOpacity(0.1),
+            backgroundColor: isCurrent ? Colors.green.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.1),
             child: Icon(
               isCurrent ? Icons.check : Icons.dns,
               color: isCurrent ? Colors.green : Colors.grey,
