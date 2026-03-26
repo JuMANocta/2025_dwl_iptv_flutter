@@ -74,7 +74,7 @@ class _EpgNowNextBlockState extends State<EpgNowNextBlock> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: kContainerDark.withValues(alpha: 0.7),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: kAetherPrimaryPurple.withValues(alpha: 0.3)),
       ),
@@ -176,9 +176,9 @@ class EpgProgramRow extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 6),
-                        Text(program.timeRange, style: const TextStyle(fontSize: 11, color: kMediumGrey)),
+                        Text(program.timeRange, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                         const SizedBox(width: 4),
-                        Text('(${program.durationLabel})', style: const TextStyle(fontSize: 10, color: kMediumGrey)),
+                        Text('(${program.durationLabel})', style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ],
                     ),
                     const SizedBox(height: 3),
@@ -189,7 +189,7 @@ class EpgProgramRow extends StatelessWidget {
                       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                     ),
                     if (program.category != null)
-                      Text(program.category!, style: const TextStyle(fontSize: 11, color: kMediumGrey), maxLines: 1),
+                      Text(program.category!, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant), maxLines: 1),
                   ],
                 ),
               ),

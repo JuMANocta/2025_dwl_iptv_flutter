@@ -55,10 +55,12 @@ jobs:
             -keypbe PBE-SHA1-3DES \
             -certpbe PBE-SHA1-3DES \
             -macalg SHA1 \
+            -name "$KEY_ALIAS" \
             -out /tmp/aetherstream.p12
           rm /tmp/aetherstream_key.pem /tmp/aetherstream_raw.p12
         env:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ vars.KEY_ALIAS }}
 
       - name: Signer l'APK avec apksigner
         run: |

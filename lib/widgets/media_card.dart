@@ -76,12 +76,14 @@ class FilmCard extends StatelessWidget {
                 ]),
                 const SizedBox(height: 4),
                 if (isHomonymConflict)
-                  Text('Versions disponibles: ${uniqueYears.join(', ')}', style: const TextStyle(color: Colors.white70, fontSize: 12))
+                  Text('Versions disponibles: ${uniqueYears.join(', ')}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12))
                 else if (uniqueChips.isNotEmpty)
-                  Wrap(spacing: 4, runSpacing: 4, children: uniqueChips),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(spacing: 4, runSpacing: 4, children: uniqueChips),
+                  ),
               ]),
             ),
-            const Icon(Icons.chevron_right, color: Colors.grey),
           ]),
         ),
       ),
@@ -175,15 +177,14 @@ class TvCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(children: [
                   if (versions.length > 1)
-                    Text('${versions.length} flux', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text('${versions.length} flux', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                   if (versions.length > 1 && hasReplay)
-                    const Text(" • ", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text(' • ', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                   if (hasReplay)
                     const Icon(Icons.replay_circle_filled, color: Colors.blueAccent, size: 14),
                 ]),
               ]),
             ),
-            const Icon(Icons.chevron_right, color: Colors.grey),
           ]),
         ),
       ),

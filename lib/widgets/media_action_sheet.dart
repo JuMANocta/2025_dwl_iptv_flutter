@@ -46,8 +46,8 @@ Future<M3uEntry?> showVersionSelector(BuildContext context, List<M3uEntry> versi
               if (year != null) {
                 allChips.add(Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(border: Border.all(color: Colors.white60), borderRadius: BorderRadius.circular(4)),
-                  child: Text(year, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+                  decoration: BoxDecoration(border: Border.all(color: Theme.of(ctx).colorScheme.outline.withAlpha(150)), borderRadius: BorderRadius.circular(4)),
+                  child: Text(year, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Theme.of(ctx).colorScheme.onSurface)),
                 ));
               }
               if (qChip is! SizedBox) allChips.add(qChip);
@@ -59,7 +59,7 @@ Future<M3uEntry?> showVersionSelector(BuildContext context, List<M3uEntry> versi
               if (allChips.isNotEmpty) {
                 titleWidget = Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: allChips);
                 if (extraInfo.isNotEmpty && extraInfo != "Standard / Inconnue") {
-                  subtitleWidget = Text(extraInfo, style: const TextStyle(fontSize: 12, color: Colors.grey));
+                  subtitleWidget = Text(extraInfo, style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant));
                 }
               } else {
                 titleWidget = Text(extraInfo, style: const TextStyle(fontWeight: FontWeight.bold));
@@ -69,7 +69,7 @@ Future<M3uEntry?> showVersionSelector(BuildContext context, List<M3uEntry> versi
                 contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
                 title: titleWidget,
                 subtitle: subtitleWidget,
-                trailing: const Icon(Icons.check_circle_outline, color: Colors.white24, size: 20),
+                trailing: Icon(Icons.check_circle_outline, color: Theme.of(ctx).colorScheme.onSurface.withAlpha(60), size: 20),
                 onTap: () => Navigator.pop(ctx, v),
               );
             },

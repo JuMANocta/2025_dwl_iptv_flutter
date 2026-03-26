@@ -96,8 +96,14 @@ class _DetailsPageState extends State<DetailsPage> {
     // URLs
     final backdropUrl = TmdbService.getPosterUrl(backdropPath, size: 'original');
 
+    final surface = Theme.of(context).colorScheme.surface;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final onSurfaceVariant = Theme.of(context).colorScheme.onSurfaceVariant;
+    final surfaceContainerHighest = Theme.of(context).colorScheme.surfaceContainerHighest;
+    final outlineVariant = Theme.of(context).colorScheme.outlineVariant;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: surface,
       body: CustomScrollView(
         slivers: [
           // 1. IMMERSIVE HEADER
@@ -105,7 +111,7 @@ class _DetailsPageState extends State<DetailsPage> {
             expandedHeight: 400.0,
             pinned: true,
             stretch: true,
-            backgroundColor: Colors.black,
+            backgroundColor: surface,
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
                 fit: StackFit.expand,
@@ -115,13 +121,13 @@ class _DetailsPageState extends State<DetailsPage> {
                     Image.network(
                       backdropUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade900),
+                      errorBuilder: (_, __, ___) => Container(color: surfaceContainerHighest),
                     )
                   else
-                    Container(color: Colors.grey.shade900),
+                    Container(color: surfaceContainerHighest),
 
-                  // Gradient Cyberpunk (Noir vers Transparent)
-                  const DecoratedBox(
+                  // Gradient (transparent → surface) pour transition seamless
+                  DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
@@ -129,9 +135,9 @@ class _DetailsPageState extends State<DetailsPage> {
                         colors: [
                           Colors.transparent,
                           Colors.black45,
-                          Colors.black,
+                          surface,
                         ],
-                        stops: [0.0, 0.6, 1.0],
+                        stops: const [0.0, 0.6, 1.0],
                       ),
                     ),
                   ),
@@ -150,10 +156,10 @@ class _DetailsPageState extends State<DetailsPage> {
                   // TITRE (Héros)
                   Text(
                     widget.entry.displayName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: onSurface,
                       letterSpacing: 1.1,
                     ),
                   ),
@@ -163,12 +169,12 @@ class _DetailsPageState extends State<DetailsPage> {
                   if (hasTmdbData)
                     Row(
                       children: [
-                        if (releaseDate != null) _buildMetaTag(releaseDate, Colors.grey),
+                        if (releaseDate != null) _buildMetaTag(releaseDate, onSurfaceVariant),
                         if (runtime != null) ...[
                           const SizedBox(width: 8),
-                          const Text("•", style: TextStyle(color: Colors.grey)),
+                          Text('•', style: TextStyle(color: onSurfaceVariant)),
                           const SizedBox(width: 8),
-                          _buildMetaTag(runtime, Colors.grey),
+                          _buildMetaTag(runtime, onSurfaceVariant),
                         ],
                         const Spacer(),
                         if (rating > 0) ...[
@@ -194,8 +200,6 @@ class _DetailsPageState extends State<DetailsPage> {
                         child: FilledButton.icon(
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
                           ),
                           onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => PlayerPage(
@@ -217,8 +221,6 @@ class _DetailsPageState extends State<DetailsPage> {
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            side: const BorderSide(color: Colors.white30),
-                            foregroundColor: Colors.white,
                           ),
                           onPressed: () => verifierEtTelecharger(
                               url: widget.entry.url, nom: widget.entry.displayName, context: context),
@@ -251,19 +253,19 @@ class _DetailsPageState extends State<DetailsPage> {
 
                   // SYNOPSIS
                   if (hasTmdbData) ...[
-                    Text("Synopsis", style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
+                    Text("Synopsis", style: Theme.of(context).textTheme.titleMedium?.copyWith(color: onSurfaceVariant)),
                     const SizedBox(height: 8),
                     Text(
                       overview ?? "Données classifiées.",
-                      style: const TextStyle(color: Colors.grey, height: 1.5, fontSize: 15),
+                      style: TextStyle(color: onSurfaceVariant, height: 1.5, fontSize: 15),
                     ),
                     const SizedBox(height: 24),
                   ],
 
                   // 🎯 CASTING PRINCIPAL (ActionChips cliquables)
                   if (hasTmdbData && castList != null && castList.isNotEmpty) ...[
-                    Text("Casting principal", style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white70)),
-                    const Divider(color: Colors.white10),
+                    Text("Casting principal", style: Theme.of(context).textTheme.titleSmall?.copyWith(color: onSurfaceVariant)),
+                    Divider(color: outlineVariant),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -271,9 +273,9 @@ class _DetailsPageState extends State<DetailsPage> {
                         return ActionChip(
                           avatar: const Icon(Icons.person, size: 18, color: Colors.amber),
                           label: Text(actor),
-                          onPressed: () => _searchActor(actor), // 🎯 APPEL VERS TMDB
-                          backgroundColor: Colors.white12,
-                          labelStyle: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                          onPressed: () => _searchActor(actor),
+                          backgroundColor: surfaceContainerHighest,
+                          labelStyle: TextStyle(color: onSurface, fontSize: 13, fontWeight: FontWeight.w500),
                         );
                       }).toList(),
                     ),
@@ -287,8 +289,8 @@ class _DetailsPageState extends State<DetailsPage> {
                       runSpacing: 8,
                       children: _tmdbData!.genres.map((g) => Chip(
                         label: Text(g),
-                        backgroundColor: Colors.grey.shade900,
-                        labelStyle: const TextStyle(color: Colors.white70, fontSize: 12),
+                        backgroundColor: surfaceContainerHighest,
+                        labelStyle: TextStyle(color: onSurfaceVariant, fontSize: 12),
                         side: BorderSide.none,
                         padding: EdgeInsets.zero,
                       )).toList(),
@@ -303,7 +305,7 @@ class _DetailsPageState extends State<DetailsPage> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Disponible sur", style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white70)),
+                        Text("Disponible sur", style: Theme.of(context).textTheme.titleSmall?.copyWith(color: onSurfaceVariant)),
                         const SizedBox(height: 8),
                         Wrap(
                           spacing: 8,
@@ -326,11 +328,11 @@ class _DetailsPageState extends State<DetailsPage> {
 
                   // PRODUCTION & COMPAGNIES
                   if (companies != null && companies.isNotEmpty) ...[
-                    const Divider(color: Colors.white10),
+                    Divider(color: outlineVariant),
                     const SizedBox(height: 8),
                     Text(
                       "Production: $companies",
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                      style: TextStyle(color: onSurfaceVariant, fontSize: 12),
                     ),
                     const SizedBox(height: 40),
                   ],
@@ -401,7 +403,7 @@ class _DetailsPageState extends State<DetailsPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.white24),
+        border: Border.all(color: Theme.of(context).colorScheme.outline.withAlpha(80)),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
