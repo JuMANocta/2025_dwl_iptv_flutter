@@ -1,30 +1,88 @@
 import 'package:flutter/material.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 
-Widget _imagePlaceholder({required IconData icon, required Color color}) {
-  return Container(
-    width: 45, height: 65,
-    decoration: BoxDecoration(color: color.withAlpha(25), borderRadius: BorderRadius.circular(8)),
-    child: Icon(icon, color: color),
+// ─── Poster partagé ──────────────────────────────────────────────────────────
+
+Widget _poster(List<M3uEntry> versions, IconData fallbackIcon, Color accentColor) {
+  final logoUrl = versions.isNotEmpty ? versions.first.logoUrl : null;
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(8),
+    child: SizedBox(
+      width: 70, height: 105,
+      child: logoUrl != null && logoUrl.isNotEmpty
+          ? Image.network(
+              logoUrl,
+              width: 70, height: 105, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _posterFallback(fallbackIcon, accentColor),
+              loadingBuilder: (_, child, progress) =>
+                  progress == null ? child : _posterFallback(fallbackIcon, accentColor),
+            )
+          : _posterFallback(fallbackIcon, accentColor),
+    ),
   );
 }
 
-Widget mediaCardImage(List<M3uEntry> versions, IconData fallbackIcon, Color fallbackColor) {
-  final logoUrl = versions.isNotEmpty ? versions.first.logoUrl : null;
-  return ClipRRect(
-    borderRadius: BorderRadius.circular(8.0),
-    child: logoUrl != null && logoUrl.isNotEmpty
-        ? Image.network(
-            logoUrl,
-            width: 45, height: 65, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _imagePlaceholder(icon: fallbackIcon, color: fallbackColor),
-            loadingBuilder: (_, child, progress) =>
-                progress == null ? child : _imagePlaceholder(icon: fallbackIcon, color: fallbackColor),
-          )
-        : _imagePlaceholder(icon: fallbackIcon, color: fallbackColor),
+Widget _posterFallback(IconData icon, Color color) {
+  return Container(
+    color: color.withAlpha(20),
+    child: Center(child: Icon(icon, color: color.withAlpha(120), size: 32)),
   );
 }
+
+// ─── Badge catégorie ─────────────────────────────────────────────────────────
+
+Widget _categoryBadge(String label, Color color) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withAlpha(30),
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: color.withAlpha(100)),
+    ),
+    child: Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+  );
+}
+
+// ─── Conteneur de carte ───────────────────────────────────────────────────────
+
+Widget _cardShell({
+  required BuildContext context,
+  required Widget child,
+  required VoidCallback onTap,
+  required Gradient accentGradient,
+}) {
+  final cs = Theme.of(context).colorScheme;
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+    child: Material(
+      color: cs.surfaceContainer,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        splashColor: kAetherPrimaryPurple.withAlpha(30),
+        highlightColor: kAetherPrimaryPurple.withAlpha(15),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Barre accent gauche (3 px, gradient de l'app)
+                Container(width: 3, decoration: BoxDecoration(gradient: accentGradient)),
+                Expanded(child: child),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+// ─── FilmCard ────────────────────────────────────────────────────────────────
 
 class FilmCard extends StatelessWidget {
   final String filmKey;
@@ -35,61 +93,74 @@ class FilmCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs             = Theme.of(context).colorScheme;
     final keyParts       = filmKey.split('||');
     final displayTitle   = keyParts[0];
     final categoryLabel  = keyParts.length > 1 ? keyParts[1] : null;
-    final uniqueYears    = versions.map((v) => v.title.year).where((y) => y != null).toSet();
+    final uniqueYears       = versions.map((v) => v.title.year).where((y) => y != null).toSet();
     final isHomonymConflict = versions.length > 1 && uniqueYears.length > 1;
-    final allQualityChips  = versions.map((v) => qualityChip(v.title));
-    final allLanguageChips = versions.expand((v) => languageChips(v.title));
-    final uniqueChips = <Widget>{...allQualityChips, ...allLanguageChips}
-        .where((w) => w is! SizedBox)
-        .toList();
+    // Dédupliquer par valeur (label) et non par identité Widget
+    final uniqueChips = uniqueChipsForVersions(versions);
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => onTap(versions),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(children: [
-            mediaCardImage(versions, Icons.movie, Colors.blue),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(child: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  if (categoryLabel != null) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withAlpha(40),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.blue.withAlpha(80)),
-                      ),
-                      child: Text(categoryLabel, style: const TextStyle(fontSize: 11, color: Colors.blue)),
-                    ),
-                  ],
-                ]),
-                const SizedBox(height: 4),
-                if (isHomonymConflict)
-                  Text('Versions disponibles: ${uniqueYears.join(', ')}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12))
-                else if (uniqueChips.isNotEmpty)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Wrap(spacing: 4, runSpacing: 4, children: uniqueChips),
+    return _cardShell(
+      context: context,
+      onTap: () => onTap(versions),
+      accentGradient: kAetherGradient,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(children: [
+          _poster(versions, Icons.movie_outlined, kAetherPrimaryPurple),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Titre + badge catégorie
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: Text(
+                    displayTitle,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
+                ),
+                if (categoryLabel != null) ...[
+                  const SizedBox(width: 8),
+                  _categoryBadge(categoryLabel, kAetherPrimaryPurple),
+                ],
               ]),
-            ),
-          ]),
-        ),
+
+              const SizedBox(height: 8),
+
+              // Infos secondaires
+              if (isHomonymConflict)
+                Text(
+                  uniqueYears.join(' · '),
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                )
+              else if (uniqueChips.isNotEmpty)
+                Wrap(spacing: 4, runSpacing: 4, children: uniqueChips),
+
+              const Spacer(),
+
+              // Indicateur multi-versions
+              if (versions.length > 1)
+                Row(children: [
+                  Icon(Icons.layers_outlined, size: 13, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${versions.length} versions',
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                  ),
+                ]),
+            ]),
+          ),
+        ]),
       ),
     );
   }
 }
+
+// ─── SerieCard ───────────────────────────────────────────────────────────────
 
 class SerieCard extends StatelessWidget {
   final String seriesKey;
@@ -100,54 +171,127 @@ class SerieCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs            = Theme.of(context).colorScheme;
     final keyParts      = seriesKey.split('||');
     final displayTitle  = keyParts[0];
     final categoryLabel = keyParts.length > 1 ? keyParts[1] : null;
-    final totalEpisodes = saisons.values.fold<int>(0, (prev, list) => prev + list.length);
-    final allVersions   = saisons.values.expand((list) => list).toList();
+    final totalEpisodes = saisons.values.fold<int>(0, (p, l) => p + l.length);
+    final allVersions   = saisons.values.expand((l) => l).toList();
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          leading: mediaCardImage(allVersions, Icons.tv, Colors.purple),
-          title: Row(children: [
-            Expanded(child: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
-            if (categoryLabel != null) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.purple.withAlpha(40),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.purple.withAlpha(80)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      child: Material(
+        color: cs.surfaceContainer,
+        borderRadius: BorderRadius.circular(14),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Stack(
+            children: [
+              // Barre accent gauche (magenta → purple) via Stack pour éviter
+              // l'incompatibilité IntrinsicHeight / ExpansionTile
+              Positioned(
+                left: 0, top: 0, bottom: 0,
+                child: Container(
+                  width: 3,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [kAetherVibrantMagenta, kAetherPrimaryPurple],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
                 ),
-                child: Text(categoryLabel, style: const TextStyle(fontSize: 11, color: Colors.purple)),
+              ),
+              // Contenu décalé de 3px pour laisser place à la barre
+              Padding(
+                padding: const EdgeInsets.only(left: 3),
+                child: Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                    childrenPadding: EdgeInsets.zero,
+                    leading: _poster(allVersions, Icons.tv_outlined, kAetherVibrantMagenta),
+                    title: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(
+                        child: Text(
+                          displayTitle,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (categoryLabel != null) ...[
+                        const SizedBox(width: 8),
+                        _categoryBadge(categoryLabel, kAetherVibrantMagenta),
+                      ],
+                    ]),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${saisons.keys.length} saison${saisons.keys.length > 1 ? 's' : ''} · $totalEpisodes épisode${totalEpisodes > 1 ? 's' : ''}',
+                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                      ),
+                    ),
+                    children: saisons.entries.map((seasonEntry) {
+                      return Theme(
+                        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                        child: ExpansionTile(
+                          tilePadding: const EdgeInsets.fromLTRB(20, 0, 16, 0),
+                          childrenPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.expand_circle_down_outlined, size: 18, color: cs.onSurfaceVariant),
+                          title: Text(
+                            'Saison ${seasonEntry.key}',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                          children: seasonEntry.value.map((ep) => _EpisodeTile(
+                            ep: ep,
+                            onTap: () => onEntrySelected([ep]),
+                          )).toList(),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
               ),
             ],
-          ]),
-          subtitle: Text("${saisons.keys.length} Saisons • $totalEpisodes Épisodes", style: const TextStyle(fontSize: 12)),
-          children: saisons.entries.map((entry) {
-            return ExpansionTile(
-              title: Text("Saison ${entry.key}", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-              leading: const Icon(Icons.folder_open, size: 20),
-              children: entry.value.map((ep) => ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.only(left: 32, right: 16),
-                title: Text(episodeName(ep)),
-                leading: episodeChip(ep),
-                trailing: const Icon(Icons.play_arrow_rounded),
-                onTap: () => onEntrySelected([ep]),
-              )).toList(),
-            );
-          }).toList(),
+          ),
         ),
       ),
     );
   }
 }
+
+class _EpisodeTile extends StatelessWidget {
+  final M3uEntry ep;
+  final VoidCallback onTap;
+  const _EpisodeTile({required this.ep, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(36, 10, 16, 10),
+        child: Row(children: [
+          episodeChip(ep),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              episodeName(ep),
+              style: TextStyle(fontSize: 13, color: cs.onSurface),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Icon(Icons.play_circle_outline_rounded, size: 20, color: kAetherSecondaryCyan),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── TvCard ──────────────────────────────────────────────────────────────────
 
 class TvCard extends StatelessWidget {
   final String displayName;
@@ -158,35 +302,52 @@ class TvCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
     final hasReplay = versions.isNotEmpty && versions.first.supportsCatchup;
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => onTap(versions),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(children: [
-            mediaCardImage(versions, Icons.live_tv, Colors.green),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
-                Row(children: [
-                  if (versions.length > 1)
-                    Text('${versions.length} flux', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
-                  if (versions.length > 1 && hasReplay)
-                    Text(' • ', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
-                  if (hasReplay)
-                    const Icon(Icons.replay_circle_filled, color: Colors.blueAccent, size: 14),
-                ]),
+    return _cardShell(
+      context: context,
+      onTap: () => onTap(versions),
+      accentGradient: const LinearGradient(
+        colors: [kAetherSecondaryCyan, kAetherPrimaryPurple],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(children: [
+          _poster(versions, Icons.live_tv_outlined, kAetherSecondaryCyan),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                displayName,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Row(children: [
+                if (versions.length > 1) ...[
+                  Icon(Icons.layers_outlined, size: 13, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 4),
+                  Text('${versions.length} flux', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+                ],
+                if (versions.length > 1 && hasReplay)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text('·', style: TextStyle(color: cs.onSurfaceVariant)),
+                  ),
+                if (hasReplay) ...[
+                  const Icon(Icons.replay_circle_filled, color: kAetherSecondaryCyan, size: 14),
+                  const SizedBox(width: 3),
+                  Text('Replay', style: TextStyle(color: kAetherSecondaryCyan, fontSize: 12, fontWeight: FontWeight.w500)),
+                ],
               ]),
-            ),
-          ]),
-        ),
+            ]),
+          ),
+          Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+        ]),
       ),
     );
   }

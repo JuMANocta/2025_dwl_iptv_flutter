@@ -4,54 +4,66 @@ import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/search/recherche_m3u.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
+import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 
 class RecherchePage extends StatefulWidget {
-  /// Chemin de playlist pré-chargé par _LaunchDecider — évite un double appel à getOrDownloadPlaylist().
-  final String? initialPlaylistPath;
-  const RecherchePage({super.key, this.initialPlaylistPath});
+  /// Données pré-chargées par _LaunchDecider — évite un double appel réseau.
+  final ({String path, String accountId, String accountName})? initialData;
+  const RecherchePage({super.key, this.initialData});
 
   @override
   State<RecherchePage> createState() => _RecherchePageState();
 }
 
 class _RecherchePageState extends State<RecherchePage> {
-  late Future<String> _playlistPathFuture;
+  late Future<({String path, String accountId, String accountName})> _dataFuture;
   String? _currentAccountLabel;
   Key _rechercheM3UKey = UniqueKey();
-  bool _initialPathConsumed = false;
+  bool _initialDataConsumed = false;
 
   @override
   void initState() {
     super.initState();
-    _loadPlaylistPath();
+    _loadData();
   }
 
-  void _loadPlaylistPath({bool forceDownload = false}) {
+  void _loadData({bool forceDownload = false}) {
     setState(() {
       if (forceDownload) {
-        _playlistPathFuture = PlaylistService.downloadCurrentM3U();
-      } else if (!_initialPathConsumed && widget.initialPlaylistPath != null) {
-        _initialPathConsumed = true;
-        _playlistPathFuture = Future.value(widget.initialPlaylistPath);
+        _dataFuture = _fetchData(forceDownload: true);
+      } else if (!_initialDataConsumed && widget.initialData != null) {
+        _initialDataConsumed = true;
+        _dataFuture = Future.value(widget.initialData!);
       } else {
-        _playlistPathFuture = PlaylistService.getOrDownloadPlaylist();
+        _dataFuture = _fetchData();
       }
 
-      _playlistPathFuture.then((_) {
-        StreamAccountService.getCurrentAccount().then((acc) {
-          if (mounted) setState(() => _currentAccountLabel = acc?.label);
-        });
+      _dataFuture.then((d) {
+        if (mounted) setState(() => _currentAccountLabel = d.accountName);
       }).catchError((_) {
         if (mounted) setState(() => _currentAccountLabel = "Erreur de connexion");
       });
     });
   }
 
+  /// Charge le chemin + les infos du compte actif en parallèle.
+  Future<({String path, String accountId, String accountName})> _fetchData({bool forceDownload = false}) async {
+    final path = forceDownload
+        ? await PlaylistService.downloadCurrentM3U()
+        : await PlaylistService.getOrDownloadPlaylist();
+    final acc = await StreamAccountService.getCurrentAccount();
+    return (
+      path: path,
+      accountId: acc?.id ?? '',
+      accountName: acc?.label ?? '',
+    );
+  }
+
   void _forceReload() {
     debugPrint("🔄 Forçage du rechargement de la playlist...");
     setState(() => _rechercheM3UKey = UniqueKey());
-    _loadPlaylistPath(forceDownload: true);
+    _loadData(forceDownload: true);
   }
 
   Future<void> _openSettings() async {
@@ -59,9 +71,12 @@ class _RecherchePageState extends State<RecherchePage> {
       MaterialPageRoute(builder: (_) => const AccountsPage()),
     );
     if (result == true) {
+      // Vider le cache mémoire du compte actif pour forcer le rechargement
+      final acc = await StreamAccountService.getCurrentAccount();
+      if (acc != null) ParsedPlaylistService.invalidate(acc.id);
       setState(() {
         _rechercheM3UKey = UniqueKey();
-        _loadPlaylistPath(forceDownload: false);
+        _loadData(forceDownload: false);
       });
     }
   }
@@ -90,8 +105,8 @@ class _RecherchePageState extends State<RecherchePage> {
           ),
         ],
       ),
-      body: FutureBuilder<String>(
-        future: _playlistPathFuture,
+      body: FutureBuilder<({String path, String accountId, String accountName})>(
+        future: _dataFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -114,7 +129,13 @@ class _RecherchePageState extends State<RecherchePage> {
               ),
             );
           }
-          return RechercheM3U(key: _rechercheM3UKey, filePath: snapshot.data!);
+          final d = snapshot.data!;
+          return RechercheM3U(
+            key: _rechercheM3UKey,
+            accountId:   d.accountId,
+            accountName: d.accountName,
+            m3uPath:     d.path,
+          );
         },
       ),
     );

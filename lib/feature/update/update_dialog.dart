@@ -1,18 +1,16 @@
+import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import '../../core/themes/colors.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../data/services/update_service.dart';
 
-/// Dialogue de mise à jour in-app.
-///
-/// Affiche le changelog de la release GitHub et permet de télécharger
-/// puis installer l'APK directement depuis l'application.
+/// Dialogue de mise à jour in-app — style terminal Matrix.
+/// Cohérent avec [TerminalDownloadDialog].
 class UpdateDialog extends StatefulWidget {
   final UpdateInfo info;
 
   const UpdateDialog({super.key, required this.info});
 
-  /// Affiche le dialogue — à appeler avec [navigatorKey.currentContext].
   static Future<void> show(BuildContext context, UpdateInfo info) {
     return showDialog(
       context: context,
@@ -25,11 +23,29 @@ class UpdateDialog extends StatefulWidget {
   State<UpdateDialog> createState() => _UpdateDialogState();
 }
 
+// Pool de messages de boot pour l'update
+const List<String> _kUpdateBootPool = [
+  '> INCOMING TRANSMISSION...',
+  '> NEW PACKAGE DETECTED.',
+  '> UPGRADE SIGNAL RECEIVED.',
+  '> THE SYSTEM WANTS YOU TO UPDATE.',
+  '> ARCHITECT HAS PUSHED A NEW BUILD.',
+  '> OPERATOR: "YOU NEED THE NEW VERSION."',
+];
+
 class _UpdateDialogState extends State<UpdateDialog> {
   _DownloadState _state = _DownloadState.idle;
   double _progress = 0.0;
   String? _errorMessage;
   CancelToken? _cancelToken;
+  late final String _bootMsg;
+
+  @override
+  void initState() {
+    super.initState();
+    final rng = Random();
+    _bootMsg = _kUpdateBootPool[rng.nextInt(_kUpdateBootPool.length)];
+  }
 
   @override
   void dispose() {
@@ -53,139 +69,292 @@ class _UpdateDialogState extends State<UpdateDialog> {
         },
         cancelToken: _cancelToken,
       );
-      // L'installeur Android prend la main — on ferme le dialogue
       if (mounted) Navigator.of(context).pop();
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) {
-        if (mounted) { setState(() => _state = _DownloadState.idle); }
+        if (mounted) setState(() => _state = _DownloadState.idle);
       } else {
-        if (mounted) { setState(() {
-          _state = _DownloadState.error;
-          _errorMessage = 'Erreur réseau : ${e.message}';
-        }); }
+        if (mounted) {
+          setState(() {
+            _state = _DownloadState.error;
+            _errorMessage = e.message ?? 'Erreur réseau';
+          });
+        }
       }
     } catch (e) {
-      if (mounted) { setState(() {
-        _state = _DownloadState.error;
-        _errorMessage = e.toString();
-      }); }
+      if (mounted) {
+        setState(() {
+          _state = _DownloadState.error;
+          _errorMessage = e.toString();
+        });
+      }
     }
   }
 
   void _cancel() {
     _cancelToken?.cancel();
-    Navigator.of(context).pop();
+    if (_state != _DownloadState.downloading) Navigator.of(context).pop();
+  }
+
+  /// Barre ASCII identique à TerminalDownloadDialog
+  String _asciiBar(double progress, {int length = 20}) {
+    final filled = (progress * length).clamp(0, length).toInt();
+    return '[${'█' * filled}${'▒' * (length - filled)}] ${(progress * 100).toStringAsFixed(1)}%';
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Row(
-        children: [
-          const Icon(Icons.system_update_rounded,
-              color: kAetherSecondaryCyan, size: 24),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              widget.info.releaseName,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: double.maxFinite,
+    final sizeStr = widget.info.sizeBytes != null
+        ? '${(widget.info.sizeBytes! / 1024 / 1024).toStringAsFixed(1)} MB'
+        : null;
+
+    // Changelog formaté en lignes terminal
+    final changelogLines = widget.info.body
+        ?.trim()
+        .split('\n')
+        .where((l) => l.trim().isNotEmpty)
+        .map((l) => '  ${l.trim()}')
+        .join('\n');
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.black.withAlpha((255 * 0.93).round()),
+          border: Border.all(color: Colors.green.withAlpha(60)),
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(color: Colors.green.withAlpha(25), blurRadius: 12, spreadRadius: 2),
+          ],
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Taille APK
-            if (widget.info.sizeBytes != null)
-              Text(
-                '${(widget.info.sizeBytes! / 1024 / 1024).toStringAsFixed(1)} MB',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+
+            // ── Titre ──────────────────────────────────────────────────────
+            Text(
+              '> SYSTEM UPDATE',
+              style: GoogleFonts.vt323(color: Colors.green, fontSize: 22),
+            ),
+            const Divider(color: Colors.green, height: 12),
+
+            // ── Corps terminal ─────────────────────────────────────────────
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+
+                    // Message de boot
+                    Text(
+                      _bootMsg,
+                      style: GoogleFonts.sourceCodePro(
+                        color: const Color(0xFF00AA00), fontSize: 11),
+                    ),
+                    const SizedBox(height: 6),
+
+                    // Versions
+                    Text(
+                      '> REMOTE : ${widget.info.tagName}\n'
+                      '> RELEASE: ${widget.info.releaseName}',
+                      style: GoogleFonts.sourceCodePro(
+                        color: const Color(0xFFADFF2F), fontSize: 12),
+                    ),
+
+                    if (sizeStr != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '> SIZE   : $sizeStr',
+                        style: GoogleFonts.sourceCodePro(
+                          color: const Color(0xFFADFF2F), fontSize: 12),
+                      ),
+                    ],
+
+                    // Changelog
+                    if (changelogLines != null && changelogLines.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '> CHANGELOG:',
+                        style: GoogleFonts.sourceCodePro(
+                          color: Colors.green, fontSize: 12,
+                          fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        changelogLines,
+                        style: GoogleFonts.sourceCodePro(
+                          color: const Color(0xFF33FF33), fontSize: 11),
+                      ),
+                    ],
+
+                    const SizedBox(height: 10),
+
+                    // ── Progression ────────────────────────────────────────
+                    if (_state == _DownloadState.downloading) ...[
+                      Text(
+                        '> DOWNLOADING...',
+                        style: GoogleFonts.sourceCodePro(
+                          color: const Color(0xFFADFF2F), fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      // Pluie Matrix pendant le téléchargement
+                      SizedBox(
+                        height: 48,
+                        child: Stack(children: [
+                          RepaintBoundary(child: _MiniMatrixRain()),
+                          Center(
+                            child: Text(
+                              _asciiBar(_progress),
+                              style: GoogleFonts.sourceCodePro(
+                                color: const Color(0xFF33FF33),
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ],
+
+                    // ── Erreur ─────────────────────────────────────────────
+                    if (_state == _DownloadState.error) ...[
+                      Text(
+                        '> ERROR: ${_errorMessage ?? "UNKNOWN"}',
+                        style: GoogleFonts.sourceCodePro(
+                          color: const Color(0xFFFF5555), fontSize: 12),
+                      ),
+                      Text(
+                        '> CONNECTION TO THE MATRIX LOST.',
+                        style: GoogleFonts.sourceCodePro(
+                          color: const Color(0xFFFF5555), fontSize: 11),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            const SizedBox(height: 12),
+            ),
 
-            // Changelog
-            if (widget.info.body != null && widget.info.body!.trim().isNotEmpty) ...[
-              const Text(
-                'Nouveautés',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 160),
-                child: SingleChildScrollView(
+            const Divider(color: Colors.green, height: 16),
+
+            // ── Actions terminal ──────────────────────────────────────────
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                // Annuler / Plus tard
+                TextButton(
+                  onPressed: _cancel,
                   child: Text(
-                    widget.info.body!.trim(),
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.75),
-                    ),
+                    _state == _DownloadState.downloading
+                        ? '[ ABORT ]'
+                        : '[ LATER ]',
+                    style: GoogleFonts.vt323(color: Colors.green, fontSize: 18),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-            ],
 
-            // Barre de progression
-            if (_state == _DownloadState.downloading) ...[
-              LinearProgressIndicator(
-                value: _progress,
-                backgroundColor: kAetherPrimaryPurple.withValues(alpha: 0.2),
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(kAetherSecondaryCyan),
-                minHeight: 6,
-                borderRadius: BorderRadius.circular(3),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${(_progress * 100).toStringAsFixed(0)} %',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ],
-
-            // Erreur
-            if (_state == _DownloadState.error && _errorMessage != null)
-              Text(
-                _errorMessage!,
-                style: const TextStyle(color: Colors.red, fontSize: 13),
-              ),
+                // Mettre à jour / Réessayer
+                if (_state != _DownloadState.downloading) ...[
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: _startDownload,
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.green.withAlpha(25),
+                      side: const BorderSide(color: Colors.green, width: 1),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    ),
+                    child: Text(
+                      _state == _DownloadState.error
+                          ? '[ RETRY ]'
+                          : '[ INSTALL UPDATE ]',
+                      style: GoogleFonts.vt323(
+                        color: Colors.green, fontSize: 18,
+                        fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
-      actions: [
-        // Bouton "Plus tard" / "Annuler"
-        TextButton(
-          onPressed: _cancel,
-          child: Text(
-            _state == _DownloadState.downloading ? 'Annuler' : 'Plus tard',
-          ),
-        ),
-
-        // Bouton "Mettre à jour"
-        if (_state != _DownloadState.downloading)
-          FilledButton.icon(
-            onPressed: _startDownload,
-            icon: const Icon(Icons.download_rounded, size: 18),
-            label: Text(
-              _state == _DownloadState.error ? 'Réessayer' : 'Mettre à jour',
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: kAetherPrimaryPurple,
-            ),
-          ),
-      ],
     );
   }
 }
 
 enum _DownloadState { idle, downloading, error }
+
+// ─── Mini Matrix Rain (version compacte pour la barre de progression) ─────────
+
+class _MiniMatrixRain extends StatefulWidget {
+  @override
+  State<_MiniMatrixRain> createState() => _MiniMatrixRainState();
+}
+
+class _MiniMatrixRainState extends State<_MiniMatrixRain>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late List<({double x, double phase, double speed})> _drops;
+
+  @override
+  void initState() {
+    super.initState();
+    final rng = Random();
+    _drops = List.generate(10, (i) => (
+      x: i / 10 + rng.nextDouble() * 0.04,
+      phase: rng.nextDouble(),
+      speed: (rng.nextInt(3) + 1).toDouble(),
+    ));
+    _controller = AnimationController(
+      vsync: this, duration: const Duration(seconds: 3),
+    )..repeat();
+  }
+
+  @override
+  void dispose() { _controller.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (_, __) => CustomPaint(
+        painter: _MiniRainPainter(_drops, _controller.value),
+        size: Size.infinite,
+      ),
+    );
+  }
+}
+
+class _MiniRainPainter extends CustomPainter {
+  final List<({double x, double phase, double speed})> drops;
+  final double t;
+  const _MiniRainPainter(this.drops, this.t);
+
+  static const _chars = '01アイウエオABCDEF#\$%';
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (int i = 0; i < drops.length; i++) {
+      final d = drops[i];
+      final yProgress = (t * d.speed + d.phase) % 1.0;
+      final y = yProgress * size.height;
+      final charIndex = ((t * 20 + i * 3.7) * _chars.length).floor().abs() % _chars.length;
+      final tp = TextPainter(
+        text: TextSpan(
+          text: _chars[charIndex],
+          style: TextStyle(
+            color: Colors.greenAccent.withAlpha(80),
+            fontSize: 9, fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      tp.layout();
+      tp.paint(canvas, Offset(d.x * size.width, y));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MiniRainPainter old) => old.t != t;
+}

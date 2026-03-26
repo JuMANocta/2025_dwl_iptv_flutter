@@ -30,11 +30,11 @@ class _DownloadsPageState extends State<DownloadsPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.download_done, size: 80, color: Colors.grey),
+                  Icon(Icons.download_done, size: 80, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   const SizedBox(height: 16),
                   Text(
                     l10n.noDownloads,
-                    style: const TextStyle(fontSize: 18, color: Colors.grey),
+                    style: TextStyle(fontSize: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),

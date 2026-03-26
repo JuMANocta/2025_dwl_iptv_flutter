@@ -191,11 +191,20 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   }
 
   void _forceFullBar() {
-    final bar = '█' * 20;
+    final fullBar = '█' * 20;
+    // Si aucune barre de progression n'a encore été affichée (téléchargement
+    // trop rapide pour avoir reçu des updates 'downloading'), on insère d'abord
+    // un palier à 95 % pour ne pas casser l'effet visuel.
+    final hasStats = _logs.any((l) => l['type'] == 'stats');
+    if (!hasStats) {
+      // 19/20 colonnes = 95 %
+      final partialBar = '${'█' * 19}▒';
+      _logs.add({'message': '\n[$partialBar] 95.0%', 'type': 'stats'});
+    }
     if (_logs.isNotEmpty && _logs.last['type'] == 'stats') {
-      _logs[_logs.length - 1] = {'message': '\n[$bar] 100.0%', 'type': 'stats'};
+      _logs[_logs.length - 1] = {'message': '\n[$fullBar] 100.0%', 'type': 'stats'};
     } else {
-      _logs.add({'message': '\n[$bar] 100.0%', 'type': 'stats'});
+      _logs.add({'message': '\n[$fullBar] 100.0%', 'type': 'stats'});
     }
   }
 

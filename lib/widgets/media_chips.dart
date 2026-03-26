@@ -62,6 +62,31 @@ String episodeName(M3uEntry entry) {
   return entry.displayName;
 }
 
+/// Chips qualité + langue dédupliqués pour un groupe de versions.
+/// Corrige le problème multi-comptes : Widget != par identité, on déduplique
+/// donc par valeur (label) avant de construire les widgets.
+List<Widget> uniqueChipsForVersions(List<M3uEntry> versions) {
+  final qualities = versions.map((v) => v.title.quality).whereType<String>().toSet();
+  final languages = versions.expand((v) => v.title.languages).toSet();
+  return [
+    for (final q in qualities)
+      switch (q) {
+        '4K'  => tagChip('4K',  Colors.red),
+        'FHD' => tagChip('FHD', Colors.amber),
+        'HD'  => tagChip('HD',  Colors.blue),
+        'SD'  => tagChip('SD',  Colors.teal),
+        _     => null,
+      },
+    for (final l in languages)
+      switch (l) {
+        'MULTI'  => tagChip('MULTI',  Colors.purple),
+        'VOSTFR' => tagChip('VOSTFR', Colors.orange),
+        'VF'     => tagChip('VF',     Colors.blue),
+        _        => null,
+      },
+  ].whereType<Widget>().toList();
+}
+
 /// Construit un nom de fichier riche pour le téléchargement.
 String buildDownloadName(M3uEntry entry) {
   final parts = <String>[entry.displayName];

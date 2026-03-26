@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/utils/network.dart';
 import 'stream_account_service.dart';
+import 'parsed_playlist_service.dart';
 
 class PlaylistService {
   static const String _playlistBaseName = 'playlist';
@@ -15,8 +16,14 @@ class PlaylistService {
       throw const HttpException(
           "Aucun compte actif sélectionné. Veuillez en choisir un dans les paramètres.");
     }
+    return pathForAccountId(acc.id);
+  }
+
+  /// Chemin du fichier M3U pour un compte donné (sans avoir besoin du compte courant).
+  /// Utilisé par [ParsedPlaylistService.preloadOthersFromDisk].
+  static Future<String> pathForAccountId(String accountId) async {
     final dir = await getApplicationDocumentsDirectory();
-    return '${dir.path}/${_playlistBaseName}_${acc.id}.m3u';
+    return '${dir.path}/${_playlistBaseName}_$accountId.m3u';
   }
 
   static Future<void> deleteExisting() async {
@@ -88,6 +95,11 @@ class PlaylistService {
 
       await tempFile.rename(destinationPath);
       debugPrint("✅ Playlist téléchargée et mise en cache avec succès.");
+
+      // Invalider le cache parsé — le prochain loadActive() re-parsera le nouveau fichier
+      final acc = await StreamAccountService.getCurrentAccount();
+      if (acc != null) ParsedPlaylistService.invalidate(acc.id);
+
       return destinationPath;
     } on DioException catch (e) {
       if (tempPath.isNotEmpty) {

@@ -26,8 +26,10 @@ class _AccountsPageState extends State<AccountsPage> {
 
   final _tmdbApiKeyController = TextEditingController();
   bool _isTmdbKeyVisible = false;
-  bool _hasSavedKey = false; // État local pour l'UI instantanée
+  bool _hasSavedKey = false;
   bool _xmltvLoading = false;
+  // ID du compte prioritaire (chargé une fois, mis à jour localement)
+  String? _priorityAccountId;
 
   @override
   void initState() {
@@ -51,7 +53,10 @@ class _AccountsPageState extends State<AccountsPage> {
 
   Future<List<StreamAccount>> _loadAccounts() async {
     await StreamAccountService.migrateFromLegacyIfNeeded();
-    return StreamAccountService.listAccounts();
+    final accounts = await StreamAccountService.listAccounts();
+    final current  = await StreamAccountService.getCurrentAccount();
+    if (mounted) setState(() => _priorityAccountId = current?.id);
+    return accounts;
   }
 
   Future<_CombinedCardInfo> _loadCardInfo({String? initialPath}) async {
@@ -85,11 +90,12 @@ class _AccountsPageState extends State<AccountsPage> {
 
   // --- ACTIONS COMPTES ---
 
-  Future<void> _setCurrent(String id) async {
+  /// Définit le compte prioritaire sans fermer la page.
+  Future<void> _setPriority(String id) async {
     await StreamAccountService.setCurrentAccount(id);
     if (!mounted) return;
-    debugPrint("✅ Compte sélectionné.");
-    Navigator.of(context).pop(true);
+    setState(() => _priorityAccountId = id);
+    debugPrint("✅ Compte prioritaire : $id");
   }
 
   Future<void> _delete(String id) async {
@@ -191,9 +197,9 @@ class _AccountsPageState extends State<AccountsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
                 "API TheMovieDB",
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 8),
             Row(
@@ -317,17 +323,17 @@ class _AccountsPageState extends State<AccountsPage> {
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         child: Row(
           children: [
-            const Icon(Icons.tv, size: 20, color: Colors.grey),
+            Icon(Icons.tv, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text("Guide des chaînes (XMLTV)",
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
-                  SizedBox(height: 2),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  const SizedBox(height: 2),
                   Text("TNT France — cache 12h",
-                      style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -372,11 +378,11 @@ class _AccountsPageState extends State<AccountsPage> {
                     Text(l10n.playlistInfoTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
                     const Spacer(),
                     if (playlistInfo != null) ...[
-                      const Icon(Icons.sd_storage_outlined, size: 14, color: Colors.grey),
+                      Icon(Icons.sd_storage_outlined, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 3),
                       Text(_formatBytes(playlistInfo.size), style: Theme.of(context).textTheme.bodySmall),
                       const SizedBox(width: 10),
-                      const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                      Icon(Icons.access_time, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 3),
                       Text(_formatDate(playlistInfo.modified), style: Theme.of(context).textTheme.bodySmall),
                     ],
@@ -400,7 +406,7 @@ class _AccountsPageState extends State<AccountsPage> {
                 if (account != null && accountInfo != null) ...[
                   Row(
                     children: [
-                      Icon(Icons.person_outline, size: 16, color: Colors.grey.shade700),
+                      Icon(Icons.person_outline, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -415,14 +421,14 @@ class _AccountsPageState extends State<AccountsPage> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
+                      Icon(Icons.calendar_today, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Text(
                         "Expiration : ${accountInfo.expirationDate != null ? DateFormat('dd/MM/yyyy').format(accountInfo.expirationDate!) : 'N/A'}",
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       const Spacer(),
-                      const Icon(Icons.wifi_tethering, size: 14, color: Colors.grey),
+                      Icon(Icons.wifi_tethering, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Text(
                         "Connexions : ${accountInfo.activeConnections}/${accountInfo.maxConnections}",
@@ -484,10 +490,10 @@ class _AccountsPageState extends State<AccountsPage> {
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.accountsTitle)),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEditor(),
-        tooltip: l10n.accountsListEmpty,
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: Text(l10n.accountsListEmpty),
       ),
       body: FutureBuilder<List<StreamAccount>>(
         future: _accountsFuture,
@@ -541,50 +547,65 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Widget _buildAccountTile(StreamAccount a, AppLocalizations l10n) {
-    // Extraction pour lisibilité
+    final cs        = Theme.of(context).colorScheme;
+    final isPriority = _priorityAccountId == a.id;
     final host = a.mode == StreamAuthMode.separate
-        ? (Uri.tryParse(a.baseUrl ?? "")?.host ?? "?")
-        : (Uri.tryParse(a.completeUrl ?? "")?.host ?? "?");
+        ? (Uri.tryParse(a.baseUrl ?? '')?.host ?? '?')
+        : (Uri.tryParse(a.completeUrl ?? '')?.host ?? '?');
+    final subtitle = a.mode == StreamAuthMode.completeUrl ? host : '${a.username} @ $host';
 
-    return FutureBuilder<StreamAccount?>(
-      future: StreamAccountService.getCurrentAccount(),
-      builder: (ctx, curSnap) {
-        final isCurrent = curSnap.data?.id == a.id;
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: isCurrent ? Colors.green.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.1),
-            child: Icon(
-              isCurrent ? Icons.check : Icons.dns,
-              color: isCurrent ? Colors.green : Colors.grey,
-              size: 20,
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      // Radio de priorité : tap = définir ce compte comme prioritaire
+      leading: GestureDetector(
+        onTap: () => _setPriority(a.id),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 40, height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isPriority
+                ? Colors.green.withAlpha(30)
+                : cs.surfaceContainerHighest,
+            border: Border.all(
+              color: isPriority ? Colors.green : cs.outlineVariant,
+              width: isPriority ? 2 : 1,
             ),
           ),
-          title: Text(a.label, style: TextStyle(fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal)),
-          subtitle: Text(
-            a.mode == StreamAuthMode.completeUrl
-                ? host
-                : "${a.username} @ $host",
-            style: const TextStyle(fontSize: 12),
-            maxLines: 1, overflow: TextOverflow.ellipsis,
+          child: Icon(
+            isPriority ? Icons.check_circle : Icons.radio_button_unchecked,
+            color: isPriority ? Colors.green : cs.onSurfaceVariant,
+            size: 22,
           ),
-          onTap: () => _setCurrent(a.id),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.edit, size: 20),
-                onPressed: () => _openEditor(initial: a),
-                tooltip: l10n.accountActionEdit,
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                onPressed: () => _delete(a.id),
-                tooltip: l10n.accountActionDelete,
-              ),
-            ],
+        ),
+      ),
+      title: Text(
+        a.label,
+        style: TextStyle(
+          fontWeight: isPriority ? FontWeight.bold : FontWeight.normal,
+          color: isPriority ? cs.onSurface : cs.onSurfaceVariant,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        maxLines: 1, overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: Icon(Icons.edit_outlined, size: 20, color: cs.onSurfaceVariant),
+            onPressed: () => _openEditor(initial: a),
+            tooltip: l10n.accountActionEdit,
           ),
-        );
-      },
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+            onPressed: () => _delete(a.id),
+            tooltip: l10n.accountActionDelete,
+          ),
+        ],
+      ),
     );
   }
 
@@ -637,7 +658,7 @@ class _StatChip extends StatelessWidget {
           count.toString(),
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
         ),
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ],
     );
   }

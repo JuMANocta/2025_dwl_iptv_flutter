@@ -11,6 +11,7 @@ class M3uParser {
     List<M3uEntry> filmsList,
     List<M3uEntry> seriesList,
     List<M3uEntry> tvList, {
+    required String accountId,
     void Function(double progress)? onProgress,
   }) async {
     final file = File(filePath);
@@ -67,7 +68,11 @@ class M3uParser {
 
         if (pendingMetadata != null) {
           final meta = pendingMetadata;
-          final commaIndex = meta.lastIndexOf(',');
+          // On cherche la première virgule qui n'est PAS à l'intérieur d'une
+          // valeur entre guillemets (ex: group-title="Action, Thriller").
+          // lastIndexOf(',') était incorrect pour les titres contenant une virgule
+          // (ex: "Star Trek, le film" → extrayait seulement "le film").
+          final commaIndex = _findSeparatorComma(meta);
           if (commaIndex != -1) {
             title      = meta.substring(commaIndex + 1).trim();
             logoUrl    = regExpLogo.firstMatch(meta)?.group(1);
@@ -95,6 +100,7 @@ class M3uParser {
           _addEntry(
             rawTitle: title,
             url: url,
+            accountId: accountId,
             regExpSerie: regExpSerie,
             logoUrl: logoUrl,
             tvgId: tvgId,
@@ -112,9 +118,26 @@ class M3uParser {
     onProgress?.call(1.0);
   }
 
+  /// Retourne l'index de la virgule séparatrice entre les attributs EXTINF et le titre.
+  /// Parcourt la ligne caractère par caractère pour ignorer les virgules à l'intérieur
+  /// des valeurs entre guillemets (ex: group-title="Action, Thriller").
+  static int _findSeparatorComma(String meta) {
+    bool inQuotes = false;
+    for (int i = 0; i < meta.length; i++) {
+      final c = meta[i];
+      if (c == '"') {
+        inQuotes = !inQuotes;
+      } else if (c == ',' && !inQuotes) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   static void _addEntry({
     required String rawTitle,
     required String url,
+    required String accountId,
     required RegExp regExpSerie,
     String? logoUrl,
     String? tvgId,
@@ -145,6 +168,7 @@ class M3uParser {
       url: url,
       type: type,
       title: metadata,
+      accountId: accountId,
       logoUrl: logoUrl,
       streamId: streamId,
       tvgId: tvgId,

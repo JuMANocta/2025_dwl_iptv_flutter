@@ -15,8 +15,16 @@ import '../../../widgets/info_row.dart';
 import '../../../l10n/app_localizations.dart';
 
 Future<String> _getTempDirectory() async {
-  final dir = await getTemporaryDirectory();
-  final tmp = Directory("${dir.path}/dl_tmp");
+  // Utiliser le cache externe (/sdcard/Android/data/.../cache/) plutôt que le
+  // cache interne (/data/user/0/.../cache/). Les deux sont sur la même partition
+  // flash que /sdcard/Movies/, donc la copie finale via MediaStore est
+  // significativement plus rapide (lecture/écriture sur le même volume).
+  // Fallback sur le cache interne si le stockage externe est indisponible.
+  final externalDirs = await getExternalCacheDirectories();
+  final basePath = (externalDirs != null && externalDirs.isNotEmpty)
+      ? externalDirs.first.path
+      : (await getTemporaryDirectory()).path;
+  final tmp = Directory("$basePath/dl_tmp");
   if (!await tmp.exists()) await tmp.create(recursive: true);
   return tmp.path;
 }

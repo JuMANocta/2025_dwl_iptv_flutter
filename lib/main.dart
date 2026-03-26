@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'data/services/download_manager_service.dart';
 import 'data/services/stream_account_service.dart';
+import 'data/services/parsed_playlist_service.dart';
 import 'feature/search/recherche_page.dart';
 import 'feature/accounts/accounts_page.dart';
 import 'data/services/playlist_service.dart';
@@ -99,7 +100,7 @@ class _LaunchDecider extends StatefulWidget {
 }
 
 class _LaunchDeciderState extends State<_LaunchDecider> {
-  late Future<String?> _initFuture;
+  late Future<({String path, String accountId, String accountName})?> _initFuture;
 
   @override
   void initState() {
@@ -107,13 +108,26 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     _initFuture = _initializeApp();
   }
 
-  /// Valide la configuration initiale et retourne le chemin de la playlist (null = pas de compte).
-  Future<String?> _initializeApp() async {
+  /// Valide la configuration initiale et retourne les données du compte actif (null = pas de compte).
+  Future<({String path, String accountId, String accountName})?> _initializeApp() async {
     final accounts = await StreamAccountService.listAccounts();
     if (accounts.isEmpty) return null;
 
-    // Propage l'erreur au FutureBuilder si la playlist échoue.
-    return PlaylistService.getOrDownloadPlaylist();
+    // Téléchargement / vérification cache M3U du compte actif.
+    final path = await PlaylistService.getOrDownloadPlaylist();
+    final acc  = await StreamAccountService.getCurrentAccount();
+
+    // Précharger silencieusement les autres comptes depuis le disque (background).
+    if (accounts.length > 1) {
+      final others = accounts.where((a) => a.id != acc?.id).toList();
+      ParsedPlaylistService.preloadOthersFromDisk(others);  // fire & forget
+    }
+
+    return (
+      path:        path,
+      accountId:   acc?.id   ?? '',
+      accountName: acc?.label ?? '',
+    );
   }
 
   /// Permet de relancer la validation, typiquement après une action de l'utilisateur.
@@ -133,12 +147,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   Widget build(BuildContext context) {
     // Le FutureBuilder gère nativement les différents états (chargement, erreur, succès)
     // de notre logique d'initialisation asynchrone.
-    return FutureBuilder<String?>(
+    return FutureBuilder<({String path, String accountId, String accountName})?>(
       future: _initFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
+          final cs = Theme.of(context).colorScheme;
           return Scaffold(
-            backgroundColor: Colors.black,
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -146,17 +160,17 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'AetherStream',
-                      style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                      style: TextStyle(color: cs.onSurface, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 1.2),
                     ),
                     const SizedBox(height: 32),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(2),
-                      child: const LinearProgressIndicator(minHeight: 3, backgroundColor: Colors.white12),
+                      child: LinearProgressIndicator(minHeight: 3, backgroundColor: cs.surfaceContainerHighest),
                     ),
                     const SizedBox(height: 16),
-                    const Text('Vérification du compte…', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                    Text('Vérification du compte…', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.38), fontSize: 13)),
                   ],
                 ),
               ),
@@ -176,9 +190,9 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
             TextButton(onPressed: _recheckAfterSettings, child: const Text("Vérifier les comptes"))
           ]))));
         }
-        final playlistPath = snapshot.data;
-        if (playlistPath != null) {
-          return RecherchePage(initialPlaylistPath: playlistPath);
+        final data = snapshot.data;
+        if (data != null) {
+          return RecherchePage(initialData: data);
         }
         return Scaffold(appBar: AppBar(title: const Text('AetherStream')), body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.settings, size: 64),

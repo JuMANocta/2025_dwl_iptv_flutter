@@ -1,16 +1,96 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
-import 'package:aetherStream/feature/search/m3u_parser.dart';
+import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/widgets/media_card.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
+import 'package:aetherStream/feature/search/details_page.dart';
+
+// ── Données pour l'isolate de filtrage ──────────────────────────────────────
+
+class _FilterParams {
+  final List<M3uEntry> films;
+  final List<M3uEntry> series;
+  final List<M3uEntry> tv;
+  final String query;
+  final bool showFilms;
+  final bool showSeries;
+  final bool showTv;
+  const _FilterParams({
+    required this.films, required this.series, required this.tv,
+    required this.query,
+    required this.showFilms, required this.showSeries, required this.showTv,
+  });
+}
+
+class _FilterResult {
+  final Map<String, List<M3uEntry>> groupedFilms;
+  final Map<String, Map<String, List<M3uEntry>>> groupedSeries;
+  final Map<String, List<M3uEntry>> groupedTv;
+  const _FilterResult({
+    required this.groupedFilms,
+    required this.groupedSeries,
+    required this.groupedTv,
+  });
+}
+
+/// Fonction top-level exécutée dans un isolate séparé via compute().
+_FilterResult _computeFilter(_FilterParams p) {
+  final query = p.query.toLowerCase();
+  bool matches(M3uEntry e) => query.isEmpty ||
+      e.rawTitle.toLowerCase().contains(query) ||
+      e.displayName.toLowerCase().contains(query);
+
+  final groupedFilms  = <String, List<M3uEntry>>{};
+  final groupedSeries = <String, Map<String, List<M3uEntry>>>{};
+  final groupedTv     = <String, List<M3uEntry>>{};
+
+  if (p.showFilms) {
+    for (final e in p.films) {
+      if (matches(e)) groupedFilms.putIfAbsent(contentGroupKey(e), () => []).add(e);
+    }
+  }
+  if (p.showSeries) {
+    for (final e in p.series) {
+      if (matches(e)) {
+        final key = contentGroupKey(e);
+        groupedSeries.putIfAbsent(key, () => {});
+        groupedSeries[key]!.putIfAbsent(e.saison ?? '00', () => []).add(e);
+      }
+    }
+  }
+  if (p.showTv) {
+    for (final e in p.tv) {
+      if (matches(e) && !isHiddenTvVariant(e.title.rawTitle)) {
+        groupedTv.putIfAbsent(tvGroupKey(e.displayName), () => []).add(e);
+      }
+    }
+  }
+
+  for (final list in groupedFilms.values) { list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle)); }
+  for (final list in groupedTv.values)    { list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle)); }
+  for (final seasons in groupedSeries.values) {
+    for (final eps in seasons.values) { eps.sort((a, b) => a.rawTitle.compareTo(b.rawTitle)); }
+  }
+
+  return _FilterResult(groupedFilms: groupedFilms, groupedSeries: groupedSeries, groupedTv: groupedTv);
+}
 
 class RechercheM3U extends StatefulWidget {
-  final String filePath;
-  const RechercheM3U({super.key, required this.filePath});
+  final String accountId;
+  final String accountName;
+  final String m3uPath;
+  const RechercheM3U({
+    super.key,
+    required this.accountId,
+    required this.accountName,
+    required this.m3uPath,
+  });
 
   @override
   State<RechercheM3U> createState() => _RechercheM3UState();
@@ -23,6 +103,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
   bool _showTv     = true;
   String _searchQuery = "";
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
+  bool _searchFocused = false;
+  Timer? _debounce;
 
   // ── Data ────────────────────────────────────────────────────────────────────
   final List<M3uEntry> _filmsList  = [];
@@ -41,19 +124,24 @@ class _RechercheM3UState extends State<RechercheM3U> {
   void initState() {
     super.initState();
     _searchController.addListener(() {
-      if (_searchQuery != _searchController.text) {
-        setState(() {
-          _searchQuery = _searchController.text;
-          _filterAndGroupResults();
-        });
-      }
+      final text = _searchController.text;
+      if (_searchQuery == text) return;
+      setState(() => _searchQuery = text);
+      // Debounce : attend 250 ms de pause avant de déclencher le filtrage
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 250), _filterAndGroupResults);
+    });
+    _searchFocus.addListener(() {
+      setState(() => _searchFocused = _searchFocus.hasFocus);
     });
     _processFile();
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -61,72 +149,47 @@ class _RechercheM3UState extends State<RechercheM3U> {
 
   Future<void> _processFile() async {
     try {
-      await M3uParser.parseFile(
-        widget.filePath,
-        _filmsList,
-        _seriesList,
-        _tvList,
+      await ParsedPlaylistService.loadActive(
+        widget.accountId,
+        widget.accountName,
+        widget.m3uPath,
         onProgress: (p) {
           if (mounted) setState(() => _loadingProgress = p);
         },
       );
       if (mounted) {
+        final allEntries = ParsedPlaylistService.entries;
+        _filmsList.addAll(allEntries.where((e) => e.type == M3uContentType.movie));
+        _seriesList.addAll(allEntries.where((e) => e.type == M3uContentType.series));
+        _tvList.addAll(allEntries.where((e) => e.type == M3uContentType.tv));
         setState(() => _loadingProgress = 1.0);
-        await Future.delayed(Duration.zero);
-        _filterAndGroupResults();
-        setState(() => _isProcessing = false);
+        await _filterAndGroupResults();
+        if (mounted) setState(() => _isProcessing = false);
       }
     } catch (e) {
       if (mounted) setState(() { _isProcessing = false; _errorMessage = e.toString(); });
     }
   }
 
-  // ── Filtrage / Regroupement ─────────────────────────────────────────────────
+  // ── Filtrage / Regroupement (isolate) ───────────────────────────────────────
 
-  void _filterAndGroupResults() {
-    final query = _searchQuery.toLowerCase();
-
-    final newGroupedSeries = <String, Map<String, List<M3uEntry>>>{};
-    final newGroupedFilms  = <String, List<M3uEntry>>{};
-    final newGroupedTv     = <String, List<M3uEntry>>{};
-
-    bool matches(M3uEntry e) => query.isEmpty ||
-        e.rawTitle.toLowerCase().contains(query) ||
-        e.displayName.toLowerCase().contains(query);
-
-    if (_showFilms) {
-      for (var e in _filmsList) {
-        if (matches(e)) newGroupedFilms.putIfAbsent(contentGroupKey(e), () => []).add(e);
-      }
-    }
-    if (_showSeries) {
-      for (var e in _seriesList) {
-        if (matches(e)) {
-          final key = contentGroupKey(e);
-          newGroupedSeries.putIfAbsent(key, () => {});
-          newGroupedSeries[key]!.putIfAbsent(e.saison ?? '00', () => []).add(e);
-        }
-      }
-    }
-    if (_showTv) {
-      for (var e in _tvList) {
-        if (matches(e) && !isHiddenTvVariant(e.title.rawTitle)) {
-          newGroupedTv.putIfAbsent(tvGroupKey(e.displayName), () => []).add(e);
-        }
-      }
-    }
-
-    for (var list in newGroupedFilms.values) { list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle)); }
-    for (var list in newGroupedTv.values) { list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle)); }
-    for (var seasons in newGroupedSeries.values) {
-      for (var episodes in seasons.values) { episodes.sort((a, b) => a.rawTitle.compareTo(b.rawTitle)); }
-    }
-
+  Future<void> _filterAndGroupResults() async {
+    final params = _FilterParams(
+      films: List.unmodifiable(_filmsList),
+      series: List.unmodifiable(_seriesList),
+      tv: List.unmodifiable(_tvList),
+      query: _searchQuery,
+      showFilms: _showFilms,
+      showSeries: _showSeries,
+      showTv: _showTv,
+    );
+    final result = await compute(_computeFilter, params);
+    if (!mounted) return;
     setState(() {
-      _groupedSeries = newGroupedSeries;
-      _groupedFilms  = newGroupedFilms;
-      _groupedTv     = newGroupedTv;
-      _flatList = [..._groupedFilms.keys, ..._groupedSeries.keys, ..._groupedTv.keys];
+      _groupedFilms  = result.groupedFilms;
+      _groupedSeries = result.groupedSeries;
+      _groupedTv     = result.groupedTv;
+      _flatList = [...result.groupedFilms.keys, ...result.groupedSeries.keys, ...result.groupedTv.keys];
     });
   }
 
@@ -140,14 +203,10 @@ class _RechercheM3UState extends State<RechercheM3U> {
     if (entry.type == M3uContentType.tv) {
       await showTvActionSheet(context, versions);
     } else {
-      M3uEntry selected = entry;
-      if (versions.length > 1) {
-        final choice = await showVersionSelector(context, versions);
-        if (choice == null) return;
-        selected = choice;
-      }
       if (!mounted) return;
-      await showMediaActionSheet(context, selected);
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => DetailsPage(entry: entry, versions: versions),
+      ));
     }
   }
 
@@ -162,66 +221,94 @@ class _RechercheM3UState extends State<RechercheM3U> {
       return Center(child: Text("Erreur critique: $_errorMessage", style: const TextStyle(color: Colors.red)));
     }
 
-    return NestedScrollView(
-      headerSliverBuilder: (context, innerBoxIsScrolled) => [
-        SliverAppBar(
-          elevation: innerBoxIsScrolled ? 4.0 : 0.0,
-          title: Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(200),
-              borderRadius: BorderRadius.circular(25.0),
-            ),
-            child: TextField(
-              controller: _searchController,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-              decoration: InputDecoration(
-                hintText: l10n.searchFieldHint,
-                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(Icons.clear, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                        onPressed: () => _searchController.clear())
-                    : null,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 10.0),
+    return Column(
+      children: [
+        Expanded(
+          child: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) => [
+              SliverAppBar(
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                titleSpacing: 12,
+                title: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeInOut,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _searchFocused
+                          ? kAetherSecondaryCyan.withAlpha(200)
+                          : kAetherSecondaryCyan.withAlpha(45),
+                      width: _searchFocused ? 1.5 : 1,
+                    ),
+                    boxShadow: _searchFocused
+                        ? [BoxShadow(color: kAetherSecondaryCyan.withAlpha(55), blurRadius: 14, spreadRadius: 1)]
+                        : null,
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocus,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15),
+                    decoration: InputDecoration(
+                      hintText: l10n.searchFieldHint,
+                      hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withAlpha(140)),
+                      prefixIcon: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(
+                          _searchFocused ? Icons.search : Icons.search_outlined,
+                          key: ValueKey(_searchFocused),
+                          color: _searchFocused ? kAetherSecondaryCyan : Theme.of(context).colorScheme.onSurfaceVariant,
+                          size: 22,
+                        ),
+                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close, size: 18),
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              onPressed: () => _searchController.clear(),
+                              splashRadius: 18,
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                    ),
+                  ),
+                ),
+                pinned: true,
+                floating: true,
               ),
-            ),
-          ),
-          pinned: true,
-          floating: true,
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(kToolbarHeight + 12),
-            child: _buildFilterChips(l10n),
+            ],
+            body: _flatList.isEmpty
+                ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.search_off, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    const SizedBox(height: 16),
+                    Text(
+                      _searchQuery.isNotEmpty ? l10n.searchNoResults : l10n.searchNoContent,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 16, fontStyle: FontStyle.italic),
+                    ),
+                  ]))
+                : ScrollablePositionedList.builder(
+                    itemCount: _flatList.length,
+                    itemBuilder: (context, index) {
+                      final item = _flatList[index];
+                      if (item is! String) return const SizedBox.shrink();
+                      if (_groupedTv.containsKey(item)) {
+                        return TvCard(displayName: item, versions: _groupedTv[item]!, onTap: _onEntrySelected);
+                      }
+                      if (_groupedSeries.containsKey(item)) {
+                        return SerieCard(seriesKey: item, saisons: _groupedSeries[item]!, onEntrySelected: _onEntrySelected);
+                      }
+                      if (_groupedFilms.containsKey(item)) {
+                        return FilmCard(filmKey: item, versions: _groupedFilms[item]!, onTap: _onEntrySelected);
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
           ),
         ),
+        _buildFilterBar(context, l10n),
       ],
-      body: _flatList.isEmpty
-          ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.search_off, size: 64, color: Colors.grey),
-              const SizedBox(height: 16),
-              Text(
-                _searchQuery.isNotEmpty ? l10n.searchNoResults : l10n.searchNoContent,
-                style: const TextStyle(color: Colors.grey, fontSize: 16, fontStyle: FontStyle.italic),
-              ),
-            ]))
-          : ScrollablePositionedList.builder(
-              itemCount: _flatList.length,
-              itemBuilder: (context, index) {
-                final item = _flatList[index];
-                if (item is! String) return const SizedBox.shrink();
-                if (_groupedTv.containsKey(item)) {
-                  return TvCard(displayName: item, versions: _groupedTv[item]!, onTap: _onEntrySelected);
-                }
-                if (_groupedSeries.containsKey(item)) {
-                  return SerieCard(seriesKey: item, saisons: _groupedSeries[item]!, onEntrySelected: _onEntrySelected);
-                }
-                if (_groupedFilms.containsKey(item)) {
-                  return FilmCard(filmKey: item, versions: _groupedFilms[item]!, onTap: _onEntrySelected);
-                }
-                return const SizedBox.shrink();
-              },
-            ),
     );
   }
 
@@ -273,49 +360,101 @@ class _RechercheM3UState extends State<RechercheM3U> {
     );
   }
 
-  // ── Filter chips ─────────────────────────────────────────────────────────────
+  // ── Filter bar (bas de page) ──────────────────────────────────────────────────
 
-  Widget _buildFilterChips(AppLocalizations l10n) {
-    const Color selectedBg      = kAetherPrimaryPurple;
-    const Color selectedLabel   = kTextDarkPrimary;
-    const Color unselectedBg    = kContainerDark;
-    const Color unselectedBorder = kAetherSecondaryCyan;
-    const Color unselectedLabel = kTextDarkSecondary;
+  Widget _buildFilterBar(BuildContext context, AppLocalizations l10n) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(
+          top: BorderSide(color: kAetherPrimaryPurple.withAlpha(40), width: 1),
+        ),
+        boxShadow: [
+          BoxShadow(color: kAetherPrimaryPurple.withAlpha(25), blurRadius: 16, offset: const Offset(0, -4)),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(children: [
+            _filterPill(
+              icon: Icons.movie_outlined,
+              iconActive: Icons.movie,
+              label: l10n.searchFilterFilms,
+              selected: _showFilms,
+              onTap: () { setState(() => _showFilms = !_showFilms); _filterAndGroupResults(); },
+            ),
+            const SizedBox(width: 8),
+            _filterPill(
+              icon: Icons.video_library_outlined,
+              iconActive: Icons.video_library,
+              label: l10n.searchFilterSeries,
+              selected: _showSeries,
+              onTap: () { setState(() => _showSeries = !_showSeries); _filterAndGroupResults(); },
+            ),
+            const SizedBox(width: 8),
+            _filterPill(
+              icon: Icons.live_tv_outlined,
+              iconActive: Icons.live_tv,
+              label: l10n.searchFilterTv,
+              selected: _showTv,
+              onTap: () { setState(() => _showTv = !_showTv); _filterAndGroupResults(); },
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      scrollDirection: Axis.horizontal,
-      child: Row(children: [
-        FilterChip(
-          label: Text(l10n.searchFilterFilms),
-          selected: _showFilms,
-          onSelected: (s) => setState(() { _showFilms = s; _filterAndGroupResults(); }),
-          selectedColor: selectedBg,
-          backgroundColor: unselectedBg,
-          labelStyle: _showFilms ? const TextStyle(color: selectedLabel, fontWeight: FontWeight.bold) : const TextStyle(color: unselectedLabel),
-          side: _showFilms ? BorderSide.none : BorderSide(color: unselectedBorder.withAlpha(100)),
+  Widget _filterPill({
+    required IconData icon,
+    required IconData iconActive,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOut,
+          height: 36,
+          decoration: BoxDecoration(
+            gradient: selected ? kAetherGradient : null,
+            color: selected ? null : cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? Colors.transparent : cs.outline.withAlpha(60),
+            ),
+            boxShadow: selected
+                ? [BoxShadow(color: kAetherPrimaryPurple.withAlpha(90), blurRadius: 10, spreadRadius: 1)]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                selected ? iconActive : icon,
+                size: 15,
+                color: selected ? Colors.white : cs.onSurfaceVariant,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  color: selected ? Colors.white : cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(width: 8),
-        FilterChip(
-          label: Text(l10n.searchFilterSeries),
-          selected: _showSeries,
-          onSelected: (s) => setState(() { _showSeries = s; _filterAndGroupResults(); }),
-          selectedColor: selectedBg,
-          backgroundColor: unselectedBg,
-          labelStyle: _showSeries ? const TextStyle(color: selectedLabel, fontWeight: FontWeight.bold) : const TextStyle(color: unselectedLabel),
-          side: _showSeries ? BorderSide.none : BorderSide(color: unselectedBorder.withAlpha(100)),
-        ),
-        const SizedBox(width: 8),
-        FilterChip(
-          label: Text(l10n.searchFilterTv),
-          selected: _showTv,
-          onSelected: (s) => setState(() { _showTv = s; _filterAndGroupResults(); }),
-          selectedColor: selectedBg,
-          backgroundColor: unselectedBg,
-          labelStyle: _showTv ? const TextStyle(color: selectedLabel, fontWeight: FontWeight.bold) : const TextStyle(color: unselectedLabel),
-          side: _showTv ? BorderSide.none : BorderSide(color: unselectedBorder.withAlpha(100)),
-        ),
-      ]),
+      ),
     );
   }
 }

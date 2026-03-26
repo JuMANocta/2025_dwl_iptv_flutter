@@ -159,7 +159,8 @@ class DownloadTaskTile extends StatelessWidget {
   }
 
   // --- WIDGETS D'UI ---
-  Widget _getLeadingIcon() {
+  Widget _getLeadingIcon(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     switch (task.status) {
       case DownloadStatus.downloading:
         return SizedBox(
@@ -172,7 +173,7 @@ class DownloadTaskTile extends StatelessWidget {
               CircularProgressIndicator(
                 value: null, // Mode indéterminé (rotation continue)
                 strokeWidth: 2, // Un peu plus fin pour être discret
-                color: Colors.grey.shade300,
+                color: cs.surfaceContainerHighest,
               ),
               CircularProgressIndicator(
                 value: task.progress, // Mode déterministe (remplissage)
@@ -192,7 +193,7 @@ class DownloadTaskTile extends StatelessWidget {
       case DownloadStatus.paused:
         return const Icon(Icons.pause_circle, color: Colors.blueGrey);
       case DownloadStatus.queued:
-        return const Icon(Icons.hourglass_top, color: Colors.grey);
+        return Icon(Icons.hourglass_top, color: cs.onSurfaceVariant);
       case DownloadStatus.finalizing:
         return const Icon(Icons.check_circle, color: Colors.green);
     }
@@ -214,12 +215,12 @@ class DownloadTaskTile extends StatelessWidget {
               style: const TextStyle(fontSize: 12)
           ),
           const SizedBox(height: 4),
-          LinearProgressIndicator(value: task.progress, backgroundColor: Colors.grey.shade300, color: Colors.greenAccent),
+          LinearProgressIndicator(value: task.progress, backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest, color: Colors.greenAccent),
         ]);
       case DownloadStatus.completed:
         return Text(
             l10n.taskStatusCompleted(formatFileSize(task.totalSize), formattedDate),
-            style: const TextStyle(fontSize: 12, color: Colors.grey)
+            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)
         );
       case DownloadStatus.failed:
         final String errorText = task.errorMessage ?? l10n.taskStatusUnknownError;
@@ -267,11 +268,11 @@ class DownloadTaskTile extends StatelessWidget {
       case DownloadStatus.finalizing:
         return Text(
           "${l10n.terminalFinalizingMessage.trim()}...",
-          style: const TextStyle(fontSize: 12, color: Colors.grey));
+          style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant));
       default:
         return Text(
           l10n.taskStatusPending(formattedDate),
-          style: const TextStyle(fontSize: 12, color: Colors.grey)
+          style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)
         );
     }
   }
@@ -286,12 +287,12 @@ class DownloadTaskTile extends StatelessWidget {
 
     final l10n = AppLocalizations.of(context)!;
     return ListTile(
-      leading: _getLeadingIcon(),
+      leading: _getLeadingIcon(context),
       title: Text(titleText, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: _buildSubtitle(context),
       trailing: IconButton(
         icon: const Icon(Icons.delete_forever_outlined),
-        color: Colors.grey.shade600,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
         tooltip: l10n.deleteTooltip,
         onPressed: () => _deleteTask(context),
       ),
