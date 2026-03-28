@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
+import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/replay_service.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/feature/search/details_page.dart';
@@ -223,21 +224,27 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
             children: [qualityChip(entry.title), ...languageChips(entry.title)],
           ),
           const SizedBox(height: 24),
-          // ── Bouton Fiche détaillée ───────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsPage(entry: entry)));
-                },
-                icon: const Icon(Icons.info_outline),
-                label: const Text("Fiche Détaillée & Infos"),
-                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-              ),
-            ),
+          // ── Bouton Fiche détaillée (masqué si pas de clé TMDB) ──────────────
+          FutureBuilder<bool>(
+            future: TmdbApiService.hasApiKey(),
+            builder: (ctx, snap) {
+              if (snap.data != true) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsPage(entry: entry)));
+                    },
+                    icon: const Icon(Icons.info_outline),
+                    label: const Text("Fiche Détaillée & Infos"),
+                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                  ),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 16),
           // ── Lecture ─────────────────────────────────────────────────────────

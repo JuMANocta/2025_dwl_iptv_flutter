@@ -34,6 +34,15 @@ class PlaylistService {
     } catch (_) {}
   }
 
+  /// Supprime le fichier M3U en cache pour un compte donné (par ID).
+  static Future<void> deleteForAccountId(String accountId) async {
+    try {
+      final path = await pathForAccountId(accountId);
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
+  }
+
   static Future<String> getOrDownloadPlaylist() async {
     final path = await playlistPath();
     final file = File(path);

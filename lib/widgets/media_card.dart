@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
+import 'package:aetherStream/feature/search/m3u_filter.dart';
 
 // ─── Poster partagé ──────────────────────────────────────────────────────────
 
 Widget _poster(List<M3uEntry> versions, IconData fallbackIcon, Color accentColor) {
-  final logoUrl = versions.isNotEmpty ? versions.first.logoUrl : null;
+  final logoUrl = versions
+      .map((e) => e.logoUrl)
+      .firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
   return ClipRRect(
     borderRadius: BorderRadius.circular(8),
     child: SizedBox(
@@ -94,9 +97,11 @@ class FilmCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs             = Theme.of(context).colorScheme;
-    final keyParts       = filmKey.split('||');
-    final displayTitle   = keyParts[0];
-    final categoryLabel  = keyParts.length > 1 ? keyParts[1] : null;
+    final displayTitle   = filmKey;
+    // Catégorie calculée depuis la liste des versions (compte prioritaire en premier)
+    final categoryLabel  = versions.isNotEmpty
+        ? contentCategoryLabel(versions.first.groupTitle)
+        : null;
     final uniqueYears       = versions.map((v) => v.title.year).where((y) => y != null).toSet();
     final isHomonymConflict = versions.length > 1 && uniqueYears.length > 1;
     // Dédupliquer par valeur (label) et non par identité Widget
@@ -172,11 +177,13 @@ class SerieCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs            = Theme.of(context).colorScheme;
-    final keyParts      = seriesKey.split('||');
-    final displayTitle  = keyParts[0];
-    final categoryLabel = keyParts.length > 1 ? keyParts[1] : null;
+    final displayTitle  = seriesKey;
     final totalEpisodes = saisons.values.fold<int>(0, (p, l) => p + l.length);
     final allVersions   = saisons.values.expand((l) => l).toList();
+    // Catégorie calculée depuis les versions (compte prioritaire en premier)
+    final categoryLabel = allVersions.isNotEmpty
+        ? contentCategoryLabel(allVersions.first.groupTitle)
+        : null;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),

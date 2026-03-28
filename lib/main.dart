@@ -154,25 +154,16 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
           final cs = Theme.of(context).colorScheme;
           return Scaffold(
             body: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'AetherStream',
-                      style: TextStyle(color: cs.onSurface, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-                    ),
-                    const SizedBox(height: 32),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(2),
-                      child: LinearProgressIndicator(minHeight: 3, backgroundColor: cs.surfaceContainerHighest),
-                    ),
-                    const SizedBox(height: 16),
-                    Text('Vérification du compte…', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.38), fontSize: 13)),
-                  ],
-                ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'AetherStream',
+                    style: TextStyle(color: cs.onSurface, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                  ),
+                  const SizedBox(height: 32),
+                  CircularProgressIndicator(color: cs.primary),
+                ],
               ),
             ),
           );

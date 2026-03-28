@@ -17,10 +17,11 @@ class Person {
     // Parsing filmography from 'combined_credits'
     final credits = json['combined_credits']?['cast'] as List<dynamic>? ?? [];
 
-    // Filtrer et trier la filmographie par année (du plus récent au plus ancien)
+    // Dédupliquer par id TMDB — une série peut apparaître N fois (N épisodes)
+    final seen = <int>{};
     final filmographyList = credits
         .map((c) => FilmographyEntry.fromJson(c))
-        .where((c) => c.title.isNotEmpty && c.year != null)
+        .where((c) => c.title.isNotEmpty && c.year != null && seen.add(c.id))
         .toList();
 
     filmographyList.sort((a, b) => b.year!.compareTo(a.year!));
@@ -38,6 +39,8 @@ class Person {
 class FilmographyEntry {
   final int id;
   final String title;
+  /// Titre original (en VO) — souvent utilisé par les providers IPTV dans leurs playlists.
+  final String? originalTitle;
   final String mediaType;
   final String? posterPath;
   final String? character;
@@ -46,6 +49,7 @@ class FilmographyEntry {
   FilmographyEntry({
     required this.id,
     required this.title,
+    this.originalTitle,
     required this.mediaType,
     this.posterPath,
     this.character,
@@ -53,10 +57,12 @@ class FilmographyEntry {
   });
 
   factory FilmographyEntry.fromJson(Map<String, dynamic> json) {
-    final title = (json['media_type'] == 'movie' ? json['title'] : json['name']) as String? ?? 'Inconnu';
+    final isMovie = json['media_type'] == 'movie';
+    final title = (isMovie ? json['title'] : json['name']) as String? ?? 'Inconnu';
+    final originalTitle = (isMovie ? json['original_title'] : json['original_name']) as String?;
 
     // Déterminer la date de sortie pour obtenir l'année
-    String? dateString = json['media_type'] == 'movie'
+    final dateString = isMovie
         ? json['release_date'] as String?
         : json['first_air_date'] as String?;
 
@@ -68,6 +74,7 @@ class FilmographyEntry {
     return FilmographyEntry(
       id: json['id'] as int,
       title: title,
+      originalTitle: originalTitle,
       mediaType: json['media_type'] as String,
       posterPath: json['poster_path'] as String?,
       character: json['character'] as String?,

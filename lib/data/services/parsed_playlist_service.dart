@@ -108,9 +108,21 @@ class ParsedPlaylistService {
   // ── Accesseurs synchrones ─────────────────────────────────────────────────
 
   /// Toutes les entrées de tous les comptes actuellement chargés en mémoire.
-  /// Utilisé par RechercheM3U, HomePage, ActorDetailsPage, etc.
+  /// Utilisé par ActorDetailsPage, FavoritesService, etc.
   static List<M3uEntry> get entries =>
       _memory.values.expand((p) => p.entries).toList();
+
+  /// Entrées avec le compte prioritaire en PREMIER.
+  /// À utiliser dans RechercheM3U pour que putIfAbsent donne la priorité
+  /// aux URLs/qualités du compte actif sur les autres comptes chargés.
+  static List<M3uEntry> entriesWithPriority(String priorityAccountId) {
+    final priority = _memory[priorityAccountId]?.entries ?? [];
+    final others   = _memory.entries
+        .where((e) => e.key != priorityAccountId)
+        .expand((e) => e.value.entries)
+        .toList();
+    return [...priority, ...others];
+  }
 
   /// Playlist d'un compte spécifique (null si pas encore chargée).
   static ParsedPlaylist? getAccount(String accountId) => _memory[accountId];

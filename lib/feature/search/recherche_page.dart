@@ -1,10 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/search/recherche_m3u.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
-import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 
 class RecherchePage extends StatefulWidget {
@@ -29,21 +29,23 @@ class _RecherchePageState extends State<RecherchePage> {
   }
 
   void _loadData({bool forceDownload = false}) {
-    setState(() {
-      if (forceDownload) {
-        _dataFuture = _fetchData(forceDownload: true);
-      } else if (!_initialDataConsumed && widget.initialData != null) {
-        _initialDataConsumed = true;
-        _dataFuture = Future.value(widget.initialData!);
-      } else {
-        _dataFuture = _fetchData();
-      }
+    final Future<({String path, String accountId, String accountName})> future;
 
-      _dataFuture.then((d) {
-        if (mounted) setState(() => _currentAccountLabel = d.accountName);
-      }).catchError((_) {
-        if (mounted) setState(() => _currentAccountLabel = "Erreur de connexion");
-      });
+    if (forceDownload) {
+      future = _fetchData(forceDownload: true);
+    } else if (!_initialDataConsumed && widget.initialData != null) {
+      _initialDataConsumed = true;
+      future = Future.value(widget.initialData!);
+    } else {
+      future = _fetchData();
+    }
+
+    setState(() { _dataFuture = future; });
+
+    future.then((d) {
+      if (mounted) setState(() => _currentAccountLabel = d.accountName);
+    }).catchError((_) {
+      if (mounted) setState(() => _currentAccountLabel = "Erreur de connexion");
     });
   }
 
@@ -60,10 +62,49 @@ class _RecherchePageState extends State<RecherchePage> {
     );
   }
 
-  void _forceReload() {
+  Future<void> _forceReload() async {
+    // Vérifier l'âge du cache avant de lancer un téléchargement
+    try {
+      final path = await PlaylistService.playlistPath();
+      final file = File(path);
+      if (await file.exists()) {
+        final age = DateTime.now().difference(await file.lastModified());
+        if (age.inHours < 24) {
+          final confirmed = await _confirmReload(age);
+          if (confirmed != true) return;
+        }
+      }
+    } catch (_) {
+      // Fichier absent ou erreur → on recharge sans confirmation
+    }
     debugPrint("🔄 Forçage du rechargement de la playlist...");
-    setState(() => _rechercheM3UKey = UniqueKey());
+    _rechercheM3UKey = UniqueKey();
     _loadData(forceDownload: true);
+  }
+
+  Future<bool?> _confirmReload(Duration age) {
+    final h = age.inHours;
+    final m = age.inMinutes % 60;
+    final ageStr = h > 0 ? '${h}h${m > 0 ? ' ${m}min' : ''}' : '${m}min';
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Recharger la playlist ?'),
+        content: Text(
+            'Playlist récupérée il y a $ageStr.\nRecharger quand même depuis le serveur ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Recharger',
+                style: TextStyle(color: Colors.orange)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openSettings() async {
@@ -71,13 +112,9 @@ class _RecherchePageState extends State<RecherchePage> {
       MaterialPageRoute(builder: (_) => const AccountsPage()),
     );
     if (result == true) {
-      // Vider le cache mémoire du compte actif pour forcer le rechargement
-      final acc = await StreamAccountService.getCurrentAccount();
-      if (acc != null) ParsedPlaylistService.invalidate(acc.id);
-      setState(() {
-        _rechercheM3UKey = UniqueKey();
-        _loadData(forceDownload: false);
-      });
+      // Pas d'invalidation ici — entriesWithPriority() garantit le bon ordre
+      _rechercheM3UKey = UniqueKey();
+      _loadData(forceDownload: false);
     }
   }
 

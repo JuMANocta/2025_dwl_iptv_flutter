@@ -10,6 +10,7 @@ import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/widgets/media_card.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/feature/search/details_page.dart';
+import 'package:aetherStream/data/services/tmdb_api_service.dart';
 
 // ── Données pour l'isolate de filtrage ──────────────────────────────────────
 
@@ -117,7 +118,6 @@ class _RechercheM3UState extends State<RechercheM3U> {
   Map<String, List<M3uEntry>>              _groupedTv     = {};
   List<dynamic> _flatList      = [];
   bool   _isProcessing  = true;
-  double _loadingProgress = 0.0;
   String? _errorMessage;
 
   @override
@@ -153,16 +153,13 @@ class _RechercheM3UState extends State<RechercheM3U> {
         widget.accountId,
         widget.accountName,
         widget.m3uPath,
-        onProgress: (p) {
-          if (mounted) setState(() => _loadingProgress = p);
-        },
       );
       if (mounted) {
-        final allEntries = ParsedPlaylistService.entries;
+        // Priorité au compte actif → ses entrées arrivent en premier dans putIfAbsent
+        final allEntries = ParsedPlaylistService.entriesWithPriority(widget.accountId);
         _filmsList.addAll(allEntries.where((e) => e.type == M3uContentType.movie));
         _seriesList.addAll(allEntries.where((e) => e.type == M3uContentType.series));
         _tvList.addAll(allEntries.where((e) => e.type == M3uContentType.tv));
-        setState(() => _loadingProgress = 1.0);
         await _filterAndGroupResults();
         if (mounted) setState(() => _isProcessing = false);
       }
@@ -203,10 +200,16 @@ class _RechercheM3UState extends State<RechercheM3U> {
     if (entry.type == M3uContentType.tv) {
       await showTvActionSheet(context, versions);
     } else {
+      // Si pas de clé TMDB → action sheet directement (pas de page blanche)
+      final hasTmdb = await TmdbApiService.hasApiKey();
       if (!mounted) return;
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => DetailsPage(entry: entry, versions: versions),
-      ));
+      if (hasTmdb) {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => DetailsPage(entry: entry, versions: versions),
+        ));
+      } else {
+        await showMediaActionSheet(context, entry);
+      }
     }
   }
 
@@ -315,48 +318,11 @@ class _RechercheM3UState extends State<RechercheM3U> {
   // ── Loading screen ──────────────────────────────────────────────────────────
 
   Widget _buildLoadingScreen() {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       body: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(
-                  value: _loadingProgress,
-                  minHeight: 3,
-                  backgroundColor: onSurface.withAlpha(30),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(children: [
-                _loadingLabel('Films', _filmsList.isNotEmpty),
-                const SizedBox(width: 16),
-                _loadingLabel('Séries', _seriesList.isNotEmpty),
-                const SizedBox(width: 16),
-                _loadingLabel('Chaînes', _tvList.isNotEmpty),
-              ]),
-            ],
-          ),
-        ),
+        child: CircularProgressIndicator(color: cs.primary),
       ),
-    );
-  }
-
-  Widget _loadingLabel(String label, bool active) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 400),
-      style: TextStyle(
-        color: active ? onSurface.withAlpha(180) : onSurface.withAlpha(60),
-        fontSize: 13,
-        fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-      ),
-      child: Text(label),
     );
   }
 

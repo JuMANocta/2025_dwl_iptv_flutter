@@ -6,11 +6,13 @@ import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
+import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/data/models/account_info.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 
 class AccountsPage extends StatefulWidget {
   const AccountsPage({super.key, this.initialPlaylistPath});
@@ -30,6 +32,8 @@ class _AccountsPageState extends State<AccountsPage> {
   bool _xmltvLoading = false;
   // ID du compte prioritaire (chargé une fois, mis à jour localement)
   String? _priorityAccountId;
+  // Vrai si l'utilisateur a changé de compte prioritaire pendant cette session
+  bool _priorityChanged = false;
 
   @override
   void initState() {
@@ -94,8 +98,40 @@ class _AccountsPageState extends State<AccountsPage> {
   Future<void> _setPriority(String id) async {
     await StreamAccountService.setCurrentAccount(id);
     if (!mounted) return;
-    setState(() => _priorityAccountId = id);
+    setState(() {
+      _priorityAccountId = id;
+      _priorityChanged = true;
+      _combinedInfoFuture = _loadCardInfo(); // rafraîchit le widget infos
+    });
     debugPrint("✅ Compte prioritaire : $id");
+  }
+
+  /// Vide le cache playlist (M3U + JSON.gz parsé) d'un compte.
+  /// Si c'est le compte prioritaire, marque un reload de RecherchePage au retour.
+  Future<void> _clearCache(String id) async {
+    final l10n = AppLocalizations.of(context)!;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Vider le cache ?"),
+        content: const Text("La playlist sera re-téléchargée depuis le serveur au prochain chargement."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.cancel)),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Vider", style: TextStyle(color: kAetherSecondaryCyan)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await PlaylistService.deleteForAccountId(id);
+    ParsedPlaylistService.invalidate(id);
+    if (id == _priorityAccountId) _priorityChanged = true;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("✅ Cache supprimé — rechargement au prochain lancement")),
+    );
   }
 
   Future<void> _delete(String id) async {
@@ -113,6 +149,7 @@ class _AccountsPageState extends State<AccountsPage> {
     );
     if (ok == true) {
       await StreamAccountService.deleteAccount(id);
+      ParsedPlaylistService.invalidate(id); // nettoie mémoire + cache disque
       _refresh();
     }
   }
@@ -130,19 +167,6 @@ class _AccountsPageState extends State<AccountsPage> {
       await StreamAccountService.setCurrentAccount(result.id);
       if (!mounted) return;
       Navigator.of(context).pop(true);
-    }
-  }
-
-  // --- ACTIONS PLAYLIST ---
-
-  Future<void> _forceReloadPlaylist() async {
-    try {
-      await PlaylistService.downloadCurrentM3U();
-      if (!mounted) return;
-      await _refresh();
-      debugPrint("🔄 Playlist rechargée et affichage mis à jour.");
-    } catch (e) {
-      debugPrint("❌ Échec du rechargement : $e");
     }
   }
 
@@ -210,7 +234,7 @@ class _AccountsPageState extends State<AccountsPage> {
                     obscureText: !_isTmdbKeyVisible,
                     readOnly: isLocked, // 🔒 Lecture seule si sauvegardé
                     style: TextStyle(
-                      color: isLocked ? Colors.green.shade300 : null,
+                      color: isLocked ? kAetherSecondaryCyan : null,
                       fontWeight: isLocked ? FontWeight.bold : FontWeight.normal,
                     ),
                     decoration: InputDecoration(
@@ -439,41 +463,9 @@ class _AccountsPageState extends State<AccountsPage> {
                   const Divider(height: 16),
                 ],
 
-                // --- INFOS DE LA PLAYLIST (si disponibles) ---
-                if (playlistInfo == null) ...[
+                // --- Playlist indisponible ---
+                if (playlistInfo == null)
                   Text(l10n.playlistInfoUnavailable),
-                  const SizedBox(height: 8),
-                  Center(
-                    child: TextButton.icon(
-                      onPressed: _forceReloadPlaylist,
-                      icon: const Icon(Icons.download),
-                      label: Text(l10n.playlistInfoTryReload),
-                    ),
-                  ),
-                ] else ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: _forceReloadPlaylist,
-                        icon: const Icon(Icons.refresh, size: 18),
-                        label: Text(l10n.playlistInfoReloadButton),
-                        style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: () async {
-                          final p = await PlaylistService.playlistPath();
-                          final f = File(p);
-                          if (await f.exists()) await f.delete();
-                          _refresh();
-                        },
-                        icon: const Icon(Icons.delete_outline, color: Colors.red),
-                        tooltip: l10n.playlistInfoDeleteButton,
-                      ),
-                    ],
-                  )
-                ],
               ],
             ),
           ),
@@ -488,7 +480,14 @@ class _AccountsPageState extends State<AccountsPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        // didPop = true → navigator déjà en train de pop, ne pas rappeler pop()
+        if (didPop) return;
+        Navigator.of(context).pop(_priorityChanged);
+      },
+      child: Scaffold(
       appBar: AppBar(title: Text(l10n.accountsTitle)),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEditor(),
@@ -543,7 +542,8 @@ class _AccountsPageState extends State<AccountsPage> {
           );
         },
       ),
-    );
+    ), // Scaffold
+    ); // PopScope
   }
 
   Widget _buildAccountTile(StreamAccount a, AppLocalizations l10n) {
@@ -565,16 +565,16 @@ class _AccountsPageState extends State<AccountsPage> {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: isPriority
-                ? Colors.green.withAlpha(30)
+                ? kAetherSecondaryCyan.withAlpha(30)
                 : cs.surfaceContainerHighest,
             border: Border.all(
-              color: isPriority ? Colors.green : cs.outlineVariant,
+              color: isPriority ? kAetherSecondaryCyan : cs.outlineVariant,
               width: isPriority ? 2 : 1,
             ),
           ),
           child: Icon(
             isPriority ? Icons.check_circle : Icons.radio_button_unchecked,
-            color: isPriority ? Colors.green : cs.onSurfaceVariant,
+            color: isPriority ? kAetherSecondaryCyan : cs.onSurfaceVariant,
             size: 22,
           ),
         ),
@@ -598,6 +598,11 @@ class _AccountsPageState extends State<AccountsPage> {
             icon: Icon(Icons.edit_outlined, size: 20, color: cs.onSurfaceVariant),
             onPressed: () => _openEditor(initial: a),
             tooltip: l10n.accountActionEdit,
+          ),
+          IconButton(
+            icon: const Icon(Icons.sync, size: 20, color: kAetherSecondaryCyan),
+            onPressed: () => _clearCache(a.id),
+            tooltip: "Vider le cache playlist",
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
@@ -652,7 +657,7 @@ class _StatChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, size: 20, color: Colors.blue.shade300),
+        Icon(icon, size: 20, color: kAetherSecondaryCyan),
         const SizedBox(height: 4),
         Text(
           count.toString(),

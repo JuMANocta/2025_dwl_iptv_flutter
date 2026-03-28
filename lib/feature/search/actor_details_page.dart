@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/services/tmdb_service.dart';
+import '../../data/services/tmdb_api_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/models/person_model.dart';
 import '../../data/models/m3u_entry.dart';
@@ -17,11 +18,15 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
   // Lookup construit une fois depuis la mémoire ParsedPlaylistService :
   // titre normalisé → toutes les entrées correspondantes (toutes qualités).
   late final Map<String, List<M3uEntry>> _lookup;
+  bool _hasTmdbKey = false;
 
   @override
   void initState() {
     super.initState();
     _lookup = _buildLookup();
+    TmdbApiService.hasApiKey().then((v) {
+      if (mounted) setState(() => _hasTmdbKey = v);
+    });
   }
 
   // ── Helpers de matching ────────────────────────────────────────────────────
@@ -42,34 +47,37 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
       .trim();
 
   /// Retourne les entrées M3U correspondant au crédit.
-  /// Passe 1 : égalité exacte normalisée.
-  /// Passe 2 : l'un contient l'autre (min 3 caractères).
+  /// Passe 1 : égalité exacte normalisée sur le titre localisé.
+  /// Passe 2 : égalité exacte normalisée sur le titre original (VO).
+  /// Pas de matching flou — évite les faux positifs.
   List<M3uEntry> _findMatches(FilmographyEntry credit) {
-    final target = _norm(credit.title);
-    if (target.length < 3) return [];
-
     final type = credit.mediaType == 'movie'
         ? M3uContentType.movie
         : M3uContentType.series;
 
-    // Passe 1 — exact
-    final exact = _lookup[target];
-    if (exact != null) {
-      final filtered = exact.where((e) => e.type == type).toList();
-      if (filtered.isNotEmpty) return filtered;
-    }
-
-    // Passe 2 — partiel
-    final results = <M3uEntry>[];
-    for (final entry in ParsedPlaylistService.entries) {
-      if (entry.type != type) continue;
-      final key = _norm(entry.displayName);
-      if (key.length < 3) continue;
-      if (key.contains(target) || target.contains(key)) {
-        results.add(entry);
+    // Passe 1 — titre localisé exact
+    final target = _norm(credit.title);
+    if (target.length >= 2) {
+      final exact = _lookup[target];
+      if (exact != null) {
+        final filtered = exact.where((e) => e.type == type).toList();
+        if (filtered.isNotEmpty) return filtered;
       }
     }
-    return results;
+
+    // Passe 2 — titre original exact (souvent utilisé par les providers IPTV)
+    if (credit.originalTitle != null) {
+      final origTarget = _norm(credit.originalTitle!);
+      if (origTarget.length >= 2 && origTarget != target) {
+        final origExact = _lookup[origTarget];
+        if (origExact != null) {
+          final filtered = origExact.where((e) => e.type == type).toList();
+          if (filtered.isNotEmpty) return filtered;
+        }
+      }
+    }
+
+    return [];
   }
 
   // ── UI ─────────────────────────────────────────────────────────────────────
@@ -144,9 +152,8 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                         ...person.filmography.map((credit) {
                           final matches = _findMatches(credit);
                           final isAvailable = matches.isNotEmpty;
-                          // Pour les films : tappable → DetailsPage
-                          final canNavigate =
-                              isAvailable && credit.mediaType == 'movie';
+                          // Films ET séries : tappable → DetailsPage (si clé TMDB configurée)
+                          final canNavigate = isAvailable && _hasTmdbKey;
 
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
@@ -163,9 +170,23 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                                     : FontWeight.normal,
                               ),
                             ),
-                            subtitle: Text(
-                              'Rôle : ${credit.character ?? 'N/A'}',
-                              style: TextStyle(color: cs.onSurfaceVariant),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (credit.originalTitle != null &&
+                                    credit.originalTitle != credit.title)
+                                  Text(
+                                    credit.originalTitle!,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: cs.onSurfaceVariant,
+                                        fontStyle: FontStyle.italic),
+                                  ),
+                                Text(
+                                  'Rôle : ${credit.character ?? 'N/A'}',
+                                  style: TextStyle(color: cs.onSurfaceVariant),
+                                ),
+                              ],
                             ),
                             onTap: canNavigate
                                 ? () => Navigator.of(context).push(

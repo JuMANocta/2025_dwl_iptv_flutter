@@ -100,10 +100,10 @@ String? contentCategoryLabel(String? groupTitle) {
 }
 
 /// Clé de regroupement partagée films ET séries.
-String contentGroupKey(M3uEntry e) {
-  final category = contentCategoryLabel(e.groupTitle);
-  return category != null ? '${e.displayName}||$category' : e.displayName;
-}
+/// N'inclut PAS la catégorie : deux entrées du même titre provenant de
+/// providers différents (avec des groupTitle différents) doivent toujours
+/// tomber dans le même groupe, notamment pour partager logos et versions.
+String contentGroupKey(M3uEntry e) => e.displayName;
 
 /// Clé de regroupement pour les chaînes TV.
 String tvGroupKey(String name) {
