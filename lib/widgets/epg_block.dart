@@ -76,7 +76,7 @@ class _EpgNowNextBlockState extends State<EpgNowNextBlock> {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: kAetherPrimaryPurple.withValues(alpha: 0.3)),
+        border: Border.all(color: kAccentPrimary.withValues(alpha: 0.3)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
@@ -166,8 +166,8 @@ class EpgProgramRow extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: isNow
-                                ? kAetherVibrantMagenta.withValues(alpha: 0.9)
-                                : kAetherPrimaryPurple.withValues(alpha: 0.7),
+                                ? kAccentTertiary.withValues(alpha: 0.9)
+                                : kAccentPrimary.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(

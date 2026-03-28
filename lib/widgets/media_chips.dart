@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 
 Widget tagChip(String text, Color color) {
   return Container(
@@ -15,10 +16,10 @@ Widget tagChip(String text, Color color) {
 
 Widget qualityChip(TitleMetadata meta) {
   switch (meta.quality) {
-    case '4K':   return tagChip('4K', Colors.red);
-    case 'FHD':  return tagChip('FHD', Colors.amber);
-    case 'HD':   return tagChip('HD', Colors.blue);
-    case 'SD':   return tagChip('SD', Colors.teal);
+    case '4K':   return tagChip('4K',  kQuality4K);
+    case 'FHD':  return tagChip('FHD', kQualityFHD);
+    case 'HD':   return tagChip('HD',  kQualityHD);
+    case 'SD':   return tagChip('SD',  kQualitySD);
     default:     return const SizedBox.shrink();
   }
 }
@@ -28,9 +29,9 @@ List<Widget> languageChips(TitleMetadata meta) {
   final seen = <String>{};
   for (final lang in meta.languages) {
     if (!seen.add(lang)) continue;
-    if (lang == 'MULTI')  chips.add(tagChip('MULTI', Colors.purple));
-    if (lang == 'VOSTFR') chips.add(tagChip('VOSTFR', Colors.orange));
-    if (lang == 'VF')     chips.add(tagChip('VF', Colors.blue));
+    if (lang == 'MULTI')  chips.add(tagChip('MULTI',  kLangMulti));
+    if (lang == 'VOSTFR') chips.add(tagChip('VOSTFR', kLangVOSTFR));
+    if (lang == 'VF')     chips.add(tagChip('VF',     kLangVF));
   }
   return chips;
 }
@@ -38,7 +39,7 @@ List<Widget> languageChips(TitleMetadata meta) {
 Widget episodeMetaChip(TitleMetadata meta) {
   final season  = meta.seasonNumber?.toString().padLeft(2, '0') ?? '--';
   final episode = meta.episodeNumber?.toString().padLeft(2, '0') ?? '--';
-  return tagChip('S$season E$episode', Colors.cyan);
+  return tagChip('S$season E$episode', kLangEpisode);
 }
 
 Chip episodeChip(M3uEntry ep) {
@@ -71,17 +72,17 @@ List<Widget> uniqueChipsForVersions(List<M3uEntry> versions) {
   return [
     for (final q in qualities)
       switch (q) {
-        '4K'  => tagChip('4K',  Colors.red),
-        'FHD' => tagChip('FHD', Colors.amber),
-        'HD'  => tagChip('HD',  Colors.blue),
-        'SD'  => tagChip('SD',  Colors.teal),
+        '4K'  => tagChip('4K',  kQuality4K),
+        'FHD' => tagChip('FHD', kQualityFHD),
+        'HD'  => tagChip('HD',  kQualityHD),
+        'SD'  => tagChip('SD',  kQualitySD),
         _     => null,
       },
     for (final l in languages)
       switch (l) {
-        'MULTI'  => tagChip('MULTI',  Colors.purple),
-        'VOSTFR' => tagChip('VOSTFR', Colors.orange),
-        'VF'     => tagChip('VF',     Colors.blue),
+        'MULTI'  => tagChip('MULTI',  kLangMulti),
+        'VOSTFR' => tagChip('VOSTFR', kLangVOSTFR),
+        'VF'     => tagChip('VF',     kLangVF),
         _        => null,
       },
   ].whereType<Widget>().toList();

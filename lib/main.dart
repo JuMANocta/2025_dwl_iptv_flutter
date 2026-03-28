@@ -79,7 +79,7 @@ class MyApp extends StatelessWidget {
           return Banner(
             message: "BETA",
             location: BannerLocation.topEnd,
-            color: kAetherPrimaryPurple,
+            color: kAccentPrimary,
             child: child,
           );
         }

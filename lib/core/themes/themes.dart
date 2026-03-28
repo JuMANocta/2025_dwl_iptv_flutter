@@ -5,19 +5,24 @@ import 'colors.dart';
 ThemeData lightTheme() {
   return ThemeData(
     brightness: Brightness.light,
-    primaryColor: kAetherPrimaryPurple, // Couleur principale de l'app
-    hintColor: kAetherSecondaryCyan, // Pour les accents subtils ou les champs de texte
-    scaffoldBackgroundColor: kWhite, // Fond général de l'app
-    cardColor: kWhite, // Couleur des cartes
+    primaryColor: kAccentPrimary,
+    hintColor: kAccentSecondary,
+    scaffoldBackgroundColor: kWhite,
+    cardColor: kWhite,
+    colorScheme: ColorScheme.light(
+      primary: kAccentPrimary,
+      secondary: kAccentSecondary,
+      tertiary: kAccentTertiary,
+    ),
     textTheme: const TextTheme(
       headlineLarge: TextStyle(color: kDarkGrey, fontWeight: FontWeight.bold),
       headlineMedium: TextStyle(color: kDarkGrey, fontWeight: FontWeight.bold),
-      bodyLarge: TextStyle(color: kDarkGrey), // Texte principal
-      bodyMedium: TextStyle(color: kMediumGrey), // Texte secondaire
+      bodyLarge: TextStyle(color: kDarkGrey),
+      bodyMedium: TextStyle(color: kMediumGrey),
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: kWhite,
-      foregroundColor: kDarkGrey, // Couleur des icônes et du texte de l'AppBar
+      foregroundColor: kDarkGrey,
       elevation: 0,
       titleTextStyle: TextStyle(
         color: kDarkGrey,
@@ -27,17 +32,17 @@ ThemeData lightTheme() {
       iconTheme: IconThemeData(color: kDarkGrey),
     ),
     buttonTheme: ButtonThemeData(
-      buttonColor: kAetherPrimaryPurple,
+      buttonColor: kAccentPrimary,
       textTheme: ButtonTextTheme.primary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: kAetherPrimaryPurple,
+      backgroundColor: kAccentPrimary,
       foregroundColor: kWhite,
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        foregroundColor: kWhite, backgroundColor: kAetherPrimaryPurple, // Couleur du texte du bouton
+        foregroundColor: kBlack, backgroundColor: kAccentPrimary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontWeight: FontWeight.bold),
@@ -45,7 +50,7 @@ ThemeData lightTheme() {
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: kAetherPrimaryPurple, // Couleur du texte du bouton
+        foregroundColor: kAccentPrimary,
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -57,18 +62,17 @@ ThemeData lightTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: kAetherPrimaryPurple, width: 2),
+        borderSide: const BorderSide(color: kAccentPrimary, width: 2),
       ),
       labelStyle: const TextStyle(color: kMediumGrey),
       hintStyle: const TextStyle(color: kMediumGrey),
     ),
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       backgroundColor: kWhite,
-      selectedItemColor: kAetherPrimaryPurple,
+      selectedItemColor: kAccentPrimary,
       unselectedItemColor: kMediumGrey,
       selectedLabelStyle: TextStyle(fontWeight: FontWeight.bold),
     ),
-    // ... Ajoutez d'autres thèmes d'widgets au besoin
   );
 }
 
@@ -76,10 +80,15 @@ ThemeData lightTheme() {
 ThemeData darkTheme() {
   return ThemeData(
     brightness: Brightness.dark,
-    primaryColor: kAetherPrimaryPurple,
-    hintColor: kAetherSecondaryCyan,
+    primaryColor: kAccentPrimary,
+    hintColor: kAccentSecondary,
     scaffoldBackgroundColor: kDeepDarkGrey,
-    cardColor: kContainerDark, // Utiliser la couleur pour les conteneurs sombres
+    cardColor: kContainerDark,
+    colorScheme: ColorScheme.dark(
+      primary: kAccentPrimary,
+      secondary: kAccentSecondary,
+      tertiary: kAccentTertiary,
+    ),
     textTheme: const TextTheme(
       headlineLarge: TextStyle(color: kTextDarkPrimary, fontWeight: FontWeight.bold),
       headlineMedium: TextStyle(color: kTextDarkPrimary, fontWeight: FontWeight.bold),
@@ -98,17 +107,17 @@ ThemeData darkTheme() {
       iconTheme: IconThemeData(color: kTextDarkPrimary),
     ),
     buttonTheme: ButtonThemeData(
-      buttonColor: kAetherPrimaryPurple,
+      buttonColor: kAccentPrimary,
       textTheme: ButtonTextTheme.primary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: kAetherPrimaryPurple,
-      foregroundColor: kWhite,
+      backgroundColor: kAccentPrimary,
+      foregroundColor: kBlack,
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        foregroundColor: kWhite, backgroundColor: kAetherPrimaryPurple,
+        foregroundColor: kBlack, backgroundColor: kAccentPrimary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontWeight: FontWeight.bold),
@@ -116,7 +125,7 @@ ThemeData darkTheme() {
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: kAetherSecondaryCyan, // Un accent différent pour les liens
+        foregroundColor: kAccentSecondary,
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -128,14 +137,14 @@ ThemeData darkTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: kAetherPrimaryPurple, width: 2),
+        borderSide: const BorderSide(color: kAccentPrimary, width: 2),
       ),
       labelStyle: const TextStyle(color: kTextDarkSecondary),
       hintStyle: const TextStyle(color: kMediumGrey),
     ),
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       backgroundColor: kDeepDarkGrey,
-      selectedItemColor: kAetherPrimaryPurple,
+      selectedItemColor: kAccentPrimary,
       unselectedItemColor: kMediumGrey,
       selectedLabelStyle: TextStyle(fontWeight: FontWeight.bold),
     ),

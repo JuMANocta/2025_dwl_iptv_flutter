@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/themes/colors.dart';
 import '../../data/services/tmdb_service.dart';
 import '../../data/services/tmdb_api_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
@@ -226,7 +227,7 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
 
   Widget _typeChip(String mediaType, ColorScheme cs) {
     final isMovie = mediaType == 'movie';
-    final color   = isMovie ? Colors.blue : Colors.purple;
+    final color   = isMovie ? kBadgeFilmType : kBadgeSeriesType;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -245,9 +246,9 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.green.withAlpha(35),
+        color: kDispo.withAlpha(35),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Colors.green.withAlpha(120)),
+        border: Border.all(color: kDispo.withAlpha(120)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -255,13 +256,13 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
           Icon(
             tappable ? Icons.play_circle_outline : Icons.check,
             size: 11,
-            color: Colors.green,
+            color: kDispo,
           ),
           const SizedBox(width: 3),
           const Text(
             'DISPO',
             style: TextStyle(
-                fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green),
+                fontSize: 10, fontWeight: FontWeight.bold, color: kDispo),
           ),
         ],
       ),

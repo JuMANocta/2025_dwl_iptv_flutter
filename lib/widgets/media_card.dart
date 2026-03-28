@@ -65,8 +65,8 @@ Widget _cardShell({
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
-        splashColor: kAetherPrimaryPurple.withAlpha(30),
-        highlightColor: kAetherPrimaryPurple.withAlpha(15),
+        splashColor: kAccentPrimary.withAlpha(30),
+        highlightColor: kAccentPrimary.withAlpha(15),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: IntrinsicHeight(
@@ -114,7 +114,7 @@ class FilmCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(children: [
-          _poster(versions, Icons.movie_outlined, kAetherPrimaryPurple),
+          _poster(versions, Icons.movie_outlined, kAccentPrimary),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -130,7 +130,7 @@ class FilmCard extends StatelessWidget {
                 ),
                 if (categoryLabel != null) ...[
                   const SizedBox(width: 8),
-                  _categoryBadge(categoryLabel, kAetherPrimaryPurple),
+                  _categoryBadge(categoryLabel, kAccentPrimary),
                 ],
               ]),
 
@@ -202,7 +202,7 @@ class SerieCard extends StatelessWidget {
                   width: 3,
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [kAetherVibrantMagenta, kAetherPrimaryPurple],
+                      colors: [kAccentTertiary, kAccentPrimary],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
@@ -217,7 +217,7 @@ class SerieCard extends StatelessWidget {
                   child: ExpansionTile(
                     tilePadding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
                     childrenPadding: EdgeInsets.zero,
-                    leading: _poster(allVersions, Icons.tv_outlined, kAetherVibrantMagenta),
+                    leading: _poster(allVersions, Icons.tv_outlined, kAccentTertiary),
                     title: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Expanded(
                         child: Text(
@@ -229,7 +229,7 @@ class SerieCard extends StatelessWidget {
                       ),
                       if (categoryLabel != null) ...[
                         const SizedBox(width: 8),
-                        _categoryBadge(categoryLabel, kAetherVibrantMagenta),
+                        _categoryBadge(categoryLabel, kAccentTertiary),
                       ],
                     ]),
                     subtitle: Padding(
@@ -291,7 +291,7 @@ class _EpisodeTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          Icon(Icons.play_circle_outline_rounded, size: 20, color: kAetherSecondaryCyan),
+          Icon(Icons.play_circle_outline_rounded, size: 20, color: kAccentSecondary),
         ]),
       ),
     );
@@ -316,14 +316,14 @@ class TvCard extends StatelessWidget {
       context: context,
       onTap: () => onTap(versions),
       accentGradient: const LinearGradient(
-        colors: [kAetherSecondaryCyan, kAetherPrimaryPurple],
+        colors: [kAccentSecondary, kAccentPrimary],
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(children: [
-          _poster(versions, Icons.live_tv_outlined, kAetherSecondaryCyan),
+          _poster(versions, Icons.live_tv_outlined, kAccentSecondary),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -346,9 +346,9 @@ class TvCard extends StatelessWidget {
                     child: Text('·', style: TextStyle(color: cs.onSurfaceVariant)),
                   ),
                 if (hasReplay) ...[
-                  const Icon(Icons.replay_circle_filled, color: kAetherSecondaryCyan, size: 14),
+                  const Icon(Icons.replay_circle_filled, color: kAccentSecondary, size: 14),
                   const SizedBox(width: 3),
-                  Text('Replay', style: TextStyle(color: kAetherSecondaryCyan, fontSize: 12, fontWeight: FontWeight.w500)),
+                  Text('Replay', style: TextStyle(color: kAccentSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
                 ],
               ]),
             ]),

@@ -142,7 +142,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
               child: Row(
                 children: [
                   const Icon(Icons.replay_circle_filled,
-                      color: kAetherSecondaryCyan, size: 22),
+                      color: kAccentSecondary, size: 22),
                   const SizedBox(width: 10),
                   Text(
                     'Choisir un moment à revoir',
@@ -284,7 +284,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
   Widget _sectionLabel(BuildContext ctx, String label, IconData icon) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: kAetherSecondaryCyan),
+        Icon(icon, size: 16, color: kAccentSecondary),
         const SizedBox(width: 6),
         Text(
           label.toUpperCase(),
@@ -292,7 +292,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
             fontSize: 11,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.2,
-            color: kAetherSecondaryCyan,
+            color: kAccentSecondary,
           ),
         ),
       ],
@@ -437,12 +437,12 @@ class _XmltvProgramRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
           color: isNow
-              ? kAetherPrimaryPurple.withValues(alpha: 0.15)
+              ? kAccentPrimary.withValues(alpha: 0.15)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: isNow
               ? Border.all(
-                  color: kAetherPrimaryPurple.withValues(alpha: 0.35), width: 1)
+                  color: kAccentPrimary.withValues(alpha: 0.35), width: 1)
               : null,
         ),
         child: Row(
@@ -488,7 +488,7 @@ class _XmltvProgramRow extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
-                            color: kAetherVibrantMagenta.withValues(alpha: 0.9),
+                            color: kAccentTertiary.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
@@ -540,7 +540,7 @@ class _XmltvProgramRow extends StatelessWidget {
                 Icons.play_circle_outline_rounded,
                 size: 22,
                 color: isNow
-                    ? kAetherSecondaryCyan
+                    ? kAccentSecondary
                     : onSurface.withValues(alpha: 0.4),
               )
             else
@@ -610,7 +610,7 @@ class _DaySelector extends StatelessWidget {
                   label: Text(label),
                   selected: isSelected,
                   onSelected: (_) => onChanged(d),
-                  selectedColor: kAetherPrimaryPurple,
+                  selectedColor: kAccentPrimary,
                   labelStyle: TextStyle(
                     color: isSelected ? kWhite : null,
                     fontWeight:
@@ -625,7 +625,7 @@ class _DaySelector extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: hasEpg
-                        ? kAetherSecondaryCyan
+                        ? kAccentSecondary
                         : Colors.transparent,
                   ),
                 ),
@@ -695,7 +695,7 @@ class _TimeSelector extends StatelessWidget {
                 color: bg,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                    color: kAetherPrimaryPurple.withValues(alpha: 0.6), width: 1.5),
+                    color: kAccentPrimary.withValues(alpha: 0.6), width: 1.5),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -736,7 +736,7 @@ class _ArrowButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: kAetherPrimaryPurple.withValues(alpha: 0.15),
+      color: kAccentPrimary.withValues(alpha: 0.15),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -744,7 +744,7 @@ class _ArrowButton extends StatelessWidget {
         child: SizedBox(
           width: 44,
           height: 52,
-          child: Icon(icon, color: kAetherPrimaryPurple, size: 22),
+          child: Icon(icon, color: kAccentPrimary, size: 22),
         ),
       ),
     );
@@ -776,7 +776,7 @@ class _ChipRow<T> extends StatelessWidget {
           label: Text(label(item)),
           selected: isSelected,
           onSelected: (_) => onSelected(item),
-          selectedColor: kAetherPrimaryPurple,
+          selectedColor: kAccentPrimary,
           labelStyle: TextStyle(
             color: isSelected ? kWhite : null,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,

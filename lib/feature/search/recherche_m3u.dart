@@ -241,12 +241,12 @@ class _RechercheM3UState extends State<RechercheM3U> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: _searchFocused
-                          ? kAetherSecondaryCyan.withAlpha(200)
-                          : kAetherSecondaryCyan.withAlpha(45),
+                          ? kAccentSecondary.withAlpha(200)
+                          : kAccentSecondary.withAlpha(45),
                       width: _searchFocused ? 1.5 : 1,
                     ),
                     boxShadow: _searchFocused
-                        ? [BoxShadow(color: kAetherSecondaryCyan.withAlpha(55), blurRadius: 14, spreadRadius: 1)]
+                        ? [BoxShadow(color: kAccentSecondary.withAlpha(55), blurRadius: 14, spreadRadius: 1)]
                         : null,
                   ),
                   child: TextField(
@@ -261,7 +261,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
                         child: Icon(
                           _searchFocused ? Icons.search : Icons.search_outlined,
                           key: ValueKey(_searchFocused),
-                          color: _searchFocused ? kAetherSecondaryCyan : Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: _searchFocused ? kAccentSecondary : Theme.of(context).colorScheme.onSurfaceVariant,
                           size: 22,
                         ),
                       ),
@@ -334,10 +334,10 @@ class _RechercheM3UState extends State<RechercheM3U> {
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(
-          top: BorderSide(color: kAetherPrimaryPurple.withAlpha(40), width: 1),
+          top: BorderSide(color: kAccentPrimary.withAlpha(40), width: 1),
         ),
         boxShadow: [
-          BoxShadow(color: kAetherPrimaryPurple.withAlpha(25), blurRadius: 16, offset: const Offset(0, -4)),
+          BoxShadow(color: kAccentPrimary.withAlpha(25), blurRadius: 16, offset: const Offset(0, -4)),
         ],
       ),
       child: SafeArea(
@@ -397,7 +397,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
               color: selected ? Colors.transparent : cs.outline.withAlpha(60),
             ),
             boxShadow: selected
-                ? [BoxShadow(color: kAetherPrimaryPurple.withAlpha(90), blurRadius: 10, spreadRadius: 1)]
+                ? [BoxShadow(color: kAccentPrimary.withAlpha(90), blurRadius: 10, spreadRadius: 1)]
                 : null,
           ),
           child: Row(

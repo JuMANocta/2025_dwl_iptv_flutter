@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/themes/colors.dart';
 import '../../data/services/tmdb_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/models/media_model.dart';
@@ -11,10 +12,10 @@ import 'actor_details_page.dart';
 
 Color _qualityColor(String? quality) {
   return switch (quality) {
-    '4K'  => Colors.red,
-    'FHD' => Colors.amber,
-    'HD'  => Colors.blue,
-    'SD'  => Colors.teal,
+    '4K'  => kQuality4K,
+    'FHD' => kQualityFHD,
+    'HD'  => kQualityHD,
+    'SD'  => kQualitySD,
     _     => Colors.grey,
   };
 }
@@ -370,7 +371,7 @@ class _DetailsPageState extends State<DetailsPage> {
 
                   // ── FILMS : qualités + actions ──────────────────────────────
                   if (!isSeries) ...[
-                    if (_uniqueVersions.length > 1) ...[
+                    if (_uniqueVersions.isNotEmpty) ...[
                       _buildQualityChips(cs),
                       const SizedBox(height: 12),
                     ],
@@ -420,7 +421,7 @@ class _DetailsPageState extends State<DetailsPage> {
                       children: _tmdbData!.cast
                           .map((a) => ActionChip(
                                 avatar: const Icon(Icons.person,
-                                    size: 16, color: Colors.amber),
+                                    size: 16, color: kAccentSecondary),
                                 label: Text(a),
                                 onPressed: () => _searchActor(a),
                                 backgroundColor: cs.surfaceContainerHighest,
@@ -696,7 +697,7 @@ class _DetailsPageState extends State<DetailsPage> {
           const SizedBox(height: 14),
 
           // QUALITÉS
-          if (_uniqueVersions.length > 1) ...[
+          if (_uniqueVersions.isNotEmpty) ...[
             _buildQualityChips(cs),
             const SizedBox(height: 12),
           ],
@@ -873,7 +874,7 @@ class _DetailsPageState extends State<DetailsPage> {
       case 'Disney+':      return const Color(0xFF0063E5);
       case 'Canal+':       return const Color(0xFF000000);
       case 'Peacock':      return const Color(0xFF000000);
-      default:             return Colors.grey.shade700;
+      default:             return Colors.grey;
     }
   }
 

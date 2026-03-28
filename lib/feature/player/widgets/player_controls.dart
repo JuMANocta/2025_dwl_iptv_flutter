@@ -258,7 +258,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                       // Slider de progression.
                       SliderTheme(
                         data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: kAetherPrimaryPurple,
+                          activeTrackColor: kAccentPrimary,
                           inactiveTrackColor: Colors.transparent,
                           thumbColor: Colors.white,
                           thumbShape: const RoundSliderThumbShape(
@@ -371,11 +371,11 @@ class _ContentBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (Color color, String label, bool showDot) = switch (type) {
-      PlayerBadgeType.live   => (Colors.red,                  'DIRECT', true),
-      PlayerBadgeType.replay => (const Color(0xFFF9A825),     'REPLAY', false),
-      PlayerBadgeType.movie  => (const Color(0xFF1E88E5),     'FILM',   false),
-      PlayerBadgeType.series => (const Color(0xFF8E24AA),     'SÉRIE',  false),
-      PlayerBadgeType.none   => (Colors.transparent,          '',       false),
+      PlayerBadgeType.live   => (kBadgeLive,        'DIRECT', true),
+      PlayerBadgeType.replay => (kBadgeReplay,      'REPLAY', false),
+      PlayerBadgeType.movie  => (kBadgeMovie,       'FILM',   false),
+      PlayerBadgeType.series => (kBadgeSeries,      'SÉRIE',  false),
+      PlayerBadgeType.none   => (Colors.transparent, '',      false),
     };
 
     return Container(

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.5+27-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.2.5+33-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -161,6 +161,7 @@ lib/
 - [x] **Mise à jour in-app** — vérification + téléchargement APK depuis GitHub Releases
 - [x] **Grille EPG XMLTV** — sélection programme dans la grille pour le replay
 - [x] **Refactoring** — découpage `recherche_page.dart` en modules séparés (parser, filter, widgets)
+- [x] **Système de thème sémantique** — toutes les couleurs UI centralisées dans `colors.dart` (Matrix green comme primaire, variables `kAccentPrimary/Secondary/Tertiary`, constantes qualité/langue/badges)
 - [ ] **Parsing M3U en isolate** — `compute()` pour ne plus bloquer le thread principal
 - [ ] **Page d'accueil** — trending TMDB + derniers ajoutés, navigation bottom bar, design glassmorphism
 - [ ] **Thème personnalisable** — `AppThemeConfig` configurable in-app

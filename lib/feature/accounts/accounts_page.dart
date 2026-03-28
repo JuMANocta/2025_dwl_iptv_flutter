@@ -119,7 +119,7 @@ class _AccountsPageState extends State<AccountsPage> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.cancel)),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Vider", style: TextStyle(color: kAetherSecondaryCyan)),
+            child: const Text("Vider", style: TextStyle(color: kAccentSecondary)),
           ),
         ],
       ),
@@ -234,7 +234,7 @@ class _AccountsPageState extends State<AccountsPage> {
                     obscureText: !_isTmdbKeyVisible,
                     readOnly: isLocked, // 🔒 Lecture seule si sauvegardé
                     style: TextStyle(
-                      color: isLocked ? kAetherSecondaryCyan : null,
+                      color: isLocked ? kAccentSecondary : null,
                       fontWeight: isLocked ? FontWeight.bold : FontWeight.normal,
                     ),
                     decoration: InputDecoration(
@@ -565,16 +565,16 @@ class _AccountsPageState extends State<AccountsPage> {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: isPriority
-                ? kAetherSecondaryCyan.withAlpha(30)
+                ? kAccentSecondary.withAlpha(30)
                 : cs.surfaceContainerHighest,
             border: Border.all(
-              color: isPriority ? kAetherSecondaryCyan : cs.outlineVariant,
+              color: isPriority ? kAccentSecondary : cs.outlineVariant,
               width: isPriority ? 2 : 1,
             ),
           ),
           child: Icon(
             isPriority ? Icons.check_circle : Icons.radio_button_unchecked,
-            color: isPriority ? kAetherSecondaryCyan : cs.onSurfaceVariant,
+            color: isPriority ? kAccentSecondary : cs.onSurfaceVariant,
             size: 22,
           ),
         ),
@@ -600,7 +600,7 @@ class _AccountsPageState extends State<AccountsPage> {
             tooltip: l10n.accountActionEdit,
           ),
           IconButton(
-            icon: const Icon(Icons.sync, size: 20, color: kAetherSecondaryCyan),
+            icon: const Icon(Icons.sync, size: 20, color: kAccentSecondary),
             onPressed: () => _clearCache(a.id),
             tooltip: "Vider le cache playlist",
           ),
@@ -657,7 +657,7 @@ class _StatChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, size: 20, color: kAetherSecondaryCyan),
+        Icon(icon, size: 20, color: kAccentSecondary),
         const SizedBox(height: 4),
         Text(
           count.toString(),

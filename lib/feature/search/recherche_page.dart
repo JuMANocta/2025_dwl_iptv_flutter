@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/search/recherche_m3u.dart';
@@ -100,7 +101,7 @@ class _RecherchePageState extends State<RecherchePage> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Recharger',
-                style: TextStyle(color: Colors.orange)),
+                style: TextStyle(color: kWarning)),
           ),
         ],
       ),
@@ -153,7 +154,7 @@ class _RecherchePageState extends State<RecherchePage> {
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  const Icon(Icons.broken_image_outlined, color: Colors.orange, size: 48),
+                  const Icon(Icons.broken_image_outlined, color: kWarning, size: 48),
                   const SizedBox(height: 16),
                   Text(l10n.searchPageLoadingError, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                   const SizedBox(height: 24),
