@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.7+34-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.3.0+35-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -159,17 +159,37 @@ lib/
 
 ## Roadmap
 
+### ✅ Terminé
 - [x] **Refonte complète du player** — `media_kit`, contrôles custom, gestures, reconnexion auto *(PiP reporté)*
 - [x] **Mise à jour in-app** — vérification + téléchargement APK depuis GitHub Releases
 - [x] **Grille EPG XMLTV** — sélection programme dans la grille pour le replay
 - [x] **Refactoring** — découpage `recherche_page.dart` en modules séparés (parser, filter, widgets)
-- [x] **Système de thème sémantique** — toutes les couleurs UI centralisées dans `colors.dart` (Matrix green comme primaire, variables `kAccentPrimary/Secondary/Tertiary`, constantes qualité/langue/badges)
+- [x] **Système de thème sémantique** — variables `kAccentPrimary/Secondary/Tertiary`, constantes qualité/langue/badges centralisées
+- [x] **Thème personnalisable in-app** — `AppThemeConfig` runtime + 5 presets + page Personnalisation
+- [x] **Catégories M3U** — chips de filtre par catégorie dans la recherche (films + séries)
+- [x] **Filmographie acteur DISPO** — badge sur les films présents dans la playlist + navigation `DetailsPage`
+- [x] **Android TV / Fire Stick** — APK universel + manifest Leanback (navigation D-pad en cours)
+
+### 🚧 En cours
+- [ ] **Page d'accueil** — carousels par catégorie + recherche in-place + navigation bottom bar
+- [ ] **Favoris** — films, séries et chaînes (auto-ajout au play, long-press menu contextuel)
+- [ ] **Reprise de lecture** — barre de progression sur les vignettes + bouton "Reprendre depuis X:XX"
+
+### 📅 Planifié
+- [ ] **Refonte AccountsPage** — alignement streaming-style + dédoublonnage avec SettingsPage (TMDB / XMLTV / Thème en sous-pages dédiées)
+- [ ] **Pistes audio + sous-titres** — sélection in-player (embarqués + sous-titres externes)
+- [ ] **File d'attente DL + WiFi-only** — sémaphore, reprise auto au retour réseau
+- [ ] **Notifications téléchargement** — progression, fin, erreurs (foreground service)
+- [ ] **Cast Chromecast** — diffusion vers récepteurs Cast réseau local
+- [ ] **PIN / contrôle parental** — verrouillage app + masquage contenus adultes
+- [ ] **Export / Import comptes** — sauvegarde chiffrée pour migration entre devices
+- [ ] **Onboarding** — guide pas-à-pas illustré pour les nouveaux utilisateurs
+- [ ] **Empty states + Pull-to-refresh** — UX unifiée sur toutes les pages
+- [ ] **Mode hors-ligne** — bascule auto sur fichiers locaux si pas de réseau
 - [ ] **Parsing M3U en isolate** — `compute()` pour ne plus bloquer le thread principal
-- [ ] **Page d'accueil** — trending TMDB + derniers ajoutés, navigation bottom bar, design glassmorphism
-- [ ] **Thème personnalisable** — `AppThemeConfig` configurable in-app
-- [ ] **Catégories M3U** — sections par genre sur la page d'accueil extraites des `group-title` provider
-- [ ] **Favoris** — films, séries et chaînes
-- [ ] **En cours de lecture** — reprise depuis la dernière position
+- [ ] **Téléchargement différentiel** — HEAD + Range requests pour économiser la bande passante
+- [ ] **Tests unitaires** — services purs (parser, filter, replay URL builder, etc.)
+- [ ] **Mise à jour des dépendances** — `media_kit_video` v2, `flutter_secure_storage` v10, `google_fonts` v8
 
 ---
 

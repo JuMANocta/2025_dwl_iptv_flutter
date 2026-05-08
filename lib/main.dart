@@ -4,9 +4,10 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'data/services/download_manager_service.dart';
+import 'data/services/favorites_service.dart';
 import 'data/services/stream_account_service.dart';
 import 'data/services/parsed_playlist_service.dart';
-import 'feature/search/recherche_page.dart';
+import 'core/navigation/main_navigation.dart';
 import 'feature/accounts/accounts_page.dart';
 import 'data/services/playlist_service.dart';
 import 'core/themes/themes.dart';
@@ -28,6 +29,7 @@ void main() async {
   MediaStore.appFolder = 'AetherStream';
   await StreamAccountService.migrateFromLegacyIfNeeded();
   await DownloadManagerService().init();
+  await FavoritesService.init();
   await ThemeService.load();
 
   runApp(const MyApp());
@@ -193,7 +195,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         }
         final data = snapshot.data;
         if (data != null) {
-          return RecherchePage(initialData: data);
+          return MainNavigation(initialData: data);
         }
         return Scaffold(appBar: AppBar(title: const Text('AetherStream')), body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.settings, size: 64),

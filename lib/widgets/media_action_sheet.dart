@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
+import 'package:aetherStream/data/services/favorites_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/replay_service.dart';
@@ -252,6 +254,8 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
             leading: const Icon(Icons.play_arrow),
             title: Text(l10n.actionSheetPlay),
             onTap: () {
+              // Auto-ajout aux favoris au lancement de la lecture (§1d)
+              FavoritesService.add(FavoritesService.keyFor(entry));
               Navigator.pop(context);
               Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
                 path: entry.url,
@@ -261,6 +265,8 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
               )));
             },
           ),
+          // ── Favoris (toggle) ───────────────────────────────────────────────
+          _FavoriteToggleTile(entry: entry),
           // ── Replay (TV uniquement) ───────────────────────────────────────────
           if (entry.type == M3uContentType.tv && entry.streamId != null)
             ListTile(
@@ -357,6 +363,8 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> versions) as
       .toList();
 
   void playVersion(M3uEntry v) {
+    // Auto-ajout aux favoris au lancement de la lecture (§1d)
+    FavoritesService.add(FavoritesService.keyFor(v));
     Navigator.pop(context);
     Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
       path: v.url,
@@ -388,6 +396,8 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> versions) as
               if (entry.tvgId == null)
                 QualityButtonsRow(versions: versions, onPlay: playVersion),
               const SizedBox(height: 4),
+              // ── Favoris (toggle) ───────────────────────────────────────
+              _FavoriteToggleTile(entry: entry),
               if (entryForReplay.streamId != null)
                 ListTile(
                   leading: const Icon(Icons.replay_circle_filled),
@@ -440,3 +450,49 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> versions) as
     ),
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListTile favori — toggle avec feedback visuel (cœur plein/vide) + snackbar
+// Utilisé dans showMediaActionSheet et showTvActionSheet.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FavoriteToggleTile extends StatelessWidget {
+  final M3uEntry entry;
+  const _FavoriteToggleTile({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final favKey = FavoritesService.keyFor(entry);
+    return ValueListenableBuilder<int>(
+      valueListenable: FavoritesService.version,
+      builder: (ctx, _, __) {
+        final isFav = FavoritesService.isFavorite(favKey);
+        return ListTile(
+          leading: Icon(
+            isFav ? Icons.favorite : Icons.favorite_border,
+            color: isFav ? kAccentTertiary : null,
+          ),
+          title: Text(
+            isFav ? 'Retirer des favoris' : 'Ajouter aux favoris',
+            style: TextStyle(
+              color: isFav ? kAccentTertiary : null,
+              fontWeight: isFav ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+          onTap: () async {
+            final messenger = ScaffoldMessenger.of(context);
+            final added = await FavoritesService.toggle(favKey);
+            if (!context.mounted) return;
+            messenger.showSnackBar(SnackBar(
+              content: Text(added
+                  ? '⭐ "${entry.displayName}" ajouté aux favoris'
+                  : '🗑️ "${entry.displayName}" retiré des favoris'),
+              duration: const Duration(seconds: 2),
+            ));
+          },
+        );
+      },
+    );
+  }
+}
+

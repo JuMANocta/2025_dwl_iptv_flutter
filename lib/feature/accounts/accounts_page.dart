@@ -506,10 +506,21 @@ class _AccountsPageState extends State<AccountsPage> {
       },
       child: Scaffold(
       appBar: AppBar(title: Text(l10n.accountsTitle)),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openEditor(),
-        icon: const Icon(Icons.add),
-        label: Text(l10n.accountsListEmpty),
+      floatingActionButton: FutureBuilder<List<StreamAccount>>(
+        future: _accountsFuture,
+        builder: (ctx, snap) {
+          // Masqué tant que la liste n'est pas chargée OU si elle est vide
+          // (un FilledButton centré dans le body sert d'appel à l'action)
+          final accounts = snap.data;
+          if (accounts == null || accounts.isEmpty) {
+            return const SizedBox.shrink();
+          }
+          return FloatingActionButton.extended(
+            onPressed: () => _openEditor(),
+            icon: const Icon(Icons.add),
+            label: Text(l10n.accountsListEmpty),
+          );
+        },
       ),
       body: FutureBuilder<List<StreamAccount>>(
         future: _accountsFuture,
