@@ -259,7 +259,7 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
             color: kDispo,
           ),
           const SizedBox(width: 3),
-          const Text(
+          Text(
             'DISPO',
             style: TextStyle(
                 fontSize: 10, fontWeight: FontWeight.bold, color: kDispo),

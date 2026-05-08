@@ -141,7 +141,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Row(
                 children: [
-                  const Icon(Icons.replay_circle_filled,
+                  Icon(Icons.replay_circle_filled,
                       color: kAccentSecondary, size: 22),
                   const SizedBox(width: 10),
                   Text(
@@ -288,7 +288,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
         const SizedBox(width: 6),
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.2,

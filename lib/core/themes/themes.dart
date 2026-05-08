@@ -1,57 +1,63 @@
 import 'package:flutter/material.dart';
 import 'colors.dart';
+import 'app_theme_config.dart';
+import 'aether_theme_extension.dart';
 
 // Thème Clair AetherStream
-ThemeData lightTheme() {
+ThemeData lightTheme(AppThemeConfig config) {
   return ThemeData(
     brightness: Brightness.light,
-    primaryColor: kAccentPrimary,
-    hintColor: kAccentSecondary,
+    primaryColor: config.primaryColor,
+    hintColor: config.accentColor,
     scaffoldBackgroundColor: kWhite,
     cardColor: kWhite,
     colorScheme: ColorScheme.light(
-      primary: kAccentPrimary,
-      secondary: kAccentSecondary,
-      tertiary: kAccentTertiary,
+      primary:   config.primaryColor,
+      secondary: config.accentColor,
+      tertiary:  config.tertiaryColor,
     ),
+    extensions: [
+      AetherThemeExtension(
+        primaryColor:  config.primaryColor,
+        accentColor:   config.accentColor,
+        tertiaryColor: config.tertiaryColor,
+        glowIntensity: config.glowIntensity,
+        borderRadius:  config.borderRadius,
+      ),
+    ],
     textTheme: const TextTheme(
-      headlineLarge: TextStyle(color: kDarkGrey, fontWeight: FontWeight.bold),
+      headlineLarge:  TextStyle(color: kDarkGrey, fontWeight: FontWeight.bold),
       headlineMedium: TextStyle(color: kDarkGrey, fontWeight: FontWeight.bold),
-      bodyLarge: TextStyle(color: kDarkGrey),
-      bodyMedium: TextStyle(color: kMediumGrey),
+      bodyLarge:      TextStyle(color: kDarkGrey),
+      bodyMedium:     TextStyle(color: kMediumGrey),
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: kWhite,
       foregroundColor: kDarkGrey,
       elevation: 0,
-      titleTextStyle: TextStyle(
-        color: kDarkGrey,
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-      ),
+      titleTextStyle: TextStyle(color: kDarkGrey, fontSize: 20, fontWeight: FontWeight.bold),
       iconTheme: IconThemeData(color: kDarkGrey),
     ),
     buttonTheme: ButtonThemeData(
-      buttonColor: kAccentPrimary,
+      buttonColor: config.primaryColor,
       textTheme: ButtonTextTheme.primary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
-    floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: kAccentPrimary,
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: config.primaryColor,
       foregroundColor: kWhite,
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        foregroundColor: kBlack, backgroundColor: kAccentPrimary,
+        foregroundColor: kBlack,
+        backgroundColor: config.primaryColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontWeight: FontWeight.bold),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(
-        foregroundColor: kAccentPrimary,
-      ),
+      style: TextButton.styleFrom(foregroundColor: config.primaryColor),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -62,71 +68,75 @@ ThemeData lightTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: kAccentPrimary, width: 2),
+        borderSide: BorderSide(color: config.primaryColor, width: 2),
       ),
       labelStyle: const TextStyle(color: kMediumGrey),
-      hintStyle: const TextStyle(color: kMediumGrey),
+      hintStyle:  const TextStyle(color: kMediumGrey),
     ),
-    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+    bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: kWhite,
-      selectedItemColor: kAccentPrimary,
+      selectedItemColor:   config.primaryColor,
       unselectedItemColor: kMediumGrey,
-      selectedLabelStyle: TextStyle(fontWeight: FontWeight.bold),
+      selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
     ),
   );
 }
 
 // Thème Sombre AetherStream
-ThemeData darkTheme() {
+ThemeData darkTheme(AppThemeConfig config) {
   return ThemeData(
     brightness: Brightness.dark,
-    primaryColor: kAccentPrimary,
-    hintColor: kAccentSecondary,
+    primaryColor: config.primaryColor,
+    hintColor: config.accentColor,
     scaffoldBackgroundColor: kDeepDarkGrey,
     cardColor: kContainerDark,
     colorScheme: ColorScheme.dark(
-      primary: kAccentPrimary,
-      secondary: kAccentSecondary,
-      tertiary: kAccentTertiary,
+      primary:   config.primaryColor,
+      secondary: config.accentColor,
+      tertiary:  config.tertiaryColor,
     ),
+    extensions: [
+      AetherThemeExtension(
+        primaryColor:  config.primaryColor,
+        accentColor:   config.accentColor,
+        tertiaryColor: config.tertiaryColor,
+        glowIntensity: config.glowIntensity,
+        borderRadius:  config.borderRadius,
+      ),
+    ],
     textTheme: const TextTheme(
-      headlineLarge: TextStyle(color: kTextDarkPrimary, fontWeight: FontWeight.bold),
+      headlineLarge:  TextStyle(color: kTextDarkPrimary, fontWeight: FontWeight.bold),
       headlineMedium: TextStyle(color: kTextDarkPrimary, fontWeight: FontWeight.bold),
-      bodyLarge: TextStyle(color: kTextDarkPrimary),
-      bodyMedium: TextStyle(color: kTextDarkSecondary),
+      bodyLarge:      TextStyle(color: kTextDarkPrimary),
+      bodyMedium:     TextStyle(color: kTextDarkSecondary),
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: kDeepDarkGrey,
       foregroundColor: kTextDarkPrimary,
       elevation: 0,
-      titleTextStyle: TextStyle(
-        color: kTextDarkPrimary,
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-      ),
+      titleTextStyle: TextStyle(color: kTextDarkPrimary, fontSize: 20, fontWeight: FontWeight.bold),
       iconTheme: IconThemeData(color: kTextDarkPrimary),
     ),
     buttonTheme: ButtonThemeData(
-      buttonColor: kAccentPrimary,
+      buttonColor: config.primaryColor,
       textTheme: ButtonTextTheme.primary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
-    floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: kAccentPrimary,
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: config.primaryColor,
       foregroundColor: kBlack,
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        foregroundColor: kBlack, backgroundColor: kAccentPrimary,
+        foregroundColor: kBlack,
+        backgroundColor: config.primaryColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontWeight: FontWeight.bold),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(
-        foregroundColor: kAccentSecondary,
-      ),
+      style: TextButton.styleFrom(foregroundColor: config.accentColor),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -137,16 +147,16 @@ ThemeData darkTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: kAccentPrimary, width: 2),
+        borderSide: BorderSide(color: config.primaryColor, width: 2),
       ),
       labelStyle: const TextStyle(color: kTextDarkSecondary),
-      hintStyle: const TextStyle(color: kMediumGrey),
+      hintStyle:  const TextStyle(color: kMediumGrey),
     ),
-    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+    bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: kDeepDarkGrey,
-      selectedItemColor: kAccentPrimary,
+      selectedItemColor:   config.primaryColor,
       unselectedItemColor: kMediumGrey,
-      selectedLabelStyle: TextStyle(fontWeight: FontWeight.bold),
+      selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
     ),
   );
 }

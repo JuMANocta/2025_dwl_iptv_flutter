@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme_service.dart';
 
 // ── Couleurs Neutres ────────────────────────────────────────────────────────
 const Color kWhite = Color(0xFFFFFFFF);
@@ -18,38 +19,39 @@ const Color kAetherVibrantMagenta = Color(0xFFC71585); // Magenta
 const Color kMatrixGreen          = Color(0xFF00FF41); // Terminal Matrix green
 const Color kMatrixGreenDim       = Color(0xFF00C832); // Variante plus douce
 
-// ── Alias sémantiques (à utiliser dans tout le code UI) ─────────────────────
-// Changer ces 3 lignes suffit pour recolorer toute l'appli.
-const Color kAccentPrimary   = kMatrixGreen;          // Couleur principale (ex-violet)
-const Color kAccentSecondary = kAetherSecondaryCyan;  // Accent cyan
-const Color kAccentTertiary  = kAetherVibrantMagenta; // Accent magenta
+// ── Alias sémantiques dynamiques ─────────────────────────────────────────────
+// Getters lus depuis ThemeService à chaque build → réagissent aux changements
+// de thème in-app sans toucher les widgets. Changer le preset = toute l'UI se recolore.
+Color get kAccentPrimary   => ThemeService.config.value.primaryColor;
+Color get kAccentSecondary => ThemeService.config.value.accentColor;
+Color get kAccentTertiary  => ThemeService.config.value.tertiaryColor;
 
-// ── Qualités vidéo ──────────────────────────────────────────────────────────
+// ── Qualités vidéo (couleurs fixes — indépendantes du thème) ─────────────────
 const Color kQuality4K  = Color(0xFFE53935); // Rouge vif
 const Color kQualityFHD = Color(0xFFFFC107); // Ambre
-const Color kQualityHD  = kAetherSecondaryCyan; // Cyan (ex-blue)
-const Color kQualitySD  = kMatrixGreenDim;   // Vert Matrix (ex-teal/purple)
+const Color kQualityHD  = kAetherSecondaryCyan; // Cyan
+const Color kQualitySD  = kMatrixGreenDim;   // Vert Matrix dim
 
 // ── Langues ─────────────────────────────────────────────────────────────────
-const Color kLangMulti  = kAccentPrimary;    // Vert Matrix (ex-purple)
-const Color kLangVOSTFR = Color(0xFFFF8C00); // Orange
-const Color kLangVF     = kAetherSecondaryCyan; // Cyan (ex-blue)
-const Color kLangEpisode = kAetherSecondaryCyan; // Cyan
+Color get kLangMulti     => kAccentPrimary;       // suit le thème
+const Color kLangVOSTFR  = Color(0xFFFF8C00);     // Orange
+const Color kLangVF      = kAetherSecondaryCyan;  // Cyan
+const Color kLangEpisode = kAetherSecondaryCyan;  // Cyan
 
 // ── Badges media type (player + fiches) ─────────────────────────────────────
-const Color kBadgeLive   = Color(0xFFE53935); // Rouge direct
-const Color kBadgeReplay = Color(0xFFF9A825); // Ambre replay
-const Color kBadgeMovie  = kAetherSecondaryCyan; // Cyan film (ex-blue)
-const Color kBadgeSeries = kAccentPrimary;    // Vert Matrix série (ex-purple)
-const Color kBadgeFilmType   = kAetherSecondaryCyan; // Chip FILM dans filmographie
-const Color kBadgeSeriesType = kAccentPrimary; // Chip SÉRIE dans filmographie
+const Color kBadgeLive   = Color(0xFFE53935);       // Rouge direct
+const Color kBadgeReplay = Color(0xFFF9A825);       // Ambre replay
+const Color kBadgeMovie  = kAetherSecondaryCyan;    // Cyan film
+Color get kBadgeSeries     => kAccentPrimary;       // suit le thème
+const Color kBadgeFilmType = kAetherSecondaryCyan;  // Chip FILM dans filmographie
+Color get kBadgeSeriesType => kAccentPrimary;       // suit le thème
 
 // ── Statuts / alertes ────────────────────────────────────────────────────────
 const Color kWarning = Color(0xFFFF8C00); // Orange avertissement
-const Color kDispo   = kAccentPrimary;    // Vert Matrix "DISPO"
+Color get kDispo     => kAccentPrimary;   // suit le thème
 
 // ── Dégradé principal (boutons, pills actives) ───────────────────────────────
-const LinearGradient kAetherGradient = LinearGradient(
+LinearGradient get kAetherGradient => LinearGradient(
   colors: [kAccentPrimary, kAccentSecondary],
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,

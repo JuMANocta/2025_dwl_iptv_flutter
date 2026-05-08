@@ -420,7 +420,7 @@ class _DetailsPageState extends State<DetailsPage> {
                       runSpacing: 8,
                       children: _tmdbData!.cast
                           .map((a) => ActionChip(
-                                avatar: const Icon(Icons.person,
+                                avatar: Icon(Icons.person,
                                     size: 16, color: kAccentSecondary),
                                 label: Text(a),
                                 onPressed: () => _searchActor(a),

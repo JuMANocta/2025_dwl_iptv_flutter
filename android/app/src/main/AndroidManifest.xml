@@ -1,5 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- ── Compatibilité Android TV ──────────────────────────────────────────── -->
+    <!-- Déclare la compatibilité Leanback (Android TV) sans l'exiger          -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <!-- L'écran tactile n'est pas obligatoire → permet l'installation sur TV  -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
     <!-- Permissions réseau -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -42,7 +48,10 @@
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+                <!-- Launcher smartphone/tablette -->
                 <category android:name="android.intent.category.LAUNCHER" />
+                <!-- Launcher Android TV — affiche l'app dans la grille TV -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
 

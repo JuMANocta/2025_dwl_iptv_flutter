@@ -64,6 +64,9 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   bool _initMessageAdded = false;
   bool _initScheduled = false;
 
+  int _retryCount = 0;
+  final Set<int> _expandedAccordions = {};
+
   @override
   void initState() {
     super.initState();
@@ -133,6 +136,11 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
     }
 
     if (task.status == DownloadStatus.downloading) {
+      // Reprise après une erreur : replier les erreurs passées dans un accordéon
+      if (_hasFatalError) {
+        _collapseRecentErrors();
+        _logs.add({'message': '> RETRY #$_retryCount — RECONNECTING...', 'type': 'retry'});
+      }
       _stopwatch ??= Stopwatch()..start();
       const barLength = 20;
       final filled = (task.progress * barLength).clamp(0, barLength).toInt();
@@ -188,6 +196,28 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
 
     setState(() => _lastTaskState = task);
     _scrollToBottom();
+  }
+
+  // Regroupe les entrées d'erreur en fin de log dans un accordéon replié.
+  // Appelé quand le téléchargement reprend après un état failed.
+  void _collapseRecentErrors() {
+    _retryCount++;
+    int firstErrorIndex = _logs.length;
+    for (int i = _logs.length - 1; i >= 0; i--) {
+      if (_logs[i]['type'] == 'error') {
+        firstErrorIndex = i;
+      } else {
+        break;
+      }
+    }
+    if (firstErrorIndex >= _logs.length) return;
+    final errorMessages = _logs
+        .sublist(firstErrorIndex)
+        .map((l) => l['message'] as String)
+        .toList();
+    _logs.removeRange(firstErrorIndex, _logs.length);
+    _logs.add({'type': 'error_accordion', 'messages': errorMessages});
+    _hasFatalError = false;
   }
 
   void _forceFullBar() {
@@ -290,12 +320,55 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                       itemCount: _logs.length,
                       itemBuilder: (context, index) {
                         final log = _logs[index];
+                        final type = log['type'] as String;
+
+                        // Accordéon pour les erreurs passées (retry)
+                        if (type == 'error_accordion') {
+                          final messages = log['messages'] as List<String>;
+                          final isExpanded = _expandedAccordions.contains(index);
+                          return GestureDetector(
+                            onTap: () => setState(() {
+                              if (isExpanded) {
+                                _expandedAccordions.remove(index);
+                              } else {
+                                _expandedAccordions.add(index);
+                              }
+                            }),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '> [!] ${messages.length} ERREUR(S) PRÉCÉDENTE(S)  ${isExpanded ? '▲ MASQUER' : '▼ AFFICHER'}',
+                                  style: GoogleFonts.sourceCodePro(
+                                    color: Colors.orange.withAlpha(200),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                if (isExpanded)
+                                  ...messages.map(
+                                    (msg) => Padding(
+                                      padding: const EdgeInsets.only(left: 12),
+                                      child: Text(
+                                        msg,
+                                        style: GoogleFonts.sourceCodePro(
+                                          color: const Color(0xFFFF5555).withAlpha(140),
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        }
+
                         final Color color;
-                        switch (log['type']) {
+                        switch (type) {
                           case 'stats':  color = const Color(0xFF33FF33); break;
                           case 'error':  color = const Color(0xFFFF5555); break;
                           case 'matrix': color = Colors.white; break;
                           case 'boot':   color = const Color(0xFF00AA00); break;
+                          case 'retry':  color = Colors.orange; break;
                           default:       color = const Color(0xFFADFF2F); break;
                         }
                         return Text(

@@ -144,14 +144,19 @@ class UpdateService {
   // -------------------------------------------------------------------------
 
   /// Retourne true si [remoteTag] ("v1.2.1") est plus récent que [localVersion] ("1.2.0").
+  /// Ignore le build number (+N) de la version locale — la comparaison porte
+  /// uniquement sur le triplet majeur.mineur.patch.
   static bool _isNewer(String remoteTag, String localVersion) {
     try {
-      final remote = remoteTag
-          .replaceFirst('v', '')
-          .split('.')
-          .map(int.parse)
-          .toList();
-      final local = localVersion.split('.').map(int.parse).toList();
+      // Retire le 'v' initial et le build number éventuel (+N)
+      final remoteClean = remoteTag.replaceFirst(RegExp(r'^v'), '').split('+').first;
+      final localClean  = localVersion.split('+').first;
+
+      final remote = remoteClean.split('.').map(int.parse).toList();
+      final local  = localClean .split('.').map(int.parse).toList();
+
+      debugPrint('🔍 UpdateService: remote=$remoteClean local=$localClean');
+
       for (int i = 0; i < remote.length; i++) {
         final r = remote[i];
         final l = i < local.length ? local[i] : 0;
@@ -159,7 +164,8 @@ class UpdateService {
         if (r < l) return false;
       }
       return false;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('⚠️ UpdateService: comparaison version échouée → $e');
       return false;
     }
   }

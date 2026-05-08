@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.6+33-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.2.7+34-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -72,7 +72,9 @@
 
 ### Depuis les Releases GitHub
 
-Télécharge le dernier APK depuis la page [Releases](https://github.com/JuMANocta/2025_dwl_iptv_flutter/releases) et installe-le directement sur ton appareil Android (minSdk 24 — Android 7.0+).
+Télécharge `aetherstream.apk` depuis la page [Releases](https://github.com/JuMANocta/2025_dwl_iptv_flutter/releases) et installe-le directement sur ton appareil Android (minSdk 24 — Android 7.0+).
+
+Compatible **smartphones, tablettes, Fire Stick et Android TV** (Philips, Sony, etc.) — toutes architectures ARM64 / ARMv7 / x86_64.
 
 > ⚠️ L'installation d'APK hors Play Store nécessite d'activer **"Sources inconnues"** dans les paramètres Android.
 
@@ -89,8 +91,8 @@ flutter pub get
 # Lancer en debug
 flutter run
 
-# Build release (recommandé : split par ABI)
-flutter build apk --split-per-abi --release
+# Build APK universel (téléphone + TV + Fire Stick)
+flutter build apk --release
 ```
 
 ---

@@ -7,7 +7,7 @@ class ParsedPlaylist {
   /// Version du schéma de sérialisation.
   /// Incrémenter quand la structure de [M3uEntry] ou [TitleMetadata] change
   /// → invalide automatiquement tous les caches disque existants.
-  static const int schemaVersion = 3; // v3 : fix parser virgule dans les titres (Star Trek, le film)
+  static const int schemaVersion = 4; // v4 : §1c catégories depuis groupTitle
 
   final String accountId;
   /// Version du schéma au moment de la sauvegarde — comparé à [schemaVersion] à la relecture.

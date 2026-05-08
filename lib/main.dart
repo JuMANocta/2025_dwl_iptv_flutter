@@ -11,6 +11,8 @@ import 'feature/accounts/accounts_page.dart';
 import 'data/services/playlist_service.dart';
 import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
+import 'core/themes/theme_service.dart';
+import 'core/themes/app_theme_config.dart';
 import 'data/services/update_service.dart';
 import 'feature/update/update_dialog.dart';
 
@@ -26,6 +28,7 @@ void main() async {
   MediaStore.appFolder = 'AetherStream';
   await StreamAccountService.migrateFromLegacyIfNeeded();
   await DownloadManagerService().init();
+  await ThemeService.load();
 
   runApp(const MyApp());
 
@@ -50,12 +53,19 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<AppThemeConfig>(
+      valueListenable: ThemeService.config,
+      builder: (context, config, _) => _buildApp(config),
+    );
+  }
+
+  Widget _buildApp(AppThemeConfig config) {
     return MaterialApp(
       navigatorKey: navigatorKey,
       title: 'AetherStream',
-      themeMode: ThemeMode.system,
-      theme: lightTheme(),
-      darkTheme: darkTheme(),
+      themeMode: config.themeMode,
+      theme: lightTheme(config),
+      darkTheme: darkTheme(config),
       debugShowCheckedModeBanner: false,
 
       localizationsDelegates: const [

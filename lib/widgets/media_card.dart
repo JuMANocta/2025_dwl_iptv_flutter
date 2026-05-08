@@ -200,7 +200,7 @@ class SerieCard extends StatelessWidget {
                 left: 0, top: 0, bottom: 0,
                 child: Container(
                   width: 3,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [kAccentTertiary, kAccentPrimary],
                       begin: Alignment.topCenter,
@@ -315,7 +315,7 @@ class TvCard extends StatelessWidget {
     return _cardShell(
       context: context,
       onTap: () => onTap(versions),
-      accentGradient: const LinearGradient(
+      accentGradient: LinearGradient(
         colors: [kAccentSecondary, kAccentPrimary],
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
@@ -346,7 +346,7 @@ class TvCard extends StatelessWidget {
                     child: Text('·', style: TextStyle(color: cs.onSurfaceVariant)),
                   ),
                 if (hasReplay) ...[
-                  const Icon(Icons.replay_circle_filled, color: kAccentSecondary, size: 14),
+                  Icon(Icons.replay_circle_filled, color: kAccentSecondary, size: 14),
                   const SizedBox(width: 3),
                   Text('Replay', style: TextStyle(color: kAccentSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
                 ],

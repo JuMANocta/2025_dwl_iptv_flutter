@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
+import 'package:aetherStream/feature/search/m3u_filter.dart';
 
 class M3uParser {
   /// Parse le fichier M3U et alimente les trois listes.
@@ -175,6 +176,7 @@ class M3uParser {
       groupTitle: groupTitle,
       catchupDays: catchupDays,
       catchupSource: catchupSource,
+      category: contentCategoryLabel(groupTitle), // §1c
     );
 
     if (type == M3uContentType.series) {

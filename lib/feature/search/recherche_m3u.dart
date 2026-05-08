@@ -22,10 +22,12 @@ class _FilterParams {
   final bool showFilms;
   final bool showSeries;
   final bool showTv;
+  final String? categoryFilter;
   const _FilterParams({
     required this.films, required this.series, required this.tv,
     required this.query,
     required this.showFilms, required this.showSeries, required this.showTv,
+    this.categoryFilter,
   });
 }
 
@@ -46,6 +48,8 @@ _FilterResult _computeFilter(_FilterParams p) {
   bool matches(M3uEntry e) => query.isEmpty ||
       e.rawTitle.toLowerCase().contains(query) ||
       e.displayName.toLowerCase().contains(query);
+  bool matchesCat(M3uEntry e) =>
+      p.categoryFilter == null || e.category == p.categoryFilter;
 
   final groupedFilms  = <String, List<M3uEntry>>{};
   final groupedSeries = <String, Map<String, List<M3uEntry>>>{};
@@ -53,12 +57,12 @@ _FilterResult _computeFilter(_FilterParams p) {
 
   if (p.showFilms) {
     for (final e in p.films) {
-      if (matches(e)) groupedFilms.putIfAbsent(contentGroupKey(e), () => []).add(e);
+      if (matches(e) && matchesCat(e)) groupedFilms.putIfAbsent(contentGroupKey(e), () => []).add(e);
     }
   }
   if (p.showSeries) {
     for (final e in p.series) {
-      if (matches(e)) {
+      if (matches(e) && matchesCat(e)) {
         final key = contentGroupKey(e);
         groupedSeries.putIfAbsent(key, () => {});
         groupedSeries[key]!.putIfAbsent(e.saison ?? '00', () => []).add(e);
@@ -102,6 +106,9 @@ class _RechercheM3UState extends State<RechercheM3U> {
   bool _showFilms  = true;
   bool _showSeries = true;
   bool _showTv     = true;
+  String? _categoryFilter;
+  List<String> _filmCategories   = [];
+  List<String> _seriesCategories = [];
   String _searchQuery = "";
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
@@ -160,6 +167,12 @@ class _RechercheM3UState extends State<RechercheM3U> {
         _filmsList.addAll(allEntries.where((e) => e.type == M3uContentType.movie));
         _seriesList.addAll(allEntries.where((e) => e.type == M3uContentType.series));
         _tvList.addAll(allEntries.where((e) => e.type == M3uContentType.tv));
+        _filmCategories = _filmsList
+            .map((e) => e.category).where((c) => c != null && c.isNotEmpty)
+            .cast<String>().toSet().toList()..sort();
+        _seriesCategories = _seriesList
+            .map((e) => e.category).where((c) => c != null && c.isNotEmpty)
+            .cast<String>().toSet().toList()..sort();
         await _filterAndGroupResults();
         if (mounted) setState(() => _isProcessing = false);
       }
@@ -179,6 +192,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
       showFilms: _showFilms,
       showSeries: _showSeries,
       showTv: _showTv,
+      categoryFilter: _categoryFilter,
     );
     final result = await compute(_computeFilter, params);
     if (!mounted) return;
@@ -344,13 +358,18 @@ class _RechercheM3UState extends State<RechercheM3U> {
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-          child: Row(children: [
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildCategoryBar(),
+              Row(children: [
             _filterPill(
               icon: Icons.movie_outlined,
               iconActive: Icons.movie,
               label: l10n.searchFilterFilms,
               selected: _showFilms,
-              onTap: () { setState(() => _showFilms = !_showFilms); _filterAndGroupResults(); },
+              onTap: () { setState(() { _showFilms = !_showFilms; _categoryFilter = null; }); _filterAndGroupResults(); },
             ),
             const SizedBox(width: 8),
             _filterPill(
@@ -358,7 +377,7 @@ class _RechercheM3UState extends State<RechercheM3U> {
               iconActive: Icons.video_library,
               label: l10n.searchFilterSeries,
               selected: _showSeries,
-              onTap: () { setState(() => _showSeries = !_showSeries); _filterAndGroupResults(); },
+              onTap: () { setState(() { _showSeries = !_showSeries; _categoryFilter = null; }); _filterAndGroupResults(); },
             ),
             const SizedBox(width: 8),
             _filterPill(
@@ -366,12 +385,14 @@ class _RechercheM3UState extends State<RechercheM3U> {
               iconActive: Icons.live_tv,
               label: l10n.searchFilterTv,
               selected: _showTv,
-              onTap: () { setState(() => _showTv = !_showTv); _filterAndGroupResults(); },
+              onTap: () { setState(() { _showTv = !_showTv; _categoryFilter = null; }); _filterAndGroupResults(); },
             ),
           ]),
-        ),
+        ],
       ),
-    );
+    ),
+  ),
+  );
   }
 
   Widget _filterPill({
@@ -418,6 +439,65 @@ class _RechercheM3UState extends State<RechercheM3U> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Barre de catégories (§1c) ────────────────────────────────────────────────
+
+  Widget _buildCategoryBar() {
+    final cats = <String>{};
+    if (_showFilms)  cats.addAll(_filmCategories);
+    if (_showSeries) cats.addAll(_seriesCategories);
+    if (cats.isEmpty) return const SizedBox.shrink();
+    final sorted = cats.toList()..sort();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _categoryChip(null),
+            ...sorted.map((cat) => Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: _categoryChip(cat),
+            )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _categoryChip(String? category) {
+    final cs = Theme.of(context).colorScheme;
+    final selected = _categoryFilter == category;
+    final label = category ?? 'Tout';
+    return GestureDetector(
+      onTap: () {
+        if (_categoryFilter != category) {
+          setState(() => _categoryFilter = category);
+          _filterAndGroupResults();
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? kAccentSecondary.withAlpha(35) : cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? kAccentSecondary : cs.outline.withAlpha(45),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            color: selected ? kAccentSecondary : cs.onSurfaceVariant,
           ),
         ),
       ),

@@ -13,6 +13,7 @@ import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 
 class AccountsPage extends StatefulWidget {
   const AccountsPage({super.key, this.initialPlaylistPath});
@@ -119,7 +120,7 @@ class _AccountsPageState extends State<AccountsPage> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.cancel)),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Vider", style: TextStyle(color: kAccentSecondary)),
+            child: Text("Vider", style: TextStyle(color: kAccentSecondary)),
           ),
         ],
       ),
@@ -339,6 +340,22 @@ class _AccountsPageState extends State<AccountsPage> {
     }
   }
 
+  Widget _buildThemeCard() {
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      elevation: 2,
+      child: ListTile(
+        leading: Icon(Icons.palette_outlined, color: kAccentSecondary),
+        title: const Text('Personnalisation', style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text('Thème, couleurs, effets', style: TextStyle(fontSize: 12)),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ThemeSettingsPage()),
+        ),
+      ),
+    );
+  }
+
   Widget _buildXmltvCard() {
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
@@ -510,6 +527,9 @@ class _AccountsPageState extends State<AccountsPage> {
               // 2. Guide des chaînes XMLTV
               _buildXmltvCard(),
 
+              // 3. Personnalisation thème
+              _buildThemeCard(),
+
               // 3. Playlist Info
               _playlistInfoCard(l10n),
 
@@ -600,7 +620,7 @@ class _AccountsPageState extends State<AccountsPage> {
             tooltip: l10n.accountActionEdit,
           ),
           IconButton(
-            icon: const Icon(Icons.sync, size: 20, color: kAccentSecondary),
+            icon: Icon(Icons.sync, size: 20, color: kAccentSecondary),
             onPressed: () => _clearCache(a.id),
             tooltip: "Vider le cache playlist",
           ),
