@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/log_sanitizer.dart';
 import '../../data/services/replay_service.dart';
 
 /// Feuille affichant les programmes en replay pour un stream donné.
@@ -9,7 +10,7 @@ class ReplaySheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('ReplaySheet: Reçu streamId: $streamId, streamUrl: $streamUrl');
+    debugPrint('ReplaySheet: Reçu streamId: $streamId, streamUrl: ${redactUrl(streamUrl)}');
     final service = ReplayService();
     return SafeArea(
       child: FutureBuilder<List<ReplayProgram>>(

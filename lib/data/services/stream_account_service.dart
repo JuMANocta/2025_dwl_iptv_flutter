@@ -18,6 +18,15 @@ class StreamAccountService {
   static const String _kCurrentKey = 'current_account_id';
   static String _kAccount(String id) => 'account:$id';
 
+  /// ID du compte actif (prioritaire). Bumpe à chaque [setCurrentAccount].
+  /// Les pages comme [HomePage] écoutent ce notifier pour recharger leur
+  /// contenu quand l'utilisateur change de compte dans `AccountsPage`.
+  static final ValueNotifier<String?> currentAccountIdNotifier = ValueNotifier(null);
+
+  /// Bumpe à chaque création/suppression d'un compte — utilisé pour rafraîchir
+  /// les badges multi-comptes et déclencher le téléchargement des M3U manquants.
+  static final ValueNotifier<int> accountsVersion = ValueNotifier(0);
+
   // Même techno de stockage que ton SecureStorageService (EncryptedSharedPreferences sur Android).
   static const FlutterSecureStorage _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -66,10 +75,12 @@ class StreamAccountService {
   static Future<void> saveAccount(StreamAccount acc) async {
     final accounts = await listAccounts();
     final ids = accounts.map((a) => a.id).toList();
-    if (!ids.contains(acc.id)) ids.add(acc.id);
+    final isNew = !ids.contains(acc.id);
+    if (isNew) ids.add(acc.id);
 
     await _storage.write(key: _kAccount(acc.id), value: jsonEncode(acc.toJson()));
     await _saveIndex(ids);
+    if (isNew) accountsVersion.value++;
   }
 
   /// Supprime un compte + maintient la sélection courante proprement.
@@ -87,10 +98,13 @@ class StreamAccountService {
     if (cur == id) {
       if (remaining.isNotEmpty) {
         await _storage.write(key: _kCurrentKey, value: remaining.first);
+        currentAccountIdNotifier.value = remaining.first;
       } else {
         await _storage.delete(key: _kCurrentKey);
+        currentAccountIdNotifier.value = null;
       }
     }
+    accountsVersion.value++;
   }
 
   /// Récupère un compte par son id.
@@ -107,14 +121,22 @@ class StreamAccountService {
   /// Définit le compte courant (utilisé par défaut pour playlist/téléchargements).
   static Future<void> setCurrentAccount(String id) async {
     await _storage.write(key: _kCurrentKey, value: id);
+    currentAccountIdNotifier.value = id;
   }
 
   /// Récupère le compte courant (ou le 1er de la liste si rien n'est sélectionné).
+  /// Met à jour [currentAccountIdNotifier] au passage si la valeur en mémoire
+  /// diffère de celle persistée (utile au démarrage et après hot-reload).
   static Future<StreamAccount?> getCurrentAccount() async {
     final curId = await _storage.read(key: _kCurrentKey);
     if (curId != null) {
       final acc = await getAccount(curId);
-      if (acc != null) return acc;
+      if (acc != null) {
+        if (currentAccountIdNotifier.value != curId) {
+          currentAccountIdNotifier.value = curId;
+        }
+        return acc;
+      }
       // si l'id courant ne correspond plus à un compte existant, on retombe sur le 1er.
     }
     final list = await listAccounts();
@@ -122,6 +144,7 @@ class StreamAccountService {
       await setCurrentAccount(list.first.id);
       return list.first;
     }
+    if (currentAccountIdNotifier.value != null) currentAccountIdNotifier.value = null;
     return null;
   }
 
@@ -180,8 +203,8 @@ class StreamAccountService {
     };
 
     try {
-      // 3. On utilise NetworkUtils pour obtenir une instance de Dio pré-configurée
-      final dio = NetworkUtils.buildBaseDio();
+      // 3. Dio configuré pour serveur IPTV (cert self-signed possible)
+      final dio = NetworkUtils.buildBaseDio(allowInvalidCertificate: true);
 
       // 4. On exécute la requête GET
       final response = await dio.get(apiUrl, queryParameters: params);

@@ -75,6 +75,10 @@ _FilterResult _computeFilter(_FilterParams p) {
         groupedTv.putIfAbsent(tvGroupKey(e.displayName), () => []).add(e);
       }
     }
+    // §URGENT — Dédoublonne les qualités identiques (provider double flux).
+    for (final k in groupedTv.keys.toList()) {
+      groupedTv[k] = dedupeTvVersions(groupedTv[k]!);
+    }
   }
 
   for (final list in groupedFilms.values) { list.sort((a, b) => a.rawTitle.compareTo(b.rawTitle)); }
@@ -130,24 +134,31 @@ class _RechercheM3UState extends State<RechercheM3U> {
   @override
   void initState() {
     super.initState();
-    _searchController.addListener(() {
-      final text = _searchController.text;
-      if (_searchQuery == text) return;
-      setState(() => _searchQuery = text);
-      // Debounce : attend 250 ms de pause avant de déclencher le filtrage
-      _debounce?.cancel();
-      _debounce = Timer(const Duration(milliseconds: 250), _filterAndGroupResults);
-    });
-    _searchFocus.addListener(() {
-      setState(() => _searchFocused = _searchFocus.hasFocus);
-    });
+    _searchController.addListener(_onSearchTextChanged);
+    _searchFocus.addListener(_onSearchFocusChanged);
     _processFile();
+  }
+
+  void _onSearchTextChanged() {
+    final text = _searchController.text;
+    if (_searchQuery == text) return;
+    setState(() => _searchQuery = text);
+    // Debounce : attend 250 ms de pause avant de déclencher le filtrage
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), _filterAndGroupResults);
+  }
+
+  void _onSearchFocusChanged() {
+    if (!mounted) return;
+    setState(() => _searchFocused = _searchFocus.hasFocus);
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _searchController.removeListener(_onSearchTextChanged);
     _searchController.dispose();
+    _searchFocus.removeListener(_onSearchFocusChanged);
     _searchFocus.dispose();
     super.dispose();
   }

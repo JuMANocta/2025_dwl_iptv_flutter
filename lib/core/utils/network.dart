@@ -7,11 +7,26 @@ import '../../data/services/stream_account_service.dart';
 
 /// Classe utilitaire pour la configuration réseau centralisée.
 /// Elle fournit des instances de Dio préconfigurées.
+///
+/// **Sécurité SSL** : par défaut Dio refuse les certificats invalides.
+/// Le contournement SSL n'est activé QUE pour les requêtes vers les
+/// serveurs IPTV de l'utilisateur (via [buildDio] ou en passant
+/// `allowInvalidCertificate: true` à [buildBaseDio]).
+///
+/// Les requêtes vers TMDB, GitHub, XMLTV, etc. ne doivent **jamais** activer
+/// cette option : leurs certificats sont valides et les ignorer ouvrirait
+/// la porte à du MITM.
 class NetworkUtils {
 
   /// Construit une instance de Dio avec une configuration de base (User-Agent, etc.).
-  /// C'est la méthode à utiliser pour les requêtes génériques.
-  static Dio buildBaseDio({String? referer, String? origin}) {
+  ///
+  /// [allowInvalidCertificate] : si `true`, accepte n'importe quel certificat
+  /// SSL. À n'utiliser QUE pour les serveurs IPTV mal configurés. Défaut `false`.
+  static Dio buildBaseDio({
+    String? referer,
+    String? origin,
+    bool allowInvalidCertificate = false,
+  }) {
     final dio = Dio(
       BaseOptions(
         connectTimeout: const Duration(seconds: 30),
@@ -29,26 +44,32 @@ class NetworkUtils {
       ),
     );
 
-    // Permet d'ignorer les erreurs de certificat SSL (utile pour certaines sources IPTV)
-    (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
-      final client = HttpClient();
-      client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
-      return client;
-    };
+    if (allowInvalidCertificate) {
+      // ⚠️ Bypass certificat SSL : strictement réservé aux providers IPTV
+      // utilisateur (souvent self-signed). Ne PAS étendre aux APIs publiques.
+      (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+        final client = HttpClient();
+        client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+        return client;
+      };
+    }
 
     return dio;
   }
 
 
-  /// Construit une instance de Dio **spécifiquement pour les téléchargements**.
-  /// Elle enrichit la configuration de base avec les cookies et les en-têtes
+  /// Construit une instance de Dio **spécifiquement pour les serveurs IPTV
+  /// utilisateur** (téléchargements playlist, médias, API Xtream).
+  ///
+  /// Active automatiquement le bypass SSL — les serveurs IPTV grand public
+  /// utilisent fréquemment des certificats self-signed ou expirés.
   static Future<Dio> buildDio(String url) async {
     final uri = Uri.parse(url);
     final referer = "${uri.scheme}://${uri.host}/";
     final origin = "${uri.scheme}://${uri.host}";
 
     // On commence avec une instance de Dio de base
-    final dio = buildBaseDio(referer: referer, origin: origin);
+    final dio = buildBaseDio(referer: referer, origin: origin, allowInvalidCertificate: true);
 
     // On récupère les informations du compte pour enrichir la requête
     final acc = await StreamAccountService.getCurrentAccount();

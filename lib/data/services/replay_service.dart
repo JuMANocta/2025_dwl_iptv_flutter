@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart'; // Import pour debugPrint
+import 'package:aetherStream/core/utils/log_sanitizer.dart';
 import 'stream_account_service.dart';
 import '../models/stream_account.dart';
 
@@ -127,7 +128,7 @@ class ReplayService {
     if (streamUrl != null) {
       final fromStream = XtreamCredentials.fromStreamUrl(streamUrl);
       if (fromStream != null) {
-        debugPrint('🔑 ReplayService: Crédentiels résolus depuis l\'URL du stream → serveur: ${fromStream.server}');
+        debugPrint('🔑 ReplayService: Crédentiels résolus depuis l\'URL du stream → serveur: ${redactServer(fromStream.server)}');
         return fromStream;
       }
     }
@@ -135,7 +136,7 @@ class ReplayService {
     final acc = await StreamAccountService.getCurrentAccount();
     final fromAcc = XtreamCredentials.fromAccount(acc);
     if (fromAcc != null) {
-      debugPrint('🔑 ReplayService: Crédentiels résolus depuis le compte courant → serveur: ${fromAcc.server}');
+      debugPrint('🔑 ReplayService: Crédentiels résolus depuis le compte courant → serveur: ${redactServer(fromAcc.server)}');
       return fromAcc;
     }
     debugPrint('❌ ReplayService: Aucuns crédentiels Xtream trouvés.');
@@ -157,7 +158,7 @@ class ReplayService {
       'limit': limit.toString(),
     });
 
-    debugPrint('🌐 ReplayService: Appel → $uri');
+    debugPrint('🌐 ReplayService: Appel → ${redactUrl(uri.toString())}');
     final response = await http.get(uri);
     debugPrint('📨 ReplayService: Réponse HTTP ${response.statusCode}');
 
@@ -248,7 +249,7 @@ class ReplayService {
               .replaceAll('{utc}', utcTs)
               .replaceAll('{lutc}', lutcTs)
               .replaceAll('{duration}', durationMinutes.toString());
-      debugPrint('⏪ ReplayService (append): utc=$utcTs, lutc=$lutcTs, durée=${durationMinutes}min → $appendedUrl');
+      debugPrint('⏪ ReplayService (append): utc=$utcTs, lutc=$lutcTs, durée=${durationMinutes}min → ${redactUrl(appendedUrl)}');
       return appendedUrl;
     }
 
@@ -272,7 +273,7 @@ class ReplayService {
       durationMinutes: durationMinutes,
       ext: 'ts',
     );
-    debugPrint('⏪ ReplayService (xtream): start=$startFormatted, durée=${durationMinutes}min → $url');
+    debugPrint('⏪ ReplayService (xtream): start=$startFormatted, durée=${durationMinutes}min → ${redactUrl(url)}');
     return url;
   }
 

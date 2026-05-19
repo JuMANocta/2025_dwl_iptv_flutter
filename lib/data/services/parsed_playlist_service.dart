@@ -105,6 +105,53 @@ class ParsedPlaylistService {
     }
   }
 
+  /// Charge un compte secondaire en mémoire (depuis le cache disque ou
+  /// re-parsing du M3U). Idempotent : si déjà chargé, sort immédiatement.
+  /// Utilisé par la routine d'agrégation multi-comptes pour rendre toutes
+  /// les playlists disponibles à la recherche et à la home.
+  static Future<void> loadSecondary(
+    String accountId,
+    String accountName,
+    String m3uPath,
+  ) async {
+    if (_memory.containsKey(accountId)) {
+      _accountNames[accountId] = accountName;
+      return;
+    }
+    // Tentative cache disque
+    final disk = await _loadFromDisk(accountId, m3uPath);
+    if (disk != null) {
+      _memory[accountId] = disk;
+      _accountNames[accountId] = accountName;
+      version.value++;
+      debugPrint('✅ ParsedPlaylist secondaire: cache disque — $accountName');
+      return;
+    }
+    // Sinon parse complet (silencieux, sans onProgress)
+    final films  = <M3uEntry>[];
+    final series = <M3uEntry>[];
+    final tv     = <M3uEntry>[];
+    try {
+      await M3uParser.parseFile(m3uPath, films, series, tv, accountId: accountId);
+    } catch (e) {
+      debugPrint('❌ ParsedPlaylist secondaire — parse échoué pour $accountName: $e');
+      return;
+    }
+    final allEntries = [...films, ...series, ...tv];
+    final modified = await File(m3uPath).lastModified();
+    final playlist = ParsedPlaylist(
+      accountId:    accountId,
+      schema:       ParsedPlaylist.schemaVersion,
+      m3uModifiedAt: modified,
+      entries:      allEntries,
+    );
+    _memory[accountId] = playlist;
+    _accountNames[accountId] = accountName;
+    version.value++;
+    _saveToDisk(accountId, playlist);
+    debugPrint('✅ ParsedPlaylist secondaire: parse — $accountName (${allEntries.length} entrées)');
+  }
+
   // ── Accesseurs synchrones ─────────────────────────────────────────────────
 
   /// Toutes les entrées de tous les comptes actuellement chargés en mémoire.

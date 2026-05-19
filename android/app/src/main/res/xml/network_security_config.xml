@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Configuration réseau AetherStream.
+
+  - Par défaut : cleartext (HTTP) autorisé. Les serveurs IPTV utilisateur sont
+    souvent en HTTP sans certificat — on ne peut pas les whitelister en amont
+    car ils sont saisis par l'utilisateur à l'exécution.
+  - Pour les APIs publiques connues (TMDB, GitHub, XMLTV) : on désactive
+    explicitement le cleartext + on impose la validation de certificat.
+    Cela évite tout downgrade attack et tout MITM sur ces endpoints.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- API TMDB : HTTPS strict -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">themoviedb.org</domain>
+        <domain includeSubdomains="true">tmdb.org</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- GitHub (mise à jour in-app) : HTTPS strict -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">githubusercontent.com</domain>
+        <domain includeSubdomains="true">api.github.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- XMLTV TNT France : HTTPS strict -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">xmltvfr.fr</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

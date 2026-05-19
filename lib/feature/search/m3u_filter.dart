@@ -119,6 +119,29 @@ String tvGroupKey(String name) {
   return key.trim().replaceAll(RegExp(r'\s+'), ' ');
 }
 
+/// Dédoublonne les variantes d'une chaîne TV partageant la même qualité.
+///
+/// **Problème** : certains providers exposent plusieurs flux pour la même
+/// chaîne et la même qualité (backup, miroir, multi-CDN). Sans dédup, l'action
+/// sheet affiche plusieurs boutons "FHD", "HD" identiques côté utilisateur.
+///
+/// **Stratégie** : clé `(qualité ?? versionLabel ?? rawTitle, accountId)` —
+/// on garde le premier rencontré (priorité du compte actif déjà appliquée
+/// par `ParsedPlaylistService.entriesWithPriority`). Multi-comptes : on
+/// conserve une variante par compte pour que l'utilisateur puisse switcher.
+List<M3uEntry> dedupeTvVersions(List<M3uEntry> versions) {
+  final seen = <String>{};
+  final out = <M3uEntry>[];
+  for (final v in versions) {
+    final qualityKey = v.title.quality ??
+        v.title.versionLabel ??
+        v.title.rawTitle;
+    final key = '${v.accountId}|$qualityKey';
+    if (seen.add(key)) out.add(v);
+  }
+  return out;
+}
+
 /// Retourne true si l'entrée TV doit être masquée.
 bool isHiddenTvVariant(String name) {
   if (name.contains('▀') || name.contains('▄') ||

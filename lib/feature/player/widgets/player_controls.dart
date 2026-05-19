@@ -16,6 +16,13 @@ class PlayerControls extends StatefulWidget {
   final PlayerBadgeType badgeType;
   final VoidCallback onBack;
   final VoidCallback onInteraction;
+  /// §1i — Notifie le parent quand l'utilisateur (dé)verrouille.
+  /// Le parent ([PlayerPage]) propage l'état aux [PlayerGestures] pour
+  /// désactiver les gestes en mode lock.
+  final ValueChanged<bool>? onLockChanged;
+  /// §1i — Si non-null, affiche un bouton "épisode suivant" qui appelle ce
+  /// callback (utilisé pour les séries depuis [DetailsPage]).
+  final VoidCallback? onNextEpisode;
 
   const PlayerControls({
     super.key,
@@ -25,6 +32,8 @@ class PlayerControls extends StatefulWidget {
     this.badgeType = PlayerBadgeType.none,
     required this.onBack,
     required this.onInteraction,
+    this.onLockChanged,
+    this.onNextEpisode,
   });
 
   @override
@@ -137,6 +146,7 @@ class _PlayerControlsState extends State<PlayerControls> {
             locked: true,
             onTap: () {
               setState(() => _locked = false);
+              widget.onLockChanged?.call(false);
               widget.onInteraction();
             },
           ),
@@ -342,12 +352,28 @@ class _PlayerControlsState extends State<PlayerControls> {
                           size: 48,
                         ),
                       ),
+                      // §1i — Bouton épisode suivant (séries uniquement).
+                      if (widget.onNextEpisode != null) ...[
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: () {
+                            widget.onNextEpisode?.call();
+                            widget.onInteraction();
+                          },
+                          child: const Icon(
+                            Icons.skip_next,
+                            color: Colors.white,
+                            size: 36,
+                          ),
+                        ),
+                      ],
                       const SizedBox(width: 8),
                       // Bouton lock.
                       _LockButton(
                         locked: false,
                         onTap: () {
                           setState(() => _locked = true);
+                          widget.onLockChanged?.call(true);
                           widget.onInteraction();
                         },
                       ),

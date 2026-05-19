@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
+import '../../data/services/favorites_service.dart';
 import '../../data/services/tmdb_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
+import '../../data/services/watch_progress_service.dart';
 import '../../data/models/media_model.dart';
 import '../player/player_page.dart';
 import '../downloads/logic/download_initiator.dart';
@@ -57,6 +59,54 @@ class _DetailsPageState extends State<DetailsPage> {
       _currentEpisode.title.isSeriesEpisode &&
       _currentEpisode.title.seasonNumber != null &&
       _currentEpisode.title.episodeNumber != null;
+
+  /// §1i — Calcule l'épisode suivant pour la série en cours :
+  /// - épisode N+1 dans la même saison si présent
+  /// - sinon premier épisode de la saison suivante si présent
+  /// - sinon null (fin de série).
+  M3uEntry? get _nextEpisode {
+    if (!_isEpisode || _seasonEpisodes.isEmpty) return null;
+    final season = _currentEpisode.title.seasonNumber!;
+    final epNum  = _currentEpisode.title.episodeNumber!;
+    // Suivant dans la même saison
+    final eps = _seasonEpisodes[season];
+    if (eps != null) {
+      final next = eps.where((g) => g.episodeNumber == epNum + 1).firstOrNull;
+      if (next != null) return next.best;
+    }
+    // Premier de la saison suivante
+    final seasons = _seasonEpisodes.keys.toList()..sort();
+    final idx = seasons.indexOf(season);
+    if (idx >= 0 && idx + 1 < seasons.length) {
+      final nextSeasonEps = _seasonEpisodes[seasons[idx + 1]] ?? [];
+      if (nextSeasonEps.isNotEmpty) return nextSeasonEps.first.best;
+    }
+    return null;
+  }
+
+  /// §1i — Sélectionne l'épisode suivant + recharge les métadonnées TMDB +
+  /// rebascule sur la fiche détaillée. Utilisé par le bouton "next" du player.
+  void _goToNextEpisode() {
+    final next = _nextEpisode;
+    if (next == null) return;
+    final epNum  = next.title.episodeNumber;
+    final season = next.title.seasonNumber;
+    if (epNum == null || season == null) return;
+    final group = _seasonEpisodes[season]
+        ?.where((g) => g.episodeNumber == epNum)
+        .firstOrNull;
+    if (group == null) return;
+    setState(() {
+      _selectedSeason = season;
+      _episodeSelected = true;
+      _currentEpisode = group.best;
+      _uniqueVersions = _deduplicateVersions(group.versions);
+      _selectedEntry = _uniqueVersions.isNotEmpty
+          ? _uniqueVersions.first
+          : group.best;
+    });
+    _loadData();
+  }
 
   @override
   void initState() {
@@ -749,42 +799,110 @@ class _DetailsPageState extends State<DetailsPage> {
     );
   }
 
+  /// Format Duration → "1h23" ou "12:34" pour libellé court de reprise.
+  String _formatResumeShort(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    if (h > 0) return '${h}h${m.toString().padLeft(2, '0')}';
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  void _launchSelected({Duration? from}) {
+    // Auto-ajout favoris au play, cohérent avec le reste de l'app (§1d)
+    FavoritesService.add(FavoritesService.keyFor(_selectedEntry));
+    // §1i — Si on lance un épisode et qu'il existe un suivant, on passe le
+    // callback au player pour exposer le bouton "épisode suivant" (▶▶).
+    final hasNext = _isEpisode && _nextEpisode != null;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PlayerPage(
+        path: _selectedEntry.url,
+        title: _selectedEntry.displayName,
+        sourceType: VideoSourceType.network,
+        badgeType: _selectedEntry.type == M3uContentType.series
+            ? PlayerBadgeType.series
+            : PlayerBadgeType.movie,
+        startPosition: from,
+        onNextEpisode: hasNext
+            ? () {
+                // Retour à DetailsPage + sélection auto épisode suivant +
+                // relance du player. Évite d'empiler des PlayerPage.
+                Navigator.of(context).pop();
+                _goToNextEpisode();
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _launchSelected();
+                });
+              }
+            : null,
+      ),
+    ));
+  }
+
   Widget _buildActionButtons(AppLocalizations l10n) {
-    return Row(
-      children: [
-        Expanded(
-          child: FilledButton.icon(
-            style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14)),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => PlayerPage(
-                path: _selectedEntry.url,
-                title: _selectedEntry.displayName,
-                sourceType: VideoSourceType.network,
-                badgeType: _selectedEntry.type == M3uContentType.series
-                    ? PlayerBadgeType.series
-                    : PlayerBadgeType.movie,
+    return ListenableBuilder(
+      listenable: Listenable.merge(
+          [FavoritesService.version, WatchProgressService.version]),
+      builder: (ctx, _) {
+        final favKey = FavoritesService.keyFor(_selectedEntry);
+        final isFav = FavoritesService.isFavorite(favKey);
+        final progress = WatchProgressService.getProgress(_selectedEntry.url);
+        final hasResume = progress != null && progress.position.inSeconds > 5;
+
+        return Row(
+          children: [
+            // ── Bouton principal : Lire / Reprendre depuis X:XX ─────────────
+            Expanded(
+              flex: 5,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14)),
+                onPressed: () => _launchSelected(
+                    from: hasResume ? progress.position : null),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: Text(
+                  hasResume
+                      ? 'REPRENDRE · ${_formatResumeShort(progress.position)}'
+                      : l10n.actionSheetPlay.toUpperCase(),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            )),
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: Text(l10n.actionSheetPlay.toUpperCase(),
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14)),
-            onPressed: () => verifierEtTelecharger(
-                url: _selectedEntry.url,
-                nom: _selectedEntry.displayName,
-                context: context),
-            icon: const Icon(Icons.download_rounded),
-            label: Text(l10n.download.toUpperCase()),
-          ),
-        ),
-      ],
+            ),
+            const SizedBox(width: 8),
+            // ── Télécharger ─────────────────────────────────────────────────
+            Expanded(
+              flex: 4,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14)),
+                onPressed: () => verifierEtTelecharger(
+                    url: _selectedEntry.url,
+                    nom: _selectedEntry.displayName,
+                    context: context),
+                icon: const Icon(Icons.download_rounded),
+                label: Text(l10n.download.toUpperCase(),
+                    overflow: TextOverflow.ellipsis),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // ── Favori (§1f-A) ──────────────────────────────────────────────
+            _FavoriteIconButton(
+              isFav: isFav,
+              onTap: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final added = await FavoritesService.toggle(favKey);
+                if (!context.mounted) return;
+                messenger.showSnackBar(SnackBar(
+                  content: Text(added
+                      ? '⭐ "${_selectedEntry.displayName}" ajouté aux favoris'
+                      : '🗑️ "${_selectedEntry.displayName}" retiré des favoris'),
+                  duration: const Duration(seconds: 2),
+                ));
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -889,6 +1007,44 @@ class _DetailsPageState extends State<DetailsPage> {
       child: Text(text,
           style: TextStyle(
               color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+    );
+  }
+}
+
+// ─── §1f-A : bouton favori compact (icon-only) ───────────────────────────────
+
+class _FavoriteIconButton extends StatelessWidget {
+  final bool isFav;
+  final VoidCallback onTap;
+  const _FavoriteIconButton({required this.isFav, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 52,
+      height: 52,
+      child: Material(
+        color: isFav
+            ? kAccentTertiary.withAlpha(35)
+            : cs.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(
+            color: isFav ? kAccentTertiary : cs.outline.withAlpha(80),
+            width: isFav ? 1.5 : 1,
+          ),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Icon(
+            isFav ? Icons.favorite : Icons.favorite_border,
+            color: isFav ? kAccentTertiary : cs.onSurfaceVariant,
+            size: 22,
+          ),
+        ),
+      ),
     );
   }
 }

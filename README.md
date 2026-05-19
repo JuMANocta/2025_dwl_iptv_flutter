@@ -29,18 +29,27 @@
 - Lecture de flux réseau (HLS, MPEG-TS) et fichiers locaux via **libmpv** (`media_kit`)
 - Player plein écran paysage avec contrôles entièrement custom
 - **Gestures** : double-tap ±10s, swipe horizontal seek, swipe vertical volume/luminosité
+- **Verrouillage écran** : le cadenas désactive aussi les gestes (plus de seek/volume accidentel)
+- **Boost audio** : volume amplifiable jusqu'à 200 %, démarrage à 130 % pour compenser les flux IPTV faiblement encodés
+- **Synchro A/V** : `video-sync=display-resample` + buffer 64 Mo + audio-pitch-correction → dialogues calés sur l'image
 - Vitesse de lecture : 0.5x / 0.75x / 1x / 1.25x / 1.5x / 2x
-- Verrouillage écran (mode lock — désactive tous les gestures)
+- **Reprise de lecture** : position sauvegardée toutes les 10s, bouton "Reprendre depuis X:XX" + barre cyan sur les vignettes
+- **Épisode suivant** : bouton ▶▶ dans les contrôles séries (auto-saisi depuis la fiche détail)
+- **Wakelock** : écran maintenu allumé pendant la lecture, libéré en pause/erreur
 - Reconnexion automatique ×3 avec swap automatique d'extension `.ts` ↔ `.m3u8` (compatibilité maximale serveurs)
+- Retry réseau coupé en arrière-plan (économie batterie)
+- Overlay buffering central avec délai anti-clignotement
 - Badge contextuel : 🔴 DIRECT / 🟡 REPLAY / 🔵 FILM / 🟣 SÉRIE
 - Barre de progression replay (mode timeshift)
 
 ### 📋 Playlist & Comptes
-- **Multi-comptes** : plusieurs fournisseurs IPTV simultanément
+- **Multi-comptes** : plusieurs fournisseurs IPTV simultanément, aggregation automatique en recherche
 - **Deux modes** : URL complète M3U ou Xtream Codes (serveur + identifiants)
-- Cache playlist 24h (1 fichier par compte)
+- Cache playlist 24h (1 fichier par compte) + parsing JSON.gz mémorisé
+- Bascule de compte actif réactive : la home se reconfigure dès le changement de priorité
 - Recherche et filtres en temps réel — Films / Séries / Chaînes TV
-- Regroupement automatique des chaînes par qualité (4K / FHD / HD / SD)
+- **Historique de recherche** : 10 dernières requêtes en suggestions (chips dismissibles)
+- Regroupement automatique des chaînes par qualité (4K / FHD / HD / SD), dédoublonnage des flux identiques
 - Séparation des homonymes par catégorie `group-title` (ex: anime vs live-action) avec badge visuel
 
 ### ⏪ Replay / EPG
@@ -55,7 +64,26 @@
 - Recherche intelligente en 4 passes (type, année, langue...)
 - Désambiguïsation par année et genre `group-title` (évite les confusions films/séries homonymes)
 - Fiche épisode : still TMDB, titre épisode, note ★, date de diffusion, synopsis
-- Fiche détail film/série avec crédits complets
+- Fiche détail film/série avec crédits complets + bouton **♥ Favori** + reprise de lecture intégrée
+- Squelettes (skeleton placeholders) pendant le chargement TMDB pour éviter les sauts d'UI
+
+### 🏠 Accueil streaming-style
+- Hero banner rotatif (catégorie prioritaire toutes les 6 s)
+- 3 pages swipeables : Séries / Films / Chaînes (PageView + indicateur animé)
+- Catégories triées : ⭐ Favoris → 🇫🇷 France (TV) → 🔥 New → genres → Autres
+- Films/Séries en carrousels horizontaux (poster 2:3), Chaînes en grille 3 colonnes (logo carré)
+- Limite 25 items par section + tile "Voir tout" qui ouvre la liste complète
+- Tuile **REPRENDRE LA CHAÎNE** en tête de la page Chaînes (dernière chaîne TV regardée)
+- Long-press sur une carte → menu contextuel (Lire/Reprendre, Voir détails, Télécharger, Favori)
+- Recherche in-place via la NavigationBar (pas de page séparée)
+- Onboarding 3 écrans au tout premier lancement (welcome / playlist / TMDB)
+
+### ❤️ Favoris
+- Films, séries **et** chaînes TV (cross-comptes, cross-variantes)
+- Auto-ajout au lancement de la lecture (silencieux)
+- Long-press menu sur les cartes + icon-button compact dans la fiche détail
+- Section ⭐ Favoris dupliquée en tête de la page concernée
+- Stockage `SharedPreferences` (clé canonique `<type>|<groupKey>`)
 
 ### ⬇️ Téléchargements
 - Téléchargement avec suivi de progression
@@ -65,6 +93,13 @@
 ### 🔄 Mise à jour in-app
 - Vérification automatique au démarrage via l'API GitHub Releases
 - Téléchargement et installation de l'APK directement depuis l'application
+
+### 🔒 Sécurité & confidentialité
+- **SSL bypass scoped** : accepté uniquement pour les serveurs IPTV utilisateur, jamais pour TMDB/GitHub/XMLTV (HTTPS strict)
+- **`network_security_config.xml`** : cleartext interdit sur les APIs publiques connues
+- **`allowBackup="false"`** + règles d'extraction excluant tout → pas de fuite credentials via `adb backup`
+- **Logs sanitisés** : `redactUrl()` / `redactServer()` masquent `user:pass` dans logcat
+- **Stockage chiffré** des comptes IPTV et clé TMDB (`flutter_secure_storage` / EncryptedSharedPreferences)
 
 ---
 
@@ -112,9 +147,20 @@ Pour bénéficier des affiches, synopsis et informations TMDB :
 
 1. Crée un compte sur [themoviedb.org](https://www.themoviedb.org)
 2. Génère un **Bearer Token (API Read Access Token v4)**
-3. Renseigne-le dans **Paramètres → Clé TMDB**
+3. Renseigne-le dans **Paramètres → Clé API TMDB**
 
 > Sans clé TMDB, l'application fonctionne normalement mais sans enrichissement visuel.
+
+### 3. Paramètres
+
+Toutes les options sont regroupées dans **⚙️ Paramètres** (icône en haut à droite de l'accueil) :
+- **Comptes IPTV** : gestion des providers + compte actif
+- **Clé API TMDB** : token Bearer + lien direct vers la page d'inscription
+- **Guide des chaînes** : statut + refresh du cache XMLTV
+- **Personnalisation** : thèmes + 5 presets (Matrix, Blade Runner, Tron, Minimaliste, Classic)
+- **Statistiques playlist** : nombre de films/séries/chaînes du compte actif
+- **Recharger la playlist** : force le retéléchargement
+- **À propos** : version + check des mises à jour manuel
 
 ---
 
@@ -122,21 +168,38 @@ Pour bénéficier des affiches, synopsis et informations TMDB :
 
 ```
 lib/
-├── main.dart                          # Point d'entrée + aiguilleur de navigation
+├── main.dart                          # Point d'entrée + _LaunchDecider (onboarding / accounts / home)
 ├── core/
-│   ├── themes/                        # Couleurs et thèmes (clair/sombre)
-│   └── utils/                         # NetworkUtils, SecureStorage, ...
+│   ├── navigation/main_navigation.dart # NavigationBar 3 onglets (Accueil / Recherche / Téléchargements)
+│   ├── themes/                        # colors.dart, themes.dart, AppThemeConfig, AetherThemeExtension
+│   └── utils/                         # NetworkUtils (SSL bypass scoped), log_sanitizer, SecureStorage
 ├── data/
-│   ├── models/                        # StreamAccount, M3uEntry, Media, DownloadTask, XmltvProgram...
-│   └── services/                      # PlaylistService, TmdbService, ReplayService, XmltvService...
+│   ├── models/                        # StreamAccount, M3uEntry, ParsedPlaylist, Media, DownloadTask, XmltvProgram
+│   └── services/                      # Tous statiques/singletons :
+│        ├── StreamAccountService      #   comptes IPTV + currentAccountIdNotifier
+│        ├── PlaylistService           #   cache M3U 24h, multi-comptes
+│        ├── ParsedPlaylistService     #   hub central JSON.gz + mémoire (entriesWithPriority)
+│        ├── DownloadManagerService    #   Dio stream + reprise + MediaStore
+│        ├── TmdbService / TmdbApiService #   recherche TMDB 4 passes + Bearer Token
+│        ├── ReplayService             #   Xtream timeshift + EPG short
+│        ├── XmltvService              #   EPG TNT France (cache 12h)
+│        ├── FavoritesService          #   §1d favoris cross-comptes
+│        ├── WatchProgressService      #   §1e reprise (save 10s + dispose)
+│        ├── SearchHistoryService      #   §1i historique recherche
+│        ├── LastWatchedChannelService #   §1i dernière chaîne TV
+│        └── UpdateService             #   MAJ in-app GitHub Releases
 ├── feature/
-│   ├── accounts/                      # Gestion des comptes IPTV
+│   ├── accounts/                      # AccountsPage (§1g refondue), EditAccountSheet, PlaylistManagementPage
 │   ├── downloads/                     # Gestionnaire de téléchargements
-│   ├── player/                        # Lecteur vidéo (media_kit, contrôles custom, gestures)
-│   ├── replay/                        # Picker replay + grille EPG XMLTV
-│   ├── search/                        # Recherche : RechercheM3U, M3uParser, M3uFilter
+│   ├── home/home_page.dart            # Hub principal : carrousels, hero, recherche in-place
+│   ├── onboarding/onboarding_page.dart # §1i — 3 écrans au 1er lancement + OnboardingService
+│   ├── player/                        # PlayerPage + AetherPlayerController + widgets (lifecycle §1h, buffering, etc.)
+│   ├── replay/                        # ReplaySheet + ReplayDatePickerSheet
+│   ├── search/                        # M3uParser, M3uFilter (dedupeTvVersions), DetailsPage, ActorDetailsPage
+│   ├── settings/                      # SettingsPage (hub), ThemeSettings, TmdbKey (§1g), Xmltv (§1g)
 │   └── update/                        # Mise à jour in-app (GitHub Releases)
-├── widgets/                           # Widgets réutilisables : cartes, action sheets, EPG, chips
+├── widgets/                           # MediaActionSheet (+_FavoriteToggleTile, _PlayResumeTiles, _SkeletonLine),
+│                                      # MediaCard, MediaChips, QualityButtons, EpgBlock, TerminalDownloadDialog
 └── l10n/                              # Traductions FR / EN
 ```
 
@@ -147,6 +210,7 @@ lib/
 | HTTP / Téléchargements | `dio` |
 | Player vidéo | `media_kit` + `media_kit_video` (libmpv) |
 | Luminosité | `screen_brightness` |
+| Wakelock | `wakelock_plus` |
 | Stockage sécurisé | `flutter_secure_storage` |
 | Préférences | `shared_preferences` |
 | MediaStore Android | `media_store_plus` |
@@ -169,25 +233,36 @@ lib/
 - [x] **Catégories M3U** — chips de filtre par catégorie dans la recherche (films + séries)
 - [x] **Filmographie acteur DISPO** — badge sur les films présents dans la playlist + navigation `DetailsPage`
 - [x] **Android TV / Fire Stick** — APK universel + manifest Leanback (navigation D-pad en cours)
+- [x] **Page d'accueil streaming-style** — carousels par catégorie + recherche in-place + navigation bottom bar
+- [x] **Favoris** — films, séries et chaînes (auto-ajout au play, long-press menu contextuel)
+- [x] **Reprise de lecture** — barre cyan sur les vignettes + bouton "Reprendre depuis X:XX"
+- [x] **Boost audio + synchro A/V** — volume jusqu'à 200 %, display-resample, buffer 64 Mo
+- [x] **Wakelock + lifecycle player** — écran reste allumé pendant la lecture, retry réseau coupé en arrière-plan
+- [x] **Refonte AccountsPage** — alignement streaming-style + sous-pages dédiées TMDB / XMLTV / Personnalisation / Stats playlist depuis le hub Paramètres
+- [x] **Quick wins UX** — lock player bypass-proof, overlay buffering, skeleton TMDB, historique recherche, dernière chaîne TV, skip épisode, onboarding 1re ouverture
+- [x] **Dédoublonnage qualité TV** — un seul bouton par qualité même si le provider expose plusieurs flux identiques
 
-### 🚧 En cours
-- [ ] **Page d'accueil** — carousels par catégorie + recherche in-place + navigation bottom bar
-- [ ] **Favoris** — films, séries et chaînes (auto-ajout au play, long-press menu contextuel)
-- [ ] **Reprise de lecture** — barre de progression sur les vignettes + bouton "Reprendre depuis X:XX"
+### 🔒 Sécurité — Hardening 2026-05-19
+- [x] SSL bypass scoped aux serveurs IPTV utilisateur uniquement (TMDB / GitHub / XMLTV en HTTPS strict)
+- [x] `network_security_config.xml` — cleartext interdit pour les APIs publiques
+- [x] `allowBackup="false"` + `data_extraction_rules.xml` — pas de fuite credentials via `adb backup`
+- [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
-- [ ] **Refonte AccountsPage** — alignement streaming-style + dédoublonnage avec SettingsPage (TMDB / XMLTV / Thème en sous-pages dédiées)
+- [ ] **Grille EPG XMLTV pour replay** — sélection programme dans la grille (en complément du picker manuel)
 - [ ] **Pistes audio + sous-titres** — sélection in-player (embarqués + sous-titres externes)
 - [ ] **File d'attente DL + WiFi-only** — sémaphore, reprise auto au retour réseau
 - [ ] **Notifications téléchargement** — progression, fin, erreurs (foreground service)
+- [ ] **Background audio** — décision produit : continuer l'audio en arrière-plan via foreground service
 - [ ] **Cast Chromecast** — diffusion vers récepteurs Cast réseau local
 - [ ] **PIN / contrôle parental** — verrouillage app + masquage contenus adultes
 - [ ] **Export / Import comptes** — sauvegarde chiffrée pour migration entre devices
-- [ ] **Onboarding** — guide pas-à-pas illustré pour les nouveaux utilisateurs
 - [ ] **Empty states + Pull-to-refresh** — UX unifiée sur toutes les pages
 - [ ] **Mode hors-ligne** — bascule auto sur fichiers locaux si pas de réseau
 - [ ] **Parsing M3U en isolate** — `compute()` pour ne plus bloquer le thread principal
 - [ ] **Téléchargement différentiel** — HEAD + Range requests pour économiser la bande passante
+- [ ] **Hardening sécurité v2** — DownloadManagerService → SecureStorage, M3U cache → ApplicationSupport, debugPrint no-op en release
+- [ ] **Cleanup perfs** — Image.network avec cacheWidth/cacheHeight, memoization _HomeCard.build, helper launchPlayer factorisé
 - [ ] **Tests unitaires** — services purs (parser, filter, replay URL builder, etc.)
 - [ ] **Mise à jour des dépendances** — `media_kit_video` v2, `flutter_secure_storage` v10, `google_fonts` v8
 

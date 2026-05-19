@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
+import '../../core/utils/log_sanitizer.dart';
 import '../../core/utils/network.dart';
 
 /// Service pour gérer la liste des tâches de téléchargement.
@@ -136,7 +137,7 @@ class DownloadManagerService {
 
     try {
       await updateTask(task.id, status: DownloadStatus.downloading);
-      debugPrint("🚀 Démarrage | Offset: $resumedBytes bytes | URL: ${task.url}");
+      debugPrint("🚀 Démarrage | Offset: $resumedBytes bytes | URL: ${redactUrl(task.url)}");
 
       // 2. Requête en mode STREAM pour un contrôle total
       final response = await dio.get<ResponseBody>(

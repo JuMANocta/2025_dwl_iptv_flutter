@@ -6,9 +6,14 @@ import 'l10n/app_localizations.dart';
 import 'data/services/download_manager_service.dart';
 import 'data/services/favorites_service.dart';
 import 'data/services/stream_account_service.dart';
+import 'data/models/stream_account.dart';
 import 'data/services/parsed_playlist_service.dart';
+import 'data/services/watch_progress_service.dart';
+import 'data/services/search_history_service.dart';
+import 'data/services/last_watched_channel_service.dart';
 import 'core/navigation/main_navigation.dart';
 import 'feature/accounts/accounts_page.dart';
+import 'feature/onboarding/onboarding_page.dart';
 import 'data/services/playlist_service.dart';
 import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
@@ -30,6 +35,9 @@ void main() async {
   await StreamAccountService.migrateFromLegacyIfNeeded();
   await DownloadManagerService().init();
   await FavoritesService.init();
+  await WatchProgressService.init();
+  await SearchHistoryService.init();
+  await LastWatchedChannelService.init();
   await ThemeService.load();
 
   runApp(const MyApp());
@@ -113,11 +121,23 @@ class _LaunchDecider extends StatefulWidget {
 
 class _LaunchDeciderState extends State<_LaunchDecider> {
   late Future<({String path, String accountId, String accountName})?> _initFuture;
+  bool? _showOnboarding;
 
   @override
   void initState() {
     super.initState();
+    _checkOnboarding();
     _initFuture = _initializeApp();
+  }
+
+  /// §1i — Vérifie si l'onboarding doit être affiché (1re ouverture seulement).
+  Future<void> _checkOnboarding() async {
+    final show = await OnboardingService.shouldShow();
+    if (mounted) setState(() => _showOnboarding = show);
+  }
+
+  void _finishOnboarding() {
+    setState(() => _showOnboarding = false);
   }
 
   /// Valide la configuration initiale et retourne les données du compte actif (null = pas de compte).
@@ -129,10 +149,14 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     final path = await PlaylistService.getOrDownloadPlaylist();
     final acc  = await StreamAccountService.getCurrentAccount();
 
-    // Précharger silencieusement les autres comptes depuis le disque (background).
+    // Multi-comptes : charger les autres playlists pour que la recherche et la
+    // home agrègent tous les contenus disponibles.
+    //   1. Préchargement disque immédiat (rapide)
+    //   2. Téléchargement + parsing en arrière-plan des comptes manquants
     if (accounts.length > 1) {
       final others = accounts.where((a) => a.id != acc?.id).toList();
       ParsedPlaylistService.preloadOthersFromDisk(others);  // fire & forget
+      _hydrateSecondaryAccounts(others);                    // fire & forget
     }
 
     return (
@@ -140,6 +164,21 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       accountId:   acc?.id   ?? '',
       accountName: acc?.label ?? '',
     );
+  }
+
+  /// Télécharge le M3U manquant des comptes secondaires et les charge en
+  /// mémoire (parsing). Asynchrone & silencieux — la home se met à jour via
+  /// `ParsedPlaylistService.version` quand chaque compte termine.
+  Future<void> _hydrateSecondaryAccounts(List<StreamAccount> others) async {
+    for (final acc in others) {
+      try {
+        final p = await PlaylistService.ensureDownloadedForAccount(acc);
+        if (p == null) continue;
+        await ParsedPlaylistService.loadSecondary(acc.id, acc.label, p);
+      } catch (_) {
+        // Ne pas planter le démarrage à cause d'un compte cassé (network, IO…).
+      }
+    }
   }
 
   /// Permet de relancer la validation, typiquement après une action de l'utilisateur.
@@ -157,6 +196,11 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
   @override
   Widget build(BuildContext context) {
+    // §1i — Onboarding affiché en priorité au tout premier lancement.
+    if (_showOnboarding == true) {
+      return OnboardingPage(onFinish: _finishOnboarding);
+    }
+
     // Le FutureBuilder gère nativement les différents états (chargement, erreur, succès)
     // de notre logique d'initialisation asynchrone.
     return FutureBuilder<({String path, String accountId, String accountName})?>(

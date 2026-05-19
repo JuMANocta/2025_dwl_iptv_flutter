@@ -16,6 +16,11 @@ class PlayerGestures extends StatefulWidget {
   final void Function(Duration delta) onSeek;
   final void Function(double delta) onVolumeChange;
   final void Function(double delta) onBrightnessChange;
+  /// Lecteur de volume courant — utilisé pour afficher l'état (% boost compris).
+  final double Function()? readVolume;
+  /// §1i — Quand `true`, tous les gestes (sauf tap simple pour révéler le
+  /// bouton de déverrouillage) sont ignorés. Pilote par [PlayerControls].
+  final bool locked;
 
   const PlayerGestures({
     super.key,
@@ -24,6 +29,8 @@ class PlayerGestures extends StatefulWidget {
     required this.onSeek,
     required this.onVolumeChange,
     required this.onBrightnessChange,
+    this.readVolume,
+    this.locked = false,
   });
 
   @override
@@ -105,7 +112,12 @@ class _PlayerGesturesState extends State<PlayerGestures> {
       _showOverlay(SeekOverlayType.brightness, '');
     } else {
       widget.onVolumeChange(delta * 100);
-      _showOverlay(SeekOverlayType.volume, '');
+      // Affiche le % courant ; au-delà de 100 = boost (amplification mpv).
+      final v = widget.readVolume?.call();
+      _showOverlay(
+        SeekOverlayType.volume,
+        v != null ? '${v.round()}%' : '',
+      );
     }
   }
 
@@ -113,17 +125,19 @@ class _PlayerGesturesState extends State<PlayerGestures> {
 
   @override
   Widget build(BuildContext context) {
+    // §1i — En mode lock, seul le tap reste actif (pour révéler le cadenas).
+    final locked = widget.locked;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
-      onDoubleTapDown: (d) => _doubleTapPos = d.localPosition,
-      onDoubleTap: _handleDoubleTap,
-      onHorizontalDragStart: _onHorizontalDragStart,
-      onHorizontalDragUpdate: _onHorizontalDragUpdate,
-      onHorizontalDragEnd: _onHorizontalDragEnd,
-      onVerticalDragStart: _onVerticalDragStart,
-      onVerticalDragUpdate: _onVerticalDragUpdate,
-      onVerticalDragEnd: _onVerticalDragEnd,
+      onDoubleTapDown: locked ? null : (d) => _doubleTapPos = d.localPosition,
+      onDoubleTap: locked ? null : _handleDoubleTap,
+      onHorizontalDragStart: locked ? null : _onHorizontalDragStart,
+      onHorizontalDragUpdate: locked ? null : _onHorizontalDragUpdate,
+      onHorizontalDragEnd: locked ? null : _onHorizontalDragEnd,
+      onVerticalDragStart: locked ? null : _onVerticalDragStart,
+      onVerticalDragUpdate: locked ? null : _onVerticalDragUpdate,
+      onVerticalDragEnd: locked ? null : _onVerticalDragEnd,
       child: Stack(
         fit: StackFit.expand,
         children: [

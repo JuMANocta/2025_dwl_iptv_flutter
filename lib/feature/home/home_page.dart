@@ -4,8 +4,13 @@ import 'package:flutter/services.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
+import 'package:aetherStream/data/services/last_watched_channel_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
+import 'package:aetherStream/data/services/playlist_service.dart';
+import 'package:aetherStream/data/services/search_history_service.dart';
+import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
+import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/feature/search/details_page.dart';
@@ -14,20 +19,22 @@ import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 
-/// Page d'accueil — design streaming premium (§1b phases 2 + 3).
+/// Page d'accueil — design streaming premium (§1b phases 2 + 3, §navUX).
 ///
-/// Layout :
-///   AppBar              (compte actif + ⚙️, transparente posée sur le fond)
-///   _AnimatedTabIndicator (Séries · FILMS · Chaînes — underline animé)
+/// Layout (§navUX — hero en TOP, tabs SOUS le hero) :
+///   AppBar              (⚙️ uniquement, transparente posée sur le fond)
 ///   PageView de _TypePage
-///     ↳ _HeroBanner     (carrousel d'items mis en avant — auto-rotation 6s)
-///     ↳ _CategoryRow    (sections par catégorie M3U)
+///     ↳ _HeroBanner     (carrousel 16/9 d'items mis en avant — auto-rotation 6s)
+///     ↳ _AnimatedTabIndicator (Séries · Films · Chaînes — injectées par parent)
+///     ↳ _LastWatchedTvTile    (page TV uniquement — "Reprendre la chaîne")
+///     ↳ _CategoryRow    (Favoris ⭐ d'abord, puis France/New/genres alpha)
 ///
 /// Design choices :
 ///   - Fond : gradient sombre subtil avec halo accent en haut
 ///   - Cartes : poster + overlay gradient bas + titre lisible en surimpression
 ///   - Headers section : barre verticale gradient 3px + titre 18 gras
 ///   - Hero : 16/9, auto-rotation, indicateur en dots, bouton Lire glow
+///   - Favoris : pas de plafond 25 (l'utilisateur les a curatés lui-même)
 class HomePage extends StatefulWidget {
   /// Données pré-chargées par `_LaunchDecider`.
   final ({String path, String accountId, String accountName}) initialData;
@@ -59,6 +66,12 @@ class _HomePageState extends State<HomePage> {
   int _currentIndex = _initialPageIndex;
   bool _loading = true;
 
+  /// Compte actif courant — peut changer en cours de session si l'utilisateur
+  /// modifie la priorité dans `AccountsPage`. On lit la valeur initiale dans
+  /// [widget.initialData], puis on l'aligne sur le notifier.
+  late String _activeAccountId;
+  late String _activeAccountName;
+
   // ── État du mode recherche ─────────────────────────────────────────────
   final TextEditingController _searchCtrl = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
@@ -70,7 +83,32 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _pageController = PageController(initialPage: _initialPageIndex);
     _searchCtrl.addListener(_onSearchTextChanged);
-    _ensureLoaded();
+    _searchFocus.addListener(_onSearchFocusChanged);
+    _activeAccountId = widget.initialData.accountId;
+    _activeAccountName = widget.initialData.accountName;
+    _ensureLoaded(initialPath: widget.initialData.path);
+    StreamAccountService.currentAccountIdNotifier
+        .addListener(_onCurrentAccountChanged);
+  }
+
+  void _onSearchFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Réagit aux changements de compte prioritaire effectués dans `AccountsPage`.
+  /// Recharge le M3U + parsed playlist du nouveau compte actif et déclenche un
+  /// rebuild de la home + des résultats de recherche.
+  Future<void> _onCurrentAccountChanged() async {
+    final newId = StreamAccountService.currentAccountIdNotifier.value;
+    if (newId == null || newId == _activeAccountId) return;
+    final acc = await StreamAccountService.getAccount(newId);
+    if (!mounted || acc == null) return;
+    setState(() {
+      _activeAccountId = newId;
+      _activeAccountName = acc.label;
+      _loading = true;
+    });
+    await _ensureLoaded();
   }
 
   @override
@@ -93,8 +131,11 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _searchDebounce?.cancel();
     _searchCtrl.dispose();
+    _searchFocus.removeListener(_onSearchFocusChanged);
     _searchFocus.dispose();
     _pageController.dispose();
+    StreamAccountService.currentAccountIdNotifier
+        .removeListener(_onCurrentAccountChanged);
     super.dispose();
   }
 
@@ -107,13 +148,24 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  Future<void> _ensureLoaded() async {
-    if (ParsedPlaylistService.getAccount(widget.initialData.accountId) == null) {
-      await ParsedPlaylistService.loadActive(
-        widget.initialData.accountId,
-        widget.initialData.accountName,
-        widget.initialData.path,
-      );
+  /// Garantit que le compte actif courant est chargé en mémoire :
+  /// - si déjà parsé → retour immédiat
+  /// - sinon → télécharge le M3U si manquant + parse + cache disque
+  Future<void> _ensureLoaded({String? initialPath}) async {
+    final id = _activeAccountId;
+    if (id.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    try {
+      if (ParsedPlaylistService.getAccount(id) == null) {
+        // Sans chemin connu (changement de compte runtime) → s'appuyer sur
+        // PlaylistService pour résoudre/télécharger le M3U du compte courant.
+        final path = initialPath ?? await PlaylistService.getOrDownloadPlaylist();
+        await ParsedPlaylistService.loadActive(id, _activeAccountName, path);
+      }
+    } catch (e) {
+      debugPrint('❌ HomePage._ensureLoaded: $e');
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -136,6 +188,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final topInset = MediaQuery.of(context).padding.top + kToolbarHeight;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -143,14 +196,10 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: Colors.transparent,
         scrolledUnderElevation: 0,
         elevation: 0,
-        title: widget.searchMode
-            ? _buildSearchField(cs)
-            : Text(
-                widget.initialData.accountName.isEmpty
-                    ? 'AetherStream'
-                    : widget.initialData.accountName,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
+        // §navUX — Plus de nom de compte dans le title (il est déjà visible
+        // dans SettingsPage → Comptes IPTV → bandeau "COMPTE ACTIF"). Ça libère
+        // la barre du haut et laisse le hero respirer.
+        title: widget.searchMode ? _buildSearchField(cs) : null,
         actions: widget.searchMode
             ? [
                 IconButton(
@@ -170,7 +219,15 @@ class _HomePageState extends State<HomePage> {
               ],
       ),
       body: Container(
+        // width/height infinity → force le Container à occuper toute la zone du
+        // body. Sans ça, si l'enfant (ex: empty state du _SearchView qui retourne
+        // un simple Padding) a une taille intrinsèque petite, le Container se
+        // dimensionne sur l'enfant → le gradient/thème ne s'applique que sur la
+        // hauteur réelle de l'enfant (régression visuelle "thème sur une partie").
+        width: double.infinity,
+        height: double.infinity,
         decoration: BoxDecoration(
+          color: isDark ? null : cs.surface,
           gradient: isDark
               ? RadialGradient(
                   center: const Alignment(0, -1.2),
@@ -191,49 +248,69 @@ class _HomePageState extends State<HomePage> {
                 ]),
                 builder: (context, _) {
                   final entries = ParsedPlaylistService
-                      .entriesWithPriority(widget.initialData.accountId);
+                      .entriesWithPriority(_activeAccountId);
                   final byType = _splitByType(entries);
 
                   if (widget.searchMode) {
                     return _SearchView(
                       query: _searchQuery,
                       byType: byType,
+                      onSelectSuggestion: (q) {
+                        _searchCtrl.text = q;
+                        _searchCtrl.selection = TextSelection.fromPosition(
+                          TextPosition(offset: q.length),
+                        );
+                        SearchHistoryService.record(q);
+                      },
                     );
                   }
 
-                  return Column(
+                  // §navUX — Builder de la barre Séries/Films/Chaînes injectée
+                  // sous le hero dans chaque _TypePage. Toutes les instances
+                  // écoutent le même PageController → l'underline reste synchro
+                  // au swipe horizontal.
+                  Widget buildTabs(BuildContext ctx) {
+                    return _AnimatedTabIndicator(
+                      controller: _pageController,
+                      currentIndex: _currentIndex,
+                      counts: [
+                        byType[M3uContentType.series]!.length,
+                        byType[M3uContentType.movie]!.length,
+                        byType[M3uContentType.tv]!.length,
+                      ],
+                      onTap: _goToPage,
+                    );
+                  }
+
+                  return PageView(
+                    controller: _pageController,
+                    physics: const _FastPageScrollPhysics(),
+                    onPageChanged: (i) =>
+                        setState(() => _currentIndex = i),
                     children: [
-                      _AnimatedTabIndicator(
-                        controller: _pageController,
-                        currentIndex: _currentIndex,
-                        counts: [
-                          byType[M3uContentType.series]!.length,
-                          byType[M3uContentType.movie]!.length,
-                          byType[M3uContentType.tv]!.length,
-                        ],
-                        onTap: _goToPage,
+                      _TypePage(
+                        // Key sur _activeAccountId : si l'utilisateur change de
+                        // compte prioritaire, on force le rebuild complet du
+                        // _TypePage (memoization invalidée).
+                        key: ValueKey('series_$_activeAccountId'),
+                        type: M3uContentType.series,
+                        entries: byType[M3uContentType.series]!,
+                        topInset: topInset,
+                        tabsBuilder: buildTabs,
                       ),
-                      Expanded(
-                        child: PageView(
-                          controller: _pageController,
-                          physics: const _FastPageScrollPhysics(),
-                          onPageChanged: (i) =>
-                              setState(() => _currentIndex = i),
-                          children: [
-                            _TypePage(
-                              type: M3uContentType.series,
-                              entries: byType[M3uContentType.series]!,
-                            ),
-                            _TypePage(
-                              type: M3uContentType.movie,
-                              entries: byType[M3uContentType.movie]!,
-                            ),
-                            _TypePage(
-                              type: M3uContentType.tv,
-                              entries: byType[M3uContentType.tv]!,
-                            ),
-                          ],
-                        ),
+                      _TypePage(
+                        key: ValueKey('movie_$_activeAccountId'),
+                        type: M3uContentType.movie,
+                        entries: byType[M3uContentType.movie]!,
+                        topInset: topInset,
+                        tabsBuilder: buildTabs,
+                      ),
+                      _TypePage(
+                        key: ValueKey('tv_$_activeAccountId'),
+                        type: M3uContentType.tv,
+                        entries: byType[M3uContentType.tv]!,
+                        topInset: topInset,
+                        tabsBuilder: buildTabs,
                       ),
                     ],
                   );
@@ -263,6 +340,10 @@ class _HomePageState extends State<HomePage> {
         focusNode: _searchFocus,
         textInputAction: TextInputAction.search,
         style: TextStyle(color: cs.onSurface, fontSize: 15),
+        onSubmitted: (q) {
+          // §1i — Enregistrer la requête dans l'historique au submit (Enter).
+          SearchHistoryService.record(q);
+        },
         decoration: InputDecoration(
           hintText: 'Rechercher dans la playlist…',
           hintStyle: TextStyle(color: cs.onSurfaceVariant.withAlpha(140)),
@@ -352,10 +433,12 @@ class _AnimatedTabIndicatorState extends State<_AnimatedTabIndicator> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final mediaQuery = MediaQuery.of(context);
 
+    // §navUX — Le tab indicator est maintenant injecté SOUS le hero dans la
+    // liste de _TypePage, donc plus besoin d'offset status bar (le ListView
+    // gère lui-même son padding-top via widget.topInset).
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, mediaQuery.padding.top + 30, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: LayoutBuilder(
         builder: (ctx, constraints) {
           final tabWidth = constraints.maxWidth / 3;
@@ -427,7 +510,22 @@ class _TypePage extends StatefulWidget {
   final M3uContentType type;
   final List<M3uEntry> entries;
 
-  const _TypePage({required this.type, required this.entries});
+  /// Padding en haut de la liste (status bar + AppBar) pour que le hero ne
+  /// soit pas caché derrière l'AppBar transparente (extendBodyBehindAppBar).
+  final double topInset;
+
+  /// Construit la barre Séries/Films/Chaînes insérée juste sous le hero.
+  /// Le parent partage la même `_pageController` entre toutes les instances
+  /// pour que l'underline reste cohérent au swipe.
+  final WidgetBuilder? tabsBuilder;
+
+  const _TypePage({
+    super.key,
+    required this.type,
+    required this.entries,
+    this.topInset = 0,
+    this.tabsBuilder,
+  });
 
   @override
   State<_TypePage> createState() => _TypePageState();
@@ -565,17 +663,47 @@ class _TypePageState extends State<_TypePage> {
     final categories = _cachedCategories!;
     final featured = _cachedFeatured!;
 
+    // §navUX — Ordre des items de la liste :
+    //   1. Hero (carrousel "en avant")
+    //   2. Tabs Séries · Films · Chaînes (injectées par le parent)
+    //   3. _LastWatchedTvTile (uniquement page TV)
+    //   4. Catégories : Favoris d'abord (priorité -2), puis France/New/etc.
+    final hasHero = featured.isNotEmpty;
+    final hasTabs = widget.tabsBuilder != null;
+    final showLastWatchedSlot = widget.type == M3uContentType.tv;
+
+    final heroOffset = hasHero ? 1 : 0;
+    final tabsOffset = hasTabs ? 1 : 0;
+    final lastWatchedOffset = showLastWatchedSlot ? 1 : 0;
+    final headerCount = heroOffset + tabsOffset + lastWatchedOffset;
+
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 24, top: 0),
-      itemCount: categories.length + (featured.isNotEmpty ? 1 : 0),
+      padding: EdgeInsets.only(top: widget.topInset, bottom: 24),
+      itemCount: headerCount + categories.length,
       itemBuilder: (ctx, i) {
-        if (featured.isNotEmpty && i == 0) {
-          return _HeroBanner(featured: featured, type: widget.type);
+        var cursor = 0;
+        if (hasHero) {
+          if (i == cursor) {
+            return _HeroBanner(featured: featured, type: widget.type);
+          }
+          cursor += 1;
         }
-        final catIdx = featured.isNotEmpty ? i - 1 : i;
+        if (hasTabs) {
+          if (i == cursor) return widget.tabsBuilder!(ctx);
+          cursor += 1;
+        }
+        if (showLastWatchedSlot) {
+          if (i == cursor) return _LastWatchedTvTile(entries: widget.entries);
+          cursor += 1;
+        }
+        final catIdx = i - cursor;
         final cat = categories[catIdx];
         final allGroups = byCategory[cat]!;
-        final hasMore = allGroups.length > _maxItemsPerCategory;
+        // §navUX — Favoris affichés sans limite (l'utilisateur les a curatés
+        // lui-même, on ne les tronque pas à 25). Les autres catégories gardent
+        // le plafond + la tuile "Voir tout".
+        final isFav = cat == 'Favoris';
+        final hasMore = !isFav && allGroups.length > _maxItemsPerCategory;
         final visibleGroups = hasMore
             ? allGroups.take(_maxItemsPerCategory).toList()
             : allGroups;
@@ -621,6 +749,14 @@ class _TypePageState extends State<_TypePage> {
     final byGroup = <String, List<M3uEntry>>{};
     for (final e in entries) {
       byGroup.putIfAbsent(groupKey(e), () => []).add(e);
+    }
+
+    // §URGENT — Dédoublonne les qualités identiques au sein d'un groupe TV
+    // (provider qui expose 2× "TF1 FHD" → un seul bouton FHD dans la sheet).
+    if (type == M3uContentType.tv) {
+      for (final k in byGroup.keys.toList()) {
+        byGroup[k] = dedupeTvVersions(byGroup[k]!);
+      }
     }
 
     final byCategory = <String, List<List<M3uEntry>>>{};
@@ -1257,7 +1393,10 @@ class CategoryListPage extends StatelessWidget {
       ),
       extendBodyBehindAppBar: true,
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: BoxDecoration(
+          color: isDark ? null : cs.surface,
           gradient: isDark
               ? RadialGradient(
                   center: const Alignment(0, -1.2),
@@ -1390,24 +1529,81 @@ class _HomeCardState extends State<_HomeCard> {
               ),
             ),
             const Divider(height: 1),
-            // ── Lire (direct, sans action sheet) ──────────────────────────
-            ListTile(
-              leading: const Icon(Icons.play_arrow),
-              title: const Text('Lire'),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                FavoritesService.add(favKey);
+            // ── Lire (direct, avec reprise §1e si dispo) ──────────────────
+            ValueListenableBuilder<int>(
+              valueListenable: WatchProgressService.version,
+              builder: (_, __, ___) {
+                // Reprise impossible sur TV live → on garde le simple "Lire".
+                final progress = widget.type == M3uContentType.tv
+                    ? null
+                    : WatchProgressService.getProgressForAny(
+                        widget.versions.map((e) => e.url),
+                      );
+                final hasResume = progress != null && progress.position.inSeconds > 5;
+
                 final badge = switch (widget.type) {
                   M3uContentType.movie  => PlayerBadgeType.movie,
                   M3uContentType.series => PlayerBadgeType.series,
                   M3uContentType.tv     => PlayerBadgeType.live,
                 };
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerPage(
-                  path: entry.url,
-                  title: entry.displayName,
-                  sourceType: VideoSourceType.network,
-                  badgeType: badge,
-                )));
+
+                void play({Duration? from}) {
+                  Navigator.pop(sheetCtx);
+                  FavoritesService.add(favKey);
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerPage(
+                    path: entry.url,
+                    title: entry.displayName,
+                    sourceType: VideoSourceType.network,
+                    badgeType: badge,
+                    startPosition: from,
+                  )));
+                }
+
+                if (!hasResume) {
+                  return ListTile(
+                    leading: const Icon(Icons.play_arrow),
+                    title: const Text('Lire'),
+                    onTap: () => play(),
+                  );
+                }
+
+                final mm = progress.position.inMinutes.remainder(60);
+                final ss = progress.position.inSeconds.remainder(60);
+                final hh = progress.position.inHours;
+                final label = hh > 0
+                    ? '${hh}h${mm.toString().padLeft(2, '0')}'
+                    : '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+
+                return Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(Icons.play_arrow, color: kAccentSecondary),
+                      title: Text(
+                        'Reprendre depuis $label',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: kAccentSecondary,
+                        ),
+                      ),
+                      subtitle: LinearProgressIndicator(
+                        value: progress.ratio,
+                        minHeight: 3,
+                        backgroundColor: Colors.white12,
+                        valueColor: AlwaysStoppedAnimation(kAccentSecondary),
+                      ),
+                      onTap: () => play(from: progress.position),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.restart_alt),
+                      title: const Text('Lire depuis le début'),
+                      dense: true,
+                      onTap: () {
+                        WatchProgressService.clearProgress(entry.url);
+                        play();
+                      },
+                    ),
+                  ],
+                );
               },
             ),
             // ── Voir les détails (action sheet ou fiche TMDB) ─────────────
@@ -1564,6 +1760,32 @@ class _HomeCardState extends State<_HomeCard> {
                         ),
                       ),
                     ),
+                    // §1e — Barre de progression "reprendre depuis…" :
+                    // visible si l'utilisateur a regardé l'une des variantes du
+                    // groupe sans aller jusqu'au bout (TV exclu — pas de durée).
+                    if (!isTv)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: ValueListenableBuilder<int>(
+                          valueListenable: WatchProgressService.version,
+                          builder: (_, __, ___) {
+                            final p = WatchProgressService.getProgressForAny(
+                              widget.versions.map((e) => e.url),
+                            );
+                            if (p == null || p.ratio <= 0) {
+                              return const SizedBox.shrink();
+                            }
+                            return LinearProgressIndicator(
+                              value: p.ratio,
+                              minHeight: 3,
+                              backgroundColor: Colors.white24,
+                              valueColor: AlwaysStoppedAnimation(kAccentSecondary),
+                            );
+                          },
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1591,34 +1813,24 @@ class _SearchView extends StatelessWidget {
 
   /// Toutes les entrées splittées par type — réutilisées pour le filtrage.
   final Map<M3uContentType, List<M3uEntry>> byType;
+  /// §1i — Appelé quand l'utilisateur tape sur une suggestion d'historique.
+  /// Le parent met à jour le contrôleur de recherche avec la valeur choisie.
+  final ValueChanged<String>? onSelectSuggestion;
 
-  const _SearchView({required this.query, required this.byType});
+  const _SearchView({
+    required this.query,
+    required this.byType,
+    this.onSelectSuggestion,
+  });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     if (query.trim().isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 80),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search, size: 56, color: cs.onSurfaceVariant.withAlpha(120)),
-            const SizedBox(height: 12),
-            Text(
-              'Tapez pour chercher dans votre playlist',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Films · Séries · Chaînes',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: cs.onSurfaceVariant.withAlpha(150), fontSize: 12),
-            ),
-          ],
-        ),
+      return _SearchEmptyState(
+        cs: cs,
+        onSelectSuggestion: onSelectSuggestion,
       );
     }
 
@@ -1697,6 +1909,13 @@ class _SearchView extends StatelessWidget {
     for (final e in entries) {
       if (!match(e)) continue;
       byGroup.putIfAbsent(key(e), () => []).add(e);
+    }
+
+    // §URGENT — dédup qualité dans les groupes TV (cohérent avec _TypePage)
+    if (type == M3uContentType.tv) {
+      for (final k in byGroup.keys.toList()) {
+        byGroup[k] = dedupeTvVersions(byGroup[k]!);
+      }
     }
 
     final groups = byGroup.values.toList();
@@ -1812,3 +2031,276 @@ class _FastPageScrollPhysics extends PageScrollPhysics {
   }
 }
 
+
+// ─── §1i État vide de la recherche : suggestions d historique ────────────────
+
+class _SearchEmptyState extends StatelessWidget {
+  final ColorScheme cs;
+  final ValueChanged<String>? onSelectSuggestion;
+
+  const _SearchEmptyState({required this.cs, this.onSelectSuggestion});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: SearchHistoryService.version,
+      builder: (_, __, ___) {
+        final history = SearchHistoryService.all;
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+              16, MediaQuery.of(context).padding.top + 80, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (history.isEmpty) ...[
+                Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.search,
+                          size: 56,
+                          color: cs.onSurfaceVariant.withAlpha(120)),
+                      const SizedBox(height: 12),
+                      Text(
+                        "Tapez pour chercher dans votre playlist",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Films · Séries · Chaînes",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: cs.onSurfaceVariant.withAlpha(150),
+                            fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                Row(
+                  children: [
+                    Icon(Icons.history, size: 18, color: kAccentSecondary),
+                    const SizedBox(width: 8),
+                    Text(
+                      "Recherches récentes",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => SearchHistoryService.clear(),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        minimumSize: const Size(0, 28),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        "Effacer",
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant.withAlpha(180)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: history
+                      .map((q) => _HistoryChip(
+                            query: q,
+                            cs: cs,
+                            onTap: () => onSelectSuggestion?.call(q),
+                            onDismiss: () => SearchHistoryService.remove(q),
+                          ))
+                      .toList(),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _HistoryChip extends StatelessWidget {
+  final String query;
+  final ColorScheme cs;
+  final VoidCallback onTap;
+  final VoidCallback onDismiss;
+
+  const _HistoryChip({
+    required this.query,
+    required this.cs,
+    required this.onTap,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(18),
+          border:
+              Border.all(color: kAccentSecondary.withAlpha(60), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.history,
+                size: 14, color: cs.onSurfaceVariant.withAlpha(180)),
+            const SizedBox(width: 6),
+            Text(
+              query,
+              style: TextStyle(
+                fontSize: 13,
+                color: cs.onSurface,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onDismiss,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(Icons.close,
+                    size: 14, color: cs.onSurfaceVariant.withAlpha(160)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── §1i Tuile "Reprendre la chaîne" en tête de la page Chaînes ──────────────
+
+class _LastWatchedTvTile extends StatelessWidget {
+  /// Entrées TV disponibles dans la playlist actuelle — utilisé pour vérifier
+  /// que la dernière chaîne regardée existe toujours avant d affiché la tuile.
+  final List<M3uEntry> entries;
+  const _LastWatchedTvTile({required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: LastWatchedChannelService.version,
+      builder: (_, __, ___) {
+        final last = LastWatchedChannelService.current;
+        if (last == null) return const SizedBox.shrink();
+
+        // Cherche l entrée actuelle correspondante dans la playlist (pour
+        // récupérer logo / displayName à jour si renommé côté provider).
+        final match = entries.firstWhere(
+          (e) => e.url == last.url,
+          orElse: () => M3uEntry(
+            url: last.url,
+            type: M3uContentType.tv,
+            tvgId: last.tvgId,
+            logoUrl: last.logoUrl,
+            title: TitleMetadata(rawTitle: last.title, baseTitle: last.title),
+            accountId: "",
+          ),
+        );
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => showTvActionSheet(context, [match]),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    kAccentSecondary.withAlpha(40),
+                    kAccentPrimary.withAlpha(20),
+                  ],
+                ),
+                border: Border.all(
+                    color: kAccentSecondary.withAlpha(120), width: 1),
+              ),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      color: Colors.black26,
+                      child: (last.logoUrl != null && last.logoUrl!.isNotEmpty)
+                          ? Image.network(last.logoUrl!,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.live_tv,
+                                  color: Colors.white54))
+                          : const Icon(Icons.live_tv, color: Colors.white54),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "REPRENDRE LA CHAÎNE",
+                          style: TextStyle(
+                            color: kAccentSecondary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          last.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: kAetherGradient,
+                      boxShadow: [
+                        BoxShadow(
+                            color: kAccentPrimary.withAlpha(150),
+                            blurRadius: 10),
+                      ],
+                    ),
+                    child: const Icon(Icons.play_arrow,
+                        color: Colors.black, size: 22),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}

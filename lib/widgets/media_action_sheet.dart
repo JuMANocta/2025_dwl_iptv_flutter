@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
+import 'package:aetherStream/data/services/last_watched_channel_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/replay_service.dart';
+import 'package:aetherStream/data/services/watch_progress_service.dart';
+import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/feature/search/details_page.dart';
 import 'package:aetherStream/feature/replay/replay_widget.dart';
@@ -173,9 +176,16 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                   ),
                   const SizedBox(height: 4),
                   if (isLoading)
+                    // §1i — Skeleton placeholders pendant le chargement TMDB.
                     const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.0),
-                      child: SizedBox(height: 4, width: 100, child: LinearProgressIndicator()),
+                      padding: EdgeInsets.symmetric(horizontal: 32, vertical: 6),
+                      child: Column(
+                        children: [
+                          _SkeletonLine(width: 220, height: 22),
+                          SizedBox(height: 8),
+                          _SkeletonLine(width: 120, height: 14),
+                        ],
+                      ),
                     )
                   else
                     Padding(
@@ -200,6 +210,19 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                       child: Text(overview, style: Theme.of(context).textTheme.bodySmall, maxLines: 4, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+                    ),
+                  if (isLoading)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(32, 10, 32, 0),
+                      child: Column(
+                        children: [
+                          _SkeletonLine(width: double.infinity, height: 10),
+                          SizedBox(height: 6),
+                          _SkeletonLine(width: double.infinity, height: 10),
+                          SizedBox(height: 6),
+                          _SkeletonLine(width: 180, height: 10),
+                        ],
+                      ),
                     ),
                   const SizedBox(height: 8),
                 ]);
@@ -249,22 +272,8 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
             },
           ),
           const SizedBox(height: 16),
-          // ── Lecture ─────────────────────────────────────────────────────────
-          ListTile(
-            leading: const Icon(Icons.play_arrow),
-            title: Text(l10n.actionSheetPlay),
-            onTap: () {
-              // Auto-ajout aux favoris au lancement de la lecture (§1d)
-              FavoritesService.add(FavoritesService.keyFor(entry));
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
-                path: entry.url,
-                title: entry.displayName,
-                sourceType: VideoSourceType.network,
-                badgeType: entry.type == M3uContentType.series ? PlayerBadgeType.series : PlayerBadgeType.movie,
-              )));
-            },
-          ),
+          // ── Lecture (avec reprise §1e) ──────────────────────────────────────
+          _PlayResumeTiles(entry: entry, l10n: l10n),
           // ── Favoris (toggle) ───────────────────────────────────────────────
           _FavoriteToggleTile(entry: entry),
           // ── Replay (TV uniquement) ───────────────────────────────────────────
@@ -330,7 +339,10 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
 // Action sheet TV (avec EPG + sélection qualité)
 // ─────────────────────────────────────────────────────────────────────────────
 
-Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> versions) async {
+Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions) async {
+  // §URGENT — défense en profondeur : dédup qualité au cas où l'appelant
+  // fournirait une liste non dédoublonnée (ex: code legacy / nouveau call site).
+  final versions = dedupeTvVersions(rawVersions);
   final entry = versions.firstWhere((v) => v.tvgId != null, orElse: () => versions.first);
 
   const replayQualities = {'FHD', 'HD', 'SD'};
@@ -365,6 +377,13 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> versions) as
   void playVersion(M3uEntry v) {
     // Auto-ajout aux favoris au lancement de la lecture (§1d)
     FavoritesService.add(FavoritesService.keyFor(v));
+    // §1i — Mémoriser la dernière chaîne pour la tuile "Reprendre la chaîne".
+    LastWatchedChannelService.save(
+      url: v.url,
+      title: v.displayName,
+      tvgId: v.tvgId,
+      logoUrl: v.logoUrl,
+    );
     Navigator.pop(context);
     Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
       path: v.url,
@@ -456,6 +475,93 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> versions) as
 // Utilisé dans showMediaActionSheet et showTvActionSheet.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// §1e — Tuiles "Reprendre depuis X:XX" + "Lire depuis le début"
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Format Duration → "1h23" ou "12:34" pour un libellé court de reprise.
+String _formatResumeLabel(Duration d) {
+  final h = d.inHours;
+  final m = d.inMinutes.remainder(60);
+  final s = d.inSeconds.remainder(60);
+  if (h > 0) return '${h}h${m.toString().padLeft(2, '0')}';
+  return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+}
+
+void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPosition}) {
+  FavoritesService.add(FavoritesService.keyFor(entry));
+  Navigator.pop(context);
+  Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
+    path: entry.url,
+    title: entry.displayName,
+    sourceType: VideoSourceType.network,
+    badgeType: entry.type == M3uContentType.series
+        ? PlayerBadgeType.series
+        : PlayerBadgeType.movie,
+    startPosition: startPosition,
+  )));
+}
+
+class _PlayResumeTiles extends StatelessWidget {
+  final M3uEntry entry;
+  final AppLocalizations l10n;
+  const _PlayResumeTiles({required this.entry, required this.l10n});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: WatchProgressService.version,
+      builder: (ctx, _, __) {
+        final p = WatchProgressService.getProgress(entry.url);
+        final hasResume = p != null && p.position.inSeconds > 5;
+        if (!hasResume) {
+          return ListTile(
+            leading: const Icon(Icons.play_arrow),
+            title: Text(l10n.actionSheetPlay),
+            onTap: () => _launchPlayer(context, entry),
+          );
+        }
+        return Column(
+          children: [
+            ListTile(
+              leading: Icon(Icons.play_arrow, color: kAccentSecondary),
+              title: Text(
+                'Reprendre depuis ${_formatResumeLabel(p.position)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: kAccentSecondary,
+                ),
+              ),
+              subtitle: LinearProgressIndicator(
+                value: p.ratio,
+                minHeight: 3,
+                backgroundColor: Colors.white12,
+                valueColor: AlwaysStoppedAnimation(kAccentSecondary),
+              ),
+              onTap: () => _launchPlayer(context, entry, startPosition: p.position),
+            ),
+            ListTile(
+              leading: const Icon(Icons.restart_alt),
+              title: Text(
+                'Lire depuis le début',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              dense: true,
+              onTap: () {
+                WatchProgressService.clearProgress(entry.url);
+                _launchPlayer(context, entry);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _FavoriteToggleTile extends StatelessWidget {
   final M3uEntry entry;
   const _FavoriteToggleTile({required this.entry});
@@ -496,3 +602,53 @@ class _FavoriteToggleTile extends StatelessWidget {
   }
 }
 
+
+// ─── §1i Skeleton helper pour les chargements TMDB ───────────────────────────
+
+class _SkeletonLine extends StatefulWidget {
+  final double width;
+  final double height;
+  const _SkeletonLine({required this.width, required this.height});
+
+  @override
+  State<_SkeletonLine> createState() => _SkeletonLineState();
+}
+
+class _SkeletonLineState extends State<_SkeletonLine> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) => Container(
+        width: widget.width,
+        height: widget.height,
+        decoration: BoxDecoration(
+          color: Color.lerp(
+            cs.surfaceContainerHighest,
+            cs.outline.withAlpha(60),
+            _ctrl.value,
+          ),
+          borderRadius: BorderRadius.circular(6),
+        ),
+      ),
+    );
+  }
+}

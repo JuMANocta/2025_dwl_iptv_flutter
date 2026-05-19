@@ -7,7 +7,10 @@ import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/update_service.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
+import 'package:aetherStream/feature/accounts/playlist_management_page.dart';
 import 'package:aetherStream/feature/settings/theme_settings_page.dart';
+import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
+import 'package:aetherStream/feature/settings/xmltv_page.dart';
 import 'package:aetherStream/feature/update/update_dialog.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
@@ -40,6 +43,24 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _openThemeSettings() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ThemeSettingsPage()),
+    );
+  }
+
+  Future<void> _openTmdbKey() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const TmdbKeyPage()),
+    );
+  }
+
+  Future<void> _openXmltv() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const XmltvPage()),
+    );
+  }
+
+  Future<void> _openPlaylistStats() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PlaylistManagementPage()),
     );
   }
 
@@ -185,7 +206,10 @@ class _SettingsPageState extends State<SettingsPage> {
         scrolledUnderElevation: 0,
       ),
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: BoxDecoration(
+          color: isDark ? null : cs.surface,
           gradient: isDark
               ? RadialGradient(
                   center: const Alignment(0, -1.5),
@@ -205,8 +229,22 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: Icons.account_circle_outlined,
               accentColor: kAccentPrimary,
               title: 'Comptes IPTV',
-              subtitle: 'Providers, identifiants, TMDB, XMLTV',
+              subtitle: 'Providers et identifiants',
               onTap: _openAccounts,
+            ),
+            _SettingsTile(
+              icon: Icons.movie_creation_outlined,
+              accentColor: kAccentTertiary,
+              title: 'Clé API TMDB',
+              subtitle: 'Affiches, synopsis, casting (optionnel)',
+              onTap: _openTmdbKey,
+            ),
+            _SettingsTile(
+              icon: Icons.tv,
+              accentColor: kAccentSecondary,
+              title: 'Guide des chaînes',
+              subtitle: 'EPG XMLTV — TNT France',
+              onTap: _openXmltv,
             ),
             _SettingsTile(
               icon: Icons.palette_outlined,
@@ -217,6 +255,13 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 8),
             _SectionHeader(title: 'Playlist'),
+            _SettingsTile(
+              icon: Icons.bar_chart,
+              accentColor: kAccentPrimary,
+              title: 'Statistiques playlist',
+              subtitle: 'Détails films, séries, chaînes du compte actif',
+              onTap: _openPlaylistStats,
+            ),
             _SettingsTile(
               icon: Icons.refresh,
               accentColor: kWarning,

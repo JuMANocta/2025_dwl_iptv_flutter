@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:aetherStream/data/models/stream_account.dart';
 import '../../core/utils/network.dart';
 import 'stream_account_service.dart';
 import 'parsed_playlist_service.dart';
@@ -61,6 +62,55 @@ class PlaylistService {
       debugPrint("ℹ️ Aucune playlist en cache. Téléchargement initial...");
     }
     return downloadCurrentM3U();
+  }
+
+  /// Télécharge le M3U d'un compte spécifique (utile pour les comptes non-actifs
+  /// dans un setup multi-comptes). Retourne le chemin du fichier ou `null` en
+  /// cas d'échec — silencieux : aucune exception ne remonte.
+  ///
+  /// Si un cache existe déjà (frais ou périmé), il est conservé : on ne
+  /// re-télécharge que s'il n'y a aucun fichier. Le but est de _peupler_ les
+  /// playlists manquantes sans rejouer un téléchargement déjà fait.
+  static Future<String?> ensureDownloadedForAccount(StreamAccount acc) async {
+    final path = await pathForAccountId(acc.id);
+    final file = File(path);
+    if (await file.exists() && await file.length() > 0) return path;
+
+    final url = acc.buildM3uUrl();
+    if (url == null || url.isEmpty) {
+      debugPrint("⚠️ ensureDownloadedForAccount: URL invalide pour ${acc.label}");
+      return null;
+    }
+
+    final tempPath = '$path.part';
+    try {
+      final dio = await NetworkUtils.buildDio(url);
+      await dio.download(
+        url,
+        tempPath,
+        options: Options(
+          receiveTimeout: const Duration(seconds: 60),
+          followRedirects: true,
+          validateStatus: (s) => s != null && s >= 200 && s < 300,
+        ),
+      );
+      final temp = File(tempPath);
+      if (!await temp.exists() || await temp.length() == 0) {
+        if (await temp.exists()) await temp.delete();
+        return null;
+      }
+      await temp.rename(path);
+      ParsedPlaylistService.invalidate(acc.id);
+      debugPrint("✅ Playlist téléchargée pour ${acc.label}.");
+      return path;
+    } catch (e) {
+      debugPrint("❌ ensureDownloadedForAccount(${acc.label}): $e");
+      try {
+        final temp = File(tempPath);
+        if (await temp.exists()) await temp.delete();
+      } catch (_) {}
+      return null;
+    }
   }
 
   static Future<String> _buildUrlForCurrentAccount() async {

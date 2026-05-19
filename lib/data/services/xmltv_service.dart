@@ -112,6 +112,12 @@ class XmltvService {
     _loadedAt = null;
   }
 
+  /// Date du dernier chargement réussi en mémoire (null si jamais chargé).
+  static DateTime? get loadedAt => _loadedAt;
+
+  /// Nombre de chaînes indexées (utile pour l'UI de statut).
+  static int get channelCount => _programs?.length ?? 0;
+
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
