@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.0+35-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.5.0+36-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -34,6 +34,8 @@
 - **Synchro A/V** : `video-sync=display-resample` + buffer 64 Mo + audio-pitch-correction → dialogues calés sur l'image
 - Vitesse de lecture : 0.5x / 0.75x / 1x / 1.25x / 1.5x / 2x
 - **Reprise de lecture** : position sauvegardée toutes les 10s, bouton "Reprendre depuis X:XX" + barre cyan sur les vignettes
+- **Reprise cross-source** : un film regardé en streaming puis téléchargé reprend à la même position depuis le fichier local (même clé `progressKey: entry.url`)
+- **Oublier la reprise** : tile dédiée dans l'action sheet + long-press menu (snackbar UNDO 4s) pour retirer un film/série de la pile Reprendre
 - **Épisode suivant** : bouton ▶▶ dans les contrôles séries (auto-saisi depuis la fiche détail)
 - **Wakelock** : écran maintenu allumé pendant la lecture, libéré en pause/erreur
 - Reconnexion automatique ×3 avec swap automatique d'extension `.ts` ↔ `.m3u8` (compatibilité maximale serveurs)
@@ -68,15 +70,20 @@
 - Squelettes (skeleton placeholders) pendant le chargement TMDB pour éviter les sauts d'UI
 
 ### 🏠 Accueil streaming-style
-- Hero banner rotatif (catégorie prioritaire toutes les 6 s)
-- 3 pages swipeables : Séries / Films / Chaînes (PageView + indicateur animé)
+- **Hero "jeu de cartes"** (films/séries) : pile de 10 cartes empilées en éventail avec effet 3D (padding blanc "papier" 3px + box-shadow stack simulant l'épaisseur). 5 cartes "Reprendre" triées par dernière lecture + 5 cartes "New" prioritaires
+- **Swipe horizontal** sur le hero pour naviguer manuellement entre les cartes (pause auto-rotation pendant le drag, snap avec biais de vélocité au relâché)
+- Auto-rotation 6 s entre les cartes (continue après un swipe manuel)
+- Hero 16/9 classique conservé sur la page Chaînes (live)
+- Hero remonte jusqu'à la status bar (l'icône ⚙️ flotte par-dessus, l'inclinaison libère le coin haut-droit)
+- 3 pages swipeables : Séries / Films / Chaînes (PageView + tabs animées sous le hero)
 - Catégories triées : ⭐ Favoris → 🇫🇷 France (TV) → 🔥 New → genres → Autres
 - Films/Séries en carrousels horizontaux (poster 2:3), Chaînes en grille 3 colonnes (logo carré)
-- Limite 25 items par section + tile "Voir tout" qui ouvre la liste complète
+- Limite 25 items par section + tile "Voir tout" qui ouvre la liste complète. **Favoris sans plafond** (curation utilisateur)
 - Tuile **REPRENDRE LA CHAÎNE** en tête de la page Chaînes (dernière chaîne TV regardée)
-- Long-press sur une carte → menu contextuel (Lire/Reprendre, Voir détails, Télécharger, Favori)
+- Long-press sur une carte → menu contextuel (Lire/Reprendre, Oublier la reprise, Voir détails, Télécharger, Favori)
 - Recherche in-place via la NavigationBar (pas de page séparée)
 - Onboarding 3 écrans au tout premier lancement (welcome / playlist / TMDB)
+- AppBar épurée (nom de compte retiré — visible dans Settings → Comptes uniquement)
 
 ### ❤️ Favoris
 - Films, séries **et** chaînes TV (cross-comptes, cross-variantes)
@@ -241,6 +248,9 @@ lib/
 - [x] **Refonte AccountsPage** — alignement streaming-style + sous-pages dédiées TMDB / XMLTV / Personnalisation / Stats playlist depuis le hub Paramètres
 - [x] **Quick wins UX** — lock player bypass-proof, overlay buffering, skeleton TMDB, historique recherche, dernière chaîne TV, skip épisode, onboarding 1re ouverture
 - [x] **Dédoublonnage qualité TV** — un seul bouton par qualité même si le provider expose plusieurs flux identiques
+- [x] **Hero "jeu de cartes" + ergo home** (v1.5.0) — fan banner 10 cartes avec reprise prioritaire, effet 3D (padding blanc + box-shadow stack), swipe manuel + auto-rotation 6 s, AppBar épurée, hero remonte sous la status bar
+- [x] **Reprise cross-source** (v1.5.0) — DL local utilise `progressKey: entry.url` → reprise partagée entre streaming et lecture locale
+- [x] **Oublier la reprise** (v1.5.0) — action dédiée dans l'action sheet + long-press menu, snackbar UNDO 4 s, clear sur toutes les variants du groupe
 
 ### 🔒 Sécurité — Hardening 2026-05-19
 - [x] SSL bypass scoped aux serveurs IPTV utilisateur uniquement (TMDB / GitHub / XMLTV en HTTPS strict)
@@ -249,6 +259,13 @@ lib/
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
+- [ ] **Polish UI § 1L** — *(à venir)* :
+  - Refonte du champ de recherche (plus grand, ← retour au lieu de croix)
+  - Thème étendu jusqu'en haut sur toutes les sous-pages Paramètres (plus de bande noire)
+  - Plus aucun bouton transparent (audit + remplacement par `FilledButton` plein)
+  - Statistiques playlist enrichies (multi-comptes, temps restant avant expiration, âge cache)
+  - "Recharger la playlist" déplacé dans Statistiques (retiré de Paramètres)
+  - À propos transformé en vraie page dans le thème streaming-style
 - [ ] **Grille EPG XMLTV pour replay** — sélection programme dans la grille (en complément du picker manuel)
 - [ ] **Pistes audio + sous-titres** — sélection in-player (embarqués + sous-titres externes)
 - [ ] **File d'attente DL + WiFi-only** — sémaphore, reprise auto au retour réseau

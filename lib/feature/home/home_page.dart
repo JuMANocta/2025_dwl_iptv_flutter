@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:aetherStream/core/themes/colors.dart';
@@ -188,7 +189,14 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final topInset = MediaQuery.of(context).padding.top + kToolbarHeight;
+    final statusBarHeight = MediaQuery.of(context).padding.top;
+    // §heroFan ergo — Pour movie/series, le hero "fan" remonte jusqu'au status
+    // bar : l'inclinaison des cartes laisse le coin haut-droit libre pour
+    // l'icône ⚙️ qui flotte par-dessus. Pour TV (hero 16/9 plein largeur),
+    // on conserve l'offset AppBar sinon le titre du hero entre en collision
+    // avec l'icône.
+    final liftedTopInset = statusBarHeight + 4;
+    final defaultTopInset = statusBarHeight + kToolbarHeight;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -245,6 +253,7 @@ class _HomePageState extends State<HomePage> {
                 listenable: Listenable.merge([
                   ParsedPlaylistService.version,
                   FavoritesService.version,
+                  WatchProgressService.version,
                 ]),
                 builder: (context, _) {
                   final entries = ParsedPlaylistService
@@ -295,21 +304,21 @@ class _HomePageState extends State<HomePage> {
                         key: ValueKey('series_$_activeAccountId'),
                         type: M3uContentType.series,
                         entries: byType[M3uContentType.series]!,
-                        topInset: topInset,
+                        topInset: liftedTopInset,
                         tabsBuilder: buildTabs,
                       ),
                       _TypePage(
                         key: ValueKey('movie_$_activeAccountId'),
                         type: M3uContentType.movie,
                         entries: byType[M3uContentType.movie]!,
-                        topInset: topInset,
+                        topInset: liftedTopInset,
                         tabsBuilder: buildTabs,
                       ),
                       _TypePage(
                         key: ValueKey('tv_$_activeAccountId'),
                         type: M3uContentType.tv,
                         entries: byType[M3uContentType.tv]!,
-                        topInset: topInset,
+                        topInset: defaultTopInset,
                         tabsBuilder: buildTabs,
                       ),
                     ],
@@ -611,10 +620,13 @@ class _TypePageState extends State<_TypePage> {
   /// `ParsedPlaylistService.version` : bump si playlist re-téléchargée.
   /// `FavoritesService.version` : bump si favori toggle (impacte la catégorie
   /// virtuelle "Favoris").
+  /// `WatchProgressService.version` : bump à chaque save 10s pendant la lecture,
+  /// impacte l'ordre des cartes "Reprendre" dans le hero fan banner.
   int _computeCacheKey() {
     return widget.entries.length * 1000003 +
         ParsedPlaylistService.version.value * 1009 +
-        FavoritesService.version.value;
+        FavoritesService.version.value * 1013 +
+        WatchProgressService.version.value;
   }
 
   void _ensureGrouping() {
@@ -630,22 +642,63 @@ class _TypePageState extends State<_TypePage> {
         return a.toLowerCase().compareTo(b.toLowerCase());
       });
 
-    // Items mis en avant pour le hero : on prend la première catégorie
-    // prioritaire (Favoris exclu — c'est trop intime pour un hero), max 5.
-    List<List<M3uEntry>> featured = const [];
-    for (final cat in categories) {
-      if (cat == 'Favoris') continue;
-      if (_TypePage._categoryPriority(cat) < 100) {
-        featured = byCategory[cat]!.take(5).toList();
-        break;
+    // §heroFan — Composition du hero :
+    //   - films/séries : 5 reprise (triées lastWatched desc) + 5 nouveautés
+    //     prioritaires non-déjà-incluses → max 10 cartes empilées
+    //   - TV : pas de notion "en cours" (live) → max 5 cartes catégorie prio
+    const maxFeatured = 10;
+    const maxResume = 5;
+    final featured = <List<M3uEntry>>[];
+
+    if (widget.type != M3uContentType.tv) {
+      final allGroups = <List<M3uEntry>>[];
+      for (final groups in byCategory.values) {
+        allGroups.addAll(groups);
+      }
+      final resumeWithTime = <({List<M3uEntry> group, DateTime t})>[];
+      for (final group in allGroups) {
+        final p = WatchProgressService.getProgressForAny(
+          group.map((e) => e.url),
+        );
+        if (p != null && p.ratio < 0.95) {
+          resumeWithTime.add((group: group, t: p.lastWatched));
+        }
+      }
+      resumeWithTime.sort((a, b) => b.t.compareTo(a.t));
+      final resumeKeys = <String>{};
+      for (final item in resumeWithTime.take(maxResume)) {
+        featured.add(item.group);
+        resumeKeys.add(item.group.first.displayName);
+      }
+      // Complète avec catégories prioritaires (sauf Favoris, sauf déjà inclus).
+      for (final cat in categories) {
+        if (featured.length >= maxFeatured) break;
+        if (cat == 'Favoris') continue;
+        if (_TypePage._categoryPriority(cat) >= 100) continue;
+        for (final group in byCategory[cat]!) {
+          if (featured.length >= maxFeatured) break;
+          if (resumeKeys.contains(group.first.displayName)) continue;
+          featured.add(group);
+        }
+      }
+    } else {
+      // TV : comportement historique (catégorie prioritaire, max 5).
+      for (final cat in categories) {
+        if (cat == 'Favoris') continue;
+        if (_TypePage._categoryPriority(cat) < 100) {
+          featured.addAll(byCategory[cat]!.take(5));
+          break;
+        }
       }
     }
+
+    // Fallback si rien trouvé (playlist sans catégorie prioritaire ni reprise).
     if (featured.isEmpty && categories.isNotEmpty) {
       final first = categories.firstWhere(
         (c) => c != 'Autres' && c != 'Favoris',
         orElse: () => categories.first,
       );
-      featured = byCategory[first]!.take(5).toList();
+      featured.addAll(byCategory[first]!.take(5));
     }
 
     _cachedByCategory = byCategory;
@@ -684,7 +737,11 @@ class _TypePageState extends State<_TypePage> {
         var cursor = 0;
         if (hasHero) {
           if (i == cursor) {
-            return _HeroBanner(featured: featured, type: widget.type);
+            // §heroFan — fan "jeu de cartes" pour films/séries (avec reprise
+            // en tête), hero 16/9 classique pour les chaînes TV.
+            return widget.type == M3uContentType.tv
+                ? _HeroBanner(featured: featured, type: widget.type)
+                : _HeroFanBanner(featured: featured, type: widget.type);
           }
           cursor += 1;
         }
@@ -1087,6 +1144,473 @@ class _HeroSlide extends StatelessWidget {
         M3uContentType.series => 'NOUVELLE SÉRIE',
         M3uContentType.tv     => 'EN DIRECT',
       };
+}
+
+// ─── Hero "fan" — empilement carte de jeu (§heroFan) ─────────────────────────
+//
+// Affiche jusqu'à 10 cartes empilées en éventail. Auto-rotation 6s qui fait
+// défiler les cartes (chaque tick = la carte suivante devient active). Les
+// premières cartes sont en cours de lecture (`WatchProgressService`, triées
+// par `lastWatched` desc), suivies par les nouveautés prioritaires. Tap sur
+// la carte centrale → ouverture du media ; tap sur une carte secondaire →
+// elle vient prendre la position centrale.
+
+class _HeroFanBanner extends StatefulWidget {
+  final List<List<M3uEntry>> featured;
+  final M3uContentType type;
+
+  const _HeroFanBanner({required this.featured, required this.type});
+
+  @override
+  State<_HeroFanBanner> createState() => _HeroFanBannerState();
+}
+
+class _HeroFanBannerState extends State<_HeroFanBanner>
+    with SingleTickerProviderStateMixin {
+  static const _autoDuration = Duration(seconds: 6);
+  static const _animDuration = Duration(milliseconds: 520);
+
+  late final AnimationController _animCtrl;
+  Timer? _timer;
+
+  /// Position lissée (peut être fractionnaire). On ne wrap PAS sur [0, N) :
+  /// la valeur incrémente continument et chaque carte calcule son `delta`
+  /// modulo N avec le plus court chemin → wrap visuel naturel.
+  double _from = 0;
+  double _to = 0;
+  double _current = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(vsync: this, duration: _animDuration)
+      ..addListener(_onTick);
+    _scheduleNext();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _animCtrl
+      ..removeListener(_onTick)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onTick() {
+    if (!mounted) return;
+    setState(() {
+      final t = Curves.easeOutCubic.transform(_animCtrl.value);
+      _current = _from + (_to - _from) * t;
+    });
+  }
+
+  void _scheduleNext() {
+    _timer?.cancel();
+    if (widget.featured.length <= 1) return;
+    _timer = Timer.periodic(_autoDuration, (_) {
+      if (!mounted) return;
+      _advance();
+    });
+  }
+
+  void _advance() {
+    _from = _current;
+    _to = _from + 1;
+    _animCtrl.forward(from: 0);
+  }
+
+  /// Anime jusqu'à la carte `targetIdx` en empruntant le plus court chemin
+  /// circulaire (gauche ou droite).
+  void _gotoCard(int targetIdx) {
+    final n = widget.featured.length.toDouble();
+    final currentMod = _current % n;
+    double delta = targetIdx - currentMod;
+    delta = delta % n;
+    if (delta > n / 2) delta -= n;
+    _from = _current;
+    _to = _current + delta;
+    _animCtrl.forward(from: 0);
+    _scheduleNext();
+  }
+
+  double _shortestDelta(int i) {
+    final n = widget.featured.length.toDouble();
+    double delta = i - _current;
+    delta = delta % n;
+    if (delta > n / 2) delta -= n;
+    return delta;
+  }
+
+  Future<void> _openItem(BuildContext context, List<M3uEntry> versions) async {
+    if (versions.isEmpty) return;
+    final entry = versions.first;
+    final hasTmdb = await TmdbApiService.hasApiKey();
+    if (!context.mounted) return;
+    if (hasTmdb) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => DetailsPage(entry: entry, versions: versions),
+      ));
+    } else {
+      await showMediaActionSheet(context, entry);
+    }
+  }
+
+  void _onCardTap(BuildContext context, int i) {
+    final n = widget.featured.length;
+    final currentIdx = ((_current.round() % n) + n) % n;
+    if (i == currentIdx) {
+      _openItem(context, widget.featured[i]);
+    } else {
+      _gotoCard(i);
+    }
+  }
+
+  // ── Swipe manuel (§heroFan ergo) ───────────────────────────────────────────
+  // Le `GestureDetector` au niveau du Stack capture les drags horizontaux
+  // AVANT que la PageView parent (Séries/Films/Chaînes) puisse les revendiquer.
+  // → swipe sur le hero = navigation entre cartes uniquement, jamais switch
+  // de type. Le tap reste géré par l'InkWell de la carte (gestures distincts).
+
+  void _onDragStart(DragStartDetails details) {
+    _timer?.cancel();
+    if (_animCtrl.isAnimating) _animCtrl.stop();
+  }
+
+  void _onDragUpdate(DragUpdateDetails details, double cardSpacing) {
+    if (cardSpacing <= 0) return;
+    setState(() {
+      _current -= details.delta.dx / cardSpacing;
+    });
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    if (widget.featured.length <= 1) {
+      _scheduleNext();
+      return;
+    }
+    final v = details.primaryVelocity ?? 0;
+    // Vélocité forte → bias dans la direction du swipe ; faible → snap nearest.
+    int target;
+    if (v.abs() > 300) {
+      target = (v < 0) ? _current.floor() + 1 : _current.ceil() - 1;
+    } else {
+      target = _current.round();
+    }
+    _from = _current;
+    _to = target.toDouble();
+    _animCtrl.forward(from: 0);
+    _scheduleNext();
+  }
+
+  void _onDragCancel() {
+    // Annulation (ex: bascule app) → snap nearest pour rester aligné.
+    _from = _current;
+    _to = _current.round().toDouble();
+    _animCtrl.forward(from: 0);
+    _scheduleNext();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.featured.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        final screenW = constraints.maxWidth;
+        final cardW = math.min(screenW * 0.48, 220.0);
+        final cardH = cardW * 1.45;
+        final containerH = cardH + 60;
+        // 1 carte d'écart visuel = ~22 % de la largeur d'une carte.
+        // Sensibilité du drag : 1 unité de `_current` = `cardSpacing` pixels.
+        final cardSpacing = cardW * 0.22;
+
+        // Pour le z-order : on trie par |delta| desc → grandes valeurs au début
+        // de la liste = dessinées en premier = derrière.
+        final cards = <({int i, double delta})>[];
+        for (var i = 0; i < widget.featured.length; i++) {
+          final d = _shortestDelta(i);
+          if (d.abs() <= 3) cards.add((i: i, delta: d));
+        }
+        cards.sort((a, b) => b.delta.abs().compareTo(a.delta.abs()));
+
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: _onDragStart,
+          onHorizontalDragUpdate: (d) => _onDragUpdate(d, cardSpacing),
+          onHorizontalDragEnd: _onDragEnd,
+          onHorizontalDragCancel: _onDragCancel,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 18),
+            child: SizedBox(
+              height: containerH,
+              child: Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  for (final c in cards)
+                    _buildFannedCard(context, c.i, c.delta, cardW, cardH),
+                  Positioned(bottom: 4, child: _buildDots()),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFannedCard(
+    BuildContext context,
+    int i,
+    double delta,
+    double w,
+    double h,
+  ) {
+    final absDelta = delta.abs();
+    final isActive = absDelta < 0.5;
+
+    final rotation = delta * 0.08; // ~4.5° par rang
+    final offsetX = delta * (w * 0.22);
+    final offsetY = math.min(absDelta * 14.0, 42.0);
+    final scale = math.max(0.55, 1.0 - absDelta * 0.07);
+    final opacity = math.max(0.0, 1.0 - absDelta * 0.32).clamp(0.0, 1.0);
+
+    return Transform(
+      transform: Matrix4.identity()
+        ..translateByDouble(offsetX, offsetY, 0, 1)
+        ..rotateZ(rotation)
+        ..scaleByDouble(scale, scale, 1, 1),
+      alignment: Alignment.bottomCenter,
+      child: Opacity(
+        opacity: opacity,
+        child: SizedBox(
+          width: w,
+          height: h,
+          child: _HeroFanCard(
+            versions: widget.featured[i],
+            type: widget.type,
+            isActive: isActive,
+            onTap: () => _onCardTap(context, i),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDots() {
+    final n = widget.featured.length;
+    final currentIdx = ((_current.round() % n) + n) % n;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(n, (i) {
+        final active = i == currentIdx;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 280),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          width: active ? 18 : 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: active ? kAccentPrimary : Colors.white.withAlpha(120),
+            borderRadius: BorderRadius.circular(3),
+            boxShadow: active
+                ? [BoxShadow(color: kAccentPrimary.withAlpha(180), blurRadius: 6)]
+                : null,
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _HeroFanCard extends StatelessWidget {
+  final List<M3uEntry> versions;
+  final M3uContentType type;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _HeroFanCard({
+    required this.versions,
+    required this.type,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = versions.first;
+    final progress = WatchProgressService.getProgressForAny(
+      versions.map((e) => e.url),
+    );
+    final hasResume = progress != null && progress.ratio < 0.95;
+    final logoUrl = versions
+        .map((e) => e.logoUrl)
+        .firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
+
+    final fallbackIcon = switch (type) {
+      M3uContentType.movie => Icons.movie_outlined,
+      M3uContentType.series => Icons.tv_outlined,
+      M3uContentType.tv => Icons.live_tv_outlined,
+    };
+
+    // §heroFan 3D — fond blanc visible comme tranche de carte (padding 3 px)
+    // + box-shadow stack pour simuler l'épaisseur "papier empilé" sur la carte
+    // active (les voisines gardent une ombre douce simple pour ne pas saturer).
+    final shadows = isActive
+        ? const <BoxShadow>[
+            // Tranche : 5 ombres "dures" (blurRadius=0) qui s'enchaînent en
+            // diagonale → tranche d'une carte épaisse vue de 3/4.
+            BoxShadow(color: Color(0xFFEDEDED), offset: Offset(1, 1.5), blurRadius: 0),
+            BoxShadow(color: Color(0xFFD2D2D2), offset: Offset(2, 3), blurRadius: 0),
+            BoxShadow(color: Color(0xFFA8A8A8), offset: Offset(3, 4.5), blurRadius: 0),
+            BoxShadow(color: Color(0xFF7E7E7E), offset: Offset(4, 6), blurRadius: 0),
+            BoxShadow(color: Color(0xFF4A4A4A), offset: Offset(5, 7.5), blurRadius: 0),
+            // Ombre portée principale (douce, sous le stack).
+            BoxShadow(
+              color: Color(0xCC000000),
+              offset: Offset(8, 14),
+              blurRadius: 24,
+            ),
+          ]
+        : <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withAlpha(140),
+              offset: const Offset(4, 6),
+              blurRadius: 12,
+            ),
+          ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white, // → visible en tranche grâce au padding 3 px.
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: shadows,
+      ),
+      padding: const EdgeInsets.all(3),
+      child: ClipRRect(
+        // Rayon intérieur (= 14 - 3) pour des coins concentriques propres.
+        borderRadius: BorderRadius.circular(11),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+            if (logoUrl != null && logoUrl.isNotEmpty)
+              Image.network(
+                logoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _fallback(fallbackIcon),
+              )
+            else
+              _fallback(fallbackIcon),
+            // Gradient sombre en bas pour la lisibilité du titre.
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.center,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withAlpha(210),
+                  ],
+                ),
+              ),
+            ),
+            if (hasResume)
+              Positioned(
+                top: 10,
+                left: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: kAccentSecondary.withAlpha(230),
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: [
+                      BoxShadow(
+                        color: kAccentSecondary.withAlpha(120),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.play_arrow, size: 14, color: Colors.black),
+                      SizedBox(width: 2),
+                      Text(
+                        'REPRENDRE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: hasResume ? 12 : 10,
+              child: Text(
+                entry.displayName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  height: 1.15,
+                  shadows: [
+                    Shadow(
+                        blurRadius: 4,
+                        color: Colors.black.withAlpha(220)),
+                  ],
+                ),
+              ),
+            ),
+            if (hasResume)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: LinearProgressIndicator(
+                  value: progress.ratio,
+                  backgroundColor: Colors.black.withAlpha(130),
+                  valueColor: AlwaysStoppedAnimation(kAccentSecondary),
+                  minHeight: 4,
+                ),
+              ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _fallback(IconData icon) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            kAccentPrimary.withAlpha(35),
+            kAccentSecondary.withAlpha(35),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Icon(icon, size: 70, color: Colors.white.withAlpha(80)),
+      ),
+    );
+  }
 }
 
 // ─── Section : une catégorie ─────────────────────────────────────────────────
@@ -1600,6 +2124,40 @@ class _HomeCardState extends State<_HomeCard> {
                       onTap: () {
                         WatchProgressService.clearProgress(entry.url);
                         play();
+                      },
+                    ),
+                    // §forgetResume — Efface la reprise sans lancer la lecture.
+                    // Clear sur toutes les variantes du groupe (FHD + HD…) pour
+                    // que le film disparaisse vraiment de la pile "Reprendre".
+                    ListTile(
+                      leading: Icon(Icons.history_toggle_off, color: kWarning),
+                      title: Text(
+                        'Oublier la reprise',
+                        style: TextStyle(fontSize: 13, color: kWarning),
+                      ),
+                      dense: true,
+                      onTap: () async {
+                        final snapshot = progress;
+                        final clearedUrl = entry.url;
+                        final messenger = ScaffoldMessenger.of(context);
+                        Navigator.pop(sheetCtx);
+                        for (final v in widget.versions) {
+                          await WatchProgressService.clearProgress(v.url);
+                        }
+                        messenger.showSnackBar(SnackBar(
+                          content: const Text('Reprise oubliée'),
+                          duration: const Duration(seconds: 4),
+                          action: SnackBarAction(
+                            label: 'Annuler',
+                            onPressed: () {
+                              WatchProgressService.saveProgress(
+                                clearedUrl,
+                                snapshot.position,
+                                snapshot.duration,
+                              );
+                            },
+                          ),
+                        ));
                       },
                     ),
                   ],

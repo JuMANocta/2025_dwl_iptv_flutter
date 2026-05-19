@@ -7,6 +7,7 @@ import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/main.dart';
 import 'package:aetherStream/data/models/download_task.dart';
 import 'package:aetherStream/data/services/download_manager_service.dart';
+import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/widgets/info_row.dart';
 import 'package:aetherStream/widgets/terminal_download_dialog.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
@@ -146,13 +147,21 @@ class DownloadTaskTile extends StatelessWidget {
   }
 
   Future<void> _openFile(BuildContext context) async {
-    // On utilise notre lecteur interne !
+    // §forgetResume — On joue le fichier LOCAL mais on garde l'URL réseau
+    // comme clé de progression. Effet : la lecture du fichier téléchargé
+    // continue à alimenter la pile "Reprendre" de la home (qui regarde par
+    // `entry.url`), et la reprise depuis la home reste cohérente même si le
+    // film a été regardé partiellement en local.
+    final progress = WatchProgressService.getProgress(task.url);
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PlayerPage(path: task.finalPath, // On passe le chemin du fichier local
+        builder: (context) => PlayerPage(
+          path: task.finalPath,
           title: task.displayName,
-          sourceType: VideoSourceType.file, // On spécifie que c'est un fichier
+          sourceType: VideoSourceType.file,
+          progressKey: task.url,
+          startPosition: progress?.position,
         ),
       ),
     );

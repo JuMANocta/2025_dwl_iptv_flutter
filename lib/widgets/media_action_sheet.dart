@@ -555,6 +555,36 @@ class _PlayResumeTiles extends StatelessWidget {
                 _launchPlayer(context, entry);
               },
             ),
+            // §forgetResume — Permet à l'utilisateur de retirer la reprise
+            // sans lancer la lecture ("plus envie de voir ce film").
+            ListTile(
+              leading: Icon(Icons.history_toggle_off, color: kWarning),
+              title: Text(
+                'Oublier la reprise',
+                style: TextStyle(fontSize: 13, color: kWarning),
+              ),
+              dense: true,
+              onTap: () async {
+                final snapshot = p;
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(context);
+                await WatchProgressService.clearProgress(entry.url);
+                messenger.showSnackBar(SnackBar(
+                  content: const Text('Reprise oubliée'),
+                  duration: const Duration(seconds: 4),
+                  action: SnackBarAction(
+                    label: 'Annuler',
+                    onPressed: () {
+                      WatchProgressService.saveProgress(
+                        entry.url,
+                        snapshot.position,
+                        snapshot.duration,
+                      );
+                    },
+                  ),
+                ));
+              },
+            ),
           ],
         );
       },
