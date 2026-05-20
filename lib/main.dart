@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'data/services/download_manager_service.dart';
@@ -24,6 +23,7 @@ import 'core/themes/app_theme_config.dart';
 import 'data/services/update_service.dart';
 import 'feature/update/update_dialog.dart';
 import 'core/utils/platform_tv.dart';
+import 'core/platform/storage_service.dart';
 
 /// Clé globale pour le Navigator, permettant une navigation programmatique sans `BuildContext`.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -33,11 +33,14 @@ void main() async {
   // Séquence d'initialisation critique avant le lancement de l'UI.
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  await MediaStore.ensureInitialized();
-  MediaStore.appFolder = 'AetherStream';
+  
+  // Initialisation du stockage (MediaStore sur Android, Local sur Windows)
+  await StorageService.init();
+
   // §3c-1 — détection plateforme TV (Android TV / Fire TV) avant tout build UI
   // → permet aux widgets d'adapter focus/tailles synchrone via PlatformTv.isTv.
   await PlatformTv.init();
+
   await StreamAccountService.migrateFromLegacyIfNeeded();
   await DownloadManagerService().init();
   await FavoritesService.init();
@@ -130,7 +133,7 @@ class MyApp extends StatelessWidget {
 }
 
 /// Ce widget agit comme un "aiguilleur" au démarrage.
-/// Il affiche un écran de chargement, puis décide de la page à afficher
+/// Il affiche un écran de chargement, puis décide de la page à afficher 
 /// en fonction de l'état de l'initialisation (comptes, playlist).
 class _LaunchDecider extends StatefulWidget {
   const _LaunchDecider();
@@ -185,7 +188,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     );
   }
 
-  /// Télécharge le M3U manquant des comptes secondaires et les charge en
+  /// Télécharge le M3U manquant des comptes secondaires et les charge en 
   /// mémoire (parsing). Asynchrone & silencieux — la home se met à jour via
   /// `ParsedPlaylistService.version` quand chaque compte termine.
   Future<void> _hydrateSecondaryAccounts(List<StreamAccount> others) async {

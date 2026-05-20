@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
-import 'package:media_store_plus/media_store_plus.dart';
 import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/main.dart';
 import 'package:aetherStream/data/models/download_task.dart';
@@ -13,6 +12,7 @@ import 'package:aetherStream/widgets/terminal_download_dialog.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:aetherStream/core/platform/storage_service.dart';
 
 class DownloadTaskTile extends StatelessWidget {
   final DownloadTask task;
@@ -123,19 +123,8 @@ class DownloadTaskTile extends StatelessWidget {
     if (confirm == true) {
       await downloadManager.removeTask(task.id);
 
-      // Suppression du fichier final via MediaStore (Android 10+)
-      try {
-        final fileName = task.finalPath.split('/').last;
-        if (fileName.isNotEmpty) {
-          await MediaStore().deleteFile(
-            fileName: fileName,
-            dirType: DirType.video,
-            dirName: DirName.movies,
-          );
-        }
-      } catch (e) {
-        debugPrint("⚠️ Suppression MediaStore échouée : $e");
-      }
+      // Suppression du fichier final via le service multi-plateforme
+      await StorageService.deleteVideo(task.finalPath);
 
       // Suppression du fichier temporaire s'il existe encore
       try {

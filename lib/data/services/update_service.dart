@@ -2,11 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
+import '../../core/platform/installer_service.dart';
 
 /// Informations sur une release disponible.
 class UpdateInfo {
@@ -97,46 +96,40 @@ class UpdateService {
     }
   }
 
-  /// Télécharge l'APK et lance l'installation Android.
+  /// Télécharge l'APK et lance l'installation.
   /// [onProgress] reçoit une valeur entre 0.0 et 1.0.
   static Future<void> downloadAndInstall(
     String url, {
     void Function(double progress)? onProgress,
     CancelToken? cancelToken,
   }) async {
-    // Android 8+ : demander la permission d'installer des APKs inconnus
-    if (Platform.isAndroid) {
-      final status = await Permission.requestInstallPackages.status;
-      if (status.isDenied) {
-        final result = await Permission.requestInstallPackages.request();
-        if (!result.isGranted) {
-          debugPrint('❌ UpdateService: permission REQUEST_INSTALL_PACKAGES refusée');
-          throw Exception('Permission d\'installation refusée');
-        }
-      }
+    // Demander la permission d'installer (spécifique plateforme)
+    final hasPermission = await InstallerService.ensurePermission();
+    if (!hasPermission) {
+      debugPrint('❌ UpdateService: permission d\'installation refusée');
+      throw Exception('Permission d\'installation refusée');
     }
 
     final cacheDir = await getTemporaryDirectory();
-    final apkPath = '${cacheDir.path}/aetherstream_update.apk';
+    final updatePath = '${cacheDir.path}/aetherstream_update.${Platform.isWindows ? 'exe' : 'apk'}';
 
     debugPrint('🚀 UpdateService: téléchargement → $url');
 
     final dio = Dio();
     await dio.download(
       url,
-      apkPath,
+      updatePath,
       cancelToken: cancelToken,
       onReceiveProgress: (received, total) {
         if (total > 0) onProgress?.call(received / total);
       },
     );
 
-    debugPrint('✅ UpdateService: téléchargement terminé → $apkPath');
+    debugPrint('✅ UpdateService: téléchargement terminé → $updatePath');
 
-    // Lance l'installeur Android via le MethodChannel (FileProvider → content://)
-    const channel = MethodChannel('aetherstream/install_apk');
-    await channel.invokeMethod('install', {'path': apkPath});
-    debugPrint('📦 UpdateService: installation APK lancée');
+    // Lance l'installeur via le service multi-plateforme
+    await InstallerService.install(updatePath, downloadUrl: url);
+    debugPrint('📦 UpdateService: installation lancée');
   }
 
   // -------------------------------------------------------------------------

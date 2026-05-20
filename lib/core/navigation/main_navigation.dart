@@ -12,11 +12,10 @@ import 'package:aetherStream/feature/downloads/downloads_page.dart';
 ///   2. Téléchargements  — [DownloadsPage]
 ///
 /// **Layout adapté** :
-///   - Mobile (`PlatformTv.isTv` false) → `NavigationBar` bottom classique.
-///   - Android TV / Fire TV → `NavigationRail` latéral à gauche (cohérent
-///     avec l'ergonomie 16:9 horizontale des TV, focusable au D-pad).
+///   - Mobile (portrait) → `NavigationBar` bottom classique.
+///   - Android TV / Windows / Écrans larges → `NavigationRail` latéral à gauche.
 ///
-/// L'`IndexedStack` interne ne contient que 2 enfants (Home + Downloads).
+/// L'IndexedStack interne ne contient que 2 enfants (Home + Downloads).
 /// Le bouton Recherche n'ajoute pas une 3e page : il toggle juste un drapeau
 /// passé à [HomePage], qui bascule alors son contenu en vue résultats.
 class MainNavigation extends StatefulWidget {
@@ -44,7 +43,10 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
-    final isTv = PlatformTv.isTv;
+    final bool isTv = PlatformTv.isTv;
+    final bool isWide = MediaQuery.of(context).size.width > 700;
+    final bool useRail = isTv || isWide;
+
     final stack = IndexedStack(
       index: _stackIndex,
       children: [
@@ -57,13 +59,11 @@ class _MainNavigationState extends State<MainNavigation> {
       ],
     );
 
-    if (isTv) {
-      // §3c-6 — Layout TV : NavigationRail latéral, focusable au D-pad.
-      // Pas de bottom bar (impossible à reach avec une télécommande).
+    if (useRail) {
       return Scaffold(
         body: Row(
           children: [
-            _TvNavigationRail(
+            _CustomNavigationRail(
               selectedIndex: _navIndex,
               onDestinationSelected: _onTap,
             ),
@@ -73,7 +73,7 @@ class _MainNavigationState extends State<MainNavigation> {
       );
     }
 
-    // Mobile : NavigationBar bottom classique (comportement historique).
+    // Mobile : NavigationBar bottom classique.
     return Scaffold(
       body: stack,
       bottomNavigationBar: NavigationBar(
@@ -100,18 +100,13 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 }
 
-// ─── NavigationRail TV ──────────────────────────────────────────────────────
+// ─── NavigationRail Adapté ──────────────────────────────────────────────────
 
-/// Rail latéral de navigation pour Android TV / Fire TV (§3c-6).
-///
-/// Reprend les 3 destinations (Accueil / Recherche / Téléchargements) avec
-/// un `NavigationRail` natif Flutter. Les destinations sont focusables au
-/// D-pad et l'AppBar de chaque page reste libre pour son propre contenu.
-class _TvNavigationRail extends StatelessWidget {
+class _CustomNavigationRail extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
 
-  const _TvNavigationRail({
+  const _CustomNavigationRail({
     required this.selectedIndex,
     required this.onDestinationSelected,
   });
@@ -140,7 +135,7 @@ class _TvNavigationRail extends StatelessWidget {
         NavigationRailDestination(
           icon: Icon(Icons.download_outlined),
           selectedIcon: Icon(Icons.download),
-          label: Text('Téléchargements'),
+          label: Text('Downloads'),
         ),
       ],
     );

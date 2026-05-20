@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'player_controller.dart';
@@ -12,6 +11,7 @@ import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
 import 'widgets/tv_player_shortcuts.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../core/platform/brightness_service.dart';
 
 enum VideoSourceType {
   network,       // live / VOD réseau (et timeshift simple)
@@ -217,7 +217,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   Future<void> _initBrightness() async {
     try {
-      _brightness = await ScreenBrightness().current;
+      _brightness = await BrightnessService.current;
     } catch (_) {}
   }
 
@@ -356,7 +356,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   void _handleBrightnessChange(double delta) {
     _brightness = (_brightness + delta).clamp(0.0, 1.0);
     // fire-and-forget : dispose() restore de toute façon la luminosité d'origine.
-    ScreenBrightness().setScreenBrightness(_brightness).catchError((_) {});
+    BrightnessService.set(_brightness);
   }
 
   void _retry() {
@@ -379,7 +379,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _releaseWakelock();
     _ctrl.dispose();
-    ScreenBrightness().resetScreenBrightness().catchError((_) {});
+    BrightnessService.reset();
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,

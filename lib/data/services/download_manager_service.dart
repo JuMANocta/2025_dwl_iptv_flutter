@@ -3,11 +3,11 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:media_store_plus/media_store_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
 import '../../core/utils/log_sanitizer.dart';
 import '../../core/utils/network.dart';
+import '../../core/platform/storage_service.dart';
 
 /// Service pour gérer la liste des tâches de téléchargement.
 /// Il utilise SharedPreferences pour la persistance et un ValueNotifier
@@ -117,11 +117,11 @@ class DownloadManagerService {
 
     // Cas spécial de sécurité : Fichier déjà complet localement
     if (task.totalSize > 0 && resumedBytes >= task.totalSize) {
-      debugPrint("✅ Fichier déjà complet dans le cache, finalisation via MediaStore...");
+      debugPrint("✅ Fichier déjà complet dans le cache, finalisation...");
       // On appelle directement la fonction de déplacement
-      final success = await _moveFileToMediaStore(
+      final success = await StorageService.saveVideoToGallery(
         tempPath: task.tempPath,
-        finalPath: task.finalPath,
+        fileName: task.displayName,
       );
       if (success) {
         await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
@@ -185,16 +185,16 @@ class DownloadManagerService {
           debugPrint("✅ Téléchargement vers le cache terminé. Déplacement vers le stockage public...");
           await updateTask(task.id, status: DownloadStatus.finalizing);
 
-          final bool success = await _moveFileToMediaStore(
+          final bool success = await StorageService.saveVideoToGallery(
             tempPath: task.tempPath,
-            finalPath: task.finalPath,
+            fileName: task.displayName,
           );
 
           if (success) {
             await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
             debugPrint("💾 Fichier finalisé avec succès dans Movies : ${task.finalPath}");
           } else {
-            debugPrint("❌ Erreur lors du déplacement du fichier vers MediaStore.");
+            debugPrint("❌ Erreur lors du déplacement du fichier.");
             await updateTask(task.id, status: DownloadStatus.failed);
           }
           if (!completer.isCompleted) completer.complete();
@@ -223,9 +223,9 @@ class DownloadManagerService {
     } on DioException catch (e) {
       if (e.response?.statusCode == 416) {
         debugPrint("⚠️ Erreur 416 (Range) -> Fichier considéré comme déjà complet. Forçage de la finalisation...");
-        final success = await _moveFileToMediaStore(
+        final success = await StorageService.saveVideoToGallery(
           tempPath: task.tempPath,
-          finalPath: task.finalPath,
+          fileName: task.displayName,
         );
         if (success) {
           await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
@@ -293,42 +293,5 @@ class DownloadManagerService {
     currentTasks.removeWhere((t) => t.id == taskId);
     tasksNotifier.value = currentTasks;
     await _saveTasksToDisk();
-  }
-}
-
-/// Déplace un fichier du stockage privé vers le stockage public (Movies) via MediaStore.
-/// Retourne `true` en cas de succès.
-Future<bool> _moveFileToMediaStore({
-  required String tempPath,
-  required String finalPath,
-}) async {
-  final file = File(tempPath);
-  if (!await file.exists()) {
-    debugPrint("Erreur de déplacement : le fichier source n'existe pas à $tempPath");
-    return false;
-  }
-
-  try {
-    final mediaStore = MediaStore();
-
-    // On appelle la fonction avec TOUS les paramètres requis par le plugin
-    await mediaStore.saveFile(
-      tempFilePath: tempPath,
-      // On spécifie le type général (vidéo)
-      dirType: DirType.video,
-      // ET le dossier racine correspondant (Movies)
-      dirName: DirName.movies,
-      // Le sous-dossier dans lequel nous voulons enregistrer.
-      // "AetherStream" est maintenant géré par MediaStore.appFolder défini dans main.dart
-      // Le plugin va donc créer : /storage/emulated/0/Movies/AetherStream/
-      relativePath: null, // Le plugin utilisera MediaStore.appFolder
-    );
-
-    return true;
-
-  } catch (e) {
-    debugPrint("💀 Erreur MediaStore lors de la sauvegarde du fichier: $e");
-    // En cas d'échec, on garde le fichier temporaire pour un éventuel nouvel essai.
-    return false;
   }
 }

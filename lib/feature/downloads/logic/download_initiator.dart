@@ -9,7 +9,7 @@ import '../../../data/models/download_task.dart';
 import '../../../data/services/download_manager_service.dart';
 import '../../../core/utils/network.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../core/utils/storage_file.dart';
+import '../../../core/platform/storage_service.dart';
 import '../../../widgets/terminal_download_dialog.dart';
 import '../../../widgets/info_row.dart';
 import '../../../l10n/app_localizations.dart';
@@ -227,8 +227,7 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   }
 
   // 5.OBTENIR LE CHEMIN DE SAUVEGARDE SÉCURISÉ
-  final storageService = StorageService();
-  final String? finalSaveDirectory = await storageService.getAppMoviesPath();
+  final String? finalSaveDirectory = await StorageService.getAppMoviesPath();
 
   if (finalSaveDirectory == null) {
     // Si on n'a pas pu obtenir le chemin (permission refusée), on notifie et on arrête.
