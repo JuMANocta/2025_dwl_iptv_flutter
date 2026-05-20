@@ -259,6 +259,7 @@ lib/
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
+- [ ] **🚨 BUG PRIO** — *Home vide après "Recharger la playlist" / "Vider le cache"* : `ParsedPlaylistService.invalidate()` retire la playlist mémoire avant le re-parse → carrousels vides jusqu'à relance app. Fix : awaiter `loadActive()` après `downloadCurrentM3U()`, swap atomique mémoire+version
 - [ ] **Polish UI § 1L** — *(à venir)* :
   - Refonte du champ de recherche (plus grand, ← retour au lieu de croix)
   - Thème étendu jusqu'en haut sur toutes les sous-pages Paramètres (plus de bande noire)

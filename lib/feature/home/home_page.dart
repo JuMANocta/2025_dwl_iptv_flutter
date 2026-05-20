@@ -651,9 +651,18 @@ class _TypePageState extends State<_TypePage> {
     final featured = <List<M3uEntry>>[];
 
     if (widget.type != M3uContentType.tv) {
+      // §heroFanDedup — La catégorie virtuelle "Favoris" duplique les références
+      // de groupes qui vivent aussi dans leur catégorie d'origine. On dédupe par
+      // `displayName` pour éviter qu'un film favori en cours de lecture apparaisse
+      // 2× dans le hero.
       final allGroups = <List<M3uEntry>>[];
+      final seenNames = <String>{};
       for (final groups in byCategory.values) {
-        allGroups.addAll(groups);
+        for (final group in groups) {
+          if (seenNames.add(group.first.displayName)) {
+            allGroups.add(group);
+          }
+        }
       }
       final resumeWithTime = <({List<M3uEntry> group, DateTime t})>[];
       for (final group in allGroups) {
