@@ -51,7 +51,7 @@ pubspec.lock
 analysis_options.yaml
 .flutter-plugins-depencies
 .flutter-plugins
-windows/
+# windows/
 web/
 macos/
 linux/
@@ -66,3 +66,4 @@ android/.gradle/
 /aetherstream.jks
 /android/key.properties
 android/build/
+/.artifacts/
