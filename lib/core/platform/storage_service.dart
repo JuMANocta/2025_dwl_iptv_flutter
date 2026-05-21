@@ -1,6 +1,6 @@
 import 'dart:io' show Platform;
-import 'storage_android.dart';
-import 'storage_windows.dart';
+import 'storage_service_android.dart';
+import 'storage_service_windows.dart';
 
 /// Interface pour la gestion du stockage et des fichiers multimédias
 /// de manière multi-plateforme.

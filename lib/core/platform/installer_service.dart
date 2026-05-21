@@ -1,6 +1,6 @@
 import 'dart:io' show Platform;
-import 'installer_android.dart';
-import 'installer_windows.dart';
+import 'installer_service_android.dart';
+import 'installer_service_windows.dart';
 
 /// Interface pour l'installation des mises à jour
 /// de manière multi-plateforme.

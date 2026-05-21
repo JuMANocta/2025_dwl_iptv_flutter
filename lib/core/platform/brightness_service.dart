@@ -1,6 +1,6 @@
 import 'dart:io' show Platform;
-import 'brightness_android.dart';
-import 'brightness_windows.dart';
+import 'brightness_service_android.dart';
+import 'brightness_service_windows.dart';
 
 /// Interface pour la gestion de la luminosité de l'écran
 /// de manière multi-plateforme.
