@@ -83,12 +83,15 @@ class _AccountsPageState extends State<AccountsPage> {
 
   Future<void> _clearCache(StreamAccount acc) async {
     final l10n = AppLocalizations.of(context)!;
+    final isActive = acc.id == _priorityAccountId;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Vider le cache ?'),
         content: Text(
-          'La playlist du compte "${acc.label}" sera re-téléchargée depuis le serveur au prochain chargement.',
+          isActive
+              ? 'La playlist du compte "${acc.label}" sera re-téléchargée depuis le serveur maintenant.'
+              : 'La playlist du compte "${acc.label}" sera re-téléchargée au prochain chargement de ce compte.',
         ),
         actions: [
           TextButton(
@@ -102,11 +105,32 @@ class _AccountsPageState extends State<AccountsPage> {
       ),
     );
     if (ok != true) return;
-    await PlaylistService.deleteForAccountId(acc.id);
-    ParsedPlaylistService.invalidate(acc.id);
-    if (acc.id == _priorityAccountId) _priorityChanged = true;
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+
+    final messenger = ScaffoldMessenger.of(context);
+    if (isActive) {
+      // §bugPrio — compte actif : on supprime, on re-télécharge et on
+      // re-parse atomiquement pour éviter une home vide entre les deux.
+      try {
+        await PlaylistService.deleteForAccountId(acc.id);
+        final path = await PlaylistService.downloadCurrentM3U();
+        await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
+      } catch (e) {
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(content: Text('Échec : $e')),
+        );
+        return;
+      }
+      _priorityChanged = true;
+    } else {
+      // Compte secondaire : invalidation lazy, le DL se fera quand l'utilisateur
+      // basculera dessus (pas de home à rebuilder dans l'immédiat).
+      await PlaylistService.deleteForAccountId(acc.id);
+      ParsedPlaylistService.invalidate(acc.id);
+    }
+    if (!mounted) return;
+    messenger.showSnackBar(
       SnackBar(content: Text('✅ Cache vidé pour ${acc.label}')),
     );
   }

@@ -182,8 +182,66 @@ class ParsedPlaylistService {
 
   // ── Invalidation ──────────────────────────────────────────────────────────
 
-  /// Invalide le cache mémoire + disque pour un compte.
-  /// À appeler par PlaylistService après le téléchargement d'une nouvelle playlist.
+  /// Re-parse atomiquement la playlist depuis le disque sans laisser d'état vide.
+  ///
+  /// Contrairement à [invalidate] qui retire le compte de la mémoire AVANT le
+  /// re-parse (provoquant un rebuild de la home sur état vide → bug ticket
+  /// "Home vide après Recharger/Vider cache"), cette méthode :
+  ///   1. Parse le nouveau M3U en arrière-plan (mémoire intacte pendant ce temps)
+  ///   2. Swap atomiquement l'entrée mémoire (remove + add en une seule frame)
+  ///   3. Bumpe `version` UNIQUEMENT à la fin → la home rebuild sur le nouvel état
+  /// Le cache disque est régénéré à la suite (fire & forget).
+  static Future<ParsedPlaylist?> reloadFromDisk(
+    String accountId,
+    String accountName,
+    String m3uPath,
+  ) async {
+    if (!File(m3uPath).existsSync()) {
+      debugPrint('⚠️ ParsedPlaylist.reloadFromDisk: fichier introuvable — $m3uPath');
+      return null;
+    }
+    debugPrint('🔄 ParsedPlaylist: rechargement atomique — $accountName');
+
+    final films  = <M3uEntry>[];
+    final series = <M3uEntry>[];
+    final tv     = <M3uEntry>[];
+    try {
+      await M3uParser.parseFile(m3uPath, films, series, tv, accountId: accountId);
+    } catch (e) {
+      debugPrint('❌ ParsedPlaylist.reloadFromDisk — parse échoué : $e');
+      return null;
+    }
+
+    final allEntries = [...films, ...series, ...tv];
+    final modified   = await File(m3uPath).lastModified();
+    final playlist   = ParsedPlaylist(
+      accountId:    accountId,
+      schema:       ParsedPlaylist.schemaVersion,
+      m3uModifiedAt: modified,
+      entries:      allEntries,
+    );
+
+    // Swap atomique — l'ancien cache disque est effacé, le nouveau remplace
+    // l'ancien en mémoire en une seule opération synchrone.
+    await _deleteDiskCache(accountId);
+    _memory[accountId]       = playlist;
+    _accountNames[accountId] = accountName;
+
+    // Bump VERSION EN DERNIER → les listeners (home) rebuild sur le nouvel état.
+    version.value++;
+
+    _saveToDisk(accountId, playlist); // fire & forget
+    debugPrint('✅ ParsedPlaylist.reloadFromDisk: ${allEntries.length} entrées');
+    return playlist;
+  }
+
+  /// Invalide le cache mémoire + disque pour un compte (lazy : ne re-parse pas).
+  ///
+  /// ⚠️ Provoque un état temporairement vide en mémoire pour ce compte. À ne PAS
+  /// utiliser pour le compte actif si un rebuild de la home est imminent — préférer
+  /// [reloadFromDisk] qui swap atomiquement. Reste utile pour :
+  ///   - Suppression d'un compte (le compte n'existe plus)
+  ///   - Invalidation d'un compte secondaire (lazy reload au prochain accès)
   static void invalidate(String accountId) {
     _memory.remove(accountId);
     version.value++;

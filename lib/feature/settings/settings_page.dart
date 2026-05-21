@@ -94,12 +94,14 @@ class _SettingsPageState extends State<SettingsPage> {
         );
         return;
       }
-      await PlaylistService.downloadCurrentM3U();
-      ParsedPlaylistService.invalidate(acc.id);
+      final path = await PlaylistService.downloadCurrentM3U();
+      // Reload atomique : parse le nouveau M3U PUIS swap mémoire en une frame.
+      // Évite l'état vide intermédiaire qui causait la home blanche.
+      await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: const Text('✅ Playlist rechargée — relance l\'app pour voir les nouveautés.'),
+          content: const Text('✅ Playlist rechargée'),
           backgroundColor: kAccentPrimary.withAlpha(180),
         ),
       );

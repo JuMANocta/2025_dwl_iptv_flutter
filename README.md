@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.5.0+36-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.5.2+37-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -251,6 +251,7 @@ lib/
 - [x] **Hero "jeu de cartes" + ergo home** (v1.5.0) — fan banner 10 cartes avec reprise prioritaire, effet 3D (padding blanc + box-shadow stack), swipe manuel + auto-rotation 6 s, AppBar épurée, hero remonte sous la status bar
 - [x] **Reprise cross-source** (v1.5.0) — DL local utilise `progressKey: entry.url` → reprise partagée entre streaming et lecture locale
 - [x] **Oublier la reprise** (v1.5.0) — action dédiée dans l'action sheet + long-press menu, snackbar UNDO 4 s, clear sur toutes les variants du groupe
+- [x] **Fix home vide après Recharger/Vider cache** (v1.5.0, 2026-05-20) — `ParsedPlaylistService.reloadFromDisk()` atomique : parse AVANT le swap mémoire, plus jamais d'état vide intermédiaire
 
 ### 🔒 Sécurité — Hardening 2026-05-19
 - [x] SSL bypass scoped aux serveurs IPTV utilisateur uniquement (TMDB / GitHub / XMLTV en HTTPS strict)
@@ -259,7 +260,6 @@ lib/
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
-- [ ] **🚨 BUG PRIO** — *Home vide après "Recharger la playlist" / "Vider le cache"* : `ParsedPlaylistService.invalidate()` retire la playlist mémoire avant le re-parse → carrousels vides jusqu'à relance app. Fix : awaiter `loadActive()` après `downloadCurrentM3U()`, swap atomique mémoire+version
 - [ ] **Polish UI § 1L** — *(à venir)* :
   - Refonte du champ de recherche (plus grand, ← retour au lieu de croix)
   - Thème étendu jusqu'en haut sur toutes les sous-pages Paramètres (plus de bande noire)
