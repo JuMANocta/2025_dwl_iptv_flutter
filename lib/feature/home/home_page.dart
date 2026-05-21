@@ -207,16 +207,18 @@ class _HomePageState extends State<HomePage> {
         // §navUX — Plus de nom de compte dans le title (il est déjà visible
         // dans SettingsPage → Comptes IPTV → bandeau "COMPTE ACTIF"). Ça libère
         // la barre du haut et laisse le hero respirer.
-        title: widget.searchMode ? _buildSearchField(cs) : null,
+        // §1L-a — En mode recherche : arrow_back à gauche (retour intuitif),
+        // pas de title (le grand champ dans le body fait office de header).
+        leading: widget.searchMode
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Quitter la recherche',
+                onPressed: () => widget.onExitSearch?.call(),
+              )
+            : null,
+        title: null,
         actions: widget.searchMode
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  tooltip: 'Quitter la recherche',
-                  onPressed: () => widget.onExitSearch?.call(),
-                ),
-                const SizedBox(width: 4),
-              ]
+            ? const []
             : [
                 IconButton(
                   icon: const Icon(Icons.settings_outlined),
@@ -261,16 +263,33 @@ class _HomePageState extends State<HomePage> {
                   final byType = _splitByType(entries);
 
                   if (widget.searchMode) {
-                    return _SearchView(
-                      query: _searchQuery,
-                      byType: byType,
-                      onSelectSuggestion: (q) {
-                        _searchCtrl.text = q;
-                        _searchCtrl.selection = TextSelection.fromPosition(
-                          TextPosition(offset: q.length),
-                        );
-                        SearchHistoryService.record(q);
-                      },
+                    // §1L-a — Grand champ recherche dans le body (sous l'AppBar
+                    // transparente) au lieu d'un mini-champ dans le title.
+                    return Column(
+                      children: [
+                        SizedBox(
+                          height: MediaQuery.of(context).padding.top +
+                              kToolbarHeight,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                          child: _buildSearchField(cs),
+                        ),
+                        Expanded(
+                          child: _SearchView(
+                            query: _searchQuery,
+                            byType: byType,
+                            onSelectSuggestion: (q) {
+                              _searchCtrl.text = q;
+                              _searchCtrl.selection =
+                                  TextSelection.fromPosition(
+                                TextPosition(offset: q.length),
+                              );
+                              SearchHistoryService.record(q);
+                            },
+                          ),
+                        ),
+                      ],
                     );
                   }
 
@@ -329,43 +348,49 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Champ de saisie placé dans le `title` de l'AppBar quand searchMode est actif.
+  /// Champ de saisie placé dans le body sous l'AppBar quand searchMode est actif.
+  /// §1L-a : hauteur 56, police 16, contentPadding plus aéré. Le X interne
+  /// efface uniquement le texte (le retour à la home se fait via arrow_back).
   Widget _buildSearchField(ColorScheme cs) {
     return Container(
-      height: 40,
+      height: 56,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: kAccentSecondary.withAlpha(_searchFocus.hasFocus ? 200 : 60),
           width: _searchFocus.hasFocus ? 1.5 : 1,
         ),
         boxShadow: _searchFocus.hasFocus
-            ? [BoxShadow(color: kAccentSecondary.withAlpha(50), blurRadius: 12, spreadRadius: 1)]
+            ? [BoxShadow(color: kAccentSecondary.withAlpha(50), blurRadius: 14, spreadRadius: 1)]
             : null,
       ),
       child: TextField(
         controller: _searchCtrl,
         focusNode: _searchFocus,
         textInputAction: TextInputAction.search,
-        style: TextStyle(color: cs.onSurface, fontSize: 15),
+        style: TextStyle(color: cs.onSurface, fontSize: 16),
         onSubmitted: (q) {
           // §1i — Enregistrer la requête dans l'historique au submit (Enter).
           SearchHistoryService.record(q);
         },
         decoration: InputDecoration(
           hintText: 'Rechercher dans la playlist…',
-          hintStyle: TextStyle(color: cs.onSurfaceVariant.withAlpha(140)),
-          prefixIcon: Icon(Icons.search, color: kAccentSecondary, size: 22),
+          hintStyle: TextStyle(
+            color: cs.onSurfaceVariant.withAlpha(140),
+            fontSize: 16,
+          ),
+          prefixIcon: Icon(Icons.search, color: kAccentSecondary, size: 24),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  splashRadius: 18,
+                  icon: const Icon(Icons.clear, size: 20),
+                  tooltip: 'Effacer',
+                  splashRadius: 20,
                   onPressed: () => _searchCtrl.clear(),
                 )
               : null,
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
         ),
       ),
     );

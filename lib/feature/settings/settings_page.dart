@@ -1,17 +1,12 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:aetherStream/core/themes/colors.dart';
-import 'package:aetherStream/data/services/parsed_playlist_service.dart';
-import 'package:aetherStream/data/services/playlist_service.dart';
-import 'package:aetherStream/data/services/stream_account_service.dart';
-import 'package:aetherStream/data/services/update_service.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/accounts/playlist_management_page.dart';
+import 'package:aetherStream/feature/settings/about_page.dart';
+import 'package:aetherStream/feature/settings/backup_page.dart';
 import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
 import 'package:aetherStream/feature/settings/xmltv_page.dart';
-import 'package:aetherStream/feature/update/update_dialog.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
 ///
@@ -22,7 +17,7 @@ import 'package:aetherStream/feature/update/update_dialog.dart';
 /// Sections :
 ///   - 👤 Comptes IPTV  → [AccountsPage]
 ///   - 🎨 Personnalisation → [ThemeSettingsPage]
-///   - 🔄 Recharger la playlist (avec confirmation < 24h)
+///   - 📊 Statistiques playlist → [PlaylistManagementPage] (Recharger par compte)
 ///   - ℹ️ À propos (version + check MAJ in-app)
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -32,8 +27,6 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  bool _reloading = false;
-
   Future<void> _openAccounts() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AccountsPage()),
@@ -64,136 +57,16 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _reloadPlaylist() async {
-    if (_reloading) return;
-
-    // Confirmation si la playlist a moins de 24h (évite un téléchargement
-    // inutile coûteux en bande passante).
-    try {
-      final path = await PlaylistService.playlistPath();
-      final file = File(path);
-      if (await file.exists()) {
-        final age = DateTime.now().difference(await file.lastModified());
-        if (age.inHours < 24) {
-          final ok = await _confirmReload(age);
-          if (ok != true) return;
-        }
-      }
-    } catch (_) {
-      // Pas de playlist actuelle → on télécharge sans confirmation
-    }
-
-    if (!mounted) return;
-    setState(() => _reloading = true);
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final acc = await StreamAccountService.getCurrentAccount();
-      if (acc == null) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Aucun compte actif.')),
-        );
-        return;
-      }
-      final path = await PlaylistService.downloadCurrentM3U();
-      // Reload atomique : parse le nouveau M3U PUIS swap mémoire en une frame.
-      // Évite l'état vide intermédiaire qui causait la home blanche.
-      await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: const Text('✅ Playlist rechargée'),
-          backgroundColor: kAccentPrimary.withAlpha(180),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text('Échec du rechargement : $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _reloading = false);
-    }
-  }
-
-  Future<bool?> _confirmReload(Duration age) {
-    final h = age.inHours;
-    final m = age.inMinutes % 60;
-    final ageStr = h > 0 ? '${h}h${m > 0 ? ' ${m}min' : ''}' : '${m}min';
-    return showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Recharger la playlist ?'),
-        content: Text(
-          'Playlist récupérée il y a $ageStr.\n'
-          'Recharger quand même depuis le serveur ?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'Recharger',
-              style: TextStyle(color: kWarning, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
+  Future<void> _openAbout() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AboutPage()),
     );
   }
 
-  Future<void> _showAbout() async {
-    final info = await PackageInfo.fromPlatform();
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('AetherStream'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Version ${info.version}+${info.buildNumber}'),
-            const SizedBox(height: 8),
-            Text(
-              'Client IPTV Android — multi-comptes, EPG, replay, TMDB.',
-              style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant, fontSize: 12),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Fermer'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await _checkUpdates();
-            },
-            child: const Text('Vérifier les mises à jour'),
-          ),
-        ],
-      ),
+  Future<void> _openBackup() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const BackupPage()),
     );
-  }
-
-  Future<void> _checkUpdates() async {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(
-      const SnackBar(content: Text('🔍 Vérification des mises à jour…')),
-    );
-    final info = await UpdateService.checkForUpdate();
-    if (!mounted) return;
-    if (info == null) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Vous êtes à jour.')),
-      );
-      return;
-    }
-    await UpdateDialog.show(context, info);
   }
 
   @override
@@ -261,24 +134,18 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: Icons.bar_chart,
               accentColor: kAccentPrimary,
               title: 'Statistiques playlist',
-              subtitle: 'Détails films, séries, chaînes du compte actif',
+              subtitle: 'Stats par compte + recharger depuis ici',
               onTap: _openPlaylistStats,
             ),
+            const SizedBox(height: 8),
+            _SectionHeader(title: 'Sauvegarde'),
             _SettingsTile(
-              icon: Icons.refresh,
-              accentColor: kWarning,
-              title: 'Recharger la playlist',
-              subtitle: _reloading
-                  ? 'Téléchargement en cours…'
-                  : 'Forcer le téléchargement depuis le serveur',
-              trailing: _reloading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : null,
-              onTap: _reloadPlaylist,
+              icon: Icons.cloud_sync_outlined,
+              accentColor: kAccentSecondary,
+              title: 'Sauvegarde / Restauration',
+              subtitle:
+                  'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)',
+              onTap: _openBackup,
             ),
             const SizedBox(height: 8),
             _SectionHeader(title: 'Application'),
@@ -287,7 +154,7 @@ class _SettingsPageState extends State<SettingsPage> {
               accentColor: kAccentTertiary,
               title: 'À propos',
               subtitle: 'Version + vérification des mises à jour',
-              onTap: _showAbout,
+              onTap: _openAbout,
             ),
           ],
         ),
@@ -326,7 +193,6 @@ class _SettingsTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
-  final Widget? trailing;
 
   const _SettingsTile({
     required this.icon,
@@ -334,7 +200,6 @@ class _SettingsTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
-    this.trailing,
   });
 
   @override
@@ -389,7 +254,7 @@ class _SettingsTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                trailing ?? Icon(Icons.chevron_right, color: cs.onSurfaceVariant.withAlpha(160)),
+                Icon(Icons.chevron_right, color: cs.onSurfaceVariant.withAlpha(160)),
               ],
             ),
           ),

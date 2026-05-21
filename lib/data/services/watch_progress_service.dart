@@ -170,4 +170,15 @@ class WatchProgressService {
     version.value++;
     await _persist();
   }
+
+  /// Remplace l'intégralité du cache de progressions en une seule opération.
+  /// Utilisé par le BackupService (§10) pour l'import.
+  static Future<void> replaceAll(Map<String, WatchProgress> progresses) async {
+    await _ensureLoaded();
+    _cache
+      ..clear()
+      ..addAll(progresses);
+    version.value++;
+    await _persist();
+  }
 }

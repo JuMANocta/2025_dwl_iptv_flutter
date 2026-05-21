@@ -870,18 +870,27 @@ class _DetailsPageState extends State<DetailsPage> {
             ),
             const SizedBox(width: 8),
             // ── Télécharger ─────────────────────────────────────────────────
+            // §1L-c : fond plein + bordure cyan pour rester contrasté sur le
+            // dark theme (plus de bouton transparent quasi-invisible).
             Expanded(
               flex: 4,
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  foregroundColor: kAccentSecondary,
+                  side: BorderSide(color: kAccentSecondary.withAlpha(180), width: 1.5),
+                ),
                 onPressed: () => verifierEtTelecharger(
                     url: _selectedEntry.url,
                     nom: _selectedEntry.displayName,
                     context: context),
                 icon: const Icon(Icons.download_rounded),
-                label: Text(l10n.download.toUpperCase(),
-                    overflow: TextOverflow.ellipsis),
+                label: Text(
+                  l10n.download.toUpperCase(),
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             ),
             const SizedBox(width: 8),

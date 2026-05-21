@@ -45,10 +45,13 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Personnalisation'),
+        elevation: 0,
+        scrolledUnderElevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.restart_alt),
@@ -57,43 +60,62 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionLabel('Presets', cs),
-            _buildPresetsRow(cs),
-            _sectionLabel('Couleurs', cs),
-            _buildColorRow('Principale',  _config.primaryColor,
-                (c) => _apply(_config.copyWith(primaryColor: c))),
-            _buildColorRow('Accent',      _config.accentColor,
-                (c) => _apply(_config.copyWith(accentColor: c))),
-            _buildColorRow('Tertiaire',   _config.tertiaryColor,
-                (c) => _apply(_config.copyWith(tertiaryColor: c))),
-            _sectionLabel('Effets', cs),
-            _buildSlider(
-              label:     'Glow',
-              value:     _config.glowIntensity,
-              min:       0.0,
-              max:       1.0,
-              display:   _config.glowIntensity.toStringAsFixed(2),
-              onChanged: (v) => _apply(_config.copyWith(glowIntensity: v)),
-            ),
-            _buildSlider(
-              label:     'Arrondis',
-              value:     _config.borderRadius,
-              min:       0.0,
-              max:       16.0,
-              display:   '${_config.borderRadius.toStringAsFixed(0)}px',
-              onChanged: (v) => _apply(_config.copyWith(borderRadius: v)),
-            ),
-            _sectionLabel('Mode', cs),
-            _buildThemeModeRow(cs),
-            _sectionLabel('Aperçu', cs),
-            _buildPreviewCard(),
-            const SizedBox(height: 8),
-          ],
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: isDark ? null : cs.surface,
+          // Gradient piloté par la couleur principale courante → feedback live
+          // quand l'utilisateur change la teinte via les color rows.
+          gradient: isDark
+              ? RadialGradient(
+                  center: const Alignment(0, -1.5),
+                  radius: 1.4,
+                  colors: [
+                    _config.primaryColor.withAlpha(20),
+                    cs.surface,
+                  ],
+                )
+              : null,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionLabel('Presets', cs),
+              _buildPresetsRow(cs),
+              _sectionLabel('Couleurs', cs),
+              _buildColorRow('Principale',  _config.primaryColor,
+                  (c) => _apply(_config.copyWith(primaryColor: c))),
+              _buildColorRow('Accent',      _config.accentColor,
+                  (c) => _apply(_config.copyWith(accentColor: c))),
+              _buildColorRow('Tertiaire',   _config.tertiaryColor,
+                  (c) => _apply(_config.copyWith(tertiaryColor: c))),
+              _sectionLabel('Effets', cs),
+              _buildSlider(
+                label:     'Glow',
+                value:     _config.glowIntensity,
+                min:       0.0,
+                max:       1.0,
+                display:   _config.glowIntensity.toStringAsFixed(2),
+                onChanged: (v) => _apply(_config.copyWith(glowIntensity: v)),
+              ),
+              _buildSlider(
+                label:     'Arrondis',
+                value:     _config.borderRadius,
+                min:       0.0,
+                max:       16.0,
+                display:   '${_config.borderRadius.toStringAsFixed(0)}px',
+                onChanged: (v) => _apply(_config.copyWith(borderRadius: v)),
+              ),
+              _sectionLabel('Mode', cs),
+              _buildThemeModeRow(cs),
+              _sectionLabel('Aperçu', cs),
+              _buildPreviewCard(),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

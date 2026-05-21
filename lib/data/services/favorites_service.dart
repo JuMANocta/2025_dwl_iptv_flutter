@@ -134,4 +134,16 @@ class FavoritesService {
     version.value++;
     await _persist();
   }
+
+  /// Remplace l'intégralité des favoris en une seule opération.
+  /// Utilisé par le BackupService (§10) pour l'import. Une seule notification
+  /// `version++` + un seul persist, contrairement à clear()+add()×N.
+  static Future<void> replaceAll(Iterable<String> keys) async {
+    await _ensureLoaded();
+    _cache
+      ..clear()
+      ..addAll(keys);
+    version.value++;
+    await _persist();
+  }
 }

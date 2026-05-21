@@ -65,3 +65,4 @@ android/.gradle/
 /lib/iptv_exemple/
 /aetherstream.jks
 /android/key.properties
+android/build/
