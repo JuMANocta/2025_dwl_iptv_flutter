@@ -51,11 +51,17 @@ pubspec.lock
 analysis_options.yaml
 .flutter-plugins-depencies
 .flutter-plugins
-# windows/
+
+# Windows-specific ignores
+windows/flutter/ephemeral/
+windows/flutter/generated_plugins.cmake
+
+# Non-Windows platforms
 web/
 macos/
 linux/
 ios/
+
 # android/ — dossier commité (nécessaire pour CI)
 android/local.properties
 android/.gradle/
