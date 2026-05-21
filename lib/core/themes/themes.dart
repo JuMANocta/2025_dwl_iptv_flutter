@@ -18,11 +18,13 @@ ThemeData lightTheme(AppThemeConfig config) {
     ),
     extensions: [
       AetherThemeExtension(
-        primaryColor:  config.primaryColor,
-        accentColor:   config.accentColor,
-        tertiaryColor: config.tertiaryColor,
-        glowIntensity: config.glowIntensity,
-        borderRadius:  config.borderRadius,
+        primaryColor:    config.primaryColor,
+        accentColor:     config.accentColor,
+        tertiaryColor:   config.tertiaryColor,
+        glowIntensity:   config.glowIntensity,
+        borderRadius:    config.borderRadius,
+        // §3c-2 — focus TV : on s'aligne sur la couleur principale du thème.
+        focusGlowColor:  config.primaryColor,
       ),
     ],
     textTheme: const TextTheme(
@@ -97,11 +99,13 @@ ThemeData darkTheme(AppThemeConfig config) {
     ),
     extensions: [
       AetherThemeExtension(
-        primaryColor:  config.primaryColor,
-        accentColor:   config.accentColor,
-        tertiaryColor: config.tertiaryColor,
-        glowIntensity: config.glowIntensity,
-        borderRadius:  config.borderRadius,
+        primaryColor:    config.primaryColor,
+        accentColor:     config.accentColor,
+        tertiaryColor:   config.tertiaryColor,
+        glowIntensity:   config.glowIntensity,
+        borderRadius:    config.borderRadius,
+        // §3c-2 — focus TV : on s'aligne sur la couleur principale du thème.
+        focusGlowColor:  config.primaryColor,
       ),
     ],
     textTheme: const TextTheme(

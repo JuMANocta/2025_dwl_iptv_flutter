@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.5.2+37-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.6.0+39-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -239,7 +239,7 @@ lib/
 - [x] **Thème personnalisable in-app** — `AppThemeConfig` runtime + 5 presets + page Personnalisation
 - [x] **Catégories M3U** — chips de filtre par catégorie dans la recherche (films + séries)
 - [x] **Filmographie acteur DISPO** — badge sur les films présents dans la playlist + navigation `DetailsPage`
-- [x] **Android TV / Fire Stick** — APK universel + manifest Leanback (navigation D-pad en cours)
+- [x] **Android TV / Fire Stick** (v1.6.0) — Détection plateforme native, NavigationRail latéral, focus visible Matrix glow sur toutes les cards, action sheets en Dialog focusable, player entièrement contrôlable à la télécommande (OK / ← → / ↑ ↓ / MediaPlayPause / Menu), textScaler ×1.3 pour lisibilité 3 m+
 - [x] **Page d'accueil streaming-style** — carousels par catégorie + recherche in-place + navigation bottom bar
 - [x] **Favoris** — films, séries et chaînes (auto-ajout au play, long-press menu contextuel)
 - [x] **Reprise de lecture** — barre cyan sur les vignettes + bouton "Reprendre depuis X:XX"
@@ -252,6 +252,10 @@ lib/
 - [x] **Reprise cross-source** (v1.5.0) — DL local utilise `progressKey: entry.url` → reprise partagée entre streaming et lecture locale
 - [x] **Oublier la reprise** (v1.5.0) — action dédiée dans l'action sheet + long-press menu, snackbar UNDO 4 s, clear sur toutes les variants du groupe
 - [x] **Fix home vide après Recharger/Vider cache** (v1.5.0, 2026-05-20) — `ParsedPlaylistService.reloadFromDisk()` atomique : parse AVANT le swap mémoire, plus jamais d'état vide intermédiaire
+- [x] **Polish UI §1L** (v1.5.3, 2026-05-21) — champ recherche élargi sous l'AppBar avec arrow_back, gradient dynamique sur ThemeSettingsPage, bouton TÉLÉCHARGER opaque dans DetailsPage, stats playlist multi-comptes (expiration + connexions Xtream + recharger par compte), À propos en vraie page dédiée
+- [x] **Sauvegarde / Restauration §10** (v1.5.3, 2026-05-21) — fichier `.aether` chiffré AES-256-GCM + PBKDF2, mot de passe utilisateur, sauvegarde dans `/Download/AetherStream/` (survit à l'uninstall), restaure comptes IPTV + clé TMDB + thème + favoris + progression
+- [x] **Bumps Gradle / AGP / Kotlin** (v1.5.3, 2026-05-21) — Gradle 8.14, AGP 8.11.1, Kotlin 2.2.20 (post Flutter 3.44)
+- [x] **§3c Android TV / Fire Stick navigation complète** (v1.6.0, 2026-05-21) — détection native UiModeManager + Fire TV feature, NavigationRail latéral, FocusableCard (Matrix glow + scale 1.05) sur cards/comptes/downloads, action sheets en Dialog focusable, Player TV (Shortcuts/Actions sur OK/←→/↑↓/MediaPlayPause/Back/Menu), gestes tactiles désactivés en TV, textScaler ×1.3, touche Menu = équivalent long-press
 
 ### 🔒 Sécurité — Hardening 2026-05-19
 - [x] SSL bypass scoped aux serveurs IPTV utilisateur uniquement (TMDB / GitHub / XMLTV en HTTPS strict)
@@ -260,13 +264,6 @@ lib/
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
-- [ ] **Polish UI § 1L** — *(à venir)* :
-  - Refonte du champ de recherche (plus grand, ← retour au lieu de croix)
-  - Thème étendu jusqu'en haut sur toutes les sous-pages Paramètres (plus de bande noire)
-  - Plus aucun bouton transparent (audit + remplacement par `FilledButton` plein)
-  - Statistiques playlist enrichies (multi-comptes, temps restant avant expiration, âge cache)
-  - "Recharger la playlist" déplacé dans Statistiques (retiré de Paramètres)
-  - À propos transformé en vraie page dans le thème streaming-style
 - [ ] **Grille EPG XMLTV pour replay** — sélection programme dans la grille (en complément du picker manuel)
 - [ ] **Pistes audio + sous-titres** — sélection in-player (embarqués + sous-titres externes)
 - [ ] **File d'attente DL + WiFi-only** — sémaphore, reprise auto au retour réseau
@@ -274,7 +271,6 @@ lib/
 - [ ] **Background audio** — décision produit : continuer l'audio en arrière-plan via foreground service
 - [ ] **Cast Chromecast** — diffusion vers récepteurs Cast réseau local
 - [ ] **PIN / contrôle parental** — verrouillage app + masquage contenus adultes
-- [ ] **Export / Import comptes** — sauvegarde chiffrée pour migration entre devices
 - [ ] **Empty states + Pull-to-refresh** — UX unifiée sur toutes les pages
 - [ ] **Mode hors-ligne** — bascule auto sur fichiers locaux si pas de réseau
 - [ ] **Parsing M3U en isolate** — `compute()` pour ne plus bloquer le thread principal
@@ -282,7 +278,8 @@ lib/
 - [ ] **Hardening sécurité v2** — DownloadManagerService → SecureStorage, M3U cache → ApplicationSupport, debugPrint no-op en release
 - [ ] **Cleanup perfs** — Image.network avec cacheWidth/cacheHeight, memoization _HomeCard.build, helper launchPlayer factorisé
 - [ ] **Tests unitaires** — services purs (parser, filter, replay URL builder, etc.)
-- [ ] **Mise à jour des dépendances** — `media_kit_video` v2, `flutter_secure_storage` v10, `google_fonts` v8
+- [ ] **Mise à jour des dépendances** — `media_kit_video` v2, `flutter_secure_storage` v10, `google_fonts` v8, migration "Built-in Kotlin" (Flutter ≥ 3.44)
+- [ ] **Port Windows** — branche dédiée `windows-port` en cours (worktree parallèle)
 
 ---
 

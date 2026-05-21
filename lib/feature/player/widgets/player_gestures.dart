@@ -22,6 +22,10 @@ class PlayerGestures extends StatefulWidget {
   /// bouton de déverrouillage) sont ignorés. Pilote par [PlayerControls].
   final bool locked;
 
+  /// §3c-5 — Quand `true`, AUCUN geste n'est traité (cas Android TV : toutes
+  /// les interactions passent par la télécommande via [TvPlayerShortcuts]).
+  final bool disabled;
+
   const PlayerGestures({
     super.key,
     required this.player,
@@ -31,6 +35,7 @@ class PlayerGestures extends StatefulWidget {
     required this.onBrightnessChange,
     this.readVolume,
     this.locked = false,
+    this.disabled = false,
   });
 
   @override
@@ -125,6 +130,11 @@ class _PlayerGesturesState extends State<PlayerGestures> {
 
   @override
   Widget build(BuildContext context) {
+    // §3c-5 — Sur Android TV, on n'attache AUCUN handler : les actions
+    // viennent toutes du clavier/D-pad via TvPlayerShortcuts.
+    if (widget.disabled) {
+      return const SizedBox.shrink();
+    }
     // §1i — En mode lock, seul le tap reste actif (pour révéler le cadenas).
     final locked = widget.locked;
     return GestureDetector(

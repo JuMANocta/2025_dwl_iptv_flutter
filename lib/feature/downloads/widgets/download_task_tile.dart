@@ -10,6 +10,7 @@ import 'package:aetherStream/data/services/download_manager_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/widgets/info_row.dart';
 import 'package:aetherStream/widgets/terminal_download_dialog.dart';
+import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 
@@ -295,18 +296,26 @@ class DownloadTaskTile extends StatelessWidget {
     }
 
     final l10n = AppLocalizations.of(context)!;
-    return ListTile(
-      leading: _getLeadingIcon(context),
-      title: Text(titleText, maxLines: 2, overflow: TextOverflow.ellipsis),
-      subtitle: _buildSubtitle(context),
-      trailing: IconButton(
-        icon: const Icon(Icons.delete_forever_outlined),
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-        tooltip: l10n.deleteTooltip,
-        onPressed: () => _deleteTask(context),
-      ),
+    // §3c-3 — Wrap focus TV (decorateOnly = on garde le ListTile et son tap
+    // mobile/souris ; sur TV, la touche OK télécommande déclenche aussi le
+    // _handleTap).
+    return FocusableCard(
+      decorateOnly: true,
       onTap: () => _handleTap(context),
-      isThreeLine: task.status == DownloadStatus.downloading,
+      borderRadius: BorderRadius.circular(8),
+      child: ListTile(
+        leading: _getLeadingIcon(context),
+        title: Text(titleText, maxLines: 2, overflow: TextOverflow.ellipsis),
+        subtitle: _buildSubtitle(context),
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_forever_outlined),
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          tooltip: l10n.deleteTooltip,
+          onPressed: () => _deleteTask(context),
+        ),
+        onTap: () => _handleTap(context),
+        isThreeLine: task.status == DownloadStatus.downloading,
+      ),
     );
   }
 }

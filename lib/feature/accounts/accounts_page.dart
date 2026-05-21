@@ -6,6 +6,8 @@ import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:aetherStream/widgets/tv/focusable_card.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
 /// Page de gestion des comptes IPTV (§1g — refonte).
 ///
@@ -163,7 +165,8 @@ class _AccountsPageState extends State<AccountsPage> {
 
   /// Menu contextuel ⋯ par compte.
   Future<void> _showAccountMenu(StreamAccount acc) async {
-    await showModalBottomSheet<void>(
+    // §3c-4 — bifurque mobile/TV pour le menu ⋯ du compte.
+    await showAdaptiveActionSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (ctx) {
@@ -453,9 +456,16 @@ class _AccountTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    // §3c-3 — Wrap focus TV en decorateOnly : on garde la bordure isPriority
+    // (signale le compte actif) ET on ajoute par-dessus la bordure de focus
+    // glow Matrix quand l'élément est focused via télécommande.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Material(
+      child: FocusableCard(
+        decorateOnly: true,
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Material(
         color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
@@ -576,6 +586,7 @@ class _AccountTile extends StatelessWidget {
               ),
             ),
           ),
+        ),
         ),
       ),
     );

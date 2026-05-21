@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
+import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 
 // ─── Poster partagé ──────────────────────────────────────────────────────────
@@ -57,28 +58,24 @@ Widget _cardShell({
   required Gradient accentGradient,
 }) {
   final cs = Theme.of(context).colorScheme;
+  // §3c-3 — FocusableCard remplace Material+InkWell+ClipRRect : sur Android TV
+  // l'élément gagne un focus visible (bordure + glow + scale 1.05) au D-pad ;
+  // sur mobile, comportement neutre (juste un InkWell). Le splash custom
+  // kAccentPrimary disparaît (les ripples Material par défaut suffisent).
   return Padding(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-    child: Material(
-      color: cs.surfaceContainer,
+    child: FocusableCard(
+      onTap: onTap,
       borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        splashColor: kAccentPrimary.withAlpha(30),
-        highlightColor: kAccentPrimary.withAlpha(15),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Barre accent gauche (3 px, gradient de l'app)
-                Container(width: 3, decoration: BoxDecoration(gradient: accentGradient)),
-                Expanded(child: child),
-              ],
-            ),
-          ),
+      backgroundColor: cs.surfaceContainer,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Barre accent gauche (3 px, gradient de l'app)
+            Container(width: 3, decoration: BoxDecoration(gradient: accentGradient)),
+            Expanded(child: child),
+          ],
         ),
       ),
     ),

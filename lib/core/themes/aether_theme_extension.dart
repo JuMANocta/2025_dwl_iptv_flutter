@@ -11,6 +11,10 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
   final Color tertiaryColor;
   final double glowIntensity; // 0.0 → 1.0
   final double borderRadius;  // px
+  /// §3c-2 — couleur de la bordure/glow lorsqu'un widget reçoit le focus (Android TV).
+  final Color focusGlowColor;
+  /// §3c-2 — épaisseur de la bordure de focus (en px).
+  final double focusBorderWidth;
 
   const AetherThemeExtension({
     required this.primaryColor,
@@ -18,6 +22,8 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
     required this.tertiaryColor,
     required this.glowIntensity,
     required this.borderRadius,
+    required this.focusGlowColor,
+    this.focusBorderWidth = 2.0,
   });
 
   /// Bordure lumineuse avec glow optionnel.
@@ -57,23 +63,29 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
     Color? tertiaryColor,
     double? glowIntensity,
     double? borderRadius,
+    Color? focusGlowColor,
+    double? focusBorderWidth,
   }) => AetherThemeExtension(
-    primaryColor:  primaryColor  ?? this.primaryColor,
-    accentColor:   accentColor   ?? this.accentColor,
-    tertiaryColor: tertiaryColor ?? this.tertiaryColor,
-    glowIntensity: glowIntensity ?? this.glowIntensity,
-    borderRadius:  borderRadius  ?? this.borderRadius,
+    primaryColor:     primaryColor     ?? this.primaryColor,
+    accentColor:      accentColor      ?? this.accentColor,
+    tertiaryColor:    tertiaryColor    ?? this.tertiaryColor,
+    glowIntensity:    glowIntensity    ?? this.glowIntensity,
+    borderRadius:     borderRadius     ?? this.borderRadius,
+    focusGlowColor:   focusGlowColor   ?? this.focusGlowColor,
+    focusBorderWidth: focusBorderWidth ?? this.focusBorderWidth,
   );
 
   @override
   AetherThemeExtension lerp(AetherThemeExtension? other, double t) {
     if (other == null) return this;
     return AetherThemeExtension(
-      primaryColor:  Color.lerp(primaryColor, other.primaryColor, t)!,
-      accentColor:   Color.lerp(accentColor, other.accentColor, t)!,
-      tertiaryColor: Color.lerp(tertiaryColor, other.tertiaryColor, t)!,
-      glowIntensity: glowIntensity + (other.glowIntensity - glowIntensity) * t,
-      borderRadius:  borderRadius  + (other.borderRadius  - borderRadius)  * t,
+      primaryColor:     Color.lerp(primaryColor,    other.primaryColor,    t)!,
+      accentColor:      Color.lerp(accentColor,     other.accentColor,     t)!,
+      tertiaryColor:    Color.lerp(tertiaryColor,   other.tertiaryColor,   t)!,
+      glowIntensity:    glowIntensity    + (other.glowIntensity    - glowIntensity)    * t,
+      borderRadius:     borderRadius     + (other.borderRadius     - borderRadius)     * t,
+      focusGlowColor:   Color.lerp(focusGlowColor,  other.focusGlowColor,  t)!,
+      focusBorderWidth: focusBorderWidth + (other.focusBorderWidth - focusBorderWidth) * t,
     );
   }
 }

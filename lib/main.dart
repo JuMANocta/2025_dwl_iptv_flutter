@@ -21,6 +21,7 @@ import 'core/themes/theme_service.dart';
 import 'core/themes/app_theme_config.dart';
 import 'data/services/update_service.dart';
 import 'feature/update/update_dialog.dart';
+import 'core/utils/platform_tv.dart';
 
 /// Clé globale pour le Navigator, permettant une navigation programmatique sans `BuildContext`.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -32,6 +33,9 @@ void main() async {
   MediaKit.ensureInitialized();
   await MediaStore.ensureInitialized();
   MediaStore.appFolder = 'AetherStream';
+  // §3c-1 — détection plateforme TV (Android TV / Fire TV) avant tout build UI
+  // → permet aux widgets d'adapter focus/tailles synchrone via PlatformTv.isTv.
+  await PlatformTv.init();
   await StreamAccountService.migrateFromLegacyIfNeeded();
   await DownloadManagerService().init();
   await FavoritesService.init();
@@ -91,19 +95,32 @@ class MyApp extends StatelessWidget {
 
       // Le `builder` est utilisé ici pour superposer un bandeau "BETA"
       // uniquement en mode debug, sans interférer avec le widget `home`.
+      // §3c-7 — Sur TV : agrandit globalement la typo (×1.3) pour rester
+      // lisible à 3 m de distance sans casser les layouts mobile.
       builder: (context, child) {
         bool isDebug = false;
         assert(isDebug = true); // Astuce pour n'être `true` qu'en mode debug.
 
+        Widget wrapped = child ?? const SizedBox.shrink();
+
+        if (PlatformTv.isTv) {
+          final mq = MediaQuery.of(context);
+          final scaled = mq.textScaler.clamp(minScaleFactor: 1.3, maxScaleFactor: 1.3);
+          wrapped = MediaQuery(
+            data: mq.copyWith(textScaler: scaled),
+            child: wrapped,
+          );
+        }
+
         if (isDebug) {
-          return Banner(
+          wrapped = Banner(
             message: "BETA",
             location: BannerLocation.topEnd,
             color: kAccentPrimary,
-            child: child,
+            child: wrapped,
           );
         }
-        return child!;
+        return wrapped;
       },
       home: const _LaunchDecider(),
     );

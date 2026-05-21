@@ -19,6 +19,9 @@ import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
+import 'package:aetherStream/widgets/tv/focusable_card.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import 'package:aetherStream/core/utils/platform_tv.dart';
 
 /// Page d'accueil — design streaming premium (§1b phases 2 + 3, §navUX).
 ///
@@ -312,7 +315,13 @@ class _HomePageState extends State<HomePage> {
 
                   return PageView(
                     controller: _pageController,
-                    physics: const _FastPageScrollPhysics(),
+                    // §3c-7 — Sur TV : pas de swipe horizontal (la nav
+                    // Films/Séries/Chaînes se fait via les tabs cliquables
+                    // au D-pad, sinon le focus tombe dans le PageView qui
+                    // scrolle dans tous les sens).
+                    physics: PlatformTv.isTv
+                        ? const NeverScrollableScrollPhysics()
+                        : const _FastPageScrollPhysics(),
                     onPageChanged: (i) =>
                         setState(() => _currentIndex = i),
                     children: [
@@ -2051,7 +2060,8 @@ class _HomeCardState extends State<_HomeCard> {
     final entry = widget.versions.first;
     final favKey = FavoritesService.keyFor(entry);
 
-    await showModalBottomSheet<void>(
+    // §3c-4 — bifurque mobile/TV pour le menu contextuel long-press.
+    await showAdaptiveActionSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -2269,21 +2279,29 @@ class _HomeCardState extends State<_HomeCard> {
       M3uContentType.tv     => Icons.live_tv_outlined,
     };
 
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
+    // §3c-3 — Wrap focus TV (decorateOnly = la card garde son GestureDetector
+    // et son anim _pressed). Sur TV, la bordure glow + scale 1.05 sont gérés
+    // par FocusableCard ; sur mobile, FocusableCard est neutre.
+    return FocusableCard(
+      decorateOnly: true,
       onTap: _onTap,
       onLongPress: _onLongPress,
-      child: AnimatedScale(
-        scale: _pressed ? 0.95 : 1.0,
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOut,
-        child: SizedBox(
-          width: cardWidth,
-          child: AspectRatio(
-            aspectRatio: imageAspectRatio,
-            child: Container(
+      borderRadius: BorderRadius.circular(12),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: _onTap,
+        onLongPress: _onLongPress,
+        child: AnimatedScale(
+          scale: _pressed ? 0.95 : 1.0,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          child: SizedBox(
+            width: cardWidth,
+            child: AspectRatio(
+              aspectRatio: imageAspectRatio,
+              child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 color: cs.surfaceContainerHighest,
@@ -2384,6 +2402,7 @@ class _HomeCardState extends State<_HomeCard> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

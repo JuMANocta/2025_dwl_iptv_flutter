@@ -10,6 +10,8 @@ import 'player_controller.dart';
 import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
+import 'widgets/tv_player_shortcuts.dart';
+import '../../core/utils/platform_tv.dart';
 
 enum VideoSourceType {
   network,       // live / VOD réseau (et timeshift simple)
@@ -336,6 +338,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _ctrl.player.setVolume(_volume);
   }
 
+  // §3c-5 — Helpers consommés par TvPlayerShortcuts pour la nav télécommande.
+  void _togglePlayPause() {
+    _ctrl.player.playOrPause();
+    _showControls();
+  }
+
+  void _toggleControls() {
+    if (_controlsVisible) {
+      _hideTimer?.cancel();
+      if (mounted) setState(() => _controlsVisible = false);
+    } else {
+      _showControls();
+    }
+  }
+
   void _handleBrightnessChange(double delta) {
     _brightness = (_brightness + delta).clamp(0.0, 1.0);
     // fire-and-forget : dispose() restore de toute façon la luminosité d'origine.
@@ -375,56 +392,71 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (_hasError) return _buildErrorScreen();
 
+    // §3c-5 — Sur Android TV : wrap Shortcuts/Actions/Focus pour mapper le
+    // D-pad sur les actions du player. Sur mobile : pass-through neutre.
+    final isTv = PlatformTv.isTv;
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 1. Rendu vidéo plein écran.
-          Video(controller: _ctrl.videoController),
+      body: TvPlayerShortcuts(
+        handlers: PlayerActionHandlers(
+          togglePlayPause: _togglePlayPause,
+          seek: _handleSeek,
+          changeVolume: _handleVolumeChange,
+          toggleControls: _toggleControls,
+          exitPlayer: () => Navigator.of(context).pop(),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. Rendu vidéo plein écran.
+            Video(controller: _ctrl.videoController),
 
-          // 2. Couche gesture (transparente, capte tout sauf les contrôles).
-          PlayerGestures(
-            player: _ctrl.player,
-            onTap: _showControls,
-            onSeek: _handleSeek,
-            onVolumeChange: _handleVolumeChange,
-            onBrightnessChange: _handleBrightnessChange,
-            readVolume: () => _volume,
-            locked: _isLocked,
-          ),
-
-          // 3. Overlay contrôles.
-          PlayerControls(
-            player: _ctrl.player,
-            title: widget.title,
-            visible: _controlsVisible,
-            badgeType: widget.badgeType,
-            onBack: () => Navigator.of(context).pop(),
-            onInteraction: _showControls,
-            onLockChanged: (locked) => setState(() => _isLocked = locked),
-            onNextEpisode: widget.onNextEpisode,
-          ),
-
-          // §1i — Overlay buffering central : visible quand le player charge
-          // un nouveau segment HLS. Désactivé en mode lock pour ne pas troubler
-          // la zone cliquable du cadenas.
-          _BufferingOverlay(player: _ctrl.player, hidden: _isLocked),
-
-          // 4. Barre replay (uniquement en mode networkReplay).
-          if (widget.sourceType == VideoSourceType.networkReplay)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 90,
-              child: PlayerReplayBar(
-                player: _ctrl.player,
-                replayStart: widget.replayStart,
-                replayDuration: widget.replayDuration,
-                visible: _controlsVisible,
-              ),
+            // 2. Couche gesture (transparente, capte tout sauf les contrôles).
+            //    Désactivée sur TV — toutes les interactions passent par le
+            //    D-pad via TvPlayerShortcuts.
+            PlayerGestures(
+              player: _ctrl.player,
+              onTap: _showControls,
+              onSeek: _handleSeek,
+              onVolumeChange: _handleVolumeChange,
+              onBrightnessChange: _handleBrightnessChange,
+              readVolume: () => _volume,
+              locked: _isLocked,
+              disabled: isTv,
             ),
-        ],
+
+            // 3. Overlay contrôles.
+            PlayerControls(
+              player: _ctrl.player,
+              title: widget.title,
+              visible: _controlsVisible,
+              badgeType: widget.badgeType,
+              onBack: () => Navigator.of(context).pop(),
+              onInteraction: _showControls,
+              onLockChanged: (locked) => setState(() => _isLocked = locked),
+              onNextEpisode: widget.onNextEpisode,
+            ),
+
+            // §1i — Overlay buffering central : visible quand le player charge
+            // un nouveau segment HLS. Désactivé en mode lock pour ne pas troubler
+            // la zone cliquable du cadenas.
+            _BufferingOverlay(player: _ctrl.player, hidden: _isLocked),
+
+            // 4. Barre replay (uniquement en mode networkReplay).
+            if (widget.sourceType == VideoSourceType.networkReplay)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 90,
+                child: PlayerReplayBar(
+                  player: _ctrl.player,
+                  replayStart: widget.replayStart,
+                  replayDuration: widget.replayDuration,
+                  visible: _controlsVisible,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

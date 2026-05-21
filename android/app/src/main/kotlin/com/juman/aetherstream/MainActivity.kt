@@ -1,6 +1,9 @@
 package com.juman.aetherstream
 
+import android.app.UiModeManager
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -39,6 +42,30 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 } catch (e: Exception) {
                     result.error("INSTALL_ERROR", e.message, null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        // Canal de détection plateforme TV (§3c-1).
+        // Retourne true si on est sur Android TV (UiModeManager) OU sur Fire TV
+        // (feature flag Amazon spécifique).
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/tv_detection"
+        ).setMethodCallHandler { call, result ->
+            if (call.method == "isTv") {
+                try {
+                    val uiManager =
+                        getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+                    val isAndroidTv =
+                        uiManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+                    val isFireTv =
+                        packageManager.hasSystemFeature("amazon.hardware.fire_tv")
+                    result.success(isAndroidTv || isFireTv)
+                } catch (e: Exception) {
+                    result.error("TV_DETECT_ERROR", e.message, null)
                 }
             } else {
                 result.notImplemented()

@@ -18,13 +18,15 @@ import 'package:aetherStream/main.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/quality_buttons.dart';
 import 'package:aetherStream/widgets/epg_block.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sélecteur de version (films/séries avec plusieurs variantes)
 // ─────────────────────────────────────────────────────────────────────────────
 
 Future<M3uEntry?> showVersionSelector(BuildContext context, List<M3uEntry> versions) {
-  return showModalBottomSheet<M3uEntry>(
+  // §3c-4 — bifurque mobile/TV : bottom sheet sur mobile, Dialog centré sur TV.
+  return showAdaptiveActionSheet<M3uEntry>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
@@ -119,7 +121,8 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
     );
   }
 
-  await showModalBottomSheet(
+  // §3c-4 — bifurque mobile/TV.
+  await showAdaptiveActionSheet(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
@@ -283,7 +286,7 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
               title: Text("Replay${entry.catchupDays != null ? ' (${entry.catchupDays}j)' : ''}"),
               onTap: () async {
                 Navigator.pop(context);
-                final replayProgram = await showModalBottomSheet<ReplayProgram>(
+                final replayProgram = await showAdaptiveActionSheet<ReplayProgram>(
                   context: context,
                   showDragHandle: true,
                   isScrollControlled: true,
@@ -393,7 +396,8 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
     )));
   }
 
-  await showModalBottomSheet(
+  // §3c-4 — bifurque mobile/TV pour l'action sheet TV.
+  await showAdaptiveActionSheet(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
@@ -423,7 +427,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                   title: Text("Replay${entryForReplay.catchupDays != null ? ' (${entryForReplay.catchupDays}j)' : ''}"),
                   onTap: () async {
                     Navigator.pop(context);
-                    final replayProgram = await showModalBottomSheet<ReplayProgram>(
+                    final replayProgram = await showAdaptiveActionSheet<ReplayProgram>(
                       context: context,
                       showDragHandle: true,
                       isScrollControlled: true,
