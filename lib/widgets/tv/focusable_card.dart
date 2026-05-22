@@ -152,6 +152,22 @@ class _FocusableCardState extends State<FocusableCard> {
       autofocus: widget.autofocus,
       onFocusChange: (f) {
         if (mounted) setState(() => _focused = f);
+        // §3c-bis #7 — Si la card vient de prendre le focus sur TV, l'amener
+        // dans le viewport du ScrollView ancêtre (carrousel horizontal /
+        // ListView vertical). Sans ça, le focus peut se déplacer sur une card
+        // hors-écran → utilisateur perdu, scroll figé.
+        if (f && isTv) {
+          // post-frame pour laisser le layout se stabiliser avant le scroll.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            Scrollable.ensureVisible(
+              context,
+              alignment: 0.5,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+            );
+          });
+        }
       },
       onKeyEvent: _onKey,
       child: decorated,

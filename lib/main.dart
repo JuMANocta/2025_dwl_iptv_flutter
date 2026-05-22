@@ -111,11 +111,11 @@ class MyApp extends StatelessWidget {
 
       // Le `builder` est utilisé ici pour superposer un bandeau "BETA"
       // uniquement en mode debug, sans interférer avec le widget `home`.
-      // §3c-7 — Sur TV : agrandit légèrement la typo (×1.15) pour rester
-      // lisible à 3 m de distance sans casser les layouts mobile ni "écraser"
-      // l'écran. Valeur choisie en aval de §3c (initialement ×1.3 — trop
-      // agressif, donnait une impression "ultra-zoomé") ; alignée avec
-      // Netflix/Plex/YouTube TV qui tournent autour de 1.1–1.2.
+      // §3c-7 — Sur TV : texte en taille native (×1.0). Les itérations
+      // précédentes (×1.3 puis ×1.15) donnaient une sensation "ultra-zoomée"
+      // car la TV applique déjà sa propre densité physique généreuse
+      // (1080p à 3m = équivalent retina mobile). Si jamais le texte devenait
+      // trop petit sur certains modèles, ajuster ici (0.95 / 1.05).
       builder: (context, child) {
         bool isDebug = false;
         assert(isDebug = true); // Astuce pour n'être `true` qu'en mode debug.
@@ -124,7 +124,7 @@ class MyApp extends StatelessWidget {
 
         if (PlatformTv.isTv) {
           final mq = MediaQuery.of(context);
-          final scaled = mq.textScaler.clamp(minScaleFactor: 1.15, maxScaleFactor: 1.15);
+          final scaled = mq.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.0);
           wrapped = MediaQuery(
             data: mq.copyWith(textScaler: scaled),
             child: wrapped,

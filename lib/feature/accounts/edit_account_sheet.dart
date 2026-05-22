@@ -18,9 +18,14 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
   late TextEditingController _username;
   late TextEditingController _password;
   late PlaylistType _playlistType;
-  late TextEditingController _cookies;
   StreamAuthMode _mode = StreamAuthMode.completeUrl;
   bool _isPasswordObscured = true;
+
+  // §14a — Champ "cookies" retiré du formulaire (héritage mono-compte).
+  // Les providers IPTV modernes (Xtream / .m3u) n'en utilisent pas. Le champ
+  // reste dans le modèle [StreamAccount.cookies] + injection header dans
+  // `NetworkUtils.buildDio` pour la rétrocompat des anciens comptes stockés.
+  String? _legacyCookies;
 
   @override
   void initState() {
@@ -32,7 +37,7 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
     _username = TextEditingController(text: i?.username ?? '');
     _password = TextEditingController(text: i?.password ?? '');
     _playlistType = i?.playlistType ?? PlaylistType.m3u;
-    _cookies = TextEditingController(text: i?.cookies ?? '');
+    _legacyCookies = i?.cookies;
     _mode = i?.mode ?? StreamAuthMode.completeUrl;
   }
 
@@ -43,7 +48,6 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
     _baseUrl.dispose();
     _username.dispose();
     _password.dispose();
-    _cookies.dispose();
     super.dispose();
   }
 
@@ -60,7 +64,9 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
       username: _mode == StreamAuthMode.separate ? _username.text.trim() : null,
       password: _mode == StreamAuthMode.separate ? _password.text.trim() : null,
       playlistType: _playlistType,
-      cookies: _cookies.text.trim().isEmpty ? null : _cookies.text.trim(),
+      // §14a — Préserve le cookie existant pour les comptes legacy.
+      // Nouveaux comptes : null (champ retiré du form).
+      cookies: _legacyCookies,
     );
     Navigator.of(context).pop(acc);
   }
@@ -181,15 +187,6 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
                   _buildUrlModeFields(l10n)
                 else
                   _buildSeparateModeFields(l10n),
-                const SizedBox(height: 24),
-                TextFormField(
-                  controller: _cookies,
-                  decoration: InputDecoration(
-                    labelText: l10n.editAccountCookiesLabel,
-                    prefixIcon: const Icon(Icons.cookie_outlined),
-                    hintText: l10n.editAccountCookiesHint,
-                  ),
-                ),
                 const SizedBox(height: 32),
                 FilledButton.icon(
                   onPressed: _save,

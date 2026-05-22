@@ -35,6 +35,7 @@
         android:label="AetherStream"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
+        android:banner="@drawable/banner_tv"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="false"
         android:fullBackupContent="false"

@@ -94,6 +94,20 @@ class _HomePageState extends State<HomePage> {
     _ensureLoaded(initialPath: widget.initialData.path);
     StreamAccountService.currentAccountIdNotifier
         .addListener(_onCurrentAccountChanged);
+
+    // §3c-bis #3 — Auto-focus initial sur TV. Sans ça, le focus reste à la
+    // racine du tree (invisible) → l'utilisateur appuie au hasard pour trouver
+    // où il est. On déclenche `nextFocus()` après la 1re frame pour avancer
+    // sur le 1er widget focusable visible (NavigationRail → première card).
+    // 2 post-frames pour laisser le temps aux carrousels async d'être montés.
+    if (PlatformTv.isTv && !widget.searchMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          FocusScope.of(context).nextFocus();
+        });
+      });
+    }
   }
 
   void _onSearchFocusChanged() {
@@ -221,7 +235,10 @@ class _HomePageState extends State<HomePage> {
               )
             : null,
         title: null,
-        actions: widget.searchMode
+        // §3c-bis — Sur TV, l'icône ⚙️ est redondante avec la 4e destination
+        // "Paramètres" du NavigationRail latéral (et inaccessible au D-pad de
+        // toute façon, le focus traversal ne remonte pas dans l'AppBar).
+        actions: (widget.searchMode || PlatformTv.isTv)
             ? const []
             : [
                 IconButton(

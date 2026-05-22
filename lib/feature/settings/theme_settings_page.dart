@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
+import '../../core/utils/platform_tv.dart';
 
 class ThemeSettingsPage extends StatefulWidget {
   const ThemeSettingsPage({super.key});
@@ -98,6 +99,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                 value:     _config.glowIntensity,
                 min:       0.0,
                 max:       1.0,
+                step:      0.1,
                 display:   _config.glowIntensity.toStringAsFixed(2),
                 onChanged: (v) => _apply(_config.copyWith(glowIntensity: v)),
               ),
@@ -106,6 +108,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                 value:     _config.borderRadius,
                 min:       0.0,
                 max:       16.0,
+                step:      1.0,
                 display:   '${_config.borderRadius.toStringAsFixed(0)}px',
                 onChanged: (v) => _apply(_config.copyWith(borderRadius: v)),
               ),
@@ -304,9 +307,14 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
     required double value,
     required double min,
     required double max,
+    required double step,
     required String display,
     required ValueChanged<double> onChanged,
   }) {
+    // §3c-bis #5 — Sur TV, le `Slider` est inutilisable au D-pad : les flèches
+    // ← → bouffées par le thumb et la valeur saute par grands intervalles. On
+    // remplace par 2 IconButton focusables (− / +) avec un step fixe.
+    final isTv = PlatformTv.isTv;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
       child: Row(
@@ -315,19 +323,31 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
             width: 72,
             child: Text(label, style: const TextStyle(fontSize: 13)),
           ),
-          Expanded(
-            child: SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                activeTrackColor:   _config.primaryColor,
-                thumbColor:         _config.primaryColor,
-                inactiveTrackColor: _config.primaryColor.withAlpha(40),
-                overlayColor:       _config.primaryColor.withAlpha(30),
-                trackHeight: 2,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+          if (isTv)
+            Expanded(
+              child: _TvStepperRow(
+                value: value,
+                min: min,
+                max: max,
+                step: step,
+                color: _config.primaryColor,
+                onChanged: onChanged,
               ),
-              child: Slider(value: value, min: min, max: max, onChanged: onChanged),
+            )
+          else
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor:   _config.primaryColor,
+                  thumbColor:         _config.primaryColor,
+                  inactiveTrackColor: _config.primaryColor.withAlpha(40),
+                  overlayColor:       _config.primaryColor.withAlpha(30),
+                  trackHeight: 2,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                ),
+                child: Slider(value: value, min: min, max: max, onChanged: onChanged),
+              ),
             ),
-          ),
           SizedBox(
             width: 38,
             child: Text(
@@ -537,4 +557,77 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
     ),
     child: Icon(icon, color: color, size: 17),
   );
+}
+
+/// §3c-bis #5 — Stepper TV-friendly (focusable au D-pad) qui remplace le
+/// `Slider` quand `PlatformTv.isTv`. 2 IconButton − / + (focusables nativement)
+/// + barre de progression visuelle au milieu.
+class _TvStepperRow extends StatelessWidget {
+  final double value;
+  final double min;
+  final double max;
+  final double step;
+  final Color color;
+  final ValueChanged<double> onChanged;
+
+  const _TvStepperRow({
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.step,
+    required this.color,
+    required this.onChanged,
+  });
+
+  void _decrement() {
+    final next = (value - step).clamp(min, max);
+    if (next != value) onChanged(next);
+  }
+
+  void _increment() {
+    final next = (value + step).clamp(min, max);
+    if (next != value) onChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = ((value - min) / (max - min)).clamp(0.0, 1.0);
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.remove_circle_outline),
+          onPressed: value > min ? _decrement : null,
+          color: color,
+          tooltip: 'Diminuer',
+        ),
+        Expanded(
+          child: Container(
+            height: 4,
+            decoration: BoxDecoration(
+              color: color.withAlpha(40),
+              borderRadius: BorderRadius.circular(2),
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: ratio,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.add_circle_outline),
+          onPressed: value < max ? _increment : null,
+          color: color,
+          tooltip: 'Augmenter',
+        ),
+      ],
+    );
+  }
 }

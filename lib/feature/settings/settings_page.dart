@@ -7,6 +7,7 @@ import 'package:aetherStream/feature/settings/backup_page.dart';
 import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
 import 'package:aetherStream/feature/settings/xmltv_page.dart';
+import 'package:aetherStream/widgets/tv/focusable_card.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
 ///
@@ -208,54 +209,63 @@ class _SettingsTile extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-      child: Material(
-        color: cs.surfaceContainer,
+      // §3c-bis — Wrap FocusableCard (decorateOnly) pour afficher le focus
+      // Matrix glow au D-pad sur TV. Sans ce wrap, le user naviguait dans la
+      // liste sans aucun feedback visuel et avait l'impression d'être bloqué.
+      // Le tap mobile reste géré par l'InkWell interne (decorateOnly).
+      child: FocusableCard(
+        decorateOnly: true,
+        onTap: onTap,
         borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: onTap,
+        child: Material(
+          color: cs.surfaceContainer,
           borderRadius: BorderRadius.circular(14),
-          splashColor: accentColor.withAlpha(30),
-          highlightColor: accentColor.withAlpha(15),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: accentColor.withAlpha(30),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: accentColor.withAlpha(80), width: 1),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(14),
+            splashColor: accentColor.withAlpha(30),
+            highlightColor: accentColor.withAlpha(15),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: accentColor.withAlpha(30),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: accentColor.withAlpha(80), width: 1),
+                    ),
+                    child: Icon(icon, color: accentColor, size: 22),
                   ),
-                  child: Icon(icon, color: accentColor, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: cs.onSurface,
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                            color: cs.onSurface,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Icon(Icons.chevron_right, color: cs.onSurfaceVariant.withAlpha(160)),
-              ],
+                  Icon(Icons.chevron_right, color: cs.onSurfaceVariant.withAlpha(160)),
+                ],
+              ),
             ),
           ),
         ),
