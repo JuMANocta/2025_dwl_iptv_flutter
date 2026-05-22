@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
+import 'package:aetherStream/feature/settings/settings_page.dart';
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
 ///
@@ -66,6 +67,9 @@ class _MainNavigationState extends State<MainNavigation> {
             _TvNavigationRail(
               selectedIndex: _navIndex,
               onDestinationSelected: _onTap,
+              onOpenSettings: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              ),
             ),
             Expanded(child: stack),
           ],
@@ -107,13 +111,24 @@ class _MainNavigationState extends State<MainNavigation> {
 /// Reprend les 3 destinations (Accueil / Recherche / Téléchargements) avec
 /// un `NavigationRail` natif Flutter. Les destinations sont focusables au
 /// D-pad et l'AppBar de chaque page reste libre pour son propre contenu.
+///
+/// 4e destination "Paramètres" : sur TV, l'icône ⚙️ de l'AppBar de
+/// `HomePage` n'est pas focusable au D-pad (focus traversal du Flutter ne
+/// remonte pas naturellement dans l'AppBar transparente). On ajoute donc
+/// l'accès Settings comme dernier item du rail, qui pousse `SettingsPage`
+/// sans modifier `selectedIndex`.
+///
+/// `minWidth: 64` (au lieu du 80 par défaut) : sur TV avec textScaler ×1.3,
+/// le rail prenait trop de place horizontale. 64 reste lisible à 3m.
 class _TvNavigationRail extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
+  final VoidCallback onOpenSettings;
 
   const _TvNavigationRail({
     required this.selectedIndex,
     required this.onDestinationSelected,
+    required this.onOpenSettings,
   });
 
   @override
@@ -121,12 +136,23 @@ class _TvNavigationRail extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return NavigationRail(
       selectedIndex: selectedIndex,
-      onDestinationSelected: onDestinationSelected,
+      minWidth: 64,
       labelType: NavigationRailLabelType.all,
       backgroundColor: cs.surface,
       indicatorColor: cs.primary.withAlpha(40),
       selectedIconTheme: IconThemeData(color: cs.primary),
-      selectedLabelTextStyle: TextStyle(color: cs.primary, fontWeight: FontWeight.bold),
+      selectedLabelTextStyle:
+          TextStyle(color: cs.primary, fontWeight: FontWeight.bold),
+      onDestinationSelected: (i) {
+        if (i == 3) {
+          // §3c-bis — Paramètres : on ne modifie pas selectedIndex (resterait
+          // coincé sur "Paramètres" au retour). On pousse la route et on
+          // laisse l'index courant intact.
+          onOpenSettings();
+          return;
+        }
+        onDestinationSelected(i);
+      },
       destinations: const [
         NavigationRailDestination(
           icon: Icon(Icons.home_outlined),
@@ -141,6 +167,11 @@ class _TvNavigationRail extends StatelessWidget {
           icon: Icon(Icons.download_outlined),
           selectedIcon: Icon(Icons.download),
           label: Text('Téléchargements'),
+        ),
+        NavigationRailDestination(
+          icon: Icon(Icons.settings_outlined),
+          selectedIcon: Icon(Icons.settings),
+          label: Text('Paramètres'),
         ),
       ],
     );

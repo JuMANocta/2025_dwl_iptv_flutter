@@ -245,6 +245,12 @@ String _commonCss(AppThemeConfig theme) => '''
   }
   .pwd-toggle:hover { color: var(--primary); }
 
+  .divider {
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+    margin: 22px 0 18px;
+  }
+
   .success-icon {
     width: 96px;
     height: 96px;
@@ -354,6 +360,18 @@ String buildAccountForm({required AppThemeConfig theme, required String token}) 
         </div>
       </div>
 
+      <div class="divider"></div>
+
+      <div class="field">
+        <label for="tmdb">Clé TMDB <span style="opacity: .5; font-weight: 400; text-transform: none; letter-spacing: 0;">(optionnel)</span></label>
+        <textarea id="tmdb" autocomplete="off" placeholder="eyJhbGciOiJIUzI1NiJ9…"></textarea>
+        <div class="hint">
+          Optionnel — pour les affiches et synopsis. Récupère ton token sur
+          <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color: var(--accent);">themoviedb.org/settings/api</a>.
+          Tu pourras aussi l'ajouter plus tard depuis la TV.
+        </div>
+      </div>
+
       <button type="button" class="submit" id="submitBtn" onclick="submitForm()">Envoyer à la TV</button>
     </div>
 
@@ -390,9 +408,11 @@ String buildAccountForm({required AppThemeConfig theme, required String token}) 
     async function submitForm() {
       hideError();
       const btn = document.getElementById('submitBtn');
+      const tmdbVal = (document.getElementById('tmdb').value || '').trim();
       const payload = {
         mode,
         label: document.getElementById('label').value,
+        tmdb: tmdbVal,
       };
       if (mode === 'complete') {
         payload.url = document.getElementById('url').value;
@@ -404,6 +424,9 @@ String buildAccountForm({required AppThemeConfig theme, required String token}) 
         if (!payload.base.trim() || !payload.user.trim() || !payload.pass.trim()) {
           return showError('Tous les champs sont requis.');
         }
+      }
+      if (tmdbVal && tmdbVal.length < 20) {
+        return showError('Clé TMDB trop courte — vérifie le copier-coller (ou vide pour ignorer).');
       }
       btn.disabled = true;
       btn.textContent = 'Envoi en cours…';

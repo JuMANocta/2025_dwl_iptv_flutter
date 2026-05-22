@@ -380,10 +380,20 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _releaseWakelock();
     _ctrl.dispose();
     ScreenBrightness().resetScreenBrightness().catchError((_) {});
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
+    // §3c-bis — Sur TV, la sortie du player NE DOIT PAS basculer en portrait
+    // (la TV n'a pas de portrait, ça casserait toute l'UI). On reste en
+    // landscape. Sur mobile, on restaure le comportement portrait par défaut.
+    if (PlatformTv.isTv) {
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+    }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }

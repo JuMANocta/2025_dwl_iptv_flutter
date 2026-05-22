@@ -6,6 +6,8 @@ import 'package:aetherStream/data/services/pairing_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/data/services/tmdb_api_service.dart';
+import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
 import 'package:aetherStream/feature/pairing/pairing_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
@@ -103,6 +105,12 @@ class _AccountsPageState extends State<AccountsPage> {
     if (result is PairingAccountResult) {
       await StreamAccountService.saveAccount(result.account);
       await StreamAccountService.setCurrentAccount(result.account.id);
+      // §3c-8b — TMDB optionnel saisi dans le même form mobile.
+      final t = result.tmdbToken;
+      if (t != null && t.isNotEmpty) {
+        await TmdbApiService.saveApiKey(t);
+        TmdbService.resetInstance();
+      }
       if (!mounted) return;
       _priorityChanged = true;
       _refresh();

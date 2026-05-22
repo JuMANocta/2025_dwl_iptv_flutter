@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -17,6 +18,8 @@ import 'feature/onboarding/onboarding_page.dart';
 import 'feature/pairing/pairing_page.dart';
 import 'data/services/pairing_service.dart';
 import 'data/services/playlist_service.dart';
+import 'data/services/tmdb_api_service.dart';
+import 'data/services/tmdb_service.dart';
 import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
 import 'core/themes/theme_service.dart';
@@ -38,6 +41,17 @@ void main() async {
   // §3c-1 — détection plateforme TV (Android TV / Fire TV) avant tout build UI
   // → permet aux widgets d'adapter focus/tailles synchrone via PlatformTv.isTv.
   await PlatformTv.init();
+  // §3c-bis — Lock landscape global sur TV. La TV n'a pas de mode portrait
+  // physique, mais Flutter peut quand même appliquer `setPreferredOrientations`
+  // (utilisé par le PlayerPage à la sortie d'une lecture pour restaurer
+  // portrait sur mobile). Sans ce verrou, l'app peut se retrouver en portrait
+  // sur certains Fire Stick / Android TV émulateurs après une sortie player.
+  if (PlatformTv.isTv) {
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
   await StreamAccountService.migrateFromLegacyIfNeeded();
   await DownloadManagerService().init();
   await FavoritesService.init();
@@ -97,8 +111,11 @@ class MyApp extends StatelessWidget {
 
       // Le `builder` est utilisé ici pour superposer un bandeau "BETA"
       // uniquement en mode debug, sans interférer avec le widget `home`.
-      // §3c-7 — Sur TV : agrandit globalement la typo (×1.3) pour rester
-      // lisible à 3 m de distance sans casser les layouts mobile.
+      // §3c-7 — Sur TV : agrandit légèrement la typo (×1.15) pour rester
+      // lisible à 3 m de distance sans casser les layouts mobile ni "écraser"
+      // l'écran. Valeur choisie en aval de §3c (initialement ×1.3 — trop
+      // agressif, donnait une impression "ultra-zoomé") ; alignée avec
+      // Netflix/Plex/YouTube TV qui tournent autour de 1.1–1.2.
       builder: (context, child) {
         bool isDebug = false;
         assert(isDebug = true); // Astuce pour n'être `true` qu'en mode debug.
@@ -107,7 +124,7 @@ class MyApp extends StatelessWidget {
 
         if (PlatformTv.isTv) {
           final mq = MediaQuery.of(context);
-          final scaled = mq.textScaler.clamp(minScaleFactor: 1.3, maxScaleFactor: 1.3);
+          final scaled = mq.textScaler.clamp(minScaleFactor: 1.15, maxScaleFactor: 1.15);
           wrapped = MediaQuery(
             data: mq.copyWith(textScaler: scaled),
             child: wrapped,
@@ -230,6 +247,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     if (result is PairingAccountResult) {
       await StreamAccountService.saveAccount(result.account);
       await StreamAccountService.setCurrentAccount(result.account.id);
+      // §3c-8b — TMDB optionnel saisi dans le même form mobile.
+      final t = result.tmdbToken;
+      if (t != null && t.isNotEmpty) {
+        await TmdbApiService.saveApiKey(t);
+        TmdbService.resetInstance();
+      }
     }
     _retryInitialization();
   }

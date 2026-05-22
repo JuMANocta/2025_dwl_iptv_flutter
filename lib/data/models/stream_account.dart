@@ -40,12 +40,15 @@ class StreamAccount {
   }) : createdAt = createdAt ?? DateTime.now();
 
   /// Construit l’URL .m3u utilisable pour télécharger la playlist.
-  /// - En mode [completeUrl], renvoie `completeUrl`.
+  /// - En mode [completeUrl], renvoie `completeUrl` **normalisée**
+  ///   (`type=m3u` → `type=m3u_plus`, cf. [_ensureM3uPlus]).
   /// - En mode [separate], construit l’URL standard Xtream Codes :
-  ///   `{baseUrl}/get.php?username=<u>&password=<p>&type=m3u&output=ts`
+  ///   `{baseUrl}/get.php?username=<u>&password=<p>&type=m3u_plus&output=ts`
   String? buildM3uUrl() {
     if (mode == StreamAuthMode.completeUrl) {
-      return (completeUrl ?? '').trim().isEmpty ? null : completeUrl!.trim();
+      final raw = (completeUrl ?? '').trim();
+      if (raw.isEmpty) return null;
+      return _ensureM3uPlus(raw);
     }
 
     final b = (baseUrl ?? '').trim();
@@ -60,6 +63,31 @@ class StreamAccount {
 
     return "$base/get.php?username=$u&password=$p&type=$typeValue&output=ts";
 
+  }
+
+  /// Réécrit `?type=m3u` → `?type=m3u_plus` (et idem `&type=m3u`) dans une
+  /// URL Xtream Codes complète. Sans ça, le provider renvoie une playlist
+  /// "simple" sans les attributs EXTINF (`tvg-logo`, `tvg-id`, `group-title`)
+  /// → l'app n'a pas de vignettes, pas de groupage par catégorie, pas d'EPG
+  /// matching XMLTV. C'est le 1er piège quand un utilisateur colle une URL
+  /// fournie par défaut par son provider.
+  ///
+  /// Préserve `type=m3u_plus`, `type=simple` et tout autre type custom.
+  /// Robuste aux query strings malformées (fallback : retour de l'URL telle
+  /// quelle, l'app retombera juste sur "pas de vignettes").
+  static String _ensureM3uPlus(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final params = Map<String, String>.from(uri.queryParameters);
+      final t = params['type']?.toLowerCase().trim();
+      if (t == 'm3u') {
+        params['type'] = 'm3u_plus';
+        return uri.replace(queryParameters: params).toString();
+      }
+      return url;
+    } catch (_) {
+      return url;
+    }
   }
 
   String? buildPlayerApiUrl() {
