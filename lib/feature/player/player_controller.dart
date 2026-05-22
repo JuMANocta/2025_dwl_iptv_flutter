@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -11,7 +12,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 ///
 /// **A/V sync** : libmpv resync l'audio sur la vidéo par défaut. On force
 /// `video-sync=display-resample` (resample audio pour caler sur le refresh
-/// de l'écran) qui donne le meilleur résultat sur Android. `cache-pause=no`
+/// de l'écran) qui donne le meilleur résultat sur Android et Windows. `cache-pause=no`
 /// évite que mpv mette en pause sur de petits creux de buffer, ce qui
 /// désynchronise les dialogues sur les flux HLS un peu instables.
 class AetherPlayerController {
@@ -31,17 +32,19 @@ class AetherPlayerController {
       ),
     );
     videoController = VideoController(player);
-    _applyAudioTuning();
+    _applyTuning();
     // Boost initial : appliqué après que mpv ait pris la propriété volume-max.
     player.setVolume(initialVolume);
   }
 
-  /// Configure mpv pour un volume amplifiable et une meilleure synchro A/V.
-  /// Best-effort : on ignore les erreurs (build natif sans accès aux property).
-  Future<void> _applyAudioTuning() async {
+  /// Configure mpv pour un volume amplifiable, une meilleure synchro A/V
+  /// et l'accélération matérielle sur Windows.
+  Future<void> _applyTuning() async {
     try {
       if (player.platform is! NativePlayer) return;
       final np = player.platform as NativePlayer;
+
+      // ── Audio & Sync ──────────────────────────────────────────────────────
       // Boost volume jusqu'à 200% (au-dessus de 100% = amplification logicielle).
       await np.setProperty('volume-max', '200');
       // Préserve la hauteur des voix quand on accélère/ralentit la lecture.
@@ -53,9 +56,26 @@ class AetherPlayerController {
       await np.setProperty('cache-pause', 'no');
       // Latence audio plus serrée → meilleure synchro lèvres.
       await np.setProperty('audio-buffer', '0.2');
+
+      // ── Windows Specific ──────────────────────────────────────────────────
+      if (Platform.isWindows) {
+        // Accélération matérielle (D3D11VA / DXVA2).
+        // 'auto-safe' utilise le hardware si possible, fallback software sinon.
+        await np.setProperty('hwdec', 'auto-safe');
+        // Sortie vidéo Direct3D11 pour une meilleure intégration Windows.
+        await np.setProperty('vo', 'gpu');
+        await np.setProperty('gpu-api', 'd3d11');
+      }
     } catch (e) {
-      debugPrint('⚠️ AetherPlayerController: audio tuning échoué — $e');
+      debugPrint('⚠️ AetherPlayerController: tuning échoué — $e');
     }
+  }
+
+  /// Configure mpv pour un volume amplifiable et une meilleure synchro A/V.
+  /// Best-effort : on ignore les erreurs (build natif sans accès aux property).
+  @Deprecated('Utilisez _applyTuning')
+  Future<void> _applyAudioTuning() async {
+    await _applyTuning();
   }
 
   /// Ouvre un flux réseau (live, VOD, timeshift).
