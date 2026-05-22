@@ -3,6 +3,7 @@ import 'widgets/download_task_tile.dart';
 import 'package:aetherStream/data/models/download_task.dart';
 import 'package:aetherStream/data/services/download_manager_service.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:aetherStream/widgets/empty_state.dart';
 
 
 class DownloadsPage extends StatefulWidget {
@@ -15,6 +16,10 @@ class DownloadsPage extends StatefulWidget {
 class _DownloadsPageState extends State<DownloadsPage> {
   final DownloadManagerService _downloadManager = DownloadManagerService();
 
+  /// §12-c — Pull-to-refresh : recharge les tâches depuis disque + réconcilie
+  /// les statuts (utile si une tâche s'est figée en `downloading` après crash).
+  Future<void> _refresh() => _downloadManager.init();
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -25,28 +30,40 @@ class _DownloadsPageState extends State<DownloadsPage> {
       body: ValueListenableBuilder<List<DownloadTask>>(
         valueListenable: _downloadManager.tasksNotifier,
         builder: (context, tasks, child) {
+          // §12-a — Empty state unifié.
           if (tasks.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+            // Le RefreshIndicator a besoin d'un Scrollable pour fonctionner,
+            // donc on emballe l'empty state dans une ListView qui prend toute
+            // la hauteur disponible.
+            return RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: [
-                  Icon(Icons.download_done, size: 80, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  const SizedBox(height: 16),
-                  Text(
-                    l10n.noDownloads,
-                    style: TextStyle(fontSize: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.7,
+                    child: EmptyState(
+                      icon: Icons.download_done,
+                      title: l10n.noDownloads,
+                      subtitle:
+                          'Lance un téléchargement depuis la fiche d\'un film ou d\'une série — il apparaîtra ici avec sa progression.',
+                    ),
                   ),
                 ],
               ),
             );
           }
 
-          return ListView.builder(
-            itemCount: tasks.length,
-            itemBuilder: (context, index) {
-              final task = tasks[index];
-              return DownloadTaskTile(task: task);
-            },
+          return RefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: tasks.length,
+              itemBuilder: (context, index) {
+                final task = tasks[index];
+                return DownloadTaskTile(task: task);
+              },
+            ),
           );
         },
       ),

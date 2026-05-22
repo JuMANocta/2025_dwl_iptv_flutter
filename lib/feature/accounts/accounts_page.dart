@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
+import 'package:aetherStream/data/services/pairing_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
+import 'package:aetherStream/feature/pairing/pairing_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
@@ -80,6 +84,73 @@ class _AccountsPageState extends State<AccountsPage> {
       if (!mounted) return;
       _priorityChanged = true;
       _refresh();
+    }
+  }
+
+  /// §3c-8 — Ajout d'un compte via pairing QR mobile→TV.
+  Future<void> _openPairing() async {
+    final result = await Navigator.of(context).push<PairingResult>(
+      MaterialPageRoute(
+        builder: (_) => PairingPage(
+          kind: PairingKind.account,
+          onManualFallback: () {
+            Navigator.of(context).pop();
+            _openEditor();
+          },
+        ),
+      ),
+    );
+    if (result is PairingAccountResult) {
+      await StreamAccountService.saveAccount(result.account);
+      await StreamAccountService.setCurrentAccount(result.account.id);
+      if (!mounted) return;
+      _priorityChanged = true;
+      _refresh();
+    }
+  }
+
+  /// §3c-8 — Bifurcation du bouton "+" sur TV : mobile vs télécommande.
+  Future<void> _onAddTap() async {
+    if (!PlatformTv.isTv) {
+      _openEditor();
+      return;
+    }
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Comment ajouter une playlist ?'),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              autofocus: true,
+              leading: Icon(Icons.phone_iphone, color: kAccentPrimary),
+              title: const Text('Depuis mon téléphone'),
+              subtitle: const Text('Recommandé — QR + saisie confortable'),
+              onTap: () => Navigator.of(ctx).pop('pairing'),
+            ),
+            ListTile(
+              leading: Icon(Icons.keyboard_alt_outlined,
+                  color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+              title: const Text('Avec la télécommande'),
+              subtitle: const Text('Saisie touche par touche'),
+              onTap: () => Navigator.of(ctx).pop('manual'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+        ],
+      ),
+    );
+    if (choice == 'pairing') {
+      await _openPairing();
+    } else if (choice == 'manual') {
+      await _openEditor();
     }
   }
 
@@ -245,7 +316,7 @@ class _AccountsPageState extends State<AccountsPage> {
               return const SizedBox.shrink();
             }
             return FloatingActionButton.extended(
-              onPressed: () => _openEditor(),
+              onPressed: _onAddTap,
               icon: const Icon(Icons.add),
               label: const Text('Ajouter'),
               backgroundColor: kAccentPrimary,
@@ -303,58 +374,18 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Widget _buildEmptyState(ColorScheme cs) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    kAccentPrimary.withAlpha(50),
-                    kAccentPrimary.withAlpha(10),
-                  ],
-                ),
-                border: Border.all(
-                    color: kAccentPrimary.withAlpha(160), width: 2),
-              ),
-              child: Icon(Icons.account_circle_outlined,
-                  color: kAccentPrimary, size: 56),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Aucun compte configuré',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: cs.onSurface),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Ajoute une URL M3U complète ou un compte Xtream Codes pour commencer.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: cs.onSurfaceVariant, height: 1.5),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () => _openEditor(),
-              icon: const Icon(Icons.add),
-              label: const Text('Ajouter une playlist'),
-              style: FilledButton.styleFrom(
-                backgroundColor: kAccentPrimary,
-                foregroundColor: Colors.black,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              ),
-            ),
-          ],
-        ),
-      ),
+    // §12-b — Widget EmptyState unifié.
+    // §3c-8 — Sur TV, CTA = pairing QR mobile (la saisie au D-pad est piégeante).
+    final isTv = PlatformTv.isTv;
+    return EmptyState(
+      icon: isTv ? Icons.qr_code_2 : Icons.account_circle_outlined,
+      title: 'Aucun compte configuré',
+      subtitle: isTv
+          ? 'Scanne le QR code avec ton téléphone pour configurer ta playlist sans avoir à taper au D-pad.'
+          : 'Ajoute une URL M3U complète ou un compte Xtream Codes pour commencer à streamer.',
+      ctaLabel: isTv ? 'Configurer depuis mon téléphone' : 'Ajouter une playlist',
+      ctaIcon: isTv ? Icons.phone_iphone : Icons.add,
+      onCtaTap: isTv ? _openPairing : () => _openEditor(),
     );
   }
 

@@ -14,6 +14,8 @@ import 'data/services/last_watched_channel_service.dart';
 import 'core/navigation/main_navigation.dart';
 import 'feature/accounts/accounts_page.dart';
 import 'feature/onboarding/onboarding_page.dart';
+import 'feature/pairing/pairing_page.dart';
+import 'data/services/pairing_service.dart';
 import 'data/services/playlist_service.dart';
 import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
@@ -211,6 +213,27 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     _retryInitialization();
   }
 
+  /// §3c-8 — Sur TV : ouvre directement le pairing QR (saisie au D-pad
+  /// impossible). En cas de succès, sauvegarde le compte et relance _init.
+  Future<void> _openPairingTv() async {
+    final result = await Navigator.of(context).push<PairingResult>(
+      MaterialPageRoute(
+        builder: (_) => PairingPage(
+          kind: PairingKind.account,
+          onManualFallback: () {
+            Navigator.of(context).pop();
+            _recheckAfterSettings();
+          },
+        ),
+      ),
+    );
+    if (result is PairingAccountResult) {
+      await StreamAccountService.saveAccount(result.account);
+      await StreamAccountService.setCurrentAccount(result.account.id);
+    }
+    _retryInitialization();
+  }
+
   @override
   Widget build(BuildContext context) {
     // §1i — Onboarding affiché en priorité au tout premier lancement.
@@ -258,15 +281,49 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         if (data != null) {
           return MainNavigation(initialData: data);
         }
-        return Scaffold(appBar: AppBar(title: const Text('AetherStream')), body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.settings, size: 64),
-          const SizedBox(height: 16),
-          const Text('Aucun compte configuré', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          const Text('Ajoutez un compte via la roue crantée pour commencer.', textAlign: TextAlign.center),
-          const SizedBox(height: 24),
-          FilledButton.icon(onPressed: _recheckAfterSettings, icon: const Icon(Icons.settings), label: const Text('Configurer les comptes')),
-        ]))));
+        // §3c-8 — Sur TV, pas de compte = on propose direct le pairing QR
+        // (la saisie au D-pad est inutilisable). Sur mobile, on garde le
+        // raccourci historique "Configurer les comptes".
+        final isTv = PlatformTv.isTv;
+        return Scaffold(
+          appBar: AppBar(title: const Text('AetherStream')),
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(isTv ? Icons.qr_code_2 : Icons.settings, size: 64),
+                  const SizedBox(height: 16),
+                  const Text('Aucun compte configuré',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Text(
+                    isTv
+                        ? 'Scanne un QR code avec ton téléphone pour ajouter une playlist sans avoir à taper.'
+                        : 'Ajoutez un compte via la roue crantée pour commencer.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    onPressed: isTv ? _openPairingTv : _recheckAfterSettings,
+                    icon: Icon(isTv ? Icons.phone_iphone : Icons.settings),
+                    label: Text(isTv
+                        ? 'Configurer depuis mon téléphone'
+                        : 'Configurer les comptes'),
+                  ),
+                  if (isTv) ...[
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _recheckAfterSettings,
+                      child: const Text('Saisir manuellement'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
       },
     );
   }

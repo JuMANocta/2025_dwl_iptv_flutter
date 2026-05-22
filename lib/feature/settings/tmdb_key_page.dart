@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/platform_tv.dart';
+import 'package:aetherStream/data/services/pairing_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
+import 'package:aetherStream/feature/pairing/pairing_page.dart';
 
 /// Sous-page Settings (§1g) : gestion de la clé API TMDB.
 ///
@@ -22,11 +25,45 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
   bool _isKeyVisible = false;
   bool _hasSavedKey = false;
   bool _loading = true;
+  // §3c-8 — Sur TV, le TextField est replié derrière un bouton "avancé"
+  // pour éviter le piège de saisie au D-pad d'un Bearer JWT de 220 chars.
+  bool _showAdvancedManual = false;
 
   @override
   void initState() {
     super.initState();
     _loadKey();
+  }
+
+  /// §3c-8 — Pairing QR mobile→TV pour coller la clé TMDB depuis le téléphone.
+  Future<void> _openPairing() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await Navigator.of(context).push<PairingResult>(
+      MaterialPageRoute(
+        builder: (_) => PairingPage(
+          kind: PairingKind.tmdb,
+          onManualFallback: () {
+            Navigator.of(context).pop();
+            setState(() => _showAdvancedManual = true);
+          },
+        ),
+      ),
+    );
+    if (result is PairingTmdbResult) {
+      await TmdbApiService.saveApiKey(result.token);
+      TmdbService.resetInstance();
+      if (!mounted) return;
+      setState(() {
+        _keyController.text = result.token;
+        _hasSavedKey = true;
+      });
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('✅ TMDb connecté'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   Future<void> _loadKey() async {
@@ -90,6 +127,11 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isTv = PlatformTv.isTv;
+    // §3c-8 — Sur TV, on cache le TextField par défaut (le coller au D-pad
+    // d'un Bearer JWT 220 chars = ~8 minutes pour rien). Affiché seulement
+    // si l'utilisateur choisit explicitement "Saisir manuellement".
+    final showManualField = !isTv || _showAdvancedManual || _hasSavedKey;
 
     return Scaffold(
       appBar: AppBar(
@@ -121,87 +163,188 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _StatusBanner(active: _hasSavedKey),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Bearer Token (v4 API)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
-                        color: cs.onSurfaceVariant,
+                    if (isTv) ...[
+                      const SizedBox(height: 20),
+                      _TvPairingCta(
+                        hasKey: _hasSavedKey,
+                        onTap: _openPairing,
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _keyController,
-                      obscureText: !_isKeyVisible,
-                      readOnly: _hasSavedKey,
-                      style: TextStyle(
-                        color: _hasSavedKey ? kAccentSecondary : cs.onSurface,
-                        fontWeight: _hasSavedKey
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        fontFamily: 'monospace',
-                        fontSize: 13,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Coller ici votre token v4…',
-                        filled: true,
-                        fillColor: cs.surfaceContainerHighest,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none,
-                        ),
-                        suffixIcon: IconButton(
-                          icon: Icon(_isKeyVisible
-                              ? Icons.visibility_off
-                              : Icons.visibility),
-                          onPressed: () => setState(
-                              () => _isKeyVisible = !_isKeyVisible),
-                          tooltip: _isKeyVisible
-                              ? 'Masquer'
-                              : 'Afficher',
+                    ],
+                    if (showManualField) ...[
+                      const SizedBox(height: 20),
+                      Text(
+                        isTv && !_hasSavedKey
+                            ? 'Saisie manuelle (avancée)'
+                            : 'Bearer Token (v4 API)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                          color: cs.onSurfaceVariant,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        if (_hasSavedKey)
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _delete,
-                              icon: const Icon(Icons.delete_outline),
-                              label: const Text('Supprimer'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 14),
-                              ),
-                            ),
-                          )
-                        else
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: _save,
-                              icon: const Icon(Icons.save),
-                              label: const Text('Sauvegarder'),
-                              style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 14),
-                                backgroundColor: kAccentPrimary,
-                                foregroundColor: Colors.black,
-                              ),
-                            ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _keyController,
+                        obscureText: !_isKeyVisible,
+                        readOnly: _hasSavedKey,
+                        style: TextStyle(
+                          color: _hasSavedKey ? kAccentSecondary : cs.onSurface,
+                          fontWeight: _hasSavedKey
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          fontFamily: 'monospace',
+                          fontSize: 13,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Coller ici votre token v4…',
+                          filled: true,
+                          fillColor: cs.surfaceContainerHighest,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide.none,
                           ),
-                      ],
-                    ),
+                          suffixIcon: IconButton(
+                            icon: Icon(_isKeyVisible
+                                ? Icons.visibility_off
+                                : Icons.visibility),
+                            onPressed: () => setState(
+                                () => _isKeyVisible = !_isKeyVisible),
+                            tooltip: _isKeyVisible
+                                ? 'Masquer'
+                                : 'Afficher',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          if (_hasSavedKey)
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _delete,
+                                icon: const Icon(Icons.delete_outline),
+                                label: const Text('Supprimer'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 14),
+                                ),
+                              ),
+                            )
+                          else
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: _save,
+                                icon: const Icon(Icons.save),
+                                label: const Text('Sauvegarder'),
+                                style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 14),
+                                  backgroundColor: kAccentPrimary,
+                                  foregroundColor: Colors.black,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ] else if (isTv && !_hasSavedKey) ...[
+                      const SizedBox(height: 12),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: () =>
+                              setState(() => _showAdvancedManual = true),
+                          icon: const Icon(Icons.keyboard_alt_outlined, size: 18),
+                          label: const Text(
+                              'Saisir manuellement à la télécommande'),
+                          style: TextButton.styleFrom(
+                              foregroundColor: cs.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 32),
                     _InfoBlock(onOpenTmdb: _openTmdbSignup),
                   ],
                 ),
               ),
+      ),
+    );
+  }
+}
+
+/// §3c-8 — Card "Configurer depuis mobile" affichée en tête sur TV.
+class _TvPairingCta extends StatelessWidget {
+  final bool hasKey;
+  final VoidCallback onTap;
+  const _TvPairingCta({required this.hasKey, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainer,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kAccentPrimary.withAlpha(140), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: kAccentPrimary.withAlpha(50),
+                blurRadius: 18,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: kAccentPrimary.withAlpha(40),
+                  borderRadius: BorderRadius.circular(12),
+                  border:
+                      Border.all(color: kAccentPrimary.withAlpha(150), width: 1),
+                ),
+                child:
+                    Icon(Icons.phone_iphone, color: kAccentPrimary, size: 26),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hasKey
+                          ? 'Remplacer depuis mon téléphone'
+                          : 'Configurer depuis mon téléphone',
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Scanne un QR et colle le Bearer Token côté mobile',
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+            ],
+          ),
+        ),
       ),
     );
   }

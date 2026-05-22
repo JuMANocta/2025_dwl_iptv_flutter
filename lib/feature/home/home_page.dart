@@ -19,6 +19,7 @@ import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
+import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
@@ -2453,20 +2454,11 @@ class _SearchView extends StatelessWidget {
     final totalGroups = filmsHits.length + seriesHits.length + tvHits.length;
 
     if (totalGroups == 0) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 80),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 56, color: cs.onSurfaceVariant.withAlpha(120)),
-            const SizedBox(height: 12),
-            Text(
-              'Aucun résultat pour "$query"',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
-            ),
-          ],
-        ),
+      // §12-b — Empty state unifié pour la recherche.
+      return EmptyState(
+        icon: Icons.search_off,
+        title: 'Aucun résultat',
+        subtitle: 'Rien à afficher pour "$query". Essaie un autre mot-clé ou vérifie l\'orthographe.',
       );
     }
 

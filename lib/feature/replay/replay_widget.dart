@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/utils/log_sanitizer.dart';
 import '../../data/services/replay_service.dart';
+import '../../widgets/empty_state.dart';
 
 /// Feuille affichant les programmes en replay pour un stream donné.
 class ReplaySheet extends StatelessWidget {
@@ -33,9 +34,12 @@ class ReplaySheet extends StatelessWidget {
           final programs = snap.data ?? [];
           debugPrint('ReplaySheet FutureBuilder: Nombre de programmes reçus: ${programs.length}');
           if (programs.isEmpty) {
-            return const Padding(
-              padding: EdgeInsets.all(24.0),
-              child: Center(child: Text('Aucun replay disponible.')),
+            // §12-b — Empty state unifié.
+            return const EmptyState(
+              icon: Icons.replay_circle_filled,
+              title: 'Aucun replay disponible',
+              subtitle:
+                  'Cette chaîne n\'expose pas d\'EPG Xtream ou son timeshift est désactivé. Essaie le picker manuel depuis l\'action sheet TV.',
             );
           }
           return ListView.separated(

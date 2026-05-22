@@ -39,6 +39,7 @@ dependencies:
   xml: ^6.5.0                       # parsing XMLTV (EPG)
   cryptography: ^2.7.0              # AES-256-GCM + PBKDF2 (sauvegarde §10)
   file_picker: ^8.1.7               # sélection fichier .aether (import §10)
+  qr_flutter: ^4.1.0                # génération QR code (§3c-8 pairing mobile→TV)
 
 dev_dependencies:
   flutter_test:
