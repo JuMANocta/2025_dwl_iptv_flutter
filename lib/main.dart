@@ -17,6 +17,7 @@ import 'data/services/expiration_alert_service.dart';
 import 'feature/accounts/accounts_page.dart';
 import 'feature/accounts/expiration_alert_dialog.dart';
 import 'feature/onboarding/onboarding_page.dart';
+import 'feature/settings/backup_restore_flow.dart';
 import 'feature/pairing/pairing_page.dart';
 import 'data/services/pairing_service.dart';
 import 'data/services/playlist_service.dart';
@@ -175,7 +176,13 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   }
 
   void _finishOnboarding() {
-    setState(() => _showOnboarding = false);
+    setState(() {
+      _showOnboarding = false;
+      // §restore — Une restauration `.aether` a pu créer des comptes pendant
+      // l'onboarding. On relance l'init pour les charger (sinon l'écran
+      // "aucun compte configuré" s'afficherait malgré la restauration).
+      _initFuture = _initializeApp();
+    });
   }
 
   /// Valide la configuration initiale et retourne les données du compte actif (null = pas de compte).
@@ -265,6 +272,13 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     setState(() {
       _initFuture = _initializeApp();
     });
+  }
+
+  /// §restore — Restaure une sauvegarde `.aether` depuis l'écran "aucun compte"
+  /// (cas : onboarding passé sans config). Recharge l'app au succès.
+  Future<void> _restoreFromBackup() async {
+    final restored = await runBackupImportFlow(context);
+    if (restored && mounted) _retryInitialization();
   }
 
   /// Navigue vers les paramètres et force une réinitialisation au retour.
@@ -377,6 +391,13 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
                     label: Text(isTv
                         ? 'Configurer depuis mon téléphone'
                         : 'Configurer les comptes'),
+                  ),
+                  // §restore — Récupérer une sauvegarde .aether existante.
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _restoreFromBackup,
+                    icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                    label: const Text('Restaurer une sauvegarde'),
                   ),
                   if (isTv) ...[
                     const SizedBox(height: 8),
