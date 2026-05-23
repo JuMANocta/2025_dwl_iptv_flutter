@@ -186,19 +186,25 @@ class StreamAccountService {
     await setCurrentAccount(acc.id);
   }
 
-  /// Méthode pour récupérer les informations d'un compte utilisateur
+  /// Méthode pour récupérer les informations d'un compte utilisateur.
+  ///
+  /// §17a — Supporte les deux modes d'auth :
+  /// - `separate` : utilise directement `username`/`password` du modèle.
+  /// - `completeUrl` : tente d'extraire user/pass de l'URL via
+  ///   `XtreamCredentials.tryExtract` (cas typique : URL get.php query params
+  ///   ou path Xtream `/user/pass/id`). Retourne null si l'URL n'est pas
+  ///   Xtream-compatible (Flussonic, format custom).
   static Future<AccountInfo?> fetchAccountInfo(StreamAccount account) async {
-    // 1. Nouvelle méthode robuste pour obtenir l'URL de l'API
     final apiUrl = account.buildPlayerApiUrl();
-    if (apiUrl == null || account.username == null || account.password == null) {
-      // Le compte n'est pas compatible avec cette API
+    final creds = account.resolveXtreamCredentials();
+    if (apiUrl == null || creds == null) {
+      // Le compte n'est pas compatible avec cette API.
       return null;
     }
 
-    // 2. Préparer les paramètres
     final params = {
-      'username': account.username!,
-      'password': account.password!,
+      'username': creds.username,
+      'password': creds.password,
       'action': 'get_account_info',
     };
 

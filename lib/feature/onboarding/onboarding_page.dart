@@ -90,6 +90,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
   Future<void> _onAccountReceived(PairingAccountResult r) async {
     await StreamAccountService.saveAccount(r.account);
     await StreamAccountService.setCurrentAccount(r.account.id);
+    // §3c-8b — TMDB optionnel saisi dans le même form mobile : on l'applique
+    // et on saute le slide 3 (pas besoin d'un second pairing).
+    final t = r.tmdbToken;
+    if (t != null && t.isNotEmpty) {
+      await TmdbApiService.saveApiKey(t);
+      TmdbService.resetInstance();
+      if (!mounted) return;
+      Future.delayed(const Duration(milliseconds: 700), _finish);
+      return;
+    }
     if (!mounted) return;
     // Auto-advance vers slide TMDB après une courte pause.
     Future.delayed(const Duration(milliseconds: 700), () {

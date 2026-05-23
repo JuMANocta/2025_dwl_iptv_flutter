@@ -40,12 +40,15 @@ class StreamAccount {
   }) : createdAt = createdAt ?? DateTime.now();
 
   /// Construit l’URL .m3u utilisable pour télécharger la playlist.
-  /// - En mode [completeUrl], renvoie `completeUrl`.
+  /// - En mode [completeUrl], renvoie `completeUrl` **normalisée**
+  ///   (`type=m3u` → `type=m3u_plus`, cf. [_ensureM3uPlus]).
   /// - En mode [separate], construit l’URL standard Xtream Codes :
-  ///   `{baseUrl}/get.php?username=<u>&password=<p>&type=m3u&output=ts`
+  ///   `{baseUrl}/get.php?username=<u>&password=<p>&type=m3u_plus&output=ts`
   String? buildM3uUrl() {
     if (mode == StreamAuthMode.completeUrl) {
-      return (completeUrl ?? '').trim().isEmpty ? null : completeUrl!.trim();
+      final raw = (completeUrl ?? '').trim();
+      if (raw.isEmpty) return null;
+      return _ensureM3uPlus(raw);
     }
 
     final b = (baseUrl ?? '').trim();
@@ -62,26 +65,90 @@ class StreamAccount {
 
   }
 
+  /// Réécrit `?type=m3u` → `?type=m3u_plus` (et idem `&type=m3u`) dans une
+  /// URL Xtream Codes complète. Sans ça, le provider renvoie une playlist
+  /// "simple" sans les attributs EXTINF (`tvg-logo`, `tvg-id`, `group-title`)
+  /// → l'app n'a pas de vignettes, pas de groupage par catégorie, pas d'EPG
+  /// matching XMLTV. C'est le 1er piège quand un utilisateur colle une URL
+  /// fournie par défaut par son provider.
+  ///
+  /// Préserve `type=m3u_plus`, `type=simple` et tout autre type custom.
+  /// Robuste aux query strings malformées (fallback : retour de l'URL telle
+  /// quelle, l'app retombera juste sur "pas de vignettes").
+  static String _ensureM3uPlus(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final params = Map<String, String>.from(uri.queryParameters);
+      final t = params['type']?.toLowerCase().trim();
+      if (t == 'm3u') {
+        params['type'] = 'm3u_plus';
+        return uri.replace(queryParameters: params).toString();
+      }
+      return url;
+    } catch (_) {
+      return url;
+    }
+  }
+
   String? buildPlayerApiUrl() {
-    if (mode != StreamAuthMode.separate || (baseUrl ?? '').trim().isEmpty) {
-      return null;
+    // Mode separate : on utilise baseUrl tel quel.
+    if (mode == StreamAuthMode.separate && (baseUrl ?? '').trim().isNotEmpty) {
+      try {
+        final uri = Uri.parse(baseUrl!);
+        return Uri(
+          scheme: uri.scheme,
+          host: uri.host,
+          port: uri.port,
+          path: '/player_api.php',
+        ).toString();
+      } catch (_) {
+        return null;
+      }
     }
 
-    try {
-      final uri = Uri.parse(baseUrl!);
-      // On reconstruit l'URL en ne gardant que le scheme, l'host, le port
-      // et on ajoute le chemin standard de l'API.
-      final apiUrl = Uri(
-        scheme: uri.scheme,
-        host: uri.host,
-        port: uri.port,
-        path: '/player_api.php',
-      );
-      return apiUrl.toString();
-    } catch (e) {
-      // Si le baseUrl est mal formé, on ne peut rien faire.
-      return null;
+    // §17a — Mode completeUrl : tenter l'extraction des creds depuis l'URL
+    // Xtream pour reconstruire le player_api.php. La plupart des URLs ".m3u
+    // complètes" fournies par les providers sont en réalité du Xtream
+    // déguisé (`/get.php?username=X&password=Y&type=m3u_plus`).
+    if (mode == StreamAuthMode.completeUrl &&
+        (completeUrl ?? '').trim().isNotEmpty) {
+      final creds = XtreamCredentials.tryExtract(completeUrl!.trim());
+      if (creds == null) return null;
+      try {
+        final uri = Uri.parse(creds.host);
+        return Uri(
+          scheme: uri.scheme,
+          host: uri.host,
+          port: uri.port,
+          path: '/player_api.php',
+        ).toString();
+      } catch (_) {
+        return null;
+      }
     }
+    return null;
+  }
+
+  /// §17a — Retourne les credentials Xtream utilisables pour appeler
+  /// `player_api.php`, quelle que soit la `mode` du compte. Pour les comptes
+  /// `separate`, retourne les champs `username`/`password` du modèle. Pour les
+  /// comptes `completeUrl`, tente l'extraction depuis l'URL.
+  /// Null si rien d'extractible (URL non-Xtream / Flussonic / autre).
+  ({String host, String username, String password})? resolveXtreamCredentials() {
+    if (mode == StreamAuthMode.separate) {
+      final b = (baseUrl ?? '').trim();
+      final u = (username ?? '').trim();
+      final p = (password ?? '').trim();
+      if (b.isEmpty || u.isEmpty || p.isEmpty) return null;
+      try {
+        final uri = Uri.parse(b);
+        final host = Uri(scheme: uri.scheme, host: uri.host, port: uri.port).toString();
+        return (host: host, username: u, password: p);
+      } catch (_) {
+        return null;
+      }
+    }
+    return XtreamCredentials.tryExtract((completeUrl ?? '').trim());
   }
 
   /// Indique si le compte a de quoi construire une URL .m3u.
@@ -151,4 +218,63 @@ class StreamAccount {
   @override
   String toString() =>
       'StreamAccount(id=$id, label=$label, mode=$mode, usable=$isUsable)';
+}
+
+/// §17a — Helper d'extraction des credentials Xtream depuis une URL "complète".
+///
+/// Couvre les 2 formats les plus courants :
+///   1. Query params : `http://host:port/get.php?username=X&password=Y&type=m3u_plus`
+///   2. Path Xtream  : `http://host:port/{username}/{password}/{stream_id}.ext`
+///
+/// Retourne `null` si l'URL n'est pas Xtream-compatible (Flussonic, format
+/// custom…), auquel cas l'app affichera "info indisponible" pour ce compte.
+class XtreamCredentials {
+  static ({String host, String username, String password})? tryExtract(
+    String rawUrl,
+  ) {
+    if (rawUrl.isEmpty) return null;
+    Uri? uri;
+    try {
+      uri = Uri.parse(rawUrl);
+    } catch (_) {
+      return null;
+    }
+    if (uri.scheme.isEmpty || uri.host.isEmpty) return null;
+
+    final origin =
+        Uri(scheme: uri.scheme, host: uri.host, port: uri.port).toString();
+
+    // Format 1 : query params username/password (incluant /get.php).
+    final qpUser = uri.queryParameters['username']?.trim();
+    final qpPass = uri.queryParameters['password']?.trim();
+    if (qpUser != null && qpUser.isNotEmpty && qpPass != null && qpPass.isNotEmpty) {
+      return (host: origin, username: qpUser, password: qpPass);
+    }
+
+    // Format 2 : path Xtream `/{user}/{pass}/{stream_id}[.ext]`.
+    // On accepte `/live/`, `/movie/`, `/series/`, `/timeshift/` comme préfixe
+    // optionnel, puis 2 segments user/pass, puis au moins 1 segment de plus.
+    final segments = uri.pathSegments
+        .where((s) => s.isNotEmpty)
+        .toList(growable: false);
+    if (segments.length >= 3) {
+      const prefixes = {'live', 'movie', 'series', 'timeshift'};
+      int startIdx = 0;
+      if (prefixes.contains(segments.first.toLowerCase())) startIdx = 1;
+      if (segments.length >= startIdx + 3) {
+        final u = segments[startIdx];
+        final p = segments[startIdx + 1];
+        // Heuristique anti-faux-positif : user et pass ne ressemblent pas à
+        // un chemin de fichier (pas d'extension `.m3u8`, pas de point).
+        if (u.isNotEmpty &&
+            p.isNotEmpty &&
+            !u.contains('.') &&
+            !p.contains('.')) {
+          return (host: origin, username: u, password: p);
+        }
+      }
+    }
+
+    return null;
+  }
 }

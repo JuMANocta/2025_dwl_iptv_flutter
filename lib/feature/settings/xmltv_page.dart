@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/xmltv_service.dart';
 
 /// Sous-page Settings (§1g) : guide des chaînes XMLTV.
@@ -17,6 +18,17 @@ class XmltvPage extends StatefulWidget {
 
 class _XmltvPageState extends State<XmltvPage> {
   bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // §19 — Auto-focus initial sur TV.
+    if (PlatformTv.isTv) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).nextFocus();
+      });
+    }
+  }
 
   Future<void> _refresh() async {
     if (_refreshing) return;

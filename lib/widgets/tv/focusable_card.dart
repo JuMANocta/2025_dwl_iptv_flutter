@@ -113,11 +113,9 @@ class _FocusableCardState extends State<FocusableCard> {
       curve: Curves.easeOutCubic,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
+        // §ergo — Le glow reste en `decoration` (boxShadow = zéro coût layout).
         decoration: BoxDecoration(
           borderRadius: radius,
-          border: showFocusEffect
-              ? Border.all(color: focusColor, width: borderW)
-              : Border.all(color: Colors.transparent, width: borderW),
           boxShadow: showFocusEffect
               ? [
                   BoxShadow(
@@ -128,6 +126,17 @@ class _FocusableCardState extends State<FocusableCard> {
                 ]
               : null,
         ),
+        // §ergo — La bordure de focus passe en `foregroundDecoration` : elle est
+        // peinte PAR-DESSUS l'enfant sans agrandir la box. Avant, un
+        // `Border.all(width: 2)` (même transparent) ajoutait 4px à chaque carte
+        // → dans un Wrap calé au pixel, la 3e vignette passait à la ligne
+        // (chaînes affichées 2 par ligne au lieu de 3). Plus de coût layout ici.
+        foregroundDecoration: showFocusEffect
+            ? BoxDecoration(
+                borderRadius: radius,
+                border: Border.all(color: focusColor, width: borderW),
+              )
+            : null,
         child: widget.decorateOnly
             ? widget.child
             : Material(
@@ -152,6 +161,22 @@ class _FocusableCardState extends State<FocusableCard> {
       autofocus: widget.autofocus,
       onFocusChange: (f) {
         if (mounted) setState(() => _focused = f);
+        // §3c-bis #7 — Si la card vient de prendre le focus sur TV, l'amener
+        // dans le viewport du ScrollView ancêtre (carrousel horizontal /
+        // ListView vertical). Sans ça, le focus peut se déplacer sur une card
+        // hors-écran → utilisateur perdu, scroll figé.
+        if (f && isTv) {
+          // post-frame pour laisser le layout se stabiliser avant le scroll.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            Scrollable.ensureVisible(
+              context,
+              alignment: 0.5,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+            );
+          });
+        }
       },
       onKeyEvent: _onKey,
       child: decorated,

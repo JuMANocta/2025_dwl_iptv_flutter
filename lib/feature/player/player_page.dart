@@ -102,7 +102,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// Vrai si le wakelock est actuellement détenu — évite les appels redondants.
   bool _wakelockHeld = false;
   /// §1i — Mode lock partagé entre [PlayerControls] et [PlayerGestures].
-  /// `true` → tous les gestes (sauf tap pour révéler le cadenas) sont ignorés.
+  /// `true` → tous les gestes (sauf tap simple pour révéler le cadenas) sont ignorés.
   bool _isLocked = false;
 
   // Luminosité courante (0.0–1.0), initialisée à 0.5 par défaut.
@@ -392,10 +392,22 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _releaseWakelock();
     _ctrl.dispose();
     BrightnessService.reset();
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
+    
+    // §3c-bis — Sur TV, la sortie du player NE DOIT PAS basculer en portrait
+    // (la TV n'a pas de portrait, ça casserait toute l'UI). On reste en
+    // landscape. Sur mobile, on restaure le comportement portrait par défaut.
+    if (PlatformTv.isTv) {
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+    }
+
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }

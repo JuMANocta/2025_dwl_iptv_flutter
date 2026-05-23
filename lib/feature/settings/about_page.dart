@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/update_service.dart';
 import 'package:aetherStream/feature/update/update_dialog.dart';
 
@@ -31,6 +32,12 @@ class _AboutPageState extends State<AboutPage> {
   void initState() {
     super.initState();
     _loadInfo();
+    // §19 — Auto-focus initial sur TV (sur "Vérifier MAJ").
+    if (PlatformTv.isTv) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).nextFocus();
+      });
+    }
   }
 
   Future<void> _loadInfo() async {

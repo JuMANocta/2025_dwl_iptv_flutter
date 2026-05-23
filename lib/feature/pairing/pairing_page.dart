@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/themes/colors.dart';
 import '../../core/themes/theme_service.dart';
+import '../../core/utils/platform_tv.dart';
 import '../../data/services/pairing_service.dart';
 
 /// Page d'attente d'un pairing mobile→TV (§3c-8).
@@ -64,6 +66,12 @@ class _PairingPageState extends State<PairingPage> {
   @override
   void initState() {
     super.initState();
+    // §3c-bis — Sur TV, empêcher la mise en veille pendant que l'utilisateur
+    // remplit le form sur son téléphone. Sans wakelock, la TV peut s'éteindre
+    // (timeout 5-10 min) → port serveur tué → QR mort, session perdue.
+    if (PlatformTv.isTv) {
+      WakelockPlus.enable().catchError((_) {});
+    }
     _start();
   }
 
@@ -125,6 +133,9 @@ class _PairingPageState extends State<PairingPage> {
   void dispose() {
     _sub?.cancel();
     PairingService.instance.stop();
+    // §3c-bis — Toujours désactiver le wakelock à la sortie (même si
+    // PlatformTv.isTv a flippé entretemps, ce qui ne devrait jamais arriver).
+    WakelockPlus.disable().catchError((_) {});
     super.dispose();
   }
 

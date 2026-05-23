@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
 
 /// Page Sauvegarde / Restauration (§10).
@@ -20,6 +21,17 @@ class BackupPage extends StatefulWidget {
 class _BackupPageState extends State<BackupPage> {
   bool _exporting = false;
   bool _importing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // §19 — Auto-focus initial sur TV.
+    if (PlatformTv.isTv) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).nextFocus();
+      });
+    }
+  }
 
   // ── EXPORT ────────────────────────────────────────────────────────────────
 
@@ -75,6 +87,8 @@ class _BackupPageState extends State<BackupPage> {
                   TextField(
                     controller: pwd1,
                     obscureText: !visible,
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => FocusScope.of(ctx).nextFocus(),
                     decoration: InputDecoration(
                       labelText: 'Mot de passe',
                       border: const OutlineInputBorder(),
@@ -90,6 +104,8 @@ class _BackupPageState extends State<BackupPage> {
                   TextField(
                     controller: pwd2,
                     obscureText: !visible,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => FocusScope.of(ctx).unfocus(),
                     decoration: const InputDecoration(
                       labelText: 'Confirmer',
                       border: OutlineInputBorder(),
@@ -257,6 +273,7 @@ class _BackupPageState extends State<BackupPage> {
               controller: ctrl,
               obscureText: !visible,
               autofocus: true,
+              textInputAction: TextInputAction.done,
               decoration: InputDecoration(
                 labelText: 'Mot de passe',
                 border: const OutlineInputBorder(),

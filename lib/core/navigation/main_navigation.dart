@@ -48,13 +48,17 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
-    _checkFullScreen();
+    if (Platform.isWindows) {
+      windowManager.addListener(this);
+      _checkFullScreen();
+    }
   }
 
   @override
   void dispose() {
-    windowManager.removeListener(this);
+    if (Platform.isWindows) {
+      windowManager.removeListener(this);
+    }
     super.dispose();
   }
 
@@ -176,12 +180,13 @@ class _CustomNavigationRail extends StatelessWidget {
     return NavigationRail(
       selectedIndex: selectedIndex,
       onDestinationSelected: onDestinationSelected,
+      minWidth: 64,
       labelType: NavigationRailLabelType.all,
       backgroundColor: cs.surface,
       indicatorColor: cs.primary.withAlpha(40),
       selectedIconTheme: IconThemeData(color: cs.primary),
       selectedLabelTextStyle: TextStyle(color: cs.primary, fontWeight: FontWeight.bold),
-      trailing: Expanded(
+      trailing: Platform.isWindows ? Expanded(
         child: Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
@@ -194,7 +199,7 @@ class _CustomNavigationRail extends StatelessWidget {
             ),
           ),
         ),
-      ),
+      ) : null,
       destinations: const [
         NavigationRailDestination(
           icon: Icon(Icons.home_outlined),

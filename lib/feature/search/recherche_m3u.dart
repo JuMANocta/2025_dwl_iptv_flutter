@@ -225,10 +225,12 @@ class _RechercheM3UState extends State<RechercheM3U> {
     if (entry.type == M3uContentType.tv) {
       await showTvActionSheet(context, versions);
     } else {
-      // Si pas de clé TMDB → action sheet directement (pas de page blanche)
+      // Si pas de clé TMDB → action sheet directement (pas de page blanche).
+      // §bugfix — Exception séries : toujours DetailsPage (picker saison/épisode
+      // depuis la playlist), sinon l'action sheet ne lit que le 1er épisode.
       final hasTmdb = await TmdbApiService.hasApiKey();
       if (!mounted) return;
-      if (hasTmdb) {
+      if (hasTmdb || entry.type == M3uContentType.series) {
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => DetailsPage(entry: entry, versions: versions),
         ));

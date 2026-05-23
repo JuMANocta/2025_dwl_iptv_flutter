@@ -28,7 +28,12 @@ sealed class PairingResult {
 
 class PairingAccountResult extends PairingResult {
   final StreamAccount account;
-  const PairingAccountResult(this.account);
+
+  /// Token TMDB optionnel saisi en même temps que le compte côté mobile.
+  /// Permet de finir l'onboarding en un seul scan QR au lieu de deux.
+  final String? tmdbToken;
+
+  const PairingAccountResult(this.account, {this.tmdbToken});
 }
 
 class PairingTmdbResult extends PairingResult {
@@ -227,6 +232,10 @@ class PairingService {
     // PairingKind.account
     final modeStr = (payload['mode'] as String?) ?? 'complete';
     final label = (payload['label'] as String?)?.trim();
+    // TMDB token optionnel saisi en même temps que le compte (§3c-8b).
+    final tmdbRaw = (payload['tmdb'] as String?)?.trim();
+    final tmdb = (tmdbRaw != null && tmdbRaw.length >= 20) ? tmdbRaw : null;
+
     if (modeStr == 'complete') {
       final url = (payload['url'] as String?)?.trim() ?? '';
       if (url.isEmpty || Uri.tryParse(url) == null || !Uri.parse(url).isAbsolute) {
@@ -239,7 +248,7 @@ class PairingService {
         mode: StreamAuthMode.completeUrl,
         completeUrl: url,
       );
-      _controller?.add(PairingAccountResult(acc));
+      _controller?.add(PairingAccountResult(acc, tmdbToken: tmdb));
       _serveSuccess(req, theme);
       return;
     }
@@ -264,7 +273,7 @@ class PairingService {
       username: user,
       password: pass,
     );
-    _controller?.add(PairingAccountResult(acc));
+    _controller?.add(PairingAccountResult(acc, tmdbToken: tmdb));
     _serveSuccess(req, theme);
   }
 

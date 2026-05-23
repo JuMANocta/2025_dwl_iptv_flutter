@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
@@ -12,11 +13,15 @@ import 'data/services/watch_progress_service.dart';
 import 'data/services/search_history_service.dart';
 import 'data/services/last_watched_channel_service.dart';
 import 'core/navigation/main_navigation.dart';
+import 'data/services/expiration_alert_service.dart';
 import 'feature/accounts/accounts_page.dart';
+import 'feature/accounts/expiration_alert_dialog.dart';
 import 'feature/onboarding/onboarding_page.dart';
 import 'feature/pairing/pairing_page.dart';
 import 'data/services/pairing_service.dart';
 import 'data/services/playlist_service.dart';
+import 'data/services/tmdb_api_service.dart';
+import 'data/services/tmdb_service.dart';
 import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
 import 'core/themes/theme_service.dart';
@@ -57,6 +62,18 @@ void main() async {
   // §3c-1 — détection plateforme TV (Android TV / Fire TV) avant tout build UI
   // → permet aux widgets d'adapter focus/tailles synchrone via PlatformTv.isTv.
   await PlatformTv.init();
+
+  // §3c-bis — Lock landscape global sur TV. La TV n'a pas de mode portrait
+  // physique, mais Flutter peut quand même appliquer `setPreferredOrientations`
+  // (utilisé par le PlayerPage à la sortie d'une lecture pour restaurer
+  // portrait sur mobile). Sans ce verrou, l'app peut se retrouver en portrait
+  // sur certains Fire Stick / Android TV émulateurs après une sortie player.
+  if (PlatformTv.isTv) {
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
 
   await StreamAccountService.migrateFromLegacyIfNeeded();
   await DownloadManagerService().init();
@@ -118,8 +135,11 @@ class MyApp extends StatelessWidget {
 
       // Le `builder` est utilisé ici pour superposer un bandeau "BETA"
       // uniquement en mode debug, sans interférer avec le widget `home`.
-      // §3c-7 — Sur TV : agrandit globalement la typo (×1.3) pour rester
-      // lisible à 3 m de distance sans casser les layouts mobile.
+      // §3c-7 — Sur TV : texte en taille native (×1.0). Les itérations
+      // précédentes (×1.3 puis ×1.15) donnaient une sensation "ultra-zoomée"
+      // car la TV applique déjà sa propre densité physique généreuse
+      // (1080p à 3m = équivalent retina mobile). Si jamais le texte devenait
+      // trop petit sur certains modèles, ajuster ici (0.95 / 1.05).
       builder: (context, child) {
         bool isDebug = false;
         assert(isDebug = true); // Astuce pour n'être `true` qu'en mode debug.
@@ -128,7 +148,7 @@ class MyApp extends StatelessWidget {
 
         if (PlatformTv.isTv) {
           final mq = MediaQuery.of(context);
-          final scaled = mq.textScaler.clamp(minScaleFactor: 1.3, maxScaleFactor: 1.3);
+          final scaled = mq.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.0);
           wrapped = MediaQuery(
             data: mq.copyWith(textScaler: scaled),
             child: wrapped,
@@ -199,6 +219,11 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       _hydrateSecondaryAccounts(others);                    // fire & forget
     }
 
+    // §17b — Fetch background des AccountInfo pour TOUS les comptes
+    // (alimente le cache `ExpirationAlertService.infos`). On déclenche
+    // la popup d'alerte si au moins un compte expire <30 jours.
+    _checkExpirationAlerts(accounts);
+
     return (
       path:        path,
       accountId:   acc?.id   ?? '',
@@ -206,16 +231,52 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     );
   }
 
-  /// Télécharge le M3U manquant des comptes secondaires et les charge en 
+  /// §17b — Vérifie les expirations en background et affiche la popup
+  /// `ExpirationAlertDialog` si au moins un compte expire <30 jours. Le
+  /// dédoublonnage (SharedPreferences) est géré par
+  /// `ExpirationAlertService.computeUnackedAlerts`. Délai de 4s pour laisser
+  /// le splash + l'init terminer avant d'interrompre l'utilisateur.
+  Future<void> _checkExpirationAlerts(List<StreamAccount> accounts) async {
+    if (accounts.isEmpty) return;
+    try {
+      await ExpirationAlertService.fetchAll(accounts);
+      if (!mounted) return;
+      final alerts =
+          await ExpirationAlertService.computeUnackedAlerts(accounts);
+      if (alerts.isEmpty) return;
+      // Délai pour laisser le UI démarrer proprement.
+      await Future.delayed(const Duration(seconds: 4));
+      final ctx = navigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      await ExpirationAlertDialog.show(ctx, alerts);
+    } catch (e) {
+      // Échec silencieux — pas critique au boot.
+    }
+  }
+
+  /// Télécharge le M3U manquant des comptes secondaires et les charge en
   /// mémoire (parsing). Asynchrone & silencieux — la home se met à jour via
-  /// `ParsedPlaylistService.version` quand chaque compte termine.
+  /// `ParsedPlaylistService.version` quand chaque compte termine. §16 : push
+  /// les transitions d'état via `setLoadState` pour que `_AccountTile` affiche
+  /// "EN COURS…" pendant download/parse puis "DISPONIBLE" à la fin.
   Future<void> _hydrateSecondaryAccounts(List<StreamAccount> others) async {
     for (final acc in others) {
+      // Si déjà chargé via preloadOthersFromDisk → skip réseau.
+      if (ParsedPlaylistService.stateOf(acc.id) ==
+          AccountLoadState.loaded) {
+        continue;
+      }
+      ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.downloading);
       try {
         final p = await PlaylistService.ensureDownloadedForAccount(acc);
-        if (p == null) continue;
+        if (p == null) {
+          ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
+          continue;
+        }
+        // loadSecondary gère lui-même les transitions parsing → loaded / error.
         await ParsedPlaylistService.loadSecondary(acc.id, acc.label, p);
       } catch (_) {
+        ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
         // Ne pas planter le démarrage à cause d'un compte cassé (network, IO…).
       }
     }
@@ -251,6 +312,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     if (result is PairingAccountResult) {
       await StreamAccountService.saveAccount(result.account);
       await StreamAccountService.setCurrentAccount(result.account.id);
+      // §3c-8b — TMDB optionnel saisi dans le même form mobile.
+      final t = result.tmdbToken;
+      if (t != null && t.isNotEmpty) {
+        await TmdbApiService.saveApiKey(t);
+        TmdbService.resetInstance();
+      }
     }
     _retryInitialization();
   }

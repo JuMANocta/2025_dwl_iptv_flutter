@@ -33,6 +33,12 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
   void initState() {
     super.initState();
     _loadKey();
+    // §19 — Auto-focus initial sur TV (CTA pairing en tête).
+    if (PlatformTv.isTv) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).nextFocus();
+      });
+    }
   }
 
   /// §3c-8 — Pairing QR mobile→TV pour coller la clé TMDB depuis le téléphone.
@@ -191,6 +197,8 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
                         controller: _keyController,
                         obscureText: !_isKeyVisible,
                         readOnly: _hasSavedKey,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _save(),
                         style: TextStyle(
                           color: _hasSavedKey ? kAccentSecondary : cs.onSurface,
                           fontWeight: _hasSavedKey

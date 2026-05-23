@@ -18,9 +18,14 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
   late TextEditingController _username;
   late TextEditingController _password;
   late PlaylistType _playlistType;
-  late TextEditingController _cookies;
   StreamAuthMode _mode = StreamAuthMode.completeUrl;
   bool _isPasswordObscured = true;
+
+  // §14a — Champ "cookies" retiré du formulaire (héritage mono-compte).
+  // Les providers IPTV modernes (Xtream / .m3u) n'en utilisent pas. Le champ
+  // reste dans le modèle [StreamAccount.cookies] + injection header dans
+  // `NetworkUtils.buildDio` pour la rétrocompat des anciens comptes stockés.
+  String? _legacyCookies;
 
   @override
   void initState() {
@@ -32,7 +37,7 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
     _username = TextEditingController(text: i?.username ?? '');
     _password = TextEditingController(text: i?.password ?? '');
     _playlistType = i?.playlistType ?? PlaylistType.m3u;
-    _cookies = TextEditingController(text: i?.cookies ?? '');
+    _legacyCookies = i?.cookies;
     _mode = i?.mode ?? StreamAuthMode.completeUrl;
   }
 
@@ -43,7 +48,6 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
     _baseUrl.dispose();
     _username.dispose();
     _password.dispose();
-    _cookies.dispose();
     super.dispose();
   }
 
@@ -60,7 +64,9 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
       username: _mode == StreamAuthMode.separate ? _username.text.trim() : null,
       password: _mode == StreamAuthMode.separate ? _password.text.trim() : null,
       playlistType: _playlistType,
-      cookies: _cookies.text.trim().isEmpty ? null : _cookies.text.trim(),
+      // §14a — Préserve le cookie existant pour les comptes legacy.
+      // Nouveaux comptes : null (champ retiré du form).
+      cookies: _legacyCookies,
     );
     Navigator.of(context).pop(acc);
   }
@@ -69,6 +75,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
     return TextFormField(
       controller: _completeUrl,
       keyboardType: TextInputType.url,
+      textInputAction: TextInputAction.done,
+      onFieldSubmitted: (_) => _save(),
       decoration: InputDecoration(
           labelText: l10n.editAccountFullUrlLabel, prefixIcon: const Icon(Icons.public)),
       validator: (v) => (v == null || v.trim().isEmpty || !Uri.tryParse(v.trim())!.isAbsolute)
@@ -83,6 +91,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
         TextFormField(
           controller: _baseUrl,
           keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.next,
+          onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
           decoration: InputDecoration(
               labelText: l10n.editAccountServerUrlLabel,
               prefixIcon: const Icon(Icons.dns)),
@@ -93,6 +103,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
         const SizedBox(height: 16),
         TextFormField(
           controller: _username,
+          textInputAction: TextInputAction.next,
+          onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
           decoration: InputDecoration(
               labelText: l10n.editAccountUsernameLabel, prefixIcon: const Icon(Icons.person_outline)),
           validator: (v) =>
@@ -102,6 +114,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
         TextFormField(
           controller: _password,
           obscureText: _isPasswordObscured,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => _save(),
           decoration: InputDecoration(
             labelText: l10n.editAccountPasswordLabel,
             prefixIcon: const Icon(Icons.password),
@@ -117,22 +131,10 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
           validator: (v) =>
           (v == null || v.trim().isEmpty) ? l10n.editAccountNameRequired : null,
         ),
-        const SizedBox(height: 24),
-        DropdownButtonFormField<PlaylistType>(
-          initialValue: _playlistType,
-          decoration: InputDecoration(
-            labelText: l10n.editAccountPlaylistTypeLabel,
-            border: const OutlineInputBorder(),
-            prefixIcon: const Icon(Icons.list_alt),
-          ),
-          items: [
-            DropdownMenuItem(value: PlaylistType.m3u, child: Text(l10n.editAccountPlaylistTypeM3u)),
-            DropdownMenuItem(value: PlaylistType.simple, child: Text(l10n.editAccountPlaylistTypeSimple)),
-          ],
-          onChanged: (value) {
-            if (value != null) setState(() => _playlistType = value);
-          },
-        ),
+        // §fusion — Sélecteur "Type de playlist" (M3U / Simple) retiré : on force
+        // toujours m3u → m3u_plus (cf. StreamAccount.buildXtreamUrl). Pour les
+        // nouveaux comptes `_playlistType` reste à sa valeur par défaut (m3u) ;
+        // un compte existant en `simple` conserve son type.
       ],
     );
   }
@@ -160,6 +162,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
                 const SizedBox(height: 24),
                 TextFormField(
                   controller: _label,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
                   decoration: InputDecoration(
                     labelText: l10n.editAccountNameLabel,
                     prefixIcon: const Icon(Icons.badge_outlined),
@@ -181,15 +185,6 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
                   _buildUrlModeFields(l10n)
                 else
                   _buildSeparateModeFields(l10n),
-                const SizedBox(height: 24),
-                TextFormField(
-                  controller: _cookies,
-                  decoration: InputDecoration(
-                    labelText: l10n.editAccountCookiesLabel,
-                    prefixIcon: const Icon(Icons.cookie_outlined),
-                    hintText: l10n.editAccountCookiesHint,
-                  ),
-                ),
                 const SizedBox(height: 32),
                 FilledButton.icon(
                   onPressed: _save,

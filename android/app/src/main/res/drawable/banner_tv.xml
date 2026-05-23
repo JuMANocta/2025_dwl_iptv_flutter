@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Banner Android TV / Fire TV (320×180 dp) — Leanback Launcher.
+  Composite : fond noir profond + icône launcher centrée. Permet d'afficher
+  une tuile correcte dans la grille TV en attendant une vraie identité
+  visuelle dédiée (§15 roadmap : refonte identité).
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <item>
+    <shape android:shape="rectangle">
+      <solid android:color="#050505" />
+    </shape>
+  </item>
+  <item
+      android:gravity="center"
+      android:width="120dp"
+      android:height="120dp">
+    <bitmap android:src="@mipmap/launcher_icon" />
+  </item>
+</layer-list>

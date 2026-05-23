@@ -30,7 +30,7 @@ import 'package:aetherStream/core/utils/platform_tv.dart';
 /// Page d'accueil — design streaming premium (§1b phases 2 + 3, §navUX).
 ///
 /// Layout (§navUX — hero en TOP, tabs SOUS le hero) :
-///   AppBar              (⚙️ uniquement, transparente posée sur le fond)
+///   AppBar              (transparente posée sur le fond)
 ///   PageView de _TypePage
 ///     ↳ _HeroBanner     (carrousel 16/9 d'items mis en avant — auto-rotation 6s)
 ///     ↳ _AnimatedTabIndicator (Séries · Films · Chaînes — injectées par parent)
@@ -186,12 +186,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _openSettings() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const SettingsPage()),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -199,9 +193,7 @@ class _HomePageState extends State<HomePage> {
     final statusBarHeight = MediaQuery.of(context).padding.top;
     // §heroFan ergo — Pour movie/series, le hero "fan" remonte jusqu'au status
     // bar : l'inclinaison des cartes laisse le coin haut-droit libre pour
-    // l'icône ⚙️ qui flotte par-dessus. Pour TV (hero 16/9 plein largeur),
-    // on conserve l'offset AppBar sinon le titre du hero entre en collision
-    // avec l'icône.
+    // l'icône ⚙️ qui flotte par-dessus (ou pas si rail utilisé).
     final liftedTopInset = statusBarHeight + 4;
     final defaultTopInset = statusBarHeight + kToolbarHeight;
 
@@ -211,11 +203,7 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: Colors.transparent,
         scrolledUnderElevation: 0,
         elevation: 0,
-        // §navUX — Plus de nom de compte dans le title (il est déjà visible
-        // dans SettingsPage → Comptes IPTV → bandeau "COMPTE ACTIF"). Ça libère
-        // la barre du haut et laisse le hero respirer.
-        // §1L-a — En mode recherche : arrow_back à gauche (retour intuitif),
-        // pas de title (le grand champ dans le body fait office de header).
+        // §1L-a — En mode recherche : arrow_back à gauche (retour intuitif).
         leading: widget.searchMode
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
@@ -224,18 +212,11 @@ class _HomePageState extends State<HomePage> {
               )
             : null,
         title: null,
-        actions: widget.searchMode
-            ? const []
-            : [
-                const SizedBox(width: 4),
-              ],
+        actions: const [
+          SizedBox(width: 4),
+        ],
       ),
       body: Container(
-        // width/height infinity → force le Container à occuper toute la zone du
-        // body. Sans ça, si l'enfant (ex: empty state du _SearchView qui retourne
-        // un simple Padding) a une taille intrinsèque petite, le Container se
-        // dimensionne sur l'enfant → le gradient/thème ne s'applique que sur la
-        // hauteur réelle de l'enfant (régression visuelle "thème sur une partie").
         width: double.infinity,
         height: double.infinity,
         decoration: BoxDecoration(
@@ -265,8 +246,6 @@ class _HomePageState extends State<HomePage> {
                   final byType = _splitByType(entries);
 
                   if (widget.searchMode) {
-                    // §1L-a — Grand champ recherche dans le body (sous l'AppBar
-                    // transparente) au lieu d'un mini-champ dans le title.
                     return Column(
                       children: [
                         SizedBox(
@@ -295,10 +274,6 @@ class _HomePageState extends State<HomePage> {
                     );
                   }
 
-                  // §navUX — Builder de la barre Séries/Films/Chaînes injectée
-                  // sous le hero dans chaque _TypePage. Toutes les instances
-                  // écoutent le même PageController → l'underline reste synchro
-                  // au swipe horizontal.
                   Widget buildTabs(BuildContext ctx) {
                     return _AnimatedTabIndicator(
                       controller: _pageController,
@@ -314,10 +289,6 @@ class _HomePageState extends State<HomePage> {
 
                   return PageView(
                     controller: _pageController,
-                    // §3c-7 — Sur TV : pas de swipe horizontal (la nav
-                    // Films/Séries/Chaînes se fait via les tabs cliquables
-                    // au D-pad, sinon le focus tombe dans le PageView qui
-                    // scrolle dans tous les sens).
                     physics: PlatformTv.isTv
                         ? const NeverScrollableScrollPhysics()
                         : const _FastPageScrollPhysics(),
@@ -325,9 +296,6 @@ class _HomePageState extends State<HomePage> {
                         setState(() => _currentIndex = i),
                     children: [
                       _TypePage(
-                        // Key sur _activeAccountId : si l'utilisateur change de
-                        // compte prioritaire, on force le rebuild complet du
-                        // _TypePage (memoization invalidée).
                         key: ValueKey('series_$_activeAccountId'),
                         type: M3uContentType.series,
                         entries: byType[M3uContentType.series]!,
@@ -356,9 +324,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Champ de saisie placé dans le body sous l'AppBar quand searchMode est actif.
-  /// §1L-a : hauteur 56, police 16, contentPadding plus aéré. Le X interne
-  /// efface uniquement le texte (le retour à la home se fait via arrow_back).
   Widget _buildSearchField(ColorScheme cs) {
     return Container(
       height: 56,
@@ -379,7 +344,6 @@ class _HomePageState extends State<HomePage> {
         textInputAction: TextInputAction.search,
         style: TextStyle(color: cs.onSurface, fontSize: 16),
         onSubmitted: (q) {
-          // §1i — Enregistrer la requête dans l'historique au submit (Enter).
           SearchHistoryService.record(q);
         },
         decoration: InputDecoration(
@@ -476,9 +440,6 @@ class _AnimatedTabIndicatorState extends State<_AnimatedTabIndicator> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    // §navUX — Le tab indicator est maintenant injecté SOUS le hero dans la
-    // liste de _TypePage, donc plus besoin d'offset status bar (le ListView
-    // gère lui-même son padding-top via widget.topInset).
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: LayoutBuilder(
@@ -517,7 +478,6 @@ class _AnimatedTabIndicatorState extends State<_AnimatedTabIndicator> {
                     );
                   }),
                 ),
-                // Underline animé
                 Positioned(
                   bottom: 0,
                   left: _page * tabWidth + tabWidth * 0.3,
@@ -551,14 +511,7 @@ class _AnimatedTabIndicatorState extends State<_AnimatedTabIndicator> {
 class _TypePage extends StatefulWidget {
   final M3uContentType type;
   final List<M3uEntry> entries;
-
-  /// Padding en haut de la liste (status bar + AppBar) pour que le hero ne
-  /// soit pas caché derrière l'AppBar transparente (extendBodyBehindAppBar).
   final double topInset;
-
-  /// Construit la barre Séries/Films/Chaînes insérée juste sous le hero.
-  /// Le parent partage la même `_pageController` entre toutes les instances
-  /// pour que l'underline reste cohérent au swipe.
   final WidgetBuilder? tabsBuilder;
 
   const _TypePage({
@@ -572,15 +525,9 @@ class _TypePage extends StatefulWidget {
   @override
   State<_TypePage> createState() => _TypePageState();
 
-  /// Priorité d'affichage des catégories : "fraîches" en tête, puis alpha,
-  /// puis "Autres" tout en bas.
-  ///
-  /// Pour les chaînes TV : la catégorie virtuelle "France" passe avant tout
-  /// pour respecter le réflexe utilisateur (chaînes FR en premier dans leur
-  /// ordre M3U d'origine — TF1, France 2, M6, ARTE…).
   static int _categoryPriority(String category) {
     switch (category) {
-      case 'Favoris':       return -2;  // ⭐ tout en haut
+      case 'Favoris':       return -2;
       case 'France':        return -1;
       case 'New':           return 0;
       case 'Coup de cœur':  return 1;
@@ -593,11 +540,6 @@ class _TypePage extends StatefulWidget {
     }
   }
 
-  /// Détecte une chaîne TV française pour la regrouper en tête de la page Chaînes.
-  /// Critères (ordre de fiabilité) :
-  ///   1. tvgId se terminant par `.fr` (TF1.fr, France2.fr, M6.fr, ARTE.fr…)
-  ///   2. Préfixe titre `|FR|` (convention M3U courante)
-  ///   3. groupTitle contenant "FRANCE" ou "|FR|"
   static bool _isFrenchChannel(M3uEntry e) {
     final tvgId = e.tvgId?.toLowerCase() ?? '';
     if (tvgId.endsWith('.fr')) return true;
@@ -635,26 +577,13 @@ class _TypePage extends StatefulWidget {
 }
 
 class _TypePageState extends State<_TypePage> {
-  /// Limite d'items affichés dans un carrousel/grille de catégorie sur la home.
-  /// Au-delà, un tile "Voir tout" est ajouté qui ouvre [CategoryListPage].
   static const int _maxItemsPerCategory = 25;
 
-  // ── Caches (memoization) ───────────────────────────────────────────────
-  // Recalculés uniquement quand l'une des sources sous-jacentes change.
   Map<String, List<List<M3uEntry>>>? _cachedByCategory;
   List<String>? _cachedCategories;
   List<List<M3uEntry>>? _cachedFeatured;
   int _cachedKey = -1;
 
-  /// Clé d'invalidation : combinaison de la longueur d'entrées + versions des
-  /// services. Si elle change → on recompute. Sinon → réutilisation du cache.
-  ///
-  /// `entries.length` : suffit pour détecter un ajout/suppression de compte.
-  /// `ParsedPlaylistService.version` : bump si playlist re-téléchargée.
-  /// `FavoritesService.version` : bump si favori toggle (impacte la catégorie
-  /// virtuelle "Favoris").
-  /// `WatchProgressService.version` : bump à chaque save 10s pendant la lecture,
-  /// impacte l'ordre des cartes "Reprendre" dans le hero fan banner.
   int _computeCacheKey() {
     return widget.entries.length * 1000003 +
         ParsedPlaylistService.version.value * 1009 +
@@ -675,19 +604,11 @@ class _TypePageState extends State<_TypePage> {
         return a.toLowerCase().compareTo(b.toLowerCase());
       });
 
-    // §heroFan — Composition du hero :
-    //   - films/séries : 5 reprise (triées lastWatched desc) + 5 nouveautés
-    //     prioritaires non-déjà-incluses → max 10 cartes empilées
-    //   - TV : pas de notion "en cours" (live) → max 5 cartes catégorie prio
     const maxFeatured = 10;
     const maxResume = 5;
     final featured = <List<M3uEntry>>[];
 
     if (widget.type != M3uContentType.tv) {
-      // §heroFanDedup — La catégorie virtuelle "Favoris" duplique les références
-      // de groupes qui vivent aussi dans leur catégorie d'origine. On dédupe par
-      // `displayName` pour éviter qu'un film favori en cours de lecture apparaisse
-      // 2× dans le hero.
       final allGroups = <List<M3uEntry>>[];
       final seenNames = <String>{};
       for (final groups in byCategory.values) {
@@ -712,7 +633,6 @@ class _TypePageState extends State<_TypePage> {
         featured.add(item.group);
         resumeKeys.add(item.group.first.displayName);
       }
-      // Complète avec catégories prioritaires (sauf Favoris, sauf déjà inclus).
       for (final cat in categories) {
         if (featured.length >= maxFeatured) break;
         if (cat == 'Favoris') continue;
@@ -724,7 +644,6 @@ class _TypePageState extends State<_TypePage> {
         }
       }
     } else {
-      // TV : comportement historique (catégorie prioritaire, max 5).
       for (final cat in categories) {
         if (cat == 'Favoris') continue;
         if (_TypePage._categoryPriority(cat) < 100) {
@@ -734,7 +653,6 @@ class _TypePageState extends State<_TypePage> {
       }
     }
 
-    // Fallback si rien trouvé (playlist sans catégorie prioritaire ni reprise).
     if (featured.isEmpty && categories.isNotEmpty) {
       final first = categories.firstWhere(
         (c) => c != 'Autres' && c != 'Favoris',
@@ -758,11 +676,6 @@ class _TypePageState extends State<_TypePage> {
     final categories = _cachedCategories!;
     final featured = _cachedFeatured!;
 
-    // §navUX — Ordre des items de la liste :
-    //   1. Hero (carrousel "en avant")
-    //   2. Tabs Séries · Films · Chaînes (injectées par le parent)
-    //   3. _LastWatchedTvTile (uniquement page TV)
-    //   4. Catégories : Favoris d'abord (priorité -2), puis France/New/etc.
     final hasHero = featured.isNotEmpty;
     final hasTabs = widget.tabsBuilder != null;
     final showLastWatchedSlot = widget.type == M3uContentType.tv;
@@ -779,8 +692,6 @@ class _TypePageState extends State<_TypePage> {
         var cursor = 0;
         if (hasHero) {
           if (i == cursor) {
-            // §heroFan — fan "jeu de cartes" pour films/séries (avec reprise
-            // en tête), hero 16/9 classique pour les chaînes TV.
             return widget.type == M3uContentType.tv
                 ? _HeroBanner(featured: featured, type: widget.type)
                 : _HeroFanBanner(featured: featured, type: widget.type);
@@ -798,9 +709,6 @@ class _TypePageState extends State<_TypePage> {
         final catIdx = i - cursor;
         final cat = categories[catIdx];
         final allGroups = byCategory[cat]!;
-        // §navUX — Favoris affichés sans limite (l'utilisateur les a curatés
-        // lui-même, on ne les tronque pas à 25). Les autres catégories gardent
-        // le plafond + la tuile "Voir tout".
         final isFav = cat == 'Favoris';
         final hasMore = !isFav && allGroups.length > _maxItemsPerCategory;
         final visibleGroups = hasMore
@@ -850,8 +758,6 @@ class _TypePageState extends State<_TypePage> {
       byGroup.putIfAbsent(groupKey(e), () => []).add(e);
     }
 
-    // §URGENT — Dédoublonne les qualités identiques au sein d'un groupe TV
-    // (provider qui expose 2× "TF1 FHD" → un seul bouton FHD dans la sheet).
     if (type == M3uContentType.tv) {
       for (final k in byGroup.keys.toList()) {
         byGroup[k] = dedupeTvVersions(byGroup[k]!);
@@ -860,9 +766,6 @@ class _TypePageState extends State<_TypePage> {
 
     final byCategory = <String, List<List<M3uEntry>>>{};
     for (final group in byGroup.values) {
-      // Cas spécial chaînes TV : les chaînes françaises remontent dans une
-      // catégorie virtuelle "France" — l'ordre M3U est préservé naturellement
-      // par l'ordre d'itération de `byGroup.values` (Map insertion order).
       if (type == M3uContentType.tv && _TypePage._isFrenchChannel(group.first)) {
         byCategory.putIfAbsent('France', () => []).add(group);
         continue;
@@ -877,9 +780,6 @@ class _TypePageState extends State<_TypePage> {
       byCategory.putIfAbsent(cat, () => []).add(group);
     }
 
-    // Tri : alpha pour les catégories de genre, ordre M3U (= "récents en haut",
-    // ou "ordre logique du provider" pour les chaînes FR) pour les catégories
-    // prioritaires.
     for (final entry in byCategory.entries) {
       if (_TypePage._categoryPriority(entry.key) >= 100 && entry.key != 'Autres') {
         entry.value.sort((a, b) => a.first.displayName
@@ -888,9 +788,6 @@ class _TypePageState extends State<_TypePage> {
       }
     }
 
-    // ⭐ Catégorie virtuelle "Favoris" — duplique les groupes que l'utilisateur
-    // a marqué comme favoris pour ce type de contenu. Ils restent visibles
-    // dans leur catégorie d'origine + apparaissent en tête de page.
     final favoriteGroups = <List<M3uEntry>>[];
     for (final group in byGroup.values) {
       if (FavoritesService.isEntryFavorite(group.first)) {
@@ -959,7 +856,7 @@ class _HeroBannerState extends State<_HeroBanner> {
     }
     final hasTmdb = await TmdbApiService.hasApiKey();
     if (!context.mounted) return;
-    if (hasTmdb) {
+    if (hasTmdb || entry.type == M3uContentType.series) {
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => DetailsPage(entry: entry, versions: versions),
       ));
@@ -992,7 +889,6 @@ class _HeroBannerState extends State<_HeroBanner> {
                   );
                 },
               ),
-              // Indicateur dots en bas-droite
               if (widget.featured.length > 1)
                 Positioned(
                   right: 16,
@@ -1053,7 +949,6 @@ class _HeroSlide extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Image de fond floutée + agrandie (utilise le poster comme backdrop)
         if (logoUrl != null && logoUrl.isNotEmpty)
           Image.network(
             logoUrl,
@@ -1072,7 +967,6 @@ class _HeroSlide extends StatelessWidget {
               ),
             ),
           ),
-        // Gradient sombre pour la lisibilité
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -1085,13 +979,11 @@ class _HeroSlide extends StatelessWidget {
             ),
           ),
         ),
-        // Contenu : poster à gauche + infos à droite
         Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Poster mis en avant
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: Container(
@@ -1108,7 +1000,6 @@ class _HeroSlide extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 16),
-              // Bloc texte + bouton
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1170,7 +1061,6 @@ class _HeroSlide extends StatelessWidget {
             ],
           ),
         ),
-        // Tap sur la zone vide → ouvre l'item
         Positioned.fill(
           child: Material(
             color: Colors.transparent,
@@ -1189,13 +1079,6 @@ class _HeroSlide extends StatelessWidget {
 }
 
 // ─── Hero "fan" — empilement carte de jeu (§heroFan) ─────────────────────────
-//
-// Affiche jusqu'à 10 cartes empilées en éventail. Auto-rotation 6s qui fait
-// défiler les cartes (chaque tick = la carte suivante devient active). Les
-// premières cartes sont en cours de lecture (`WatchProgressService`, triées
-// par `lastWatched` desc), suivies par les nouveautés prioritaires. Tap sur
-// la carte centrale → ouverture du media ; tap sur une carte secondaire →
-// elle vient prendre la position centrale.
 
 class _HeroFanBanner extends StatefulWidget {
   final List<List<M3uEntry>> featured;
@@ -1215,9 +1098,6 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   late final AnimationController _animCtrl;
   Timer? _timer;
 
-  /// Position lissée (peut être fractionnaire). On ne wrap PAS sur [0, N) :
-  /// la valeur incrémente continument et chaque carte calcule son `delta`
-  /// modulo N avec le plus court chemin → wrap visuel naturel.
   double _from = 0;
   double _to = 0;
   double _current = 0;
@@ -1233,9 +1113,8 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   @override
   void dispose() {
     _timer?.cancel();
-    _animCtrl
-      ..removeListener(_onTick)
-      ..dispose();
+    _animCtrl.removeListener(_onTick);
+    _animCtrl.dispose();
     super.dispose();
   }
 
@@ -1262,8 +1141,6 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     _animCtrl.forward(from: 0);
   }
 
-  /// Anime jusqu'à la carte `targetIdx` en empruntant le plus court chemin
-  /// circulaire (gauche ou droite).
   void _gotoCard(int targetIdx) {
     final n = widget.featured.length.toDouble();
     final currentMod = _current % n;
@@ -1289,7 +1166,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     final entry = versions.first;
     final hasTmdb = await TmdbApiService.hasApiKey();
     if (!context.mounted) return;
-    if (hasTmdb) {
+    if (hasTmdb || entry.type == M3uContentType.series) {
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => DetailsPage(entry: entry, versions: versions),
       ));
@@ -1307,12 +1184,6 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
       _gotoCard(i);
     }
   }
-
-  // ── Swipe manuel (§heroFan ergo) ───────────────────────────────────────────
-  // Le `GestureDetector` au niveau du Stack capture les drags horizontaux
-  // AVANT que la PageView parent (Séries/Films/Chaînes) puisse les revendiquer.
-  // → swipe sur le hero = navigation entre cartes uniquement, jamais switch
-  // de type. Le tap reste géré par l'InkWell de la carte (gestures distincts).
 
   void _onDragStart(DragStartDetails details) {
     _timer?.cancel();
@@ -1332,7 +1203,6 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
       return;
     }
     final v = details.primaryVelocity ?? 0;
-    // Vélocité forte → bias dans la direction du swipe ; faible → snap nearest.
     int target;
     if (v.abs() > 300) {
       target = (v < 0) ? _current.floor() + 1 : _current.ceil() - 1;
@@ -1346,7 +1216,6 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   }
 
   void _onDragCancel() {
-    // Annulation (ex: bascule app) → snap nearest pour rester aligné.
     _from = _current;
     _to = _current.round().toDouble();
     _animCtrl.forward(from: 0);
@@ -1363,12 +1232,8 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
         final cardW = math.min(screenW * 0.48, 220.0);
         final cardH = cardW * 1.45;
         final containerH = cardH + 60;
-        // 1 carte d'écart visuel = ~22 % de la largeur d'une carte.
-        // Sensibilité du drag : 1 unité de `_current` = `cardSpacing` pixels.
         final cardSpacing = cardW * 0.22;
 
-        // Pour le z-order : on trie par |delta| desc → grandes valeurs au début
-        // de la liste = dessinées en premier = derrière.
         final cards = <({int i, double delta})>[];
         for (var i = 0; i < widget.featured.length; i++) {
           final d = _shortestDelta(i);
@@ -1412,7 +1277,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     final absDelta = delta.abs();
     final isActive = absDelta < 0.5;
 
-    final rotation = delta * 0.08; // ~4.5° par rang
+    final rotation = delta * 0.08;
     final offsetX = delta * (w * 0.22);
     final offsetY = math.min(absDelta * 14.0, 42.0);
     final scale = math.max(0.55, 1.0 - absDelta * 0.07);
@@ -1420,9 +1285,9 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
 
     return Transform(
       transform: Matrix4.identity()
-        ..translateByDouble(offsetX, offsetY, 0, 1)
+        ..translate(offsetX, offsetY, 0.0)
         ..rotateZ(rotation)
-        ..scaleByDouble(scale, scale, 1, 1),
+        ..scale(scale, scale, 1.0),
       alignment: Alignment.bottomCenter,
       child: Opacity(
         opacity: opacity,
@@ -1465,7 +1330,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   }
 }
 
-class _HeroFanCard extends StatelessWidget {
+class _HeroFanCard extends StatefulWidget {
   final List<M3uEntry> versions;
   final M3uContentType type;
   final bool isActive;
@@ -1479,40 +1344,49 @@ class _HeroFanCard extends StatelessWidget {
   });
 
   @override
+  State<_HeroFanCard> createState() => _HeroFanCardState();
+}
+
+class _HeroFanCardState extends State<_HeroFanCard> {
+  bool _focused = false;
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    final entry = versions.first;
+    final themeExt = Theme.of(context).extension<AetherThemeExtension>()!;
+    final entry = widget.versions.first;
     final progress = WatchProgressService.getProgressForAny(
-      versions.map((e) => e.url),
+      widget.versions.map((e) => e.url),
     );
     final hasResume = progress != null && progress.ratio < 0.95;
-    final logoUrl = versions
+    final logoUrl = widget.versions
         .map((e) => e.logoUrl)
         .firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
 
-    final fallbackIcon = switch (type) {
+    final fallbackIcon = switch (widget.type) {
       M3uContentType.movie => Icons.movie_outlined,
       M3uContentType.series => Icons.tv_outlined,
       M3uContentType.tv => Icons.live_tv_outlined,
     };
 
-    // §heroFan 3D — fond blanc visible comme tranche de carte (padding 3 px)
-    // + box-shadow stack pour simuler l'épaisseur "papier empilé" sur la carte
-    // active (les voisines gardent une ombre douce simple pour ne pas saturer).
-    final shadows = isActive
-        ? const <BoxShadow>[
-            // Tranche : 5 ombres "dures" (blurRadius=0) qui s'enchaînent en
-            // diagonale → tranche d'une carte épaisse vue de 3/4.
-            BoxShadow(color: Color(0xFFEDEDED), offset: Offset(1, 1.5), blurRadius: 0),
-            BoxShadow(color: Color(0xFFD2D2D2), offset: Offset(2, 3), blurRadius: 0),
-            BoxShadow(color: Color(0xFFA8A8A8), offset: Offset(3, 4.5), blurRadius: 0),
-            BoxShadow(color: Color(0xFF7E7E7E), offset: Offset(4, 6), blurRadius: 0),
-            BoxShadow(color: Color(0xFF4A4A4A), offset: Offset(5, 7.5), blurRadius: 0),
-            // Ombre portée principale (douce, sous le stack).
+    final shadows = widget.isActive
+        ? <BoxShadow>[
+            const BoxShadow(color: Color(0xFFEDEDED), offset: Offset(1, 1.5), blurRadius: 0),
+            const BoxShadow(color: Color(0xFFD2D2D2), offset: Offset(2, 3), blurRadius: 0),
+            const BoxShadow(color: Color(0xFFA8A8A8), offset: Offset(3, 4.5), blurRadius: 0),
+            const BoxShadow(color: Color(0xFF7E7E7E), offset: Offset(4, 6), blurRadius: 0),
+            const BoxShadow(color: Color(0xFF4A4A4A), offset: Offset(5, 7.5), blurRadius: 0),
             BoxShadow(
-              color: Color(0xCC000000),
-              offset: Offset(8, 14),
-              blurRadius: 24,
+              color: Colors.black.withAlpha(_focused ? 200 : 160),
+              offset: const Offset(8, 14),
+              blurRadius: _focused ? 32 : 24,
             ),
+            if (_focused)
+              BoxShadow(
+                color: kAccentPrimary.withAlpha((100 * themeExt.glowIntensity).round()),
+                blurRadius: 20,
+                spreadRadius: 2,
+              ),
           ]
         : <BoxShadow>[
             BoxShadow(
@@ -1522,113 +1396,111 @@ class _HeroFanCard extends StatelessWidget {
             ),
           ];
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white, // → visible en tranche grâce au padding 3 px.
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: shadows,
-      ),
-      padding: const EdgeInsets.all(3),
-      child: ClipRRect(
-        // Rayon intérieur (= 14 - 3) pour des coins concentriques propres.
-        borderRadius: BorderRadius.circular(11),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: onTap,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-            if (logoUrl != null && logoUrl.isNotEmpty)
-              Image.network(
-                logoUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _fallback(fallbackIcon),
-              )
-            else
-              _fallback(fallbackIcon),
-            // Gradient sombre en bas pour la lisibilité du titre.
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.center,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withAlpha(210),
-                  ],
-                ),
-              ),
-            ),
-            if (hasResume)
-              Positioned(
-                top: 10,
-                left: 10,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: kAccentSecondary.withAlpha(230),
-                    borderRadius: BorderRadius.circular(6),
-                    boxShadow: [
-                      BoxShadow(
-                        color: kAccentSecondary.withAlpha(120),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.play_arrow, size: 14, color: Colors.black),
-                      SizedBox(width: 2),
-                      Text(
-                        'REPRENDRE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black,
-                          letterSpacing: 0.6,
+    return Focus(
+      onFocusChange: (v) => setState(() => _focused = v),
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : (_focused ? 1.04 : 1.0),
+        duration: const Duration(milliseconds: 140),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(themeExt.borderRadius),
+            boxShadow: shadows,
+          ),
+          padding: const EdgeInsets.all(3),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(math.max(0.0, themeExt.borderRadius - 3)),
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: widget.onTap,
+                onHighlightChanged: (v) => setState(() => _pressed = v),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (logoUrl != null && logoUrl.isNotEmpty)
+                      Image.network(
+                        logoUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _fallback(fallbackIcon),
+                      )
+                    else
+                      _fallback(fallbackIcon),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.center,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withAlpha(210),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: hasResume ? 12 : 10,
-              child: Text(
-                entry.displayName,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  height: 1.15,
-                  shadows: [
-                    Shadow(
-                        blurRadius: 4,
-                        color: Colors.black.withAlpha(220)),
+                    ),
+                    if (hasResume)
+                      Positioned(
+                        top: 10,
+                        left: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: kAccentSecondary.withAlpha(230),
+                            borderRadius: BorderRadius.circular(6),
+                            boxShadow: [
+                              BoxShadow(color: kAccentSecondary.withAlpha(120), blurRadius: 8),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.play_arrow, size: 14, color: Colors.black),
+                              SizedBox(width: 2),
+                              Text(
+                                'REPRENDRE',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.black,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      left: 10,
+                      right: 10,
+                      bottom: hasResume ? 12 : 10,
+                      child: Text(
+                        entry.displayName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          height: 1.15,
+                          shadows: [Shadow(blurRadius: 4, color: Colors.black.withAlpha(220))],
+                        ),
+                      ),
+                    ),
+                    if (hasResume)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: LinearProgressIndicator(
+                          value: progress.ratio,
+                          backgroundColor: Colors.black.withAlpha(130),
+                          valueColor: AlwaysStoppedAnimation(kAccentSecondary),
+                          minHeight: 4,
+                        ),
+                      ),
                   ],
                 ),
               ),
-            ),
-            if (hasResume)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: LinearProgressIndicator(
-                  value: progress.ratio,
-                  backgroundColor: Colors.black.withAlpha(130),
-                  valueColor: AlwaysStoppedAnimation(kAccentSecondary),
-                  minHeight: 4,
-                ),
-              ),
-              ],
             ),
           ),
         ),
@@ -1642,15 +1514,10 @@ class _HeroFanCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            kAccentPrimary.withAlpha(35),
-            kAccentSecondary.withAlpha(35),
-          ],
+          colors: [kAccentPrimary.withAlpha(35), kAccentSecondary.withAlpha(35)],
         ),
       ),
-      child: Center(
-        child: Icon(icon, size: 70, color: Colors.white.withAlpha(80)),
-      ),
+      child: Center(child: Icon(icon, size: 70, color: Colors.white.withAlpha(80))),
     );
   }
 }
@@ -1659,10 +1526,7 @@ class _HeroFanCard extends StatelessWidget {
 
 class _CategoryRow extends StatelessWidget {
   final String category;
-  /// Groupes effectivement affichés dans le carrousel/grille (max 25).
   final List<List<M3uEntry>> groups;
-  /// Liste complète, transmise à [CategoryListPage] quand l'utilisateur
-  /// tape sur "Voir tout".
   final List<List<M3uEntry>> allGroups;
   final int totalCount;
   final bool hasMore;
@@ -1688,7 +1552,6 @@ class _CategoryRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header : barre verticale gradient + icône + titre + count
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
             child: Row(
@@ -1715,15 +1578,11 @@ class _CategoryRow extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Bouton "Voir tout" si plus de 25 items, sinon juste le compteur.
                 if (hasMore)
                   TextButton.icon(
                     onPressed: () => _openCategoryListPage(context),
                     icon: Text('$totalCount',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: kAccentPrimary)),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kAccentPrimary)),
                     label: Icon(Icons.chevron_right, size: 18, color: kAccentPrimary),
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
@@ -1740,53 +1599,39 @@ class _CategoryRow extends StatelessWidget {
                     ),
                     child: Text(
                       '$totalCount',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurfaceVariant,
-                      ),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant),
                     ),
                   ),
               ],
             ),
           ),
-          // Films / Séries → carrousel horizontal (poster 2:3, narration visuelle)
-          // Chaînes        → grille (logo carré, balayage rapide façon télécommande)
           if (type == M3uContentType.tv)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: LayoutBuilder(
                 builder: (ctx, constraints) {
-                  // Adapte le nombre de colonnes à la largeur disponible
-                  // (3 sur smartphone, 4-5 sur tablette).
                   const spacing = 8.0;
                   final cols = constraints.maxWidth >= 600 ? 5 : 3;
                   final tileWidth = (constraints.maxWidth - spacing * (cols - 1)) / cols;
-                  final tiles = <Widget>[
-                    ...groups.map((g) => _HomeCard(
-                          versions: g,
-                          type: type,
-                          width: tileWidth,
-                        )),
-                    if (hasMore)
-                      _SeeAllTile(
-                        type: type,
-                        remaining: totalCount - groups.length,
-                        width: tileWidth,
-                        onTap: () => _openCategoryListPage(context),
-                      ),
-                  ];
                   return Wrap(
                     spacing: spacing,
                     runSpacing: spacing,
-                    children: tiles,
+                    children: [
+                      ...groups.map((g) => _HomeCard(versions: g, type: type, width: tileWidth)),
+                      if (hasMore)
+                        _SeeAllTile(
+                          type: type,
+                          remaining: totalCount - groups.length,
+                          width: tileWidth,
+                          onTap: () => _openCategoryListPage(context),
+                        ),
+                    ],
                   );
                 },
               ),
             )
           else
             SizedBox(
-              // Films/Séries : poster 130 × 1.5 = 195 + paddings ≈ 215
               height: 215,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
@@ -1823,9 +1668,9 @@ class _CategoryRow extends StatelessWidget {
   }
 }
 
-// ─── Tile "Voir tout" — 26ème vignette ouvrant la page complète ──────────────
+// ─── Tile "Voir tout" ────────────────────────────────────────────────────────
 
-class _SeeAllTile extends StatelessWidget {
+class _SeeAllTile extends StatefulWidget {
   final M3uContentType type;
   final int remaining;
   final double width;
@@ -1839,67 +1684,72 @@ class _SeeAllTile extends StatelessWidget {
   });
 
   @override
+  State<_SeeAllTile> createState() => _SeeAllTileState();
+}
+
+class _SeeAllTileState extends State<_SeeAllTile> {
+  bool _focused = false;
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isTv = type == M3uContentType.tv;
+    final themeExt = Theme.of(context).extension<AetherThemeExtension>()!;
+    final isTv = widget.type == M3uContentType.tv;
     final aspectRatio = isTv ? 1.0 : 2 / 3;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        width: width,
-        child: AspectRatio(
-          aspectRatio: aspectRatio,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  kAccentPrimary.withAlpha(40),
-                  kAccentSecondary.withAlpha(40),
-                ],
-              ),
-              border: Border.all(color: kAccentPrimary.withAlpha(120), width: 1),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: kAetherGradient,
-                    boxShadow: [
-                      BoxShadow(
-                        color: kAccentPrimary.withAlpha(150),
-                        blurRadius: 10,
-                      ),
+    return Focus(
+      onFocusChange: (v) => setState(() => _focused = v),
+      child: InkWell(
+        onTap: widget.onTap,
+        onHighlightChanged: (v) => setState(() => _pressed = v),
+        borderRadius: BorderRadius.circular(themeExt.borderRadius),
+        child: AnimatedScale(
+          scale: _pressed ? 0.95 : (_focused ? 1.05 : 1.0),
+          duration: const Duration(milliseconds: 140),
+          child: SizedBox(
+            width: widget.width,
+            child: AspectRatio(
+              aspectRatio: aspectRatio,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(themeExt.borderRadius),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      kAccentPrimary.withAlpha(_focused ? 60 : 40),
+                      kAccentSecondary.withAlpha(_focused ? 60 : 40),
                     ],
                   ),
-                  child: const Icon(Icons.arrow_forward, color: Colors.black, size: 22),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Voir tout',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: cs.onSurface,
+                  border: Border.all(
+                    color: _focused ? kAccentPrimary : kAccentPrimary.withAlpha(120),
+                    width: _focused ? 2 : 1,
                   ),
+                  boxShadow: _focused && themeExt.glowIntensity > 0
+                      ? [BoxShadow(color: kAccentPrimary.withAlpha((100 * themeExt.glowIntensity).round()), blurRadius: 12)]
+                      : null,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '+$remaining',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: cs.onSurfaceVariant,
-                  ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: kAetherGradient,
+                        boxShadow: [BoxShadow(color: kAccentPrimary.withAlpha(150), blurRadius: 10)],
+                      ),
+                      child: const Icon(Icons.arrow_forward, color: Colors.black, size: 22),
+                    ),
+                    const SizedBox(height: 10),
+                    Text('Voir tout', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: cs.onSurface)),
+                    const SizedBox(height: 2),
+                    Text('+${widget.remaining}', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -1908,9 +1758,9 @@ class _SeeAllTile extends StatelessWidget {
   }
 }
 
-// ─── Page complète d'une catégorie (accessible via "Voir tout") ──────────────
+// ─── Page complète d'une catégorie ───────────────────────────────────────────
 
-class CategoryListPage extends StatelessWidget {
+class CategoryListPage extends StatefulWidget {
   final String category;
   final List<List<M3uEntry>> groups;
   final M3uContentType type;
@@ -1925,10 +1775,36 @@ class CategoryListPage extends StatelessWidget {
   });
 
   @override
+  State<CategoryListPage> createState() => _CategoryListPageState();
+}
+
+class _CategoryListPageState extends State<CategoryListPage> {
+  final ScrollController _scrollController = ScrollController();
+  bool _showScrollTop = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final show = _scrollController.hasClients && _scrollController.offset > 1200;
+    if (show != _showScrollTop) setState(() => _showScrollTop = show);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isTv = type == M3uContentType.tv;
+    final isTv = widget.type == M3uContentType.tv;
 
     return Scaffold(
       appBar: AppBar(
@@ -1936,64 +1812,39 @@ class CategoryListPage extends StatelessWidget {
         scrolledUnderElevation: 0,
         title: Row(
           children: [
-            Icon(icon, size: 20, color: kAccentPrimary),
+            Icon(widget.icon, size: 20, color: kAccentPrimary),
             const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                category,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
+            Expanded(child: Text(widget.category, style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
             const SizedBox(width: 6),
-            Text(
-              '${groups.length}',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
+            Text('${widget.groups.length}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
           ],
         ),
       ),
       extendBodyBehindAppBar: true,
+      floatingActionButton: _showScrollTop
+          ? FloatingActionButton.small(
+              backgroundColor: kAccentPrimary,
+              foregroundColor: Colors.black,
+              onPressed: () => _scrollController.animateTo(0, duration: const Duration(milliseconds: 400), curve: Curves.easeOut),
+              child: const Icon(Icons.keyboard_arrow_up),
+            )
+          : null,
       body: Container(
         width: double.infinity,
         height: double.infinity,
         decoration: BoxDecoration(
           color: isDark ? null : cs.surface,
-          gradient: isDark
-              ? RadialGradient(
-                  center: const Alignment(0, -1.2),
-                  radius: 1.4,
-                  colors: [
-                    kAccentPrimary.withAlpha(28),
-                    cs.surface,
-                  ],
-                )
-              : null,
+          gradient: isDark ? RadialGradient(center: const Alignment(0, -1.2), radius: 1.4, colors: [kAccentPrimary.withAlpha(28), cs.surface]) : null,
         ),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (ctx, constraints) {
               const spacing = 10.0;
-              // Films/séries : 3 cols phone / 4 tablette / 5 large
-              // Chaînes      : 3 cols phone / 5 tablette
               final width = constraints.maxWidth - 24;
-              final int cols;
-              if (isTv) {
-                cols = constraints.maxWidth >= 600 ? 5 : 3;
-              } else {
-                cols = constraints.maxWidth >= 900
-                    ? 5
-                    : constraints.maxWidth >= 600
-                        ? 4
-                        : 3;
-              }
-              final tileWidth = (width - spacing * (cols - 1)) / cols;
-
+              final int cols = isTv ? (constraints.maxWidth >= 600 ? 5 : 3) : (constraints.maxWidth >= 900 ? 5 : (constraints.maxWidth >= 600 ? 4 : 3));
+              
               return GridView.builder(
+                controller: _scrollController,
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: cols,
@@ -2001,12 +1852,12 @@ class CategoryListPage extends StatelessWidget {
                   mainAxisSpacing: spacing,
                   childAspectRatio: isTv ? 1.0 : 2 / 3,
                 ),
-                itemCount: groups.length,
+                itemCount: widget.groups.length,
                 itemBuilder: (context, index) {
                   return _HomeCard(
-                    versions: groups[index],
-                    type: type,
-                    width: double.infinity, // Grid gère la largeur
+                    versions: widget.groups[index],
+                    type: widget.type,
+                    width: double.infinity,
                   );
                 },
               );
@@ -2018,16 +1869,12 @@ class CategoryListPage extends StatelessWidget {
   }
 }
 
-// ─── Carte poster avec overlay gradient + titre ─────────────────────────────
+// ─── Carte poster ────────────────────────────────────────────────────────────
 
 class _HomeCard extends StatefulWidget {
   final List<M3uEntry> versions;
   final M3uContentType type;
-
-  /// Largeur explicite (mode grille). Si null, valeur par défaut selon type
-  /// (130 pour films/séries en carousel, 120 pour TV en carousel).
   final double? width;
-
   const _HomeCard({required this.versions, required this.type, this.width});
 
   @override
@@ -2036,6 +1883,7 @@ class _HomeCard extends StatefulWidget {
 
 class _HomeCardState extends State<_HomeCard> {
   bool _pressed = false;
+  bool _focused = false;
 
   Future<void> _onTap() async {
     if (widget.versions.isEmpty) return;
@@ -2046,23 +1894,19 @@ class _HomeCardState extends State<_HomeCard> {
     }
     final hasTmdb = await TmdbApiService.hasApiKey();
     if (!mounted) return;
-    if (hasTmdb) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => DetailsPage(entry: entry, versions: widget.versions),
-      ));
+    if (hasTmdb || entry.type == M3uContentType.series) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailsPage(entry: entry, versions: widget.versions)));
     } else {
       await showMediaActionSheet(context, entry);
     }
   }
 
-  /// Menu contextuel sur appui long — actions rapides sans passer par la fiche.
   Future<void> _onLongPress() async {
     if (widget.versions.isEmpty) return;
     HapticFeedback.mediumImpact();
     final entry = widget.versions.first;
     final favKey = FavoritesService.keyFor(entry);
 
-    // §3c-4 — bifurque mobile/TV pour le menu contextuel long-press.
     await showAdaptiveActionSheet<void>(
       context: context,
       showDragHandle: true,
@@ -2071,7 +1915,6 @@ class _HomeCardState extends State<_HomeCard> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // En-tête : poster + titre
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Row(
@@ -2081,128 +1924,60 @@ class _HomeCardState extends State<_HomeCard> {
                     child: SizedBox(
                       width: 50,
                       height: widget.type == M3uContentType.tv ? 50 : 75,
-                      child: (entry.logoUrl != null && entry.logoUrl!.isNotEmpty)
+                      child: (entry.logoUrl?.isNotEmpty == true)
                           ? Image.network(entry.logoUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink())
                           : const SizedBox.shrink(),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      entry.displayName,
-                      style: Theme.of(sheetCtx).textTheme.titleMedium,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
+                  Expanded(child: Text(entry.displayName, style: Theme.of(sheetCtx).textTheme.titleMedium, maxLines: 2, overflow: TextOverflow.ellipsis)),
                 ],
               ),
             ),
             const Divider(height: 1),
-            // ── Lire (direct, avec reprise §1e si dispo) ──────────────────
             ValueListenableBuilder<int>(
               valueListenable: WatchProgressService.version,
               builder: (_, __, ___) {
-                // Reprise impossible sur TV live → on garde le simple "Lire".
-                final progress = widget.type == M3uContentType.tv
-                    ? null
-                    : WatchProgressService.getProgressForAny(
-                        widget.versions.map((e) => e.url),
-                      );
+                final progress = widget.type == M3uContentType.tv ? null : WatchProgressService.getProgressForAny(widget.versions.map((e) => e.url));
                 final hasResume = progress != null && progress.position.inSeconds > 5;
-
                 final badge = switch (widget.type) {
-                  M3uContentType.movie  => PlayerBadgeType.movie,
+                  M3uContentType.movie => PlayerBadgeType.movie,
                   M3uContentType.series => PlayerBadgeType.series,
-                  M3uContentType.tv     => PlayerBadgeType.live,
+                  M3uContentType.tv => PlayerBadgeType.live,
                 };
-
                 void play({Duration? from}) {
                   Navigator.pop(sheetCtx);
                   FavoritesService.add(favKey);
-                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerPage(
-                    path: entry.url,
-                    title: entry.displayName,
-                    sourceType: VideoSourceType.network,
-                    badgeType: badge,
-                    startPosition: from,
-                  )));
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerPage(path: entry.url, title: entry.displayName, sourceType: VideoSourceType.network, badgeType: badge, startPosition: from)));
                 }
-
                 if (!hasResume) {
-                  return ListTile(
-                    leading: const Icon(Icons.play_arrow),
-                    title: const Text('Lire'),
-                    onTap: () => play(),
-                  );
+                  return ListTile(leading: const Icon(Icons.play_arrow), title: const Text('Lire'), onTap: () => play());
                 }
-
-                final mm = progress.position.inMinutes.remainder(60);
-                final ss = progress.position.inSeconds.remainder(60);
-                final hh = progress.position.inHours;
-                final label = hh > 0
-                    ? '${hh}h${mm.toString().padLeft(2, '0')}'
-                    : '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
-
+                final label = _formatResumeLabel(progress.position);
                 return Column(
                   children: [
                     ListTile(
                       leading: Icon(Icons.play_arrow, color: kAccentSecondary),
-                      title: Text(
-                        'Reprendre depuis $label',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: kAccentSecondary,
-                        ),
-                      ),
-                      subtitle: LinearProgressIndicator(
-                        value: progress.ratio,
-                        minHeight: 3,
-                        backgroundColor: Colors.white12,
-                        valueColor: AlwaysStoppedAnimation(kAccentSecondary),
-                      ),
+                      title: Text('Reprendre depuis $label', style: TextStyle(fontWeight: FontWeight.w600, color: kAccentSecondary)),
+                      subtitle: LinearProgressIndicator(value: progress.ratio, minHeight: 3, backgroundColor: Colors.white12, valueColor: AlwaysStoppedAnimation(kAccentSecondary)),
                       onTap: () => play(from: progress.position),
                     ),
-                    ListTile(
-                      leading: const Icon(Icons.restart_alt),
-                      title: const Text('Lire depuis le début'),
-                      dense: true,
-                      onTap: () {
-                        WatchProgressService.clearProgress(entry.url);
-                        play();
-                      },
-                    ),
-                    // §forgetResume — Efface la reprise sans lancer la lecture.
-                    // Clear sur toutes les variantes du groupe (FHD + HD…) pour
-                    // que le film disparaisse vraiment de la pile "Reprendre".
+                    ListTile(leading: const Icon(Icons.restart_alt), title: const Text('Lire depuis le début'), dense: true, onTap: () { WatchProgressService.clearProgress(entry.url); play(); }),
                     ListTile(
                       leading: Icon(Icons.history_toggle_off, color: kWarning),
-                      title: Text(
-                        'Oublier la reprise',
-                        style: TextStyle(fontSize: 13, color: kWarning),
-                      ),
+                      title: Text('Oublier la reprise', style: TextStyle(fontSize: 13, color: kWarning)),
                       dense: true,
                       onTap: () async {
                         final snapshot = progress;
                         final clearedUrl = entry.url;
                         final messenger = ScaffoldMessenger.of(context);
                         Navigator.pop(sheetCtx);
-                        for (final v in widget.versions) {
-                          await WatchProgressService.clearProgress(v.url);
-                        }
+                        for (final v in widget.versions) { await WatchProgressService.clearProgress(v.url); }
+                        messenger.clearSnackBars();
                         messenger.showSnackBar(SnackBar(
                           content: const Text('Reprise oubliée'),
                           duration: const Duration(seconds: 4),
-                          action: SnackBarAction(
-                            label: 'Annuler',
-                            onPressed: () {
-                              WatchProgressService.saveProgress(
-                                clearedUrl,
-                                snapshot.position,
-                                snapshot.duration,
-                              );
-                            },
-                          ),
+                          action: SnackBarAction(label: 'Annuler', onPressed: () { WatchProgressService.saveProgress(clearedUrl, snapshot.position, snapshot.duration); }),
                         ));
                       },
                     ),
@@ -2210,16 +1985,7 @@ class _HomeCardState extends State<_HomeCard> {
                 );
               },
             ),
-            // ── Voir les détails (action sheet ou fiche TMDB) ─────────────
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('Voir les détails'),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                _onTap();
-              },
-            ),
-            // ── Télécharger (films/séries uniquement) ─────────────────────
+            ListTile(leading: const Icon(Icons.info_outline), title: const Text('Voir les détails'), onTap: () { Navigator.pop(sheetCtx); _onTap(); }),
             if (widget.type != M3uContentType.tv)
               ListTile(
                 leading: const Icon(Icons.download),
@@ -2227,32 +1993,17 @@ class _HomeCardState extends State<_HomeCard> {
                 onTap: () {
                   Navigator.pop(sheetCtx);
                   final releaseYear = widget.type == M3uContentType.movie ? entry.title.year : null;
-                  verifierEtTelecharger(
-                    url: entry.url,
-                    nom: buildDownloadName(entry),
-                    releaseYear: releaseYear,
-                    context: context,
-                  );
+                  verifierEtTelecharger(url: entry.url, nom: buildDownloadName(entry), releaseYear: releaseYear, context: context);
                 },
               ),
-            // ── Toggle favori ─────────────────────────────────────────────
             ValueListenableBuilder<int>(
               valueListenable: FavoritesService.version,
               builder: (ctx, _, __) {
                 final isFav = FavoritesService.isFavorite(favKey);
                 return ListTile(
-                  leading: Icon(
-                    isFav ? Icons.favorite : Icons.favorite_border,
-                    color: isFav ? kAccentTertiary : null,
-                  ),
-                  title: Text(
-                    isFav ? 'Retirer des favoris' : 'Ajouter aux favoris',
-                    style: TextStyle(color: isFav ? kAccentTertiary : null),
-                  ),
-                  onTap: () async {
-                    await FavoritesService.toggle(favKey);
-                    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
-                  },
+                  leading: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? kAccentTertiary : null),
+                  title: Text(isFav ? 'Retirer des favoris' : 'Ajouter aux favoris', style: TextStyle(color: isFav ? kAccentTertiary : null)),
+                  onTap: () async { await FavoritesService.toggle(favKey); if (sheetCtx.mounted) Navigator.pop(sheetCtx); },
                 );
               },
             ),
@@ -2263,265 +2014,135 @@ class _HomeCardState extends State<_HomeCard> {
     );
   }
 
+  String _formatResumeLabel(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    if (h > 0) return '${h}h${m.toString().padLeft(2, '0')}';
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final themeExt = Theme.of(context).extension<AetherThemeExtension>()!;
     final entry = widget.versions.first;
-    final logoUrl = widget.versions
-        .map((e) => e.logoUrl)
-        .firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
-
+    final logoUrl = widget.versions.map((e) => e.logoUrl).firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
     final isTv = widget.type == M3uContentType.tv;
     final cardWidth = widget.width ?? (isTv ? 120.0 : 130.0);
     final imageAspectRatio = isTv ? 1.0 : 2 / 3;
+    final fallbackIcon = switch (widget.type) { M3uContentType.movie => Icons.movie_outlined, M3uContentType.series => Icons.tv_outlined, M3uContentType.tv => Icons.live_tv_outlined };
 
-    final fallbackIcon = switch (widget.type) {
-      M3uContentType.movie  => Icons.movie_outlined,
-      M3uContentType.series => Icons.tv_outlined,
-      M3uContentType.tv     => Icons.live_tv_outlined,
-    };
-
-    // §3c-3 — Wrap focus TV (decorateOnly = la card garde son GestureDetector
-    // et son anim _pressed). Sur TV, la bordure glow + scale 1.05 sont gérés
-    // par FocusableCard ; sur mobile, FocusableCard est neutre.
     return FocusableCard(
       decorateOnly: true,
       onTap: _onTap,
       onLongPress: _onLongPress,
-      borderRadius: BorderRadius.circular(12),
-      child: GestureDetector(
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        onTap: _onTap,
-        onLongPress: _onLongPress,
-        child: AnimatedScale(
-          scale: _pressed ? 0.95 : 1.0,
-          duration: const Duration(milliseconds: 140),
-          curve: Curves.easeOut,
-          child: SizedBox(
-            width: cardWidth,
-            child: AspectRatio(
-              aspectRatio: imageAspectRatio,
-              child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: cs.surfaceContainerHighest,
-                border: Border.all(
-                  color: kAccentPrimary.withAlpha(40),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(80),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+      borderRadius: BorderRadius.circular(themeExt.borderRadius),
+      child: Focus(
+        onFocusChange: (v) => setState(() => _focused = v),
+        child: InkWell(
+          onTap: _onTap,
+          onLongPress: _onLongPress,
+          onHighlightChanged: (v) => setState(() => _pressed = v),
+          borderRadius: BorderRadius.circular(themeExt.borderRadius),
+          child: AnimatedScale(
+            scale: _pressed ? 0.95 : (_focused ? 1.05 : 1.0),
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOut,
+            child: SizedBox(
+              width: cardWidth,
+              child: AspectRatio(
+                aspectRatio: imageAspectRatio,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(themeExt.borderRadius),
+                    color: cs.surfaceContainerHighest,
+                    border: Border.all(color: _focused ? kAccentPrimary : kAccentPrimary.withAlpha(40), width: _focused ? 2 : 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _focused ? kAccentPrimary.withAlpha((80 * themeExt.glowIntensity).round()) : Colors.black.withAlpha(80),
+                        blurRadius: _focused ? 12 : 10,
+                        offset: _focused ? Offset.zero : const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(11),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Image
-                    if (logoUrl != null && logoUrl.isNotEmpty)
-                      Image.network(
-                        logoUrl,
-                        fit: isTv ? BoxFit.contain : BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            _fallback(fallbackIcon, cs),
-                        loadingBuilder: (_, child, progress) =>
-                            progress == null ? child : _fallback(fallbackIcon, cs),
-                      )
-                    else
-                      _fallback(fallbackIcon, cs),
-                    // Gradient bottom overlay pour la lisibilité du titre
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            stops: const [0.55, 1.0],
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withAlpha(220),
-                            ],
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(themeExt.borderRadius - 1),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (logoUrl != null && logoUrl.isNotEmpty)
+                          Image.network(logoUrl, fit: isTv ? BoxFit.contain : BoxFit.cover, errorBuilder: (_, __, ___) => _fallback(fallbackIcon, cs), loadingBuilder: (_, child, progress) => progress == null ? child : _fallback(fallbackIcon, cs))
+                        else
+                          _fallback(fallbackIcon, cs),
+                        Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, stops: const [0.55, 1.0], colors: [Colors.transparent, Colors.black.withAlpha(220)])))),
+                        Positioned(left: 8, right: 8, bottom: 8, child: Text(entry.displayName, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white, height: 1.2, shadows: [Shadow(color: Colors.black, blurRadius: 4)]))),
+                        if (!isTv)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: ValueListenableBuilder<int>(
+                              valueListenable: WatchProgressService.version,
+                              builder: (_, __, ___) {
+                                final p = WatchProgressService.getProgressForAny(widget.versions.map((e) => e.url));
+                                if (p == null || p.ratio <= 0) return const SizedBox.shrink();
+                                return LinearProgressIndicator(value: p.ratio, minHeight: 3, backgroundColor: Colors.white24, valueColor: AlwaysStoppedAnimation(kAccentSecondary));
+                              },
+                            ),
                           ),
-                        ),
-                      ),
+                      ],
                     ),
-                    // Titre en surimpression bas
-                    Positioned(
-                      left: 8,
-                      right: 8,
-                      bottom: 8,
-                      child: Text(
-                        entry.displayName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          height: 1.2,
-                          shadows: [
-                            Shadow(color: Colors.black, blurRadius: 4),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // §1e — Barre de progression "reprendre depuis…" :
-                    // visible si l'utilisateur a regardé l'une des variantes du
-                    // groupe sans aller jusqu'au bout (TV exclu — pas de durée).
-                    if (!isTv)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: ValueListenableBuilder<int>(
-                          valueListenable: WatchProgressService.version,
-                          builder: (_, __, ___) {
-                            final p = WatchProgressService.getProgressForAny(
-                              widget.versions.map((e) => e.url),
-                            );
-                            if (p == null || p.ratio <= 0) {
-                              return const SizedBox.shrink();
-                            }
-                            return LinearProgressIndicator(
-                              value: p.ratio,
-                              minHeight: 3,
-                              backgroundColor: Colors.white24,
-                              valueColor: AlwaysStoppedAnimation(kAccentSecondary),
-                            );
-                          },
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ),
-      ),
     );
   }
 
   Widget _fallback(IconData icon, ColorScheme cs) {
-    return Container(
-      color: cs.surfaceContainerHighest,
-      alignment: Alignment.center,
-      child: Icon(icon, size: 36, color: cs.onSurfaceVariant.withAlpha(120)),
-    );
+    return Container(color: cs.surfaceContainerHighest, alignment: Alignment.center, child: Icon(icon, size: 36, color: cs.onSurfaceVariant.withAlpha(120)));
   }
 }
 
 // ─── Vue résultats de recherche ──────────────────────────────────────────────
 
 class _SearchView extends StatelessWidget {
-  /// Texte saisi (déjà debouncé par le parent).
   final String query;
-
-  /// Toutes les entrées splittées par type — réutilisées pour le filtrage.
   final Map<M3uContentType, List<M3uEntry>> byType;
-  /// §1i — Appelé quand l'utilisateur tape sur une suggestion d'historique.
-  /// Le parent met à jour le contrôleur de recherche avec la valeur choisie.
   final ValueChanged<String>? onSelectSuggestion;
-
-  const _SearchView({
-    required this.query,
-    required this.byType,
-    this.onSelectSuggestion,
-  });
+  const _SearchView({required this.query, required this.byType, this.onSelectSuggestion});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
-    if (query.trim().isEmpty) {
-      return _SearchEmptyState(
-        cs: cs,
-        onSelectSuggestion: onSelectSuggestion,
-      );
-    }
-
+    if (query.trim().isEmpty) return _SearchEmptyState(cs: cs, onSelectSuggestion: onSelectSuggestion);
     final q = query.trim().toLowerCase();
     final filmsHits  = _filterAndGroup(byType[M3uContentType.movie]!,  q, M3uContentType.movie);
     final seriesHits = _filterAndGroup(byType[M3uContentType.series]!, q, M3uContentType.series);
     final tvHits     = _filterAndGroup(byType[M3uContentType.tv]!,     q, M3uContentType.tv);
-
     final totalGroups = filmsHits.length + seriesHits.length + tvHits.length;
-
-    if (totalGroups == 0) {
-      // §12-b — Empty state unifié pour la recherche.
-      return EmptyState(
-        icon: Icons.search_off,
-        title: 'Aucun résultat',
-        subtitle: 'Rien à afficher pour "$query". Essaie un autre mot-clé ou vérifie l\'orthographe.',
-      );
-    }
-
-    final sections = <Widget>[];
-    if (filmsHits.isNotEmpty) {
-      sections.add(_ResultSection(
-        title: 'Films',
-        icon: Icons.movie_outlined,
-        groups: filmsHits,
-        type: M3uContentType.movie,
-      ));
-    }
-    if (seriesHits.isNotEmpty) {
-      sections.add(_ResultSection(
-        title: 'Séries',
-        icon: Icons.tv_outlined,
-        groups: seriesHits,
-        type: M3uContentType.series,
-      ));
-    }
-    if (tvHits.isNotEmpty) {
-      sections.add(_ResultSection(
-        title: 'Chaînes',
-        icon: Icons.live_tv_outlined,
-        groups: tvHits,
-        type: M3uContentType.tv,
-      ));
-    }
+    if (totalGroups == 0) return EmptyState(icon: Icons.search_off, title: 'Aucun résultat', subtitle: 'Rien à afficher pour "$query". Essaie un autre mot-clé ou vérifie l\'orthographe.');
 
     return ListView(
       padding: EdgeInsets.fromLTRB(0, MediaQuery.of(context).padding.top + 76, 0, 24),
-      children: sections,
+      children: [
+        if (filmsHits.isNotEmpty) _ResultSection(title: 'Films', icon: Icons.movie_outlined, groups: filmsHits, type: M3uContentType.movie),
+        if (seriesHits.isNotEmpty) _ResultSection(title: 'Séries', icon: Icons.tv_outlined, groups: seriesHits, type: M3uContentType.series),
+        if (tvHits.isNotEmpty) _ResultSection(title: 'Chaînes', icon: Icons.live_tv_outlined, groups: tvHits, type: M3uContentType.tv),
+      ],
     );
   }
 
-  /// Filtre par texte + regroupe par titre (= toutes variantes d'un même film/série/chaîne).
-  /// Limite : 30 groupes par type pour éviter les listes interminables.
-  List<List<M3uEntry>> _filterAndGroup(
-    List<M3uEntry> entries,
-    String q,
-    M3uContentType type,
-  ) {
-    bool match(M3uEntry e) =>
-        e.displayName.toLowerCase().contains(q) ||
-        e.rawTitle.toLowerCase().contains(q);
-
-    String key(M3uEntry e) =>
-        type == M3uContentType.tv ? tvGroupKey(e.displayName) : e.displayName;
-
+  List<List<M3uEntry>> _filterAndGroup(List<M3uEntry> entries, String q, M3uContentType type) {
+    bool match(M3uEntry e) => e.displayName.toLowerCase().contains(q) || e.rawTitle.toLowerCase().contains(q);
+    String key(M3uEntry e) => type == M3uContentType.tv ? tvGroupKey(e.displayName) : e.displayName;
     final byGroup = <String, List<M3uEntry>>{};
-    for (final e in entries) {
-      if (!match(e)) continue;
-      byGroup.putIfAbsent(key(e), () => []).add(e);
-    }
-
-    // §URGENT — dédup qualité dans les groupes TV (cohérent avec _TypePage)
-    if (type == M3uContentType.tv) {
-      for (final k in byGroup.keys.toList()) {
-        byGroup[k] = dedupeTvVersions(byGroup[k]!);
-      }
-    }
-
+    for (final e in entries) { if (match(e)) byGroup.putIfAbsent(key(e), () => []).add(e); }
+    if (type == M3uContentType.tv) { for (final k in byGroup.keys.toList()) { byGroup[k] = dedupeTvVersions(byGroup[k]!); } }
     final groups = byGroup.values.toList();
     if (groups.length > 30) groups.length = 30;
     return groups;
@@ -2533,18 +2154,11 @@ class _ResultSection extends StatelessWidget {
   final IconData icon;
   final List<List<M3uEntry>> groups;
   final M3uContentType type;
-
-  const _ResultSection({
-    required this.title,
-    required this.icon,
-    required this.groups,
-    required this.type,
-  });
+  const _ResultSection({required this.title, required this.icon, required this.groups, required this.type});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
       child: Column(
@@ -2554,94 +2168,33 @@ class _ResultSection extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: Row(
               children: [
-                Container(
-                  width: 4,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    gradient: kAetherGradient,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+                Container(width: 4, height: 22, decoration: BoxDecoration(gradient: kAetherGradient, borderRadius: BorderRadius.circular(2))),
                 const SizedBox(width: 10),
                 Icon(icon, size: 18, color: kAccentPrimary),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 17,
-                      color: cs.onSurface,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${groups.length}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ),
+                Expanded(child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: cs.onSurface, letterSpacing: 0.3))),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)), child: Text('${groups.length}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant))),
               ],
             ),
           ),
-          SizedBox(
-            height: type == M3uContentType.tv ? 140 : 215,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: groups.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (ctx, i) => _HomeCard(
-                versions: groups[i],
-                type: type,
-              ),
-            ),
-          ),
+          SizedBox(height: type == M3uContentType.tv ? 140 : 215, child: ListView.separated(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16), itemCount: groups.length, separatorBuilder: (_, __) => const SizedBox(width: 10), itemBuilder: (ctx, i) => _HomeCard(versions: groups[i], type: type))),
         ],
       ),
     );
   }
 }
 
-// ─── Physics : swipe gauche/droite plus court (-20%) ─────────────────────────
-
-/// `PageScrollPhysics` plus sensible : amplifie modérément la vélocité au
-/// moment du release pour atteindre le seuil de tolérance plus facilement.
-///
-/// Multiplicateur ×1.15 (au lieu de ×1.3) : compromis entre sensibilité
-/// (un swipe court suffit à changer de page) et fluidité du snap (pas de
-/// secousse abrupte sur les drags moyens).
 class _FastPageScrollPhysics extends PageScrollPhysics {
   const _FastPageScrollPhysics({super.parent});
-
   @override
-  _FastPageScrollPhysics applyTo(ScrollPhysics? ancestor) {
-    return _FastPageScrollPhysics(parent: buildParent(ancestor));
-  }
-
+  _FastPageScrollPhysics applyTo(ScrollPhysics? ancestor) => _FastPageScrollPhysics(parent: buildParent(ancestor));
   @override
-  Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) {
-    return super.createBallisticSimulation(position, velocity * 1.15);
-  }
+  Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) => super.createBallisticSimulation(position, velocity * 1.15);
 }
-
-
-// ─── §1i État vide de la recherche : suggestions d historique ────────────────
 
 class _SearchEmptyState extends StatelessWidget {
   final ColorScheme cs;
   final ValueChanged<String>? onSelectSuggestion;
-
   const _SearchEmptyState({required this.cs, this.onSelectSuggestion});
 
   @override
@@ -2651,79 +2204,16 @@ class _SearchEmptyState extends StatelessWidget {
       builder: (_, __, ___) {
         final history = SearchHistoryService.all;
         return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-              16, MediaQuery.of(context).padding.top + 80, 16, 24),
+          padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 80, 16, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (history.isEmpty) ...[
-                Center(
-                  child: Column(
-                    children: [
-                      Icon(Icons.search,
-                          size: 56,
-                          color: cs.onSurfaceVariant.withAlpha(120)),
-                      const SizedBox(height: 12),
-                      Text(
-                        "Tapez pour chercher dans votre playlist",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: cs.onSurfaceVariant),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "Films · Séries · Chaînes",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            color: cs.onSurfaceVariant.withAlpha(150),
-                            fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
+                Center(child: Column(children: [Icon(Icons.search, size: 56, color: cs.onSurfaceVariant.withAlpha(120)), const SizedBox(height: 12), const Text("Tapez pour chercher dans votre playlist", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70)), const SizedBox(height: 4), Text("Films · Séries · Chaînes", textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant.withAlpha(150), fontSize: 12))])),
               ] else ...[
-                Row(
-                  children: [
-                    Icon(Icons.history, size: 18, color: kAccentSecondary),
-                    const SizedBox(width: 8),
-                    Text(
-                      "Recherches récentes",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: cs.onSurface,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () => SearchHistoryService.clear(),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        minimumSize: const Size(0, 28),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text(
-                        "Effacer",
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant.withAlpha(180)),
-                      ),
-                    ),
-                  ],
-                ),
+                Row(children: [Icon(Icons.history, size: 18, color: kAccentSecondary), const SizedBox(width: 8), Text("Recherches récentes", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: cs.onSurface, letterSpacing: 0.3)), const Spacer(), TextButton(onPressed: () => SearchHistoryService.clear(), style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: const Size(0, 28), tapTargetSize: MaterialTapTargetSize.shrinkWrap), child: Text("Effacer", style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant.withAlpha(180))))]),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: history
-                      .map((q) => _HistoryChip(
-                            query: q,
-                            cs: cs,
-                            onTap: () => onSelectSuggestion?.call(q),
-                            onDismiss: () => SearchHistoryService.remove(q),
-                          ))
-                      .toList(),
-                ),
+                Wrap(spacing: 8, runSpacing: 8, children: history.map((q) => _HistoryChip(query: q, cs: cs, onTap: () => onSelectSuggestion?.call(q), onDismiss: () => SearchHistoryService.remove(q))).toList()),
               ],
             ],
           ),
@@ -2738,13 +2228,7 @@ class _HistoryChip extends StatelessWidget {
   final ColorScheme cs;
   final VoidCallback onTap;
   final VoidCallback onDismiss;
-
-  const _HistoryChip({
-    required this.query,
-    required this.cs,
-    required this.onTap,
-    required this.onDismiss,
-  });
+  const _HistoryChip({required this.query, required this.cs, required this.onTap, required this.onDismiss});
 
   @override
   Widget build(BuildContext context) {
@@ -2753,153 +2237,61 @@ class _HistoryChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(18),
-          border:
-              Border.all(color: kAccentSecondary.withAlpha(60), width: 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.history,
-                size: 14, color: cs.onSurfaceVariant.withAlpha(180)),
-            const SizedBox(width: 6),
-            Text(
-              query,
-              style: TextStyle(
-                fontSize: 13,
-                color: cs.onSurface,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: onDismiss,
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Icon(Icons.close,
-                    size: 14, color: cs.onSurfaceVariant.withAlpha(160)),
-              ),
-            ),
-          ],
-        ),
+        decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(18), border: Border.all(color: kAccentSecondary.withAlpha(60), width: 1)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.history, size: 14, color: cs.onSurfaceVariant.withAlpha(180)), const SizedBox(width: 6), Text(query, style: TextStyle(fontSize: 13, color: cs.onSurface, fontWeight: FontWeight.w500)), const SizedBox(width: 4), GestureDetector(onTap: onDismiss, child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.close, size: 14, color: cs.onSurfaceVariant.withAlpha(160))))]),
       ),
     );
   }
 }
 
-// ─── §1i Tuile "Reprendre la chaîne" en tête de la page Chaînes ──────────────
-
-class _LastWatchedTvTile extends StatelessWidget {
-  /// Entrées TV disponibles dans la playlist actuelle — utilisé pour vérifier
-  /// que la dernière chaîne regardée existe toujours avant d affiché la tuile.
+class _LastWatchedTvTile extends StatefulWidget {
   final List<M3uEntry> entries;
   const _LastWatchedTvTile({required this.entries});
+  @override
+  State<_LastWatchedTvTile> createState() => _LastWatchedTvTileState();
+}
+
+class _LastWatchedTvTileState extends State<_LastWatchedTvTile> {
+  bool _focused = false;
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
+    final themeExt = Theme.of(context).extension<AetherThemeExtension>()!;
     return ValueListenableBuilder<int>(
       valueListenable: LastWatchedChannelService.version,
       builder: (_, __, ___) {
         final last = LastWatchedChannelService.current;
         if (last == null) return const SizedBox.shrink();
-
-        // Cherche l entrée actuelle correspondante dans la playlist (pour
-        // récupérer logo / displayName à jour si renommé côté provider).
-        final match = entries.firstWhere(
-          (e) => e.url == last.url,
-          orElse: () => M3uEntry(
-            url: last.url,
-            type: M3uContentType.tv,
-            tvgId: last.tvgId,
-            logoUrl: last.logoUrl,
-            title: TitleMetadata(rawTitle: last.title, baseTitle: last.title),
-            accountId: "",
-          ),
-        );
-
+        final match = widget.entries.firstWhere((e) => e.url == last.url, orElse: () => M3uEntry(url: last.url, type: M3uContentType.tv, tvgId: last.tvgId, logoUrl: last.logoUrl, title: TitleMetadata(rawTitle: last.title, baseTitle: last.title), accountId: ""));
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () => showTvActionSheet(context, [match]),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    kAccentSecondary.withAlpha(40),
-                    kAccentPrimary.withAlpha(20),
-                  ],
+          child: Focus(
+            onFocusChange: (v) => setState(() => _focused = v),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(themeExt.borderRadius),
+              onTap: () => showTvActionSheet(context, [match]),
+              onHighlightChanged: (v) => setState(() => _pressed = v),
+              child: AnimatedScale(
+                scale: _pressed ? 0.98 : (_focused ? 1.02 : 1.0),
+                duration: const Duration(milliseconds: 140),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(themeExt.borderRadius),
+                    gradient: LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [kAccentSecondary.withAlpha(_focused ? 60 : 40), kAccentPrimary.withAlpha(_focused ? 40 : 20)]),
+                    border: Border.all(color: _focused ? kAccentSecondary : kAccentSecondary.withAlpha(120), width: _focused ? 2 : 1),
+                    boxShadow: _focused && themeExt.glowIntensity > 0 ? [BoxShadow(color: kAccentSecondary.withAlpha((100 * themeExt.glowIntensity).round()), blurRadius: 15)] : null,
+                  ),
+                  child: Row(
+                    children: [
+                      ClipRRect(borderRadius: BorderRadius.circular(8), child: Container(width: 48, height: 48, color: Colors.black26, child: (last.logoUrl != null && last.logoUrl!.isNotEmpty) ? Image.network(last.logoUrl!, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.live_tv, color: Colors.white54)) : const Icon(Icons.live_tv, color: Colors.white54))),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("REPRENDRE LA CHAÎNE", style: TextStyle(color: kAccentSecondary, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.2)), const SizedBox(height: 2), Text(last.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600))])),
+                      Container(width: 38, height: 38, decoration: BoxDecoration(shape: BoxShape.circle, gradient: kAetherGradient, boxShadow: [BoxShadow(color: kAccentPrimary.withAlpha(150), blurRadius: 10)]), child: const Icon(Icons.play_arrow, color: Colors.black, size: 22)),
+                    ],
+                  ),
                 ),
-                border: Border.all(
-                    color: kAccentSecondary.withAlpha(120), width: 1),
-              ),
-              child: Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      color: Colors.black26,
-                      child: (last.logoUrl != null && last.logoUrl!.isNotEmpty)
-                          ? Image.network(last.logoUrl!,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.live_tv,
-                                  color: Colors.white54))
-                          : const Icon(Icons.live_tv, color: Colors.white54),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "REPRENDRE LA CHAÎNE",
-                          style: TextStyle(
-                            color: kAccentSecondary,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          last.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: kAetherGradient,
-                      boxShadow: [
-                        BoxShadow(
-                            color: kAccentPrimary.withAlpha(150),
-                            blurRadius: 10),
-                      ],
-                    ),
-                    child: const Icon(Icons.play_arrow,
-                        color: Colors.black, size: 22),
-                  ),
-                ],
               ),
             ),
           ),
