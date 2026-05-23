@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/aether_theme_extension.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
@@ -224,11 +227,6 @@ class _HomePageState extends State<HomePage> {
         actions: widget.searchMode
             ? const []
             : [
-                IconButton(
-                  icon: const Icon(Icons.settings_outlined),
-                  tooltip: 'Paramètres',
-                  onPressed: _openSettings,
-                ),
                 const SizedBox(width: 4),
               ],
       ),
@@ -1995,19 +1993,22 @@ class CategoryListPage extends StatelessWidget {
               }
               final tileWidth = (width - spacing * (cols - 1)) / cols;
 
-              return SingleChildScrollView(
+              return GridView.builder(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                child: Wrap(
-                  spacing: spacing,
-                  runSpacing: spacing,
-                  children: groups
-                      .map((g) => _HomeCard(
-                            versions: g,
-                            type: type,
-                            width: tileWidth,
-                          ))
-                      .toList(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: cols,
+                  crossAxisSpacing: spacing,
+                  mainAxisSpacing: spacing,
+                  childAspectRatio: isTv ? 1.0 : 2 / 3,
                 ),
+                itemCount: groups.length,
+                itemBuilder: (context, index) {
+                  return _HomeCard(
+                    versions: groups[index],
+                    type: type,
+                    width: double.infinity, // Grid gère la largeur
+                  );
+                },
               );
             },
           ),

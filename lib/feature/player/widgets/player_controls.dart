@@ -13,9 +13,11 @@ class PlayerControls extends StatefulWidget {
   final Player player;
   final String title;
   final bool visible;
+  final bool isFullScreen;
   final PlayerBadgeType badgeType;
   final VoidCallback onBack;
   final VoidCallback onInteraction;
+  final VoidCallback? onToggleFullScreen;
   /// §1i — Notifie le parent quand l'utilisateur (dé)verrouille.
   /// Le parent ([PlayerPage]) propage l'état aux [PlayerGestures] pour
   /// désactiver les gestes en mode lock.
@@ -29,9 +31,11 @@ class PlayerControls extends StatefulWidget {
     required this.player,
     required this.title,
     required this.visible,
+    this.isFullScreen = false,
     this.badgeType = PlayerBadgeType.none,
     required this.onBack,
     required this.onInteraction,
+    this.onToggleFullScreen,
     this.onLockChanged,
     this.onNextEpisode,
   });
@@ -367,6 +371,18 @@ class _PlayerControlsState extends State<PlayerControls> {
                           ),
                         ),
                       ],
+                      const SizedBox(width: 8),
+                      // Bouton Fullscreen (Windows/Desktop).
+                      if (widget.onToggleFullScreen != null)
+                        IconButton(
+                          icon: Icon(
+                            widget.isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                            color: Colors.white70,
+                            size: 26,
+                          ),
+                          tooltip: widget.isFullScreen ? 'Quitter le plein écran' : 'Plein écran',
+                          onPressed: widget.onToggleFullScreen,
+                        ),
                       const SizedBox(width: 8),
                       // Bouton lock.
                       _LockButton(

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -24,9 +25,21 @@ import 'data/services/update_service.dart';
 import 'feature/update/update_dialog.dart';
 import 'core/utils/platform_tv.dart';
 import 'core/platform/storage_service.dart';
+import 'dart:ui' show PointerDeviceKind;
+import 'package:window_manager/window_manager.dart';
 
 /// Clé globale pour le Navigator, permettant une navigation programmatique sans `BuildContext`.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// Permet le défilement par glissement de souris (desktop/web).
+class AppScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+      };
+}
 
 /// Point d'entrée de l'application.
 void main() async {
@@ -34,6 +47,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   
+  if (Platform.isWindows) {
+    await windowManager.ensureInitialized();
+  }
+
   // Initialisation du stockage (MediaStore sur Android, Local sur Windows)
   await StorageService.init();
 
@@ -80,6 +97,7 @@ class MyApp extends StatelessWidget {
 
   Widget _buildApp(AppThemeConfig config) {
     return MaterialApp(
+      scrollBehavior: AppScrollBehavior(),
       navigatorKey: navigatorKey,
       title: 'AetherStream',
       themeMode: config.themeMode,

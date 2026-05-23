@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/aether_theme_extension.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/accounts/playlist_management_page.dart';
 import 'package:aetherStream/feature/settings/about_page.dart';
@@ -75,8 +76,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Paramètres'),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
@@ -97,7 +100,10 @@ class _SettingsPageState extends State<SettingsPage> {
               : null,
         ),
         child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: EdgeInsets.only(
+            top: MediaQuery.of(context).padding.top + kToolbarHeight + 8,
+            bottom: 24,
+          ),
           children: [
             _SectionHeader(title: 'Configuration'),
             _SettingsTile(
@@ -187,7 +193,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _SettingsTile extends StatelessWidget {
+class _SettingsTile extends StatefulWidget {
   final IconData icon;
   final Color accentColor;
   final String title;
@@ -203,59 +209,90 @@ class _SettingsTile extends StatelessWidget {
   });
 
   @override
+  State<_SettingsTile> createState() => _SettingsTileState();
+}
+
+class _SettingsTileState extends State<_SettingsTile> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final themeExt = Theme.of(context).extension<AetherThemeExtension>()!;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-      child: Material(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          splashColor: accentColor.withAlpha(30),
-          highlightColor: accentColor.withAlpha(15),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: accentColor.withAlpha(30),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: accentColor.withAlpha(80), width: 1),
-                  ),
-                  child: Icon(icon, color: accentColor, size: 22),
+      child: Focus(
+        onFocusChange: (v) => setState(() => _focused = v),
+        child: Material(
+          color: _focused
+              ? widget.accentColor.withAlpha(40)
+              : cs.surfaceContainer,
+          borderRadius: BorderRadius.circular(themeExt.borderRadius),
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(themeExt.borderRadius),
+            splashColor: widget.accentColor.withAlpha(30),
+            highlightColor: widget.accentColor.withAlpha(15),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(themeExt.borderRadius),
+                border: Border.all(
+                  color: _focused
+                      ? widget.accentColor
+                      : Colors.transparent,
+                  width: 2,
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: cs.onSurface,
-                        ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: widget.accentColor.withAlpha(30),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: widget.accentColor.withAlpha(80),
+                        width: 1,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                    ),
+                    child: Icon(widget.icon, color: widget.accentColor, size: 22),
                   ),
-                ),
-                Icon(Icons.chevron_right, color: cs.onSurfaceVariant.withAlpha(160)),
-              ],
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.subtitle,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: _focused
+                        ? widget.accentColor
+                        : cs.onSurfaceVariant.withAlpha(160),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -263,3 +300,4 @@ class _SettingsTile extends StatelessWidget {
     );
   }
 }
+

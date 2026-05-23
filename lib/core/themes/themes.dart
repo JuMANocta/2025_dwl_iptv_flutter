@@ -81,6 +81,9 @@ ThemeData lightTheme(AppThemeConfig config) {
       unselectedItemColor: kMediumGrey,
       selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
     ),
+    snackBarTheme: const SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+    ),
   );
 }
 
@@ -96,6 +99,9 @@ ThemeData darkTheme(AppThemeConfig config) {
       primary:   config.primaryColor,
       secondary: config.accentColor,
       tertiary:  config.tertiaryColor,
+    ),
+    snackBarTheme: const SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
     ),
     extensions: [
       AetherThemeExtension(

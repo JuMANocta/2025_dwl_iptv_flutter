@@ -38,6 +38,7 @@ class _BackupPageState extends State<BackupPage> {
       _showExportSuccessDialog(fileName);
     } catch (e) {
       if (!mounted) return;
+      messenger.clearSnackBars();
       messenger.showSnackBar(
         SnackBar(content: Text('❌ Échec : $e')),
       );
@@ -216,6 +217,7 @@ class _BackupPageState extends State<BackupPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _importing = false);
+      messenger.clearSnackBars();
       messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
       return;
     }
@@ -235,6 +237,7 @@ class _BackupPageState extends State<BackupPage> {
       _showImportSuccessDialog(content);
     } catch (e) {
       if (!mounted) return;
+      messenger.clearSnackBars();
       messenger.showSnackBar(SnackBar(content: Text('❌ Échec : $e')));
     } finally {
       if (mounted) setState(() => _importing = false);

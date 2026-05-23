@@ -205,6 +205,7 @@ class _AccountStatsCardState extends State<_AccountStatsCard> {
         newPath,
       );
       if (!mounted) return;
+      messenger.clearSnackBars();
       messenger.showSnackBar(
         SnackBar(
           content: Text('✅ Playlist rechargée pour ${widget.account.label}'),
@@ -214,6 +215,7 @@ class _AccountStatsCardState extends State<_AccountStatsCard> {
       widget.onReloaded();
     } catch (e) {
       if (!mounted) return;
+      messenger.clearSnackBars();
       messenger.showSnackBar(
         SnackBar(content: Text('❌ Échec : $e')),
       );

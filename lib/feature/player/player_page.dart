@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
+import 'package:window_manager/window_manager.dart';
 import 'player_controller.dart';
 import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
@@ -108,6 +110,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   // Volume courant (0.0–200.0). Démarre boosté à 130% pour compenser les flux
   // IPTV souvent encodés faibles — voir AetherPlayerController.initialVolume.
   double _volume = AetherPlayerController.initialVolume;
+
+  bool _isFullScreen = false;
 
   @override
   void initState() {
@@ -338,6 +342,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _ctrl.player.setVolume(_volume);
   }
 
+  Future<void> _toggleFullscreen() async {
+    if (Platform.isWindows) {
+      final isFull = await windowManager.isFullScreen();
+      await windowManager.setFullScreen(!isFull);
+      if (mounted) setState(() => _isFullScreen = !isFull);
+    }
+  }
+
   // §3c-5 — Helpers consommés par TvPlayerShortcuts pour la nav télécommande.
   void _togglePlayPause() {
     _ctrl.player.playOrPause();
@@ -403,6 +415,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           seek: _handleSeek,
           changeVolume: _handleVolumeChange,
           toggleControls: _toggleControls,
+          toggleFullscreen: _toggleFullscreen,
           exitPlayer: () => Navigator.of(context).pop(),
         ),
         child: Stack(
@@ -414,15 +427,20 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // 2. Couche gesture (transparente, capte tout sauf les contrôles).
             //    Désactivée sur TV — toutes les interactions passent par le
             //    D-pad via TvPlayerShortcuts.
-            PlayerGestures(
-              player: _ctrl.player,
-              onTap: _showControls,
-              onSeek: _handleSeek,
-              onVolumeChange: _handleVolumeChange,
-              onBrightnessChange: _handleBrightnessChange,
-              readVolume: () => _volume,
-              locked: _isLocked,
-              disabled: isTv,
+            MouseRegion(
+              cursor: _controlsVisible ? SystemMouseCursors.basic : SystemMouseCursors.none,
+              onHover: (_) => _showControls(),
+              child: PlayerGestures(
+                player: _ctrl.player,
+                onTap: _showControls,
+                onSeek: _handleSeek,
+                onVolumeChange: _handleVolumeChange,
+                onBrightnessChange: _handleBrightnessChange,
+                onDoubleTap: _toggleFullscreen,
+                readVolume: () => _volume,
+                locked: _isLocked,
+                disabled: isTv,
+              ),
             ),
 
             // 3. Overlay contrôles.
@@ -430,9 +448,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               player: _ctrl.player,
               title: widget.title,
               visible: _controlsVisible,
+              isFullScreen: _isFullScreen,
               badgeType: widget.badgeType,
               onBack: () => Navigator.of(context).pop(),
               onInteraction: _showControls,
+              onToggleFullScreen: _toggleFullscreen,
               onLockChanged: (locked) => setState(() => _isLocked = locked),
               onNextEpisode: widget.onNextEpisode,
             ),

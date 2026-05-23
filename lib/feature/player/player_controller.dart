@@ -60,11 +60,9 @@ class AetherPlayerController {
       // ── Windows Specific ──────────────────────────────────────────────────
       if (Platform.isWindows) {
         // Accélération matérielle (D3D11VA / DXVA2).
-        // 'auto-safe' utilise le hardware si possible, fallback software sinon.
         await np.setProperty('hwdec', 'auto-safe');
-        // Sortie vidéo Direct3D11 pour une meilleure intégration Windows.
-        await np.setProperty('vo', 'gpu');
-        await np.setProperty('gpu-api', 'd3d11');
+        // On ne définit PAS 'vo' ni 'gpu-api' ici pour que media_kit_video
+        // puisse intégrer la texture directement dans le widget Flutter.
       }
     } catch (e) {
       debugPrint('⚠️ AetherPlayerController: tuning échoué — $e');

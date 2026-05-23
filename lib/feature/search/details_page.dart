@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
+import '../../core/themes/aether_theme_extension.dart';
 import '../../data/services/favorites_service.dart';
 import '../../data/services/tmdb_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
@@ -268,7 +269,9 @@ class _DetailsPageState extends State<DetailsPage> {
       Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: personId)));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
         SnackBar(content: Text("TMDB n'a pas trouvé de fiche pour $actorName.")),
       );
     }
@@ -469,16 +472,11 @@ class _DetailsPageState extends State<DetailsPage> {
                       spacing: 8,
                       runSpacing: 8,
                       children: _tmdbData!.cast
-                          .map((a) => ActionChip(
-                                avatar: Icon(Icons.person,
-                                    size: 16, color: kAccentSecondary),
-                                label: Text(a),
+                          .map((a) => _FocusableChip(
+                                icon: Icons.person,
+                                label: a,
                                 onPressed: () => _searchActor(a),
-                                backgroundColor: cs.surfaceContainerHighest,
-                                labelStyle: TextStyle(
-                                    color: cs.onSurface,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500),
+                                accentColor: kAccentSecondary,
                               ))
                           .toList(),
                     ),
@@ -581,29 +579,10 @@ class _DetailsPageState extends State<DetailsPage> {
               final isSelected = sNum == _selectedSeason;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: GestureDetector(
-                  onTap: isSelected ? null : () => _selectSeason(sNum),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 18, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? cs.primary
-                          : cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Text(
-                      'Saison $sNum',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: isSelected
-                            ? cs.onPrimary
-                            : cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
+                child: _FocusableChip(
+                  label: 'Saison $sNum',
+                  isSelected: isSelected,
+                  onPressed: isSelected ? null : () => _selectSeason(sNum),
                 ),
               );
             }).toList(),
@@ -625,38 +604,11 @@ class _DetailsPageState extends State<DetailsPage> {
                     _selectedSeason == _currentEpisode.title.seasonNumber;
                 return Padding(
                   padding: const EdgeInsets.only(right: 6),
-                  child: GestureDetector(
-                    onTap: isCurrent ? null : () => _selectEpisode(group),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      width: 52,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: isCurrent
-                            ? cs.primary.withAlpha(40)
-                            : cs.surfaceContainerHighest,
-                        border: Border.all(
-                          color: isCurrent
-                              ? cs.primary
-                              : cs.outlineVariant,
-                          width: isCurrent ? 1.5 : 1,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        'E${group.episodeNumber.toString().padLeft(2, '0')}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isCurrent
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                          color: isCurrent
-                              ? cs.primary
-                              : cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
+                  child: _FocusableChip(
+                    label: 'E${group.episodeNumber.toString().padLeft(2, '0')}',
+                    isSelected: isCurrent,
+                    onPressed: isCurrent ? null : () => _selectEpisode(group),
+                    width: 58,
                   ),
                 );
               }).toList(),
@@ -770,30 +722,11 @@ class _DetailsPageState extends State<DetailsPage> {
         final label    = _qualityLabel(v, e.key);
         final color    = _qualityColor(v.title.quality);
         final selected = _selectedEntry == v;
-        return GestureDetector(
-          onTap: () => setState(() => _selectedEntry = v),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: selected ? color.withAlpha(55) : color.withAlpha(20),
-              border: Border.all(
-                color: selected ? color.withAlpha(200) : color.withAlpha(60),
-                width: selected ? 1.5 : 1,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                color: color,
-                height: 1.3,
-              ),
-            ),
-          ),
+        return _FocusableChip(
+          label: label,
+          isSelected: selected,
+          onPressed: () => setState(() => _selectedEntry = v),
+          accentColor: color,
         );
       }).toList(),
     );
@@ -901,6 +834,7 @@ class _DetailsPageState extends State<DetailsPage> {
                 final messenger = ScaffoldMessenger.of(context);
                 final added = await FavoritesService.toggle(favKey);
                 if (!context.mounted) return;
+                messenger.clearSnackBars();
                 messenger.showSnackBar(SnackBar(
                   content: Text(added
                       ? '⭐ "${_selectedEntry.displayName}" ajouté aux favoris'
@@ -1022,38 +956,160 @@ class _DetailsPageState extends State<DetailsPage> {
 
 // ─── §1f-A : bouton favori compact (icon-only) ───────────────────────────────
 
-class _FavoriteIconButton extends StatelessWidget {
+class _FavoriteIconButton extends StatefulWidget {
   final bool isFav;
   final VoidCallback onTap;
   const _FavoriteIconButton({required this.isFav, required this.onTap});
 
   @override
+  State<_FavoriteIconButton> createState() => _FavoriteIconButtonState();
+}
+
+class _FavoriteIconButtonState extends State<_FavoriteIconButton> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 52,
-      height: 52,
-      child: Material(
-        color: isFav
-            ? kAccentTertiary.withAlpha(35)
-            : cs.surfaceContainerHighest,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(
-            color: isFav ? kAccentTertiary : cs.outline.withAlpha(80),
-            width: isFav ? 1.5 : 1,
-          ),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Icon(
-            isFav ? Icons.favorite : Icons.favorite_border,
-            color: isFav ? kAccentTertiary : cs.onSurfaceVariant,
-            size: 22,
+    return Focus(
+      onFocusChange: (v) => setState(() => _focused = v),
+      child: AnimatedScale(
+        scale: _focused ? 1.1 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        child: SizedBox(
+          width: 52,
+          height: 52,
+          child: Material(
+            color: widget.isFav
+                ? kAccentTertiary.withAlpha(35)
+                : _focused
+                    ? cs.primary.withAlpha(30)
+                    : cs.surfaceContainerHighest,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: BorderSide(
+                color: _focused
+                    ? cs.primary
+                    : widget.isFav
+                        ? kAccentTertiary
+                        : cs.outline.withAlpha(80),
+                width: (_focused || widget.isFav) ? 1.5 : 1,
+              ),
+            ),
+            child: InkWell(
+              onTap: widget.onTap,
+              borderRadius: BorderRadius.circular(8),
+              child: Icon(
+                widget.isFav ? Icons.favorite : Icons.favorite_border,
+                color: _focused
+                    ? cs.primary
+                    : widget.isFav
+                        ? kAccentTertiary
+                        : cs.onSurfaceVariant,
+                size: 22,
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 }
+
+class _FocusableChip extends StatefulWidget {
+  final String label;
+  final IconData? icon;
+  final VoidCallback? onPressed;
+  final bool isSelected;
+  final Color? accentColor;
+  final double? width;
+
+  const _FocusableChip({
+    required this.label,
+    this.icon,
+    this.onPressed,
+    this.isSelected = false,
+    this.accentColor,
+    this.width,
+  });
+
+  @override
+  State<_FocusableChip> createState() => _FocusableChipState();
+}
+
+class _FocusableChipState extends State<_FocusableChip> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final themeExt = Theme.of(context).extension<AetherThemeExtension>()!;
+    final color = widget.accentColor ?? cs.primary;
+
+    return Focus(
+      onFocusChange: (v) => setState(() => _focused = v),
+      child: AnimatedScale(
+        scale: _focused ? 1.05 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          child: Container(
+            width: widget.width,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: widget.isSelected
+                  ? color.withAlpha(55)
+                  : _focused
+                      ? color.withAlpha(30)
+                      : cs.surfaceContainerHighest,
+              border: Border.all(
+                color: _focused
+                    ? color
+                    : widget.isSelected
+                        ? color.withAlpha(200)
+                        : cs.outlineVariant,
+                width: (_focused || widget.isSelected) ? 1.5 : 1,
+              ),
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: _focused
+                  ? [
+                      BoxShadow(
+                        color: color.withAlpha(60),
+                        blurRadius: 8,
+                      )
+                    ]
+                  : null,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (widget.icon != null) ...[
+                  Icon(widget.icon,
+                      size: 16,
+                      color: (_focused || widget.isSelected)
+                          ? color
+                          : cs.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: (_focused || widget.isSelected)
+                        ? FontWeight.bold
+                        : FontWeight.w500,
+                    color: (_focused || widget.isSelected)
+                        ? color
+                        : cs.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

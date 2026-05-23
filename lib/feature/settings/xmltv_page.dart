@@ -26,6 +26,7 @@ class _XmltvPageState extends State<XmltvPage> {
       XmltvService.invalidate();
       await XmltvService.ensureLoaded();
       if (!mounted) return;
+      messenger.clearSnackBars();
       messenger.showSnackBar(
         const SnackBar(
           content: Text('✅ Guide des chaînes mis à jour'),
@@ -34,6 +35,7 @@ class _XmltvPageState extends State<XmltvPage> {
       );
     } catch (e) {
       if (!mounted) return;
+      messenger.clearSnackBars();
       messenger.showSnackBar(
         SnackBar(
           content: Text('❌ Échec mise à jour : $e'),

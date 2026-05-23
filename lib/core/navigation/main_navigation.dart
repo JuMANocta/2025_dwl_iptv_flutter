@@ -1,22 +1,26 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
+import 'package:aetherStream/feature/settings/settings_page.dart';
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
 ///
-/// 3 destinations :
+/// 4 destinations :
 ///   0. Accueil          — [HomePage] (mode browse)
 ///   1. Recherche        — bascule [HomePage] en mode `searchMode: true`
 ///                          (in-place, pas de changement de page)
 ///   2. Téléchargements  — [DownloadsPage]
+///   3. Paramètres       — [SettingsPage]
 ///
 /// **Layout adapté** :
 ///   - Mobile (portrait) → `NavigationBar` bottom classique.
 ///   - Android TV / Windows / Écrans larges → `NavigationRail` latéral à gauche.
 ///
-/// L'IndexedStack interne ne contient que 2 enfants (Home + Downloads).
-/// Le bouton Recherche n'ajoute pas une 3e page : il toggle juste un drapeau
+/// L'IndexedStack interne contient 3 enfants (Home, Downloads, Settings).
+/// Le bouton Recherche n'ajoute pas une page : il toggle juste un drapeau
 /// passé à [HomePage], qui bascule alors son contenu en vue résultats.
 class MainNavigation extends StatefulWidget {
   /// Données pré-chargées par `_LaunchDecider` — propagées aux pages enfants
@@ -29,12 +33,55 @@ class MainNavigation extends StatefulWidget {
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
-class _MainNavigationState extends State<MainNavigation> {
-  /// Index sélectionné dans la `NavigationBar` (0=Home, 1=Search, 2=Downloads).
+class _MainNavigationState extends State<MainNavigation> with WindowListener {
+  /// Index sélectionné dans la `NavigationBar` (0=Home, 1=Search, 2=Downloads, 3=Settings).
   int _navIndex = 0;
+  bool _isFullScreen = false;
 
   bool get _searchMode => _navIndex == 1;
-  int  get _stackIndex => _navIndex == 2 ? 1 : 0;
+  int  get _stackIndex {
+    if (_navIndex == 2) return 1; // Downloads
+    if (_navIndex == 3) return 2; // Settings
+    return 0; // Home (mode browse ou search)
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    _checkFullScreen();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowEnterFullScreen() {
+    setState(() => _isFullScreen = true);
+  }
+
+  @override
+  void onWindowLeaveFullScreen() {
+    setState(() => _isFullScreen = false);
+  }
+
+  Future<void> _checkFullScreen() async {
+    if (Platform.isWindows) {
+      final isFull = await windowManager.isFullScreen();
+      if (mounted) setState(() => _isFullScreen = isFull);
+    }
+  }
+
+  Future<void> _toggleFullScreen() async {
+    if (Platform.isWindows) {
+      final isFull = await windowManager.isFullScreen();
+      await windowManager.setFullScreen(!isFull);
+      if (mounted) setState(() => _isFullScreen = !isFull);
+    }
+  }
 
   void _onTap(int i) {
     if (i == _navIndex) return;
@@ -56,6 +103,7 @@ class _MainNavigationState extends State<MainNavigation> {
           onExitSearch: () => setState(() => _navIndex = 0),
         ),
         const DownloadsPage(),
+        const SettingsPage(),
       ],
     );
 
@@ -66,6 +114,8 @@ class _MainNavigationState extends State<MainNavigation> {
             _CustomNavigationRail(
               selectedIndex: _navIndex,
               onDestinationSelected: _onTap,
+              isFullScreen: _isFullScreen,
+              onToggleFullScreen: _toggleFullScreen,
             ),
             Expanded(child: stack),
           ],
@@ -94,6 +144,11 @@ class _MainNavigationState extends State<MainNavigation> {
             selectedIcon: Icon(Icons.download),
             label: 'Téléchargements',
           ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Paramètres',
+          ),
         ],
       ),
     );
@@ -105,10 +160,14 @@ class _MainNavigationState extends State<MainNavigation> {
 class _CustomNavigationRail extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
+  final bool isFullScreen;
+  final VoidCallback onToggleFullScreen;
 
   const _CustomNavigationRail({
     required this.selectedIndex,
     required this.onDestinationSelected,
+    required this.isFullScreen,
+    required this.onToggleFullScreen,
   });
 
   @override
@@ -122,6 +181,20 @@ class _CustomNavigationRail extends StatelessWidget {
       indicatorColor: cs.primary.withAlpha(40),
       selectedIconTheme: IconThemeData(color: cs.primary),
       selectedLabelTextStyle: TextStyle(color: cs.primary, fontWeight: FontWeight.bold),
+      trailing: Expanded(
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: IconButton(
+              icon: Icon(isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen),
+              tooltip: isFullScreen ? 'Réduire la fenêtre' : 'Plein écran',
+              onPressed: onToggleFullScreen,
+              color: cs.onSurfaceVariant.withAlpha(180),
+            ),
+          ),
+        ),
+      ),
       destinations: const [
         NavigationRailDestination(
           icon: Icon(Icons.home_outlined),
@@ -136,6 +209,11 @@ class _CustomNavigationRail extends StatelessWidget {
           icon: Icon(Icons.download_outlined),
           selectedIcon: Icon(Icons.download),
           label: Text('Downloads'),
+        ),
+        NavigationRailDestination(
+          icon: Icon(Icons.settings_outlined),
+          selectedIcon: Icon(Icons.settings),
+          label: Text('Paramètres'),
         ),
       ],
     );

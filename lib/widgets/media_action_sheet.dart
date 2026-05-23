@@ -458,6 +458,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                           )),
                         );
                       } else {
+                        ScaffoldMessenger.of(navigatorKey.currentContext!).clearSnackBars();
                         ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
                           const SnackBar(content: Text("Replay indisponible pour ce flux")),
                         );
@@ -573,6 +574,7 @@ class _PlayResumeTiles extends StatelessWidget {
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(context);
                 await WatchProgressService.clearProgress(entry.url);
+                messenger.clearSnackBars();
                 messenger.showSnackBar(SnackBar(
                   content: const Text('Reprise oubliée'),
                   duration: const Duration(seconds: 4),
@@ -623,6 +625,7 @@ class _FavoriteToggleTile extends StatelessWidget {
             final messenger = ScaffoldMessenger.of(context);
             final added = await FavoritesService.toggle(favKey);
             if (!context.mounted) return;
+            messenger.clearSnackBars();
             messenger.showSnackBar(SnackBar(
               content: Text(added
                   ? '⭐ "${entry.displayName}" ajouté aux favoris'

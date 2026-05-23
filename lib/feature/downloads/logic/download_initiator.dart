@@ -232,6 +232,7 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   if (finalSaveDirectory == null) {
     // Si on n'a pas pu obtenir le chemin (permission refusée), on notifie et on arrête.
     if (context.mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Permission denied. The download cannot begin.")),
       );

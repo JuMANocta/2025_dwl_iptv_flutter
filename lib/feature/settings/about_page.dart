@@ -47,6 +47,7 @@ class _AboutPageState extends State<AboutPage> {
     if (_checking) return;
     setState(() => _checking = true);
     final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
     messenger.showSnackBar(
       const SnackBar(content: Text('🔍 Vérification des mises à jour…')),
     );
@@ -54,6 +55,7 @@ class _AboutPageState extends State<AboutPage> {
     if (!mounted) return;
     setState(() => _checking = false);
     if (info == null) {
+      messenger.clearSnackBars();
       messenger.showSnackBar(
         const SnackBar(content: Text('Vous êtes à jour.')),
       );

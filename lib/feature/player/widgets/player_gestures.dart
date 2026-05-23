@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'player_seek_overlay.dart';
@@ -5,8 +6,9 @@ import 'player_seek_overlay.dart';
 /// Couche transparente de gestion des gestures du player.
 ///
 /// - Tap simple        → afficher/masquer les contrôles
-/// - Double-tap gauche → reculer 10s
-/// - Double-tap droite → avancer 10s
+/// - Double-tap gauche → reculer 10s (Mobile)
+/// - Double-tap droite → avancer 10s (Mobile)
+/// - Double-tap        → Fullscreen (Windows)
 /// - Drag horizontal   → seek rapide (±60s par largeur d'écran)
 /// - Drag vertical gauche → luminosité
 /// - Drag vertical droite → volume
@@ -16,6 +18,7 @@ class PlayerGestures extends StatefulWidget {
   final void Function(Duration delta) onSeek;
   final void Function(double delta) onVolumeChange;
   final void Function(double delta) onBrightnessChange;
+  final VoidCallback? onDoubleTap;
   /// Lecteur de volume courant — utilisé pour afficher l'état (% boost compris).
   final double Function()? readVolume;
   /// §1i — Quand `true`, tous les gestes (sauf tap simple pour révéler le
@@ -33,6 +36,7 @@ class PlayerGestures extends StatefulWidget {
     required this.onSeek,
     required this.onVolumeChange,
     required this.onBrightnessChange,
+    this.onDoubleTap,
     this.readVolume,
     this.locked = false,
     this.disabled = false,
@@ -68,6 +72,14 @@ class _PlayerGesturesState extends State<PlayerGestures> {
 
   void _handleDoubleTap() {
     if (_doubleTapPos == null) return;
+
+    // Sur Desktop/Windows : le double tap (double clic) toggle le plein écran.
+    if (Platform.isWindows && widget.onDoubleTap != null) {
+      widget.onDoubleTap!();
+      return;
+    }
+
+    // Sur Mobile : le double tap seek de ±10s.
     final sw = MediaQuery.of(context).size.width;
     final isLeft = _doubleTapPos!.dx < sw / 2;
     final delta = Duration(seconds: isLeft ? -10 : 10);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/aether_theme_extension.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/services/pairing_service.dart';
@@ -190,6 +191,7 @@ class _AccountsPageState extends State<AccountsPage> {
         await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
       } catch (e) {
         if (!mounted) return;
+        messenger.clearSnackBars();
         messenger.showSnackBar(
           SnackBar(content: Text('Échec : $e')),
         );
@@ -203,6 +205,7 @@ class _AccountsPageState extends State<AccountsPage> {
       ParsedPlaylistService.invalidate(acc.id);
     }
     if (!mounted) return;
+    messenger.clearSnackBars();
     messenger.showSnackBar(
       SnackBar(content: Text('✅ Cache vidé pour ${acc.label}')),
     );
@@ -459,7 +462,7 @@ class _AccountsPageState extends State<AccountsPage> {
 
 // ─── Tile compte (design unifié avec _SettingsTile) ──────────────────────────
 
-class _AccountTile extends StatelessWidget {
+class _AccountTile extends StatefulWidget {
   final StreamAccount account;
   final bool isPriority;
   final VoidCallback onTap;
@@ -472,20 +475,28 @@ class _AccountTile extends StatelessWidget {
     required this.onMore,
   });
 
+  @override
+  State<_AccountTile> createState() => _AccountTileState();
+}
+
+class _AccountTileState extends State<_AccountTile> {
+  bool _focused = false;
+
   String get _host {
-    final url = account.mode == StreamAuthMode.separate
-        ? (account.baseUrl ?? '')
-        : (account.completeUrl ?? '');
+    final url = widget.account.mode == StreamAuthMode.separate
+        ? (widget.account.baseUrl ?? '')
+        : (widget.account.completeUrl ?? '');
     return Uri.tryParse(url)?.host ?? '?';
   }
 
-  String get _subtitle => account.mode == StreamAuthMode.completeUrl
+  String get _subtitle => widget.account.mode == StreamAuthMode.completeUrl
       ? _host
-      : '${account.username ?? '?'} @ $_host';
+      : '${widget.account.username ?? '?'} @ $_host';
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final themeExt = Theme.of(context).extension<AetherThemeExtension>()!;
 
     // §3c-3 — Wrap focus TV en decorateOnly : on garde la bordure isPriority
     // (signale le compte actif) ET on ajoute par-dessus la bordure de focus
@@ -494,132 +505,140 @@ class _AccountTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: FocusableCard(
         decorateOnly: true,
-        onTap: onTap,
+        onTap: widget.onTap,
         borderRadius: BorderRadius.circular(14),
-        child: Material(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          splashColor: kAccentPrimary.withAlpha(30),
-          highlightColor: kAccentPrimary.withAlpha(15),
-          child: Ink(
-            decoration: BoxDecoration(
+        child: Focus(
+          onFocusChange: (v) => setState(() => _focused = v),
+          child: Material(
+            color: cs.surfaceContainer,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              onTap: widget.onTap,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isPriority
-                    ? kAccentPrimary
-                    : cs.outline.withAlpha(60),
-                width: isPriority ? 1.5 : 1,
-              ),
-              boxShadow: isPriority
-                  ? [
-                      BoxShadow(
-                          color: kAccentPrimary.withAlpha(40), blurRadius: 14),
-                    ]
-                  : null,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              child: Row(
-                children: [
-                  // Radio prioritaire.
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      color: isPriority
-                          ? kAccentPrimary.withAlpha(30)
-                          : cs.surfaceContainerHighest,
-                      border: Border.all(
-                        color: isPriority
-                            ? kAccentPrimary
+              splashColor: kAccentPrimary.withAlpha(30),
+              highlightColor: kAccentPrimary.withAlpha(15),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: _focused
+                        ? kAccentPrimary
+                        : widget.isPriority
+                            ? kAccentPrimary.withAlpha(150)
                             : cs.outline.withAlpha(60),
-                        width: 1,
-                      ),
-                    ),
-                    child: Icon(
-                      isPriority
-                          ? Icons.check_circle
-                          : Icons.radio_button_unchecked,
-                      color: isPriority ? kAccentPrimary : cs.onSurfaceVariant,
-                      size: 22,
-                    ),
+                    width: (widget.isPriority || _focused) ? 2.0 : 1.0,
                   ),
-                  const SizedBox(width: 14),
-                  // Label + host.
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  boxShadow: (widget.isPriority || _focused)
+                      ? [
+                          BoxShadow(
+                              color: kAccentPrimary.withAlpha(_focused ? 60 : 30),
+                              blurRadius: _focused ? 18 : 10),
+                        ]
+                      : null,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  child: Row(
+                    children: [
+                      // Radio prioritaire.
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          color: widget.isPriority
+                              ? kAccentPrimary.withAlpha(30)
+                              : cs.surfaceContainerHighest,
+                          border: Border.all(
+                            color: widget.isPriority
+                                ? kAccentPrimary
+                                : cs.outline.withAlpha(60),
+                            width: 1,
+                          ),
+                        ),
+                        child: Icon(
+                          widget.isPriority
+                              ? Icons.check_circle
+                              : Icons.radio_button_unchecked,
+                          color: widget.isPriority ? kAccentPrimary : cs.onSurfaceVariant,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      // Label + host.
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Flexible(
-                              child: Text(
-                                account.label,
-                                style: TextStyle(
-                                  fontWeight: isPriority
-                                      ? FontWeight.bold
-                                      : FontWeight.w600,
-                                  fontSize: 15,
-                                  color: cs.onSurface,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (isPriority) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: kAccentPrimary.withAlpha(50),
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(
-                                      color: kAccentPrimary, width: 1),
-                                ),
-                                child: Text(
-                                  'ACTIF',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.0,
-                                    color: kAccentPrimary,
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    widget.account.label,
+                                    style: TextStyle(
+                                      fontWeight: widget.isPriority
+                                          ? FontWeight.bold
+                                          : FontWeight.w600,
+                                      fontSize: 15,
+                                      color: cs.onSurface,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                                if (widget.isPriority) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: kAccentPrimary.withAlpha(50),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                          color: kAccentPrimary, width: 1),
+                                    ),
+                                    child: Text(
+                                      'ACTIF',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 1.0,
+                                        color: kAccentPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _subtitle,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurfaceVariant,
                               ),
-                            ],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _subtitle,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.more_vert,
+                            color: cs.onSurfaceVariant.withAlpha(180)),
+                        onPressed: widget.onMore,
+                        tooltip: 'Actions',
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    icon: Icon(Icons.more_vert,
-                        color: cs.onSurfaceVariant.withAlpha(180)),
-                    onPressed: onMore,
-                    tooltip: 'Actions',
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
         ),
       ),
     );
   }
 }
+

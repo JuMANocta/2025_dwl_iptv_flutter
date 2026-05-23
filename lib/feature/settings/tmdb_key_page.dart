@@ -57,6 +57,7 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
         _keyController.text = result.token;
         _hasSavedKey = true;
       });
+      messenger.clearSnackBars();
       messenger.showSnackBar(
         const SnackBar(
           content: Text('✅ TMDb connecté'),
@@ -85,6 +86,7 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
     if (!mounted) return;
     setState(() => _hasSavedKey = true);
     FocusScope.of(context).unfocus();
+    messenger.clearSnackBars();
     messenger.showSnackBar(
       const SnackBar(
         content: Text('✅ TMDb connecté'),
@@ -102,6 +104,7 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
       _keyController.clear();
       _hasSavedKey = false;
     });
+    messenger.clearSnackBars();
     messenger.showSnackBar(
       const SnackBar(
         content: Text('🗑️ Clé TMDB supprimée'),

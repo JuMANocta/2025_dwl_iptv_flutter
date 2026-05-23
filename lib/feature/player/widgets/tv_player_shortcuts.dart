@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,6 +14,7 @@ class _SeekBackwardIntent    extends Intent { const _SeekBackwardIntent();    }
 class _VolumeUpIntent        extends Intent { const _VolumeUpIntent();        }
 class _VolumeDownIntent      extends Intent { const _VolumeDownIntent();      }
 class _ToggleControlsIntent  extends Intent { const _ToggleControlsIntent();  }
+class _ToggleFullscreenIntent extends Intent { const _ToggleFullscreenIntent(); }
 class _ExitPlayerIntent      extends Intent { const _ExitPlayerIntent();      }
 
 /// Callbacks fournis par [PlayerPage] pour réaliser les actions.
@@ -24,6 +26,8 @@ class PlayerActionHandlers {
   final void Function(double delta) changeVolume;
   /// Bascule la visibilité des contrôles overlay.
   final VoidCallback toggleControls;
+  /// Bascule le mode plein écran (Windows).
+  final VoidCallback? toggleFullscreen;
   /// Quitte le player (typiquement `Navigator.pop`).
   final VoidCallback exitPlayer;
 
@@ -32,6 +36,7 @@ class PlayerActionHandlers {
     required this.seek,
     required this.changeVolume,
     required this.toggleControls,
+    this.toggleFullscreen,
     required this.exitPlayer,
   });
 }
@@ -40,7 +45,7 @@ class PlayerActionHandlers {
 /// player (§3c-5). N'est actif QUE si `PlatformTv.isTv` ; sinon il rend
 /// son [child] tel quel (pas d'interception clavier sur mobile).
 ///
-/// Mapping (Android TV / Fire TV) :
+/// Mapping (Android TV / Fire TV / Windows) :
 /// | Touche                                       | Action                |
 /// |----------------------------------------------|-----------------------|
 /// | OK / Center / Enter / Space / GameButtonA    | Play / Pause          |
@@ -50,6 +55,7 @@ class PlayerActionHandlers {
 /// | ↑  (arrowUp)                                 | Volume +              |
 /// | ↓  (arrowDown)                               | Volume −              |
 /// | Menu / Info / ContextMenu                    | Toggle overlay        |
+/// | F / F11                                      | Toggle plein écran    |
 /// | Escape / Back / GameButtonB                  | Quitter le player     |
 class TvPlayerShortcuts extends StatelessWidget {
   final Widget child;
@@ -92,19 +98,21 @@ class TvPlayerShortcuts extends StatelessWidget {
     const SingleActivator(LogicalKeyboardKey.contextMenu):   const _ToggleControlsIntent(),
     const SingleActivator(LogicalKeyboardKey.info):          const _ToggleControlsIntent(),
 
+    // Fullscreen
+    const SingleActivator(LogicalKeyboardKey.keyF):          const _ToggleFullscreenIntent(),
+    const SingleActivator(LogicalKeyboardKey.f11):           const _ToggleFullscreenIntent(),
+
     // Quitter
     const SingleActivator(LogicalKeyboardKey.escape):       const _ExitPlayerIntent(),
     const SingleActivator(LogicalKeyboardKey.gameButtonB):  const _ExitPlayerIntent(),
-    // Note: la touche `Back` Android est interceptée AVANT Flutter par
-    // `WillPopScope` / `PopScope`. Si on veut un comportement spécifique sur
-    // Back, à gérer côté PlayerPage avec un PopScope.
   };
 
   @override
   Widget build(BuildContext context) {
-    // Hors TV : passthrough complet. Aucun risque d'intercepter des touches
-    // clavier sur mobile (clavier physique BT par exemple — laissé au système).
-    if (!PlatformTv.isTv) return child;
+    // Actif sur TV ET sur Windows/Desktop.
+    final bool enableShortcuts = PlatformTv.isTv || Platform.isWindows;
+    
+    if (!enableShortcuts) return child;
 
     return Shortcuts(
       shortcuts: _shortcuts,
@@ -143,6 +151,12 @@ class TvPlayerShortcuts extends StatelessWidget {
           _ToggleControlsIntent: CallbackAction<_ToggleControlsIntent>(
             onInvoke: (_) {
               handlers.toggleControls();
+              return null;
+            },
+          ),
+          _ToggleFullscreenIntent: CallbackAction<_ToggleFullscreenIntent>(
+            onInvoke: (_) {
+              handlers.toggleFullscreen?.call();
               return null;
             },
           ),
