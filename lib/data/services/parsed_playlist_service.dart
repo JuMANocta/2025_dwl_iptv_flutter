@@ -7,6 +7,24 @@ import 'package:aetherStream/data/models/parsed_playlist.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/feature/search/m3u_parser.dart';
 
+/// État de chargement d'un compte IPTV en mémoire (§16).
+///
+/// Permet à l'UI (chips dans `_AccountTile`) d'afficher l'état réel de
+/// disponibilité de chaque playlist : en cours de téléchargement, en cours
+/// de parsing, chargée et prête, ou en erreur (réseau, fichier corrompu…).
+enum AccountLoadState {
+  /// Aucune tentative de chargement (état initial).
+  notLoaded,
+  /// Téléchargement du .m3u en cours.
+  downloading,
+  /// .m3u téléchargé, parsing isolate en cours.
+  parsing,
+  /// Playlist chargée en mémoire, disponible pour la home/recherche.
+  loaded,
+  /// Échec (réseau, fichier corrompu, schéma obsolète).
+  error,
+}
+
 /// Hub central des playlists parsées.
 ///
 /// Cycle de vie :
@@ -22,6 +40,25 @@ class ParsedPlaylistService {
   /// Bumpe à chaque fois qu'une playlist est ajoutée/retirée de [_memory].
   /// Les widgets qui font [entries] peuvent écouter ce notifier pour se rebuilder.
   static final ValueNotifier<int> version = ValueNotifier(0);
+  /// §16 — État de chargement par compte. ValueListenableBuilder pour les
+  /// chips dans `_AccountTile` (PRINCIPAL / DISPONIBLE / EN COURS / ERREUR).
+  static final ValueNotifier<Map<String, AccountLoadState>> loadStates =
+      ValueNotifier<Map<String, AccountLoadState>>({});
+
+  /// Marque l'état d'un compte et notifie les listeners (immutable copy).
+  static void setLoadState(String accountId, AccountLoadState state) {
+    final next = Map<String, AccountLoadState>.from(loadStates.value);
+    if (state == AccountLoadState.notLoaded) {
+      next.remove(accountId);
+    } else {
+      next[accountId] = state;
+    }
+    loadStates.value = next;
+  }
+
+  /// Lecture sync d'un état (utile pour les checks rapides sans rebuild).
+  static AccountLoadState stateOf(String accountId) =>
+      loadStates.value[accountId] ?? AccountLoadState.notLoaded;
 
   // ── API publique ───────────────────────────────────────────────────────────
 
@@ -38,6 +75,7 @@ class ParsedPlaylistService {
     // 1. Déjà en mémoire
     if (_memory.containsKey(accountId)) {
       _accountNames[accountId] = accountName;
+      setLoadState(accountId, AccountLoadState.loaded);
       onProgress?.call(1.0);
       debugPrint('⚡ ParsedPlaylist: déjà en mémoire — $accountName');
       return _memory[accountId]!;
@@ -49,6 +87,7 @@ class ParsedPlaylistService {
       debugPrint('✅ ParsedPlaylist: cache disque chargé — $accountName (${disk.entries.length} entrées)');
       _memory[accountId] = disk;
       _accountNames[accountId] = accountName;
+      setLoadState(accountId, AccountLoadState.loaded);
       onProgress?.call(1.0);
       version.value++;
       return disk;
@@ -56,14 +95,21 @@ class ParsedPlaylistService {
 
     // 3. Parse complet du fichier .m3u
     debugPrint('🔍 ParsedPlaylist: parse complet — $accountName');
+    setLoadState(accountId, AccountLoadState.parsing);
     final films   = <M3uEntry>[];
     final series  = <M3uEntry>[];
     final tv      = <M3uEntry>[];
-    await M3uParser.parseFile(
-      m3uPath, films, series, tv,
-      accountId: accountId,
-      onProgress: onProgress,
-    );
+    try {
+      await M3uParser.parseFile(
+        m3uPath, films, series, tv,
+        accountId: accountId,
+        onProgress: onProgress,
+      );
+    } catch (e) {
+      debugPrint('❌ ParsedPlaylist.loadActive — parse échoué : $e');
+      setLoadState(accountId, AccountLoadState.error);
+      rethrow;
+    }
 
     final allEntries = [...films, ...series, ...tv];
     final m3uModified = await File(m3uPath).lastModified();
@@ -76,6 +122,7 @@ class ParsedPlaylistService {
 
     _memory[accountId] = playlist;
     _accountNames[accountId] = accountName;
+    setLoadState(accountId, AccountLoadState.loaded);
     version.value++;
 
     // Sauvegarde disque en arrière-plan (non bloquant)
@@ -99,6 +146,7 @@ class ParsedPlaylistService {
       if (disk != null) {
         _memory[acc.id] = disk;
         _accountNames[acc.id] = acc.label;
+        setLoadState(acc.id, AccountLoadState.loaded);
         debugPrint('✅ ParsedPlaylist: préchargé depuis disque — ${acc.label} (${disk.entries.length} entrées)');
         version.value++;
       }
@@ -116,6 +164,7 @@ class ParsedPlaylistService {
   ) async {
     if (_memory.containsKey(accountId)) {
       _accountNames[accountId] = accountName;
+      setLoadState(accountId, AccountLoadState.loaded);
       return;
     }
     // Tentative cache disque
@@ -123,11 +172,13 @@ class ParsedPlaylistService {
     if (disk != null) {
       _memory[accountId] = disk;
       _accountNames[accountId] = accountName;
+      setLoadState(accountId, AccountLoadState.loaded);
       version.value++;
       debugPrint('✅ ParsedPlaylist secondaire: cache disque — $accountName');
       return;
     }
     // Sinon parse complet (silencieux, sans onProgress)
+    setLoadState(accountId, AccountLoadState.parsing);
     final films  = <M3uEntry>[];
     final series = <M3uEntry>[];
     final tv     = <M3uEntry>[];
@@ -135,6 +186,7 @@ class ParsedPlaylistService {
       await M3uParser.parseFile(m3uPath, films, series, tv, accountId: accountId);
     } catch (e) {
       debugPrint('❌ ParsedPlaylist secondaire — parse échoué pour $accountName: $e');
+      setLoadState(accountId, AccountLoadState.error);
       return;
     }
     final allEntries = [...films, ...series, ...tv];
@@ -147,6 +199,7 @@ class ParsedPlaylistService {
     );
     _memory[accountId] = playlist;
     _accountNames[accountId] = accountName;
+    setLoadState(accountId, AccountLoadState.loaded);
     version.value++;
     _saveToDisk(accountId, playlist);
     debugPrint('✅ ParsedPlaylist secondaire: parse — $accountName (${allEntries.length} entrées)');
@@ -226,6 +279,7 @@ class ParsedPlaylistService {
     await _deleteDiskCache(accountId);
     _memory[accountId]       = playlist;
     _accountNames[accountId] = accountName;
+    setLoadState(accountId, AccountLoadState.loaded);
 
     // Bump VERSION EN DERNIER → les listeners (home) rebuild sur le nouvel état.
     version.value++;
@@ -244,6 +298,7 @@ class ParsedPlaylistService {
   ///   - Invalidation d'un compte secondaire (lazy reload au prochain accès)
   static void invalidate(String accountId) {
     _memory.remove(accountId);
+    setLoadState(accountId, AccountLoadState.notLoaded);
     version.value++;
     _deleteDiskCache(accountId);
     debugPrint('🗑️ ParsedPlaylist: cache invalidé — $accountId');
@@ -253,6 +308,7 @@ class ParsedPlaylistService {
   static void clear() {
     _memory.clear();
     _accountNames.clear();
+    loadStates.value = {};
     version.value++;
   }
 

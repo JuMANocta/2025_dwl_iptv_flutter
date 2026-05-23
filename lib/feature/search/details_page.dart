@@ -3,6 +3,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
 import '../../data/services/favorites_service.dart';
 import '../../data/services/tmdb_service.dart';
+import '../../data/services/tmdb_api_service.dart';
+import '../settings/tmdb_key_page.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/services/watch_progress_service.dart';
 import '../../data/models/media_model.dart';
@@ -43,6 +45,9 @@ class _DetailsPageState extends State<DetailsPage> {
   Media? _tmdbData;
   Map<String, dynamic>? _episodeData;
   bool _isLoading = true;
+  /// §quickwin — clé TMDB configurée ? (distinct de `hasTmdb` = données reçues).
+  /// `true` par défaut pour éviter un flash du CTA avant le check async.
+  bool _hasTmdbKey = true;
   late M3uEntry _selectedEntry;
   late List<M3uEntry> _uniqueVersions;
 
@@ -144,6 +149,12 @@ class _DetailsPageState extends State<DetailsPage> {
     }
 
     _loadData();
+
+    // §quickwin — check clé TMDB pour le CTA "Active TMDB" (sans clé, pas
+    // d'affiches/synopsis/casting → on incite à en configurer une).
+    TmdbApiService.hasApiKey().then((v) {
+      if (mounted) setState(() => _hasTmdbKey = v);
+    });
   }
 
   @override
@@ -280,6 +291,49 @@ class _DetailsPageState extends State<DetailsPage> {
     if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.platformDefault);
   }
 
+  // §quickwin — Bandeau incitant à configurer TMDB (affiché si pas de clé).
+  Widget _buildTmdbCta(ColorScheme cs) {
+    return Material(
+      color: kAccentPrimary.withAlpha(20),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const TmdbKeyPage()),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Icon(Icons.movie_filter_outlined, color: kAccentPrimary, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Active TMDB',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurface,
+                            fontSize: 14)),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Affiches, synopsis et casting. Config rapide au QR depuis ton mobile.',
+                      style: TextStyle(
+                          color: cs.onSurfaceVariant, fontSize: 12, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── BUILD ──────────────────────────────────────────────────────────────────
 
   @override
@@ -294,10 +348,18 @@ class _DetailsPageState extends State<DetailsPage> {
     final String? headerPath   = (_episodeSelected && stillPath != null)
         ? stillPath
         : _tmdbData?.backdropPath;
+    // §quickwin — fallback affiche playlist quand pas de backdrop TMDB.
+    // Sans clé TMDB, le header était un rectangle gris : on récupère la 1re
+    // logoUrl non vide (versions affichées → épisode courant → entrée).
+    final String? playlistPoster = <String?>[
+      ..._uniqueVersions.map((e) => e.logoUrl),
+      _currentEpisode.logoUrl,
+      widget.entry.logoUrl,
+    ].firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
     final String? headerUrl    = headerPath != null
         ? TmdbService.getPosterUrl(headerPath,
             size: (_episodeSelected && stillPath != null) ? 'w780' : 'original')
-        : null;
+        : playlistPoster;
 
     final String? epName     = _episodeData?['name'] as String?;
     final String? epOverview = _episodeData?['overview'] as String?;
@@ -412,6 +474,12 @@ class _DetailsPageState extends State<DetailsPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
+
+                  // §quickwin — CTA discret si aucune clé TMDB configurée.
+                  if (!_hasTmdbKey) ...[
+                    _buildTmdbCta(cs),
+                    const SizedBox(height: 16),
+                  ],
 
                   // ── SÉRIES : navigation immédiate ──────────────────────────
                   if (isSeries) ...[

@@ -35,6 +35,12 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
   void initState() {
     super.initState();
     _config = ThemeService.config.value;
+    // §19 — Auto-focus initial sur TV.
+    if (PlatformTv.isTv) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).nextFocus();
+      });
+    }
   }
 
   /// Applique la config en live (ValueNotifier → rebuild MyApp) et la sauvegarde.

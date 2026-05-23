@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
-import 'package:aetherStream/feature/accounts/playlist_management_page.dart';
 import 'package:aetherStream/feature/settings/about_page.dart';
 import 'package:aetherStream/feature/settings/backup_page.dart';
 import 'package:aetherStream/feature/settings/theme_settings_page.dart';
@@ -16,9 +16,8 @@ import 'package:aetherStream/widgets/tv/focusable_card.dart';
 /// d'action courte.
 ///
 /// Sections :
-///   - 👤 Comptes IPTV  → [AccountsPage]
+///   - 👤 Comptes IPTV  → [AccountsPage] (stats + recharger par compte intégrés)
 ///   - 🎨 Personnalisation → [ThemeSettingsPage]
-///   - 📊 Statistiques playlist → [PlaylistManagementPage] (Recharger par compte)
 ///   - ℹ️ À propos (version + check MAJ in-app)
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -28,6 +27,18 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  @override
+  void initState() {
+    super.initState();
+    // §19 — Sur TV, force le focus sur le 1er tile au mount pour qu'on voie
+    // immédiatement l'indicateur de focus au D-pad.
+    if (PlatformTv.isTv) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).nextFocus();
+      });
+    }
+  }
+
   Future<void> _openAccounts() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AccountsPage()),
@@ -49,12 +60,6 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _openXmltv() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const XmltvPage()),
-    );
-  }
-
-  Future<void> _openPlaylistStats() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const PlaylistManagementPage()),
     );
   }
 
@@ -105,7 +110,7 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: Icons.account_circle_outlined,
               accentColor: kAccentPrimary,
               title: 'Comptes IPTV',
-              subtitle: 'Providers et identifiants',
+              subtitle: 'Providers, stats playlist & recharger',
               onTap: _openAccounts,
             ),
             _SettingsTile(
@@ -128,15 +133,6 @@ class _SettingsPageState extends State<SettingsPage> {
               title: 'Personnalisation',
               subtitle: 'Thème, couleurs, effets cyberpunk',
               onTap: _openThemeSettings,
-            ),
-            const SizedBox(height: 8),
-            _SectionHeader(title: 'Playlist'),
-            _SettingsTile(
-              icon: Icons.bar_chart,
-              accentColor: kAccentPrimary,
-              title: 'Statistiques playlist',
-              subtitle: 'Stats par compte + recharger depuis ici',
-              onTap: _openPlaylistStats,
             ),
             const SizedBox(height: 8),
             _SectionHeader(title: 'Sauvegarde'),

@@ -75,6 +75,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
     return TextFormField(
       controller: _completeUrl,
       keyboardType: TextInputType.url,
+      textInputAction: TextInputAction.done,
+      onFieldSubmitted: (_) => _save(),
       decoration: InputDecoration(
           labelText: l10n.editAccountFullUrlLabel, prefixIcon: const Icon(Icons.public)),
       validator: (v) => (v == null || v.trim().isEmpty || !Uri.tryParse(v.trim())!.isAbsolute)
@@ -89,6 +91,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
         TextFormField(
           controller: _baseUrl,
           keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.next,
+          onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
           decoration: InputDecoration(
               labelText: l10n.editAccountServerUrlLabel,
               prefixIcon: const Icon(Icons.dns)),
@@ -99,6 +103,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
         const SizedBox(height: 16),
         TextFormField(
           controller: _username,
+          textInputAction: TextInputAction.next,
+          onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
           decoration: InputDecoration(
               labelText: l10n.editAccountUsernameLabel, prefixIcon: const Icon(Icons.person_outline)),
           validator: (v) =>
@@ -108,6 +114,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
         TextFormField(
           controller: _password,
           obscureText: _isPasswordObscured,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => _save(),
           decoration: InputDecoration(
             labelText: l10n.editAccountPasswordLabel,
             prefixIcon: const Icon(Icons.password),
@@ -123,22 +131,10 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
           validator: (v) =>
           (v == null || v.trim().isEmpty) ? l10n.editAccountNameRequired : null,
         ),
-        const SizedBox(height: 24),
-        DropdownButtonFormField<PlaylistType>(
-          initialValue: _playlistType,
-          decoration: InputDecoration(
-            labelText: l10n.editAccountPlaylistTypeLabel,
-            border: const OutlineInputBorder(),
-            prefixIcon: const Icon(Icons.list_alt),
-          ),
-          items: [
-            DropdownMenuItem(value: PlaylistType.m3u, child: Text(l10n.editAccountPlaylistTypeM3u)),
-            DropdownMenuItem(value: PlaylistType.simple, child: Text(l10n.editAccountPlaylistTypeSimple)),
-          ],
-          onChanged: (value) {
-            if (value != null) setState(() => _playlistType = value);
-          },
-        ),
+        // §fusion — Sélecteur "Type de playlist" (M3U / Simple) retiré : on force
+        // toujours m3u → m3u_plus (cf. StreamAccount.buildXtreamUrl). Pour les
+        // nouveaux comptes `_playlistType` reste à sa valeur par défaut (m3u) ;
+        // un compte existant en `simple` conserve son type.
       ],
     );
   }
@@ -166,6 +162,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
                 const SizedBox(height: 24),
                 TextFormField(
                   controller: _label,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
                   decoration: InputDecoration(
                     labelText: l10n.editAccountNameLabel,
                     prefixIcon: const Icon(Icons.badge_outlined),

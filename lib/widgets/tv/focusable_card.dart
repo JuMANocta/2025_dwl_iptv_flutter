@@ -113,11 +113,9 @@ class _FocusableCardState extends State<FocusableCard> {
       curve: Curves.easeOutCubic,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
+        // §ergo — Le glow reste en `decoration` (boxShadow = zéro coût layout).
         decoration: BoxDecoration(
           borderRadius: radius,
-          border: showFocusEffect
-              ? Border.all(color: focusColor, width: borderW)
-              : Border.all(color: Colors.transparent, width: borderW),
           boxShadow: showFocusEffect
               ? [
                   BoxShadow(
@@ -128,6 +126,17 @@ class _FocusableCardState extends State<FocusableCard> {
                 ]
               : null,
         ),
+        // §ergo — La bordure de focus passe en `foregroundDecoration` : elle est
+        // peinte PAR-DESSUS l'enfant sans agrandir la box. Avant, un
+        // `Border.all(width: 2)` (même transparent) ajoutait 4px à chaque carte
+        // → dans un Wrap calé au pixel, la 3e vignette passait à la ligne
+        // (chaînes affichées 2 par ligne au lieu de 3). Plus de coût layout ici.
+        foregroundDecoration: showFocusEffect
+            ? BoxDecoration(
+                borderRadius: radius,
+                border: Border.all(color: focusColor, width: borderW),
+              )
+            : null,
         child: widget.decorateOnly
             ? widget.child
             : Material(

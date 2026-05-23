@@ -13,7 +13,9 @@ import 'data/services/watch_progress_service.dart';
 import 'data/services/search_history_service.dart';
 import 'data/services/last_watched_channel_service.dart';
 import 'core/navigation/main_navigation.dart';
+import 'data/services/expiration_alert_service.dart';
 import 'feature/accounts/accounts_page.dart';
+import 'feature/accounts/expiration_alert_dialog.dart';
 import 'feature/onboarding/onboarding_page.dart';
 import 'feature/pairing/pairing_page.dart';
 import 'data/services/pairing_service.dart';
@@ -195,6 +197,11 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       _hydrateSecondaryAccounts(others);                    // fire & forget
     }
 
+    // §17b — Fetch background des AccountInfo pour TOUS les comptes
+    // (alimente le cache `ExpirationAlertService.infos`). On déclenche
+    // la popup d'alerte si au moins un compte expire <30 jours.
+    _checkExpirationAlerts(accounts);
+
     return (
       path:        path,
       accountId:   acc?.id   ?? '',
@@ -202,16 +209,52 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     );
   }
 
+  /// §17b — Vérifie les expirations en background et affiche la popup
+  /// `ExpirationAlertDialog` si au moins un compte expire <30 jours. Le
+  /// dédoublonnage (SharedPreferences) est géré par
+  /// `ExpirationAlertService.computeUnackedAlerts`. Délai de 4s pour laisser
+  /// le splash + l'init terminer avant d'interrompre l'utilisateur.
+  Future<void> _checkExpirationAlerts(List<StreamAccount> accounts) async {
+    if (accounts.isEmpty) return;
+    try {
+      await ExpirationAlertService.fetchAll(accounts);
+      if (!mounted) return;
+      final alerts =
+          await ExpirationAlertService.computeUnackedAlerts(accounts);
+      if (alerts.isEmpty) return;
+      // Délai pour laisser le UI démarrer proprement.
+      await Future.delayed(const Duration(seconds: 4));
+      final ctx = navigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      await ExpirationAlertDialog.show(ctx, alerts);
+    } catch (e) {
+      // Échec silencieux — pas critique au boot.
+    }
+  }
+
   /// Télécharge le M3U manquant des comptes secondaires et les charge en
   /// mémoire (parsing). Asynchrone & silencieux — la home se met à jour via
-  /// `ParsedPlaylistService.version` quand chaque compte termine.
+  /// `ParsedPlaylistService.version` quand chaque compte termine. §16 : push
+  /// les transitions d'état via `setLoadState` pour que `_AccountTile` affiche
+  /// "EN COURS…" pendant download/parse puis "DISPONIBLE" à la fin.
   Future<void> _hydrateSecondaryAccounts(List<StreamAccount> others) async {
     for (final acc in others) {
+      // Si déjà chargé via preloadOthersFromDisk → skip réseau.
+      if (ParsedPlaylistService.stateOf(acc.id) ==
+          AccountLoadState.loaded) {
+        continue;
+      }
+      ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.downloading);
       try {
         final p = await PlaylistService.ensureDownloadedForAccount(acc);
-        if (p == null) continue;
+        if (p == null) {
+          ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
+          continue;
+        }
+        // loadSecondary gère lui-même les transitions parsing → loaded / error.
         await ParsedPlaylistService.loadSecondary(acc.id, acc.label, p);
       } catch (_) {
+        ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
         // Ne pas planter le démarrage à cause d'un compte cassé (network, IO…).
       }
     }

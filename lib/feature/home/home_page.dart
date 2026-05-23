@@ -978,7 +978,10 @@ class _HeroBannerState extends State<_HeroBanner> {
     }
     final hasTmdb = await TmdbApiService.hasApiKey();
     if (!context.mounted) return;
-    if (hasTmdb) {
+    // §bugfix — Les séries vont toujours sur DetailsPage (picker saison/épisode
+    // construit depuis la playlist), même sans clé TMDB : sinon l'action sheet
+    // ne lit que le 1er épisode et l'utilisateur ne peut pas choisir.
+    if (hasTmdb || entry.type == M3uContentType.series) {
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => DetailsPage(entry: entry, versions: versions),
       ));
@@ -1308,7 +1311,10 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     final entry = versions.first;
     final hasTmdb = await TmdbApiService.hasApiKey();
     if (!context.mounted) return;
-    if (hasTmdb) {
+    // §bugfix — Les séries vont toujours sur DetailsPage (picker saison/épisode
+    // construit depuis la playlist), même sans clé TMDB : sinon l'action sheet
+    // ne lit que le 1er épisode et l'utilisateur ne peut pas choisir.
+    if (hasTmdb || entry.type == M3uContentType.series) {
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => DetailsPage(entry: entry, versions: versions),
       ));
@@ -1796,6 +1802,7 @@ class _CategoryRow extends StatelessWidget {
                       ),
                   ];
                   return Wrap(
+                    alignment: WrapAlignment.center,
                     spacing: spacing,
                     runSpacing: spacing,
                     children: tiles,
@@ -1929,7 +1936,7 @@ class _SeeAllTile extends StatelessWidget {
 
 // ─── Page complète d'une catégorie (accessible via "Voir tout") ──────────────
 
-class CategoryListPage extends StatelessWidget {
+class CategoryListPage extends StatefulWidget {
   final String category;
   final List<List<M3uEntry>> groups;
   final M3uContentType type;
@@ -1944,10 +1951,39 @@ class CategoryListPage extends StatelessWidget {
   });
 
   @override
+  State<CategoryListPage> createState() => _CategoryListPageState();
+}
+
+class _CategoryListPageState extends State<CategoryListPage> {
+  // §quickwin — scroll-to-top sur les grosses catégories (2000+ items) :
+  // remonter au D-pad sur TV/Fire Stick était pénible.
+  final ScrollController _scrollController = ScrollController();
+  bool _showScrollTop = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    // FAB visible après ~2 écrans de scroll.
+    final show = _scrollController.hasClients && _scrollController.offset > 1200;
+    if (show != _showScrollTop) setState(() => _showScrollTop = show);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isTv = type == M3uContentType.tv;
+    final isTv = widget.type == M3uContentType.tv;
 
     return Scaffold(
       appBar: AppBar(
@@ -1955,18 +1991,18 @@ class CategoryListPage extends StatelessWidget {
         scrolledUnderElevation: 0,
         title: Row(
           children: [
-            Icon(icon, size: 20, color: kAccentPrimary),
+            Icon(widget.icon, size: 20, color: kAccentPrimary),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                category,
+                widget.category,
                 style: const TextStyle(fontWeight: FontWeight.w700),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             const SizedBox(width: 6),
             Text(
-              '${groups.length}',
+              '${widget.groups.length}',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -1977,6 +2013,18 @@ class CategoryListPage extends StatelessWidget {
         ),
       ),
       extendBodyBehindAppBar: true,
+      floatingActionButton: _showScrollTop
+          ? FloatingActionButton.small(
+              backgroundColor: kAccentPrimary,
+              foregroundColor: Colors.black,
+              onPressed: () => _scrollController.animateTo(
+                0,
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeOut,
+              ),
+              child: const Icon(Icons.keyboard_arrow_up),
+            )
+          : null,
       body: Container(
         width: double.infinity,
         height: double.infinity,
@@ -2012,18 +2060,27 @@ class CategoryListPage extends StatelessWidget {
               }
               final tileWidth = (width - spacing * (cols - 1)) / cols;
 
-              return SingleChildScrollView(
+              // §20 — Rendu lazy : GridView.builder ne construit que les
+              // cellules visibles (+ cacheExtent), au lieu du Wrap qui
+              // instanciait TOUTES les cartes au mount. Indispensable pour les
+              // catégories à 2000+ items (freeze + OOM sur Fire Stick sinon).
+              // La card est un poster pur (AspectRatio = imageAspectRatio) →
+              // childAspectRatio identique pour des cellules à la bonne hauteur.
+              final childAspectRatio = isTv ? 1.0 : 2 / 3;
+              return GridView.builder(
+                controller: _scrollController,
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                child: Wrap(
-                  spacing: spacing,
-                  runSpacing: spacing,
-                  children: groups
-                      .map((g) => _HomeCard(
-                            versions: g,
-                            type: type,
-                            width: tileWidth,
-                          ))
-                      .toList(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: cols,
+                  crossAxisSpacing: spacing,
+                  mainAxisSpacing: spacing,
+                  childAspectRatio: childAspectRatio,
+                ),
+                itemCount: widget.groups.length,
+                itemBuilder: (_, i) => _HomeCard(
+                  versions: widget.groups[i],
+                  type: widget.type,
+                  width: tileWidth,
                 ),
               );
             },
@@ -2062,7 +2119,9 @@ class _HomeCardState extends State<_HomeCard> {
     }
     final hasTmdb = await TmdbApiService.hasApiKey();
     if (!mounted) return;
-    if (hasTmdb) {
+    // §bugfix — voir _openItem : une série va sur DetailsPage même sans TMDB
+    // (sinon l'action sheet ne lit que le 1er épisode, pas de choix possible).
+    if (hasTmdb || entry.type == M3uContentType.series) {
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => DetailsPage(entry: entry, versions: widget.versions),
       ));
