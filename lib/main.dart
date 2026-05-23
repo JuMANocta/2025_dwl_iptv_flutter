@@ -86,8 +86,8 @@ void main() async {
   runApp(const MyApp());
 
   // Vérification silencieuse des mises à jour après le démarrage (non-bloquant).
-  // Délai court pour laisser l'UI s'afficher avant la requête réseau.
-  Future.delayed(const Duration(seconds: 3), _checkForUpdate);
+  // Désactivé pour la branche Windows-port.
+  // Future.delayed(const Duration(seconds: 3), _checkForUpdate);
 }
 
 /// Vérifie silencieusement si une mise à jour est disponible.
