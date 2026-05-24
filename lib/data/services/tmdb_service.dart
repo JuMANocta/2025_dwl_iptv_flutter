@@ -374,4 +374,40 @@ class TmdbService {
     if (path == null || path.isEmpty) return null;
     return 'https://image.tmdb.org/t/p/$size$path';
   }
+
+  /// 🖼️ Recherche LÉGÈRE : ne renvoie que l'URL de l'affiche (aucun appel
+  /// `append_to_response` credits/videos). Utilisée comme fallback pour les
+  /// entrées dont le M3U ne fournit pas de `tvg-logo` (cas liste Ultimate :
+  /// VOD sans poster). Réutilise la smart search (année → souple → bascule type)
+  /// mais s'arrête au premier résultat et n'en extrait que `poster_path`.
+  Future<String?> fetchPosterUrl({
+    required String query,
+    required bool isTv,
+    String? year,
+    String? groupTitle,
+    String size = 'w342',
+  }) async {
+    if (!await _init()) return null;
+    final clean = _cleanQuery(query);
+    if (clean.isEmpty) return null;
+
+    final bool appearsEnglish =
+        RegExp(r'\b(VO|VOST|VOSTFR|ENGLISH)\b', caseSensitive: false).hasMatch(query);
+    final String lang = appearsEnglish ? 'en-US' : 'fr-FR';
+    final List<int> hints = groupTitle != null ? _groupTitleToGenreHints(groupTitle) : const [];
+
+    try {
+      Map<String, dynamic>? r;
+      if (year != null) {
+        r = await _performSearch(clean, isTv: isTv, language: lang, year: year, genreHints: hints);
+      }
+      r ??= await _performSearch(clean, isTv: isTv, language: lang, genreHints: hints);
+      r ??= await _performSearch(clean, isTv: !isTv, language: lang, genreHints: hints);
+      if (r == null) return null;
+      return getPosterUrl(r['poster_path'] as String?, size: size);
+    } catch (e) {
+      debugPrint("❌ Glitch TMDB (poster fallback) : $e");
+      return null;
+    }
+  }
 }

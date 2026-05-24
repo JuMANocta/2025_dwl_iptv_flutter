@@ -349,51 +349,96 @@ class ParsedPlaylistService {
     return '${dir.path}/parsed_playlist_$accountId.json.gz';
   }
 
+  /// Lecture STREAMÉE du cache (NDJSON gzippé) : 1ʳᵉ ligne = en-tête
+  /// (schema/accountId/m3uModAt), lignes suivantes = une entrée JSON chacune.
+  /// On ne charge jamais toute la chaîne JSON en mémoire (anti-OOM grosse liste).
   static Future<ParsedPlaylist?> _loadFromDisk(String accountId, String m3uPath) async {
+    final path = await _diskCachePath(accountId);
+    final cacheFile = File(path);
+    if (!await cacheFile.exists()) return null;
+
     try {
-      final path = await _diskCachePath(accountId);
-      final cacheFile = File(path);
-      if (!await cacheFile.exists()) return null;
+      final lines = cacheFile
+          .openRead()
+          .transform(gzip.decoder)
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
 
-      // Décompresser + désérialiser
-      final compressed = await cacheFile.readAsBytes();
-      final jsonBytes  = GZipCodec().decode(compressed);
-      final json       = jsonDecode(utf8.decode(jsonBytes)) as Map<String, dynamic>;
-      final playlist   = ParsedPlaylist.fromJson(json);
+      Map<String, dynamic>? header;
+      DateTime? m3uModifiedAt;
+      final entries = <M3uEntry>[];
 
-      // Invalider si schéma obsolète
-      if (playlist.schema != ParsedPlaylist.schemaVersion) {
-        debugPrint('⚠️ ParsedPlaylist: schéma v${playlist.schema} obsolète (v${ParsedPlaylist.schemaVersion} attendu) → invalidation');
-        await cacheFile.delete();
-        return null;
+      await for (final line in lines) {
+        if (line.isEmpty) continue;
+        if (header == null) {
+          header = jsonDecode(line) as Map<String, dynamic>;
+          final schema = header['schema'] as int;
+          // Invalider si schéma obsolète
+          if (schema != ParsedPlaylist.schemaVersion) {
+            debugPrint('⚠️ ParsedPlaylist: schéma v$schema obsolète (v${ParsedPlaylist.schemaVersion} attendu) → invalidation');
+            await cacheFile.delete();
+            return null;
+          }
+          m3uModifiedAt = DateTime.parse(header['m3uModAt'] as String);
+          // Invalider si le fichier .m3u a été re-téléchargé depuis
+          final m3uFile = File(m3uPath);
+          if (!await m3uFile.exists()) return null;
+          final m3uModified = await m3uFile.lastModified();
+          if (m3uModifiedAt.isBefore(m3uModified.subtract(const Duration(seconds: 5)))) {
+            debugPrint('⚠️ ParsedPlaylist: fichier M3U modifié → re-parse nécessaire');
+            await cacheFile.delete();
+            return null;
+          }
+        } else {
+          entries.add(M3uEntry.fromJson(jsonDecode(line) as Map<String, dynamic>));
+        }
       }
 
-      // Invalider si le fichier .m3u a été re-téléchargé depuis
-      final m3uFile = File(m3uPath);
-      if (!await m3uFile.exists()) return null;
-      final m3uModified = await m3uFile.lastModified();
-      if (playlist.m3uModifiedAt.isBefore(m3uModified.subtract(const Duration(seconds: 5)))) {
-        debugPrint('⚠️ ParsedPlaylist: fichier M3U modifié → re-parse nécessaire');
-        await cacheFile.delete();
-        return null;
-      }
-
-      return playlist;
+      if (header == null || m3uModifiedAt == null) return null;
+      return ParsedPlaylist(
+        accountId:     header['accountId'] as String,
+        schema:        header['schema'] as int,
+        m3uModifiedAt: m3uModifiedAt,
+        entries:       entries,
+      );
     } catch (e) {
       debugPrint('❌ ParsedPlaylist: erreur chargement disque — $e');
+      // Cache potentiellement corrompu → on le supprime pour repartir propre.
+      try { if (await cacheFile.exists()) await cacheFile.delete(); } catch (_) {}
       return null;
     }
   }
 
+  /// Écriture STREAMÉE du cache (NDJSON gzippé). On encode une entrée à la fois
+  /// et on pousse les octets gzippés dans l'IOSink → empreinte mémoire minime
+  /// même pour ~600k entrées (l'ancienne version `jsonEncode(toJson())` faisait
+  /// une chaîne géante de 150-300 Mo d'un coup → OOM silencieux sur Fire Stick →
+  /// aucun cache écrit → re-parse à chaque démarrage).
   static Future<void> _saveToDisk(String accountId, ParsedPlaylist playlist) async {
+    final path = await _diskCachePath(accountId);
+    final raw = File(path).openWrite();
     try {
-      final path      = await _diskCachePath(accountId);
-      final jsonStr   = jsonEncode(playlist.toJson());
-      final compressed = GZipCodec().encode(utf8.encode(jsonStr));
-      await File(path).writeAsBytes(compressed);
-      debugPrint('💾 ParsedPlaylist: sauvegardé — ${(compressed.length / 1024).toStringAsFixed(0)} Ko');
+      final gzipSink = gzip.encoder.startChunkedConversion(_IOSinkAdapter(raw));
+      void writeLine(Object o) => gzipSink.add(utf8.encode('${jsonEncode(o)}\n'));
+
+      // En-tête
+      writeLine({
+        'schema':    playlist.schema,
+        'accountId': playlist.accountId,
+        'm3uModAt':  playlist.m3uModifiedAt.toIso8601String(),
+        'count':     playlist.entries.length,
+      });
+      // Une entrée par ligne
+      for (final e in playlist.entries) {
+        writeLine(e.toJson());
+      }
+      gzipSink.close(); // flush du trailer gzip dans l'IOSink
+      await raw.flush();
+      debugPrint('💾 ParsedPlaylist: sauvegardé (streamé) — ${playlist.entries.length} entrées');
     } catch (e) {
       debugPrint('❌ ParsedPlaylist: erreur sauvegarde disque — $e');
+    } finally {
+      await raw.close();
     }
   }
 
@@ -404,4 +449,19 @@ class ParsedPlaylistService {
       if (await file.exists()) await file.delete();
     } catch (_) {}
   }
+}
+
+/// Adaptateur : expose un [IOSink] (fichier) comme un `Sink<List<int>>` pour le
+/// brancher en sortie de `gzip.encoder.startChunkedConversion`. Le `close()` est
+/// volontairement no-op : l'`IOSink` est fermé explicitement par l'appelant
+/// (`_saveToDisk`) après le flush du trailer gzip.
+class _IOSinkAdapter implements Sink<List<int>> {
+  final IOSink _out;
+  _IOSinkAdapter(this._out);
+
+  @override
+  void add(List<int> data) => _out.add(data);
+
+  @override
+  void close() {}
 }

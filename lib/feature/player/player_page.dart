@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 import 'player_controller.dart';
 import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
@@ -102,6 +103,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// §1i — Mode lock partagé entre [PlayerControls] et [PlayerGestures].
   /// `true` → tous les gestes (sauf tap pour révéler le cadenas) sont ignorés.
   bool _isLocked = false;
+
+  // §seekAccum — Accumulation des sauts rapprochés (double-tap mobile + flèches
+  // télécommande TV). Les sauts dans une même direction et un court intervalle
+  // s'additionnent et l'overlay affiche le total cumulé (ex: 3 sauts → +30s).
+  Timer? _seekAccumTimer;   // reset de l'accumulateur après inactivité
+  Timer? _seekOverlayTimer; // masquage de l'overlay
+  int _seekAccumSeconds = 0; // signé : >0 avance, <0 recul
+  bool _seekOverlayVisible = false;
 
   // Luminosité courante (0.0–1.0), initialisée à 0.5 par défaut.
   double _brightness = 0.5;
@@ -331,6 +340,32 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     final pos = _ctrl.player.state.position + delta;
     _ctrl.player.seek(pos.isNegative ? Duration.zero : pos);
     _showControls();
+    _accumulateSeek(delta);
+  }
+
+  /// §seekAccum — Met à jour le total cumulé affiché. Les sauts d'une même
+  /// direction réalisés à moins de ~1,1s d'intervalle s'additionnent ; un
+  /// changement de direction (ou l'expiration du délai) repart de zéro.
+  void _accumulateSeek(Duration delta) {
+    final secs = delta.inSeconds;
+    if (secs == 0) return;
+    // Changement de sens ou nouvelle salve → on réinitialise l'accumulateur.
+    if (_seekAccumTimer == null || _seekAccumSeconds.sign != secs.sign) {
+      _seekAccumSeconds = 0;
+    }
+    _seekAccumSeconds += secs;
+
+    setState(() => _seekOverlayVisible = true);
+    _seekOverlayTimer?.cancel();
+    _seekOverlayTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _seekOverlayVisible = false);
+    });
+
+    _seekAccumTimer?.cancel();
+    _seekAccumTimer = Timer(const Duration(milliseconds: 1100), () {
+      _seekAccumSeconds = 0;
+      _seekAccumTimer = null;
+    });
   }
 
   void _handleVolumeChange(double delta) {
@@ -373,6 +408,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _hideTimer?.cancel();
     _progressTimer?.cancel();
     _pendingRetryTimer?.cancel();
+    _seekAccumTimer?.cancel();
+    _seekOverlayTimer?.cancel();
     _saveProgress(); // dernière sauvegarde à la sortie du player
     _playingSub?.cancel();
     _errorSub?.cancel();
@@ -451,6 +488,16 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // un nouveau segment HLS. Désactivé en mode lock pour ne pas troubler
             // la zone cliquable du cadenas.
             _BufferingOverlay(player: _ctrl.player, hidden: _isLocked),
+
+            // §seekAccum — Badge central du saut cumulé (ex: « ⏩ +30s »).
+            if (_seekOverlayVisible && _seekAccumSeconds != 0)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Center(
+                    child: _SeekAccumBadge(seconds: _seekAccumSeconds),
+                  ),
+                ),
+              ),
 
             // 4. Barre replay (uniquement en mode networkReplay).
             if (widget.sourceType == VideoSourceType.networkReplay)
@@ -592,6 +639,50 @@ class _BufferingOverlayState extends State<_BufferingOverlay> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// §seekAccum — Badge central affichant le saut cumulé (ex: « ⏩ +30s »).
+/// Le signe pilote l'icône (avance/recul) et le texte du total.
+class _SeekAccumBadge extends StatelessWidget {
+  final int seconds;
+  const _SeekAccumBadge({required this.seconds});
+
+  @override
+  Widget build(BuildContext context) {
+    final forward = seconds >= 0;
+    final abs = seconds.abs();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.black.withAlpha(150),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kAccentPrimary.withAlpha(120), width: 1),
+        boxShadow: [
+          BoxShadow(color: kAccentPrimary.withAlpha(70), blurRadius: 16),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            forward ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
+            color: kAccentPrimary,
+            size: 30,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${forward ? '+' : '-'}${abs}s',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -11,6 +11,7 @@ import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/search_history_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
+import 'package:aetherStream/data/services/tmdb_poster_cache.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
@@ -632,6 +633,14 @@ double _responsiveTileWidth(double available, {required bool channel}) {
 /// Vignette cible : ~130 px pour les chaînes (logo carré), ~145 px pour les
 /// posters 2:3. Borné [3, 10] pour rester lisible à 3 m sans micro-vignettes.
 int _responsiveColumns(double available, {required bool channel}) {
+  // §tvZoom — Sur TV, la largeur logique rapportée est petite (ex. ~960 dp pour
+  // du 1080p) → avec la cible smartphone (130/145) on obtenait trop peu de
+  // colonnes = vignettes géantes vues de loin. On vise des vignettes plus
+  // petites (et plus nombreuses) sur TV, avec un plafond de colonnes relevé.
+  if (PlatformTv.isTv) {
+    final target = channel ? 105.0 : 118.0;
+    return (available / target).round().clamp(4, 14);
+  }
   final target = channel ? 130.0 : 145.0;
   return (available / target).round().clamp(3, 10);
 }
@@ -731,7 +740,9 @@ class _TypePage extends StatefulWidget {
 class _TypePageState extends State<_TypePage> {
   /// Limite d'items affichés dans un carrousel/grille de catégorie sur la home.
   /// Au-delà, un tile "Voir tout" est ajouté qui ouvre [CategoryListPage].
-  static const int _maxItemsPerCategory = 25;
+  /// Réduit de 25 → 15 (§ergo) : carrousels plus courts = scroll horizontal
+  /// allégé (surtout au D-pad TV) et moins d'affiches TMDB à résoudre/charger.
+  static const int _maxItemsPerCategory = 15;
 
   // ── Caches (memoization) — §perfBigList ─────────────────────────────────
   // CRUCIAL avec une grosse playlist (Ultimate ~600k entrées) : le GROUPEMENT
@@ -1081,11 +1092,7 @@ class _HeroBannerState extends State<_HeroBanner> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-      child: AspectRatio(
-        aspectRatio: 16 / 9,
-        child: ClipRRect(
+    final core = ClipRRect(
           borderRadius: BorderRadius.circular(18),
           child: Stack(
             fit: StackFit.expand,
@@ -1131,8 +1138,18 @@ class _HeroBannerState extends State<_HeroBanner> {
                 ),
             ],
           ),
-        ),
-      ),
+        );
+
+    // §tvZoom — Sur TV (paysage), un 16/9 pleine largeur ≈ plein écran et
+    // masquait totalement les carrousels. On plafonne la hauteur à ~32 % de
+    // l'écran (bannière large et basse). Mobile : ratio 16/9 historique.
+    final Widget sized = PlatformTv.isTv
+        ? SizedBox(height: MediaQuery.sizeOf(context).height * 0.32, child: core)
+        : AspectRatio(aspectRatio: 16 / 9, child: core);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+      child: sized,
     );
   }
 }
@@ -1490,8 +1507,19 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     return LayoutBuilder(
       builder: (ctx, constraints) {
         final screenW = constraints.maxWidth;
-        final cardW = math.min(screenW * 0.48, 220.0);
-        final cardH = cardW * 1.45;
+        double cardW = math.min(screenW * 0.48, 220.0);
+        double cardH = cardW * 1.45;
+        // §tvZoom — Sur TV (paysage 16:9), le hero n'était borné que par la
+        // largeur → il occupait ~35-40 % de la hauteur et écrasait les
+        // carrousels. On plafonne la hauteur du hero à ~30 % de l'écran et on
+        // recalcule la largeur de carte pour garder le ratio 1.45.
+        if (PlatformTv.isTv) {
+          final maxCardH = MediaQuery.sizeOf(ctx).height * 0.30 - 60;
+          if (maxCardH > 0 && cardH > maxCardH) {
+            cardH = maxCardH;
+            cardW = cardH / 1.45;
+          }
+        }
         final containerH = cardH + 60;
         // 1 carte d'écart visuel = ~22 % de la largeur d'une carte.
         // Sensibilité du drag : 1 unité de `_current` = `cardSpacing` pixels.
@@ -1943,13 +1971,25 @@ class _CategoryRow extends StatelessWidget {
               builder: (ctx, constraints) {
                 final cardW =
                     _responsiveTileWidth(constraints.maxWidth, channel: false);
+                // §tvFocus — Sur TV, le contour de focus (scale 1.05 + glow
+                // ~17px + bordure) déborde au-dessus/en-dessous de la vignette.
+                // On réserve une marge verticale (48) ET on peint dans cette
+                // marge via le padding du ListView ; `Clip.none` évite que le
+                // ListView rogne le contour aux bords de la rangée.
+                final vSlack = PlatformTv.isTv ? 48.0 : 20.0;
                 return SizedBox(
-                  height: cardW * 1.5 + 20,
+                  height: cardW * 1.5 + vSlack,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    clipBehavior: PlatformTv.isTv ? Clip.none : Clip.hardEdge,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: PlatformTv.isTv ? 24 : 0,
+                    ),
                     itemCount: groups.length + (hasMore ? 1 : 0),
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    // §ergo — écartement un peu plus large entre les cartes
+                    // (10 → 16) pour aérer le carrousel sans toucher au style.
+                    separatorBuilder: (_, __) => const SizedBox(width: 16),
                     itemBuilder: (ctx, i) {
                       if (hasMore && i == groups.length) {
                         return _SeeAllTile(
@@ -2239,6 +2279,59 @@ class _HomeCard extends StatefulWidget {
 class _HomeCardState extends State<_HomeCard> {
   bool _pressed = false;
 
+  /// §Ultimate — affiche TMDB résolue à la volée quand le M3U ne fournit aucun
+  /// `tvg-logo` (VOD Ultimate). Reste null pour les chaînes TV et les entrées
+  /// déjà pourvues d'un logo.
+  String? _tmdbPoster;
+
+  /// True dès que les versions portent un `tvg-logo` exploitable.
+  bool get _hasM3uLogo => widget.versions
+      .any((e) => e.logoUrl != null && e.logoUrl!.isNotEmpty);
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveTmdbPosterIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Le recyclage des cartes (ListView/Grid) réutilise l'élément avec d'autres
+    // versions → on relance la résolution si le groupe a changé.
+    if (oldWidget.versions.first.url != widget.versions.first.url) {
+      _tmdbPoster = null;
+      _resolveTmdbPosterIfNeeded();
+    }
+  }
+
+  /// Lance un fallback TMDB uniquement pour films/séries sans logo M3U.
+  void _resolveTmdbPosterIfNeeded() {
+    if (_hasM3uLogo) return;
+    if (widget.type == M3uContentType.tv) return; // les chaînes ont leur logo
+    final entry = widget.versions.first;
+    final query = entry.displayName;
+    if (query.trim().isEmpty) return;
+    final isTv = widget.type == M3uContentType.series;
+    final year = entry.title.year;
+
+    // Cache déjà résolu → consommation synchrone, pas de setState inutile.
+    if (TmdbPosterCache.isResolved(query, isTv, year)) {
+      _tmdbPoster = TmdbPosterCache.cached(query, isTv, year);
+      return;
+    }
+
+    TmdbPosterCache.resolve(
+      query: query,
+      isTv: isTv,
+      year: year,
+      groupTitle: entry.groupTitle,
+    ).then((url) {
+      if (!mounted || url == null) return;
+      setState(() => _tmdbPoster = url);
+    });
+  }
+
   Future<void> _onTap() async {
     if (widget.versions.isEmpty) return;
     final entry = widget.versions.first;
@@ -2471,9 +2564,11 @@ class _HomeCardState extends State<_HomeCard> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final entry = widget.versions.first;
+    // §Ultimate — fallback affiche TMDB quand le M3U ne fournit aucun tvg-logo.
     final logoUrl = widget.versions
         .map((e) => e.logoUrl)
-        .firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
+        .firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null)
+        ?? _tmdbPoster;
 
     final isTv = widget.type == M3uContentType.tv;
     final cardWidth = widget.width ?? (isTv ? 120.0 : 130.0);

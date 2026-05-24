@@ -28,6 +28,7 @@ import 'core/themes/colors.dart';
 import 'core/themes/theme_service.dart';
 import 'core/themes/app_theme_config.dart';
 import 'data/services/update_service.dart';
+import 'data/services/xmltv_service.dart';
 import 'feature/update/update_dialog.dart';
 import 'core/utils/platform_tv.dart';
 
@@ -68,6 +69,12 @@ void main() async {
   // Vérification silencieuse des mises à jour après le démarrage (non-bloquant).
   // Délai court pour laisser l'UI s'afficher avant la requête réseau.
   Future.delayed(const Duration(seconds: 3), _checkForUpdate);
+
+  // Préchargement du guide des chaînes (EPG XMLTV) en arrière-plan, non-bloquant.
+  // Sans ça, le guide était vide au 1er lancement tant qu'on n'ouvrait pas une
+  // fiche chaîne. `ensureLoaded()` est gardé par le TTL 12h + cache fichier
+  // persistant → coût quasi nul aux lancements suivants.
+  Future.delayed(const Duration(seconds: 4), () => XmltvService.ensureLoaded());
 }
 
 /// Vérifie silencieusement si une mise à jour est disponible.

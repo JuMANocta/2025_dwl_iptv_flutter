@@ -205,7 +205,12 @@ class XmltvService {
   // ---- Téléchargement / cache fichier ----
 
   static Future<String?> _getContent() async {
-    final cacheDir = await getTemporaryDirectory();
+    // ⚠️ Persistance : on stocke dans le répertoire support de l'app
+    // (getApplicationSupportDirectory) et NON dans le cache temporaire
+    // (getTemporaryDirectory). Android purge régulièrement le cache temp
+    // (kill de l'app, pression mémoire) → le guide se vidait à chaque fermeture.
+    // Le support dir survit aux kills (comme le cache playlist).
+    final cacheDir = await getApplicationSupportDirectory();
     final file = File('${cacheDir.path}/$_cacheFile');
 
     // Utilise le cache fichier s'il est récent
