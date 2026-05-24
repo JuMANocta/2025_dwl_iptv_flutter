@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
+import 'package:aetherStream/data/services/remote_control_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'player_controller.dart';
 import 'widgets/player_controls.dart';
@@ -118,6 +119,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   // IPTV souvent encodés faibles — voir AetherPlayerController.initialVolume.
   double _volume = AetherPlayerController.initialVolume;
 
+  /// §webConsole Phase 2 — handlers exposés à la télécommande web pendant que
+  /// le player est ouvert (mêmes actions que le D-pad TV).
+  late final PlayerActionHandlers _remoteHandlers;
+
   @override
   void initState() {
     super.initState();
@@ -136,6 +141,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _startHideTimer();
     _initBrightness();
     _startProgressTracking();
+
+    _remoteHandlers = PlayerActionHandlers(
+      togglePlayPause: _togglePlayPause,
+      seek: _handleSeek,
+      changeVolume: _handleVolumeChange,
+      toggleControls: _toggleControls,
+      exitPlayer: () { if (mounted) Navigator.of(context).maybePop(); },
+    );
+    RemoteControlService.instance.registerPlayer(_remoteHandlers);
   }
 
   // ── §1h Wakelock — actif uniquement quand le player joue ─────────────────
@@ -410,6 +424,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _pendingRetryTimer?.cancel();
     _seekAccumTimer?.cancel();
     _seekOverlayTimer?.cancel();
+    RemoteControlService.instance.clearPlayer(_remoteHandlers);
     _saveProgress(); // dernière sauvegarde à la sortie du player
     _playingSub?.cancel();
     _errorSub?.cancel();
@@ -445,13 +460,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: Colors.black,
       body: TvPlayerShortcuts(
-        handlers: PlayerActionHandlers(
-          togglePlayPause: _togglePlayPause,
-          seek: _handleSeek,
-          changeVolume: _handleVolumeChange,
-          toggleControls: _toggleControls,
-          exitPlayer: () => Navigator.of(context).pop(),
-        ),
+        handlers: _remoteHandlers,
         child: Stack(
           fit: StackFit.expand,
           children: [

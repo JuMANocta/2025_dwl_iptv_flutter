@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/themes/aether_theme_extension.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../data/services/remote_control_service.dart';
 
 /// Wrapper de focus pour la navigation D-pad / clavier (§3c-2).
 ///
@@ -62,6 +63,13 @@ class FocusableCard extends StatefulWidget {
 
 class _FocusableCardState extends State<FocusableCard> {
   bool _focused = false;
+
+  @override
+  void dispose() {
+    // Libère l'enregistrement télécommande si cette card était la cible active.
+    RemoteControlService.instance.clearActivate(this);
+    super.dispose();
+  }
 
   // Mapping des touches "OK" télécommande vers onTap.
   static final _activationKeys = <LogicalKeyboardKey>{
@@ -161,6 +169,15 @@ class _FocusableCardState extends State<FocusableCard> {
       autofocus: widget.autofocus,
       onFocusChange: (f) {
         if (mounted) setState(() => _focused = f);
+        // §webConsole Phase 2 — la télécommande web cible l'élément focusé :
+        // on s'enregistre (OK → onTap, Menu → onLongPress) au gain de focus,
+        // on se désenregistre à la perte.
+        if (f) {
+          RemoteControlService.instance
+              .registerActivate(this, widget.onTap, widget.onLongPress);
+        } else {
+          RemoteControlService.instance.clearActivate(this);
+        }
         // §3c-bis #7 — Si la card vient de prendre le focus sur TV, l'amener
         // dans le viewport du ScrollView ancêtre (carrousel horizontal /
         // ListView vertical). Sans ça, le focus peut se déplacer sur une card

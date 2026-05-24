@@ -7,6 +7,7 @@ import 'package:aetherStream/feature/settings/backup_page.dart';
 import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
 import 'package:aetherStream/feature/settings/xmltv_page.dart';
+import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
@@ -72,6 +73,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _openBackup() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const BackupPage()),
+    );
+  }
+
+  Future<void> _openWebConsole() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WebConsolePage()),
     );
   }
 
@@ -143,6 +150,13 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle:
                   'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)',
               onTap: _openBackup,
+            ),
+            _SettingsTile(
+              icon: Icons.lan_outlined,
+              accentColor: kAccentPrimary,
+              title: 'Console web',
+              subtitle: 'Gérer comptes/listes/sauvegardes depuis un navigateur',
+              onTap: _openWebConsole,
             ),
             const SizedBox(height: 8),
             _SectionHeader(title: 'Application'),
