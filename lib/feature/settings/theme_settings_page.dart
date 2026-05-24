@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../widgets/tv/focusable_chip.dart';
 
 class ThemeSettingsPage extends StatefulWidget {
   const ThemeSettingsPage({super.key});
@@ -158,7 +159,11 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
         itemBuilder: (_, i) {
           final preset = AppThemeConfig.presets[i];
           final active = _isPresetActive(preset.config);
-          return GestureDetector(
+          // §3c Phase 1 — FocusableChip : preset sélectionnable au D-pad.
+          return FocusableChip(
+            onTap: () => _apply(preset.config),
+            borderRadius: BorderRadius.circular(10),
+            child: GestureDetector(
             onTap: () => _apply(preset.config),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
@@ -214,6 +219,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                 ],
               ),
             ),
+          ),
           );
         },
       ),
@@ -268,7 +274,11 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                 itemBuilder: (_, i) {
                   final c = _kPalette[i];
                   final selected = current == c;
-                  return GestureDetector(
+                  // §3c Phase 1 — FocusableChip : couleur sélectionnable au D-pad.
+                  return FocusableChip(
+                    onTap: () => onSelect(c),
+                    borderRadius: BorderRadius.circular(13),
+                    child: GestureDetector(
                     onTap: () => onSelect(c),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
@@ -290,6 +300,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                               color: _contrastColor(c))
                           : null,
                     ),
+                  ),
                   );
                 },
               ),
@@ -383,7 +394,11 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
           return Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: GestureDetector(
+              // §3c Phase 1 — FocusableChip : mode clair/sombre/système au D-pad.
+              child: FocusableChip(
+                onTap: () => _apply(_config.copyWith(themeMode: m.$1)),
+                borderRadius: BorderRadius.circular(8),
+                child: GestureDetector(
                 onTap: () => _apply(_config.copyWith(themeMode: m.$1)),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
@@ -414,6 +429,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                     ],
                   ),
                 ),
+              ),
               ),
             ),
           );

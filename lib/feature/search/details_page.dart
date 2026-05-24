@@ -12,6 +12,7 @@ import '../player/player_page.dart';
 import '../downloads/logic/download_initiator.dart';
 import '../../data/models/m3u_entry.dart';
 import '../../l10n/app_localizations.dart';
+import '../../widgets/tv/focusable_chip.dart';
 import 'actor_details_page.dart';
 
 Color _qualityColor(String? quality) {
@@ -649,26 +650,33 @@ class _DetailsPageState extends State<DetailsPage> {
               final isSelected = sNum == _selectedSeason;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: GestureDetector(
-                  onTap: isSelected ? null : () => _selectSeason(sNum),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 18, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? cs.primary
-                          : cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Text(
-                      'Saison $sNum',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                // §3c Phase 1 — FocusableChip : la saison devient sélectionnable
+                // au D-pad (avant : GestureDetector tap-only). onTap reste
+                // toujours défini pour que le chip sélectionné garde le focus.
+                child: FocusableChip(
+                  onTap: () => _selectSeason(sNum),
+                  borderRadius: BorderRadius.circular(24),
+                  child: GestureDetector(
+                    onTap: isSelected ? null : () => _selectSeason(sNum),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 9),
+                      decoration: BoxDecoration(
                         color: isSelected
-                            ? cs.onPrimary
-                            : cs.onSurfaceVariant,
+                            ? cs.primary
+                            : cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Text(
+                        'Saison $sNum',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected
+                              ? cs.onPrimary
+                              : cs.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),
@@ -693,7 +701,13 @@ class _DetailsPageState extends State<DetailsPage> {
                     _selectedSeason == _currentEpisode.title.seasonNumber;
                 return Padding(
                   padding: const EdgeInsets.only(right: 6),
-                  child: GestureDetector(
+                  // §3c Phase 1 — FocusableChip : l'épisode devient sélectionnable
+                  // au D-pad (avant : GestureDetector tap-only). onTap toujours
+                  // défini → l'épisode courant garde le focus.
+                  child: FocusableChip(
+                    onTap: () => _selectEpisode(group),
+                    borderRadius: BorderRadius.circular(8),
+                    child: GestureDetector(
                     onTap: isCurrent ? null : () => _selectEpisode(group),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
@@ -725,6 +739,7 @@ class _DetailsPageState extends State<DetailsPage> {
                         ),
                       ),
                     ),
+                  ),
                   ),
                 );
               }).toList(),
@@ -838,7 +853,12 @@ class _DetailsPageState extends State<DetailsPage> {
         final label    = _qualityLabel(v, e.key);
         final color    = _qualityColor(v.title.quality);
         final selected = _selectedEntry == v;
-        return GestureDetector(
+        // §3c Phase 1 — FocusableChip : la version FHD/HD devient sélectionnable
+        // au D-pad (avant : GestureDetector tap-only).
+        return FocusableChip(
+          onTap: () => setState(() => _selectedEntry = v),
+          borderRadius: BorderRadius.circular(8),
+          child: GestureDetector(
           onTap: () => setState(() => _selectedEntry = v),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
@@ -861,6 +881,7 @@ class _DetailsPageState extends State<DetailsPage> {
                 height: 1.3,
               ),
             ),
+          ),
           ),
         );
       }).toList(),

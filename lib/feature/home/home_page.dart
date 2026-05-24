@@ -21,6 +21,7 @@ import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
+import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 
@@ -197,6 +198,17 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// §3c Phase 2 — Wrappe une page du PageView pour la navigation TV :
+  /// retire du focus les pages non visibles (offstage) et scope la traversée
+  /// directionnelle à la page courante. Neutre hors TV.
+  Widget _pageFocusWrap(int index, Widget child) {
+    if (!PlatformTv.isTv) return child;
+    return ExcludeFocus(
+      excluding: _currentIndex != index,
+      child: FocusTraversalGroup(child: child),
+    );
+  }
+
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const SettingsPage()),
@@ -340,32 +352,59 @@ class _HomePageState extends State<HomePage> {
                     physics: PlatformTv.isTv
                         ? const NeverScrollableScrollPhysics()
                         : const _FastPageScrollPhysics(),
-                    onPageChanged: (i) =>
-                        setState(() => _currentIndex = i),
+                    onPageChanged: (i) {
+                      setState(() => _currentIndex = i);
+                      // §3c Phase 2 — Après un changement d'onglet sur TV,
+                      // l'ancienne page (avec le chip d'onglet focusé) est
+                      // exclue du focus → on ré-acquiert le focus dans la page
+                      // désormais visible pour ne pas le laisser en limbo.
+                      if (PlatformTv.isTv) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) FocusScope.of(context).nextFocus();
+                        });
+                      }
+                    },
                     children: [
-                      _TypePage(
-                        // Key sur _activeAccountId : si l'utilisateur change de
-                        // compte prioritaire, on force le rebuild complet du
-                        // _TypePage (memoization invalidée).
-                        key: ValueKey('series_$_activeAccountId'),
-                        type: M3uContentType.series,
-                        entries: byType[M3uContentType.series]!,
-                        topInset: liftedTopInset,
-                        tabsBuilder: buildTabs,
+                      // §3c Phase 2 — Chaque page du PageView est wrappée :
+                      //  • ExcludeFocus : sur TV, les 2 pages NON visibles
+                      //    (offstage à gauche/droite) sont retirées du focus →
+                      //    le D-pad ne « saute » plus vers une carte invisible
+                      //    (cause majeure du focus erratique signalée à l'audit).
+                      //  • FocusTraversalGroup : scope la traversée directionnelle
+                      //    à la page courante (sortie vers le rail toujours
+                      //    possible si aucune cible dans la direction).
+                      _pageFocusWrap(
+                        0,
+                        _TypePage(
+                          // Key sur _activeAccountId : si l'utilisateur change de
+                          // compte prioritaire, on force le rebuild complet du
+                          // _TypePage (memoization invalidée).
+                          key: ValueKey('series_$_activeAccountId'),
+                          type: M3uContentType.series,
+                          entries: byType[M3uContentType.series]!,
+                          topInset: liftedTopInset,
+                          tabsBuilder: buildTabs,
+                        ),
                       ),
-                      _TypePage(
-                        key: ValueKey('movie_$_activeAccountId'),
-                        type: M3uContentType.movie,
-                        entries: byType[M3uContentType.movie]!,
-                        topInset: liftedTopInset,
-                        tabsBuilder: buildTabs,
+                      _pageFocusWrap(
+                        1,
+                        _TypePage(
+                          key: ValueKey('movie_$_activeAccountId'),
+                          type: M3uContentType.movie,
+                          entries: byType[M3uContentType.movie]!,
+                          topInset: liftedTopInset,
+                          tabsBuilder: buildTabs,
+                        ),
                       ),
-                      _TypePage(
-                        key: ValueKey('tv_$_activeAccountId'),
-                        type: M3uContentType.tv,
-                        entries: byType[M3uContentType.tv]!,
-                        topInset: defaultTopInset,
-                        tabsBuilder: buildTabs,
+                      _pageFocusWrap(
+                        2,
+                        _TypePage(
+                          key: ValueKey('tv_$_activeAccountId'),
+                          type: M3uContentType.tv,
+                          entries: byType[M3uContentType.tv]!,
+                          topInset: defaultTopInset,
+                          tabsBuilder: buildTabs,
+                        ),
                       ),
                     ],
                   );
@@ -517,20 +556,28 @@ class _AnimatedTabIndicatorState extends State<_AnimatedTabIndicator> {
                         : active
                             ? cs.onSurface
                             : cs.onSurfaceVariant;
+                    // §3c Phase 1 — FocusableChip rend l'onglet atteignable au
+                    // D-pad (avant : GestureDetector tap-only → impossible de
+                    // changer de section Séries/Films/Chaînes à la télécommande).
                     return Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
+                      child: FocusableChip(
+                        enabled: !isEmpty,
                         onTap: isEmpty ? null : () => widget.onTap(i),
-                        child: AnimatedDefaultTextStyle(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOut,
-                          style: TextStyle(
-                            fontSize: active ? 20 : 14,
-                            fontWeight: active ? FontWeight.w800 : FontWeight.w500,
-                            letterSpacing: active ? 0.5 : 0.2,
-                            color: color,
+                        borderRadius: BorderRadius.circular(8),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: isEmpty ? null : () => widget.onTap(i),
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOut,
+                            style: TextStyle(
+                              fontSize: active ? 20 : 14,
+                              fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+                              letterSpacing: active ? 0.5 : 0.2,
+                              color: color,
+                            ),
+                            child: Center(child: Text(_labels[i])),
                           ),
-                          child: Center(child: Text(_labels[i])),
                         ),
                       ),
                     );
@@ -563,6 +610,27 @@ class _AnimatedTabIndicatorState extends State<_AnimatedTabIndicator> {
       ),
     );
   }
+}
+
+// ─── Densité responsive (§tvZoom) ────────────────────────────────────────────
+
+/// Largeur cible d'une vignette selon la largeur disponible.
+///
+/// Smartphone (~390 dp) → ~130 px (comportement historique inchangé). Tablette /
+/// Android TV (largeur logique large) → on conserve des vignettes ~130-145 px et
+/// on en affiche **davantage**, au lieu d'étirer 3 vignettes géantes. Corrige
+/// l'effet « tout zoomé » sur TV où le layout était figé en dp téléphone.
+double _responsiveTileWidth(double available, {required bool channel}) {
+  final cols = _responsiveColumns(available, channel: channel);
+  return available / cols;
+}
+
+/// Nombre de colonnes / vignettes visibles cible selon la largeur disponible.
+/// Vignette cible : ~130 px pour les chaînes (logo carré), ~145 px pour les
+/// posters 2:3. Borné [3, 10] pour rester lisible à 3 m sans micro-vignettes.
+int _responsiveColumns(double available, {required bool channel}) {
+  final target = channel ? 130.0 : 145.0;
+  return (available / target).round().clamp(3, 10);
 }
 
 // ─── Page d'un type ──────────────────────────────────────────────────────────
@@ -1237,6 +1305,11 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   late final AnimationController _animCtrl;
   Timer? _timer;
 
+  /// §3c Phase 2 — Sur TV, quand le hero est focusé au D-pad, on met l'auto-
+  /// rotation en pause : sinon la rotation 6 s ferait basculer la carte active
+  /// sous le focus (perte/saut de focus). Reprend dès qu'on quitte le hero.
+  bool _focusPaused = false;
+
   /// Position lissée (peut être fractionnaire). On ne wrap PAS sur [0, N) :
   /// la valeur incrémente continument et chaque carte calcule son `delta`
   /// modulo N avec le plus court chemin → wrap visuel naturel.
@@ -1271,11 +1344,22 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
 
   void _scheduleNext() {
     _timer?.cancel();
-    if (widget.featured.length <= 1) return;
+    if (widget.featured.length <= 1 || _focusPaused) return;
     _timer = Timer.periodic(_autoDuration, (_) {
       if (!mounted) return;
       _advance();
     });
+  }
+
+  /// Met en pause / reprend l'auto-rotation selon l'état de focus (TV).
+  void _setFocusPaused(bool paused) {
+    if (_focusPaused == paused) return;
+    _focusPaused = paused;
+    if (paused) {
+      _timer?.cancel();
+    } else {
+      _scheduleNext();
+    }
   }
 
   void _advance() {
@@ -1401,7 +1485,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
         }
         cards.sort((a, b) => b.delta.abs().compareTo(a.delta.abs()));
 
-        return GestureDetector(
+        final Widget fan = GestureDetector(
           behavior: HitTestBehavior.opaque,
           onHorizontalDragStart: _onDragStart,
           onHorizontalDragUpdate: (d) => _onDragUpdate(d, cardSpacing),
@@ -1422,6 +1506,20 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
               ),
             ),
           ),
+        );
+
+        // §3c Phase 2 — Sur TV, le hero "fan" devient une cible de focus UNIQUE
+        // et stable (les InkWell internes sont exclus du focus dans
+        // `_buildFannedCard`). OK ouvre la carte active ; le focus met l'auto-
+        // rotation en pause pour ne pas faire glisser la carte sous le D-pad.
+        if (!PlatformTv.isTv) return fan;
+        final n = widget.featured.length;
+        final activeIndex = n == 0 ? 0 : ((_current.round() % n) + n) % n;
+        return FocusableChip(
+          onTap: () => _onCardTap(context, activeIndex),
+          onFocusChange: _setFocusPaused,
+          borderRadius: BorderRadius.circular(16),
+          child: fan,
         );
       },
     );
@@ -1454,11 +1552,16 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
         child: SizedBox(
           width: w,
           height: h,
-          child: _HeroFanCard(
-            versions: widget.featured[i],
-            type: widget.type,
-            isActive: isActive,
-            onTap: () => _onCardTap(context, i),
+          // §3c Phase 2 — Sur TV, les InkWell des cartes empilées sont exclus du
+          // focus : seule la cible unique (FocusableChip du build) est focusable.
+          child: ExcludeFocus(
+            excluding: PlatformTv.isTv,
+            child: _HeroFanCard(
+              versions: widget.featured[i],
+              type: widget.type,
+              isActive: isActive,
+              onTap: () => _onCardTap(context, i),
+            ),
           ),
         ),
       ),
@@ -1782,10 +1885,11 @@ class _CategoryRow extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: LayoutBuilder(
                 builder: (ctx, constraints) {
-                  // Adapte le nombre de colonnes à la largeur disponible
-                  // (3 sur smartphone, 4-5 sur tablette).
+                  // §tvZoom — Colonnes pilotées par la largeur réelle
+                  // (3 sur smartphone, 6-8 sur TV/large) → plus de chaînes
+                  // visibles au lieu de gros logos zoomés.
                   const spacing = 8.0;
-                  final cols = constraints.maxWidth >= 600 ? 5 : 3;
+                  final cols = _responsiveColumns(constraints.maxWidth, channel: true);
                   final tileWidth = (constraints.maxWidth - spacing * (cols - 1)) / cols;
                   final tiles = <Widget>[
                     ...groups.map((g) => _HomeCard(
@@ -1811,26 +1915,38 @@ class _CategoryRow extends StatelessWidget {
               ),
             )
           else
-            SizedBox(
-              // Films/Séries : poster 130 × 1.5 = 195 + paddings ≈ 215
-              height: 215,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: groups.length + (hasMore ? 1 : 0),
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (ctx, i) {
-                  if (hasMore && i == groups.length) {
-                    return _SeeAllTile(
-                      type: type,
-                      remaining: totalCount - groups.length,
-                      width: 130,
-                      onTap: () => _openCategoryListPage(context),
-                    );
-                  }
-                  return _HomeCard(versions: groups[i], type: type);
-                },
-              ),
+            // §tvZoom — Largeur de poster + hauteur du carrousel pilotées par
+            // la largeur réelle de l'écran (poster 2:3). Smartphone ≈ 130 px /
+            // 215 ; TV large ≈ 140 px mais bien plus de posters visibles.
+            LayoutBuilder(
+              builder: (ctx, constraints) {
+                final cardW =
+                    _responsiveTileWidth(constraints.maxWidth, channel: false);
+                return SizedBox(
+                  height: cardW * 1.5 + 20,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: groups.length + (hasMore ? 1 : 0),
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (ctx, i) {
+                      if (hasMore && i == groups.length) {
+                        return _SeeAllTile(
+                          type: type,
+                          remaining: totalCount - groups.length,
+                          width: cardW,
+                          onTap: () => _openCategoryListPage(context),
+                        );
+                      }
+                      return _HomeCard(
+                        versions: groups[i],
+                        type: type,
+                        width: cardW,
+                      );
+                    },
+                  ),
+                );
+              },
             ),
         ],
       ),
@@ -2045,19 +2161,11 @@ class _CategoryListPageState extends State<CategoryListPage> {
           child: LayoutBuilder(
             builder: (ctx, constraints) {
               const spacing = 10.0;
-              // Films/séries : 3 cols phone / 4 tablette / 5 large
-              // Chaînes      : 3 cols phone / 5 tablette
+              // §tvZoom — Colonnes pilotées par la largeur réelle (3 sur
+              // smartphone, 6-9 sur TV/large) au lieu de plafonner à 5 → la
+              // page « Voir tout » n'affiche plus de vignettes géantes sur TV.
               final width = constraints.maxWidth - 24;
-              final int cols;
-              if (isTv) {
-                cols = constraints.maxWidth >= 600 ? 5 : 3;
-              } else {
-                cols = constraints.maxWidth >= 900
-                    ? 5
-                    : constraints.maxWidth >= 600
-                        ? 4
-                        : 3;
-              }
+              final cols = _responsiveColumns(constraints.maxWidth, channel: isTv);
               final tileWidth = (width - spacing * (cols - 1)) / cols;
 
               // §20 — Rendu lazy : GridView.builder ne construit que les
@@ -2669,18 +2777,28 @@ class _ResultSection extends StatelessWidget {
               ],
             ),
           ),
-          SizedBox(
-            height: type == M3uContentType.tv ? 140 : 215,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: groups.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (ctx, i) => _HomeCard(
-                versions: groups[i],
-                type: type,
-              ),
-            ),
+          // §tvZoom — Largeur de vignette + hauteur pilotées par la largeur
+          // réelle (poster 2:3 ou logo carré pour les chaînes).
+          LayoutBuilder(
+            builder: (ctx, constraints) {
+              final channel = type == M3uContentType.tv;
+              final cardW =
+                  _responsiveTileWidth(constraints.maxWidth, channel: channel);
+              return SizedBox(
+                height: (channel ? cardW : cardW * 1.5) + 20,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: groups.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (ctx, i) => _HomeCard(
+                    versions: groups[i],
+                    type: type,
+                    width: cardW,
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),

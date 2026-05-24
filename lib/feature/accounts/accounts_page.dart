@@ -90,10 +90,12 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Future<void> _openEditor({StreamAccount? initial}) async {
-    final result = await showModalBottomSheet<StreamAccount>(
+    // §3c Phase 3 — Modal adaptatif : bottom sheet sur mobile, Dialog centré +
+    // focus trap sur TV. `scrollable: false` car EditAccountSheet a déjà son
+    // propre SingleChildScrollView (évite le double scroll non borné).
+    final result = await showAdaptiveActionSheet<StreamAccount>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
+      scrollable: false,
       builder: (_) => EditAccountSheet(initial: initial),
     );
     if (result != null) {
