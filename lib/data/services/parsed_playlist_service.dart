@@ -224,6 +224,36 @@ class ParsedPlaylistService {
     return [...priority, ...others];
   }
 
+  /// §perfBigList — Entrées DÉJÀ splittées par type, compte prioritaire d'abord.
+  /// Réutilise les listes pré-splittées `films/series/tv` de chaque
+  /// [ParsedPlaylist] (calculées une seule fois via `late final`) au lieu de
+  /// re-parcourir TOUTES les entrées à chaque build de la home (crucial avec une
+  /// playlist ~600k entrées). En mono-compte, renvoie directement les listes
+  /// cachées (zéro copie). La TV n'est PAS filtrée des séparateurs déco ici : le
+  /// filtre `isHiddenTvVariant` reste à la charge de l'appelant (couche feature).
+  static Map<M3uContentType, List<M3uEntry>> byTypeWithPriority(
+      String priorityAccountId) {
+    final accounts = <ParsedPlaylist>[];
+    final prio = _memory[priorityAccountId];
+    if (prio != null) accounts.add(prio);
+    for (final e in _memory.entries) {
+      if (e.key != priorityAccountId) accounts.add(e.value);
+    }
+    if (accounts.length == 1) {
+      final p = accounts.first;
+      return {
+        M3uContentType.movie: p.films,
+        M3uContentType.series: p.series,
+        M3uContentType.tv: p.tv,
+      };
+    }
+    return {
+      M3uContentType.movie: [for (final p in accounts) ...p.films],
+      M3uContentType.series: [for (final p in accounts) ...p.series],
+      M3uContentType.tv: [for (final p in accounts) ...p.tv],
+    };
+  }
+
   /// Playlist d'un compte spécifique (null si pas encore chargée).
   static ParsedPlaylist? getAccount(String accountId) => _memory[accountId];
 

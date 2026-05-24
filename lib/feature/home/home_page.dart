@@ -291,9 +291,10 @@ class _HomePageState extends State<HomePage> {
                   WatchProgressService.version,
                 ]),
                 builder: (context, _) {
-                  final entries = ParsedPlaylistService
-                      .entriesWithPriority(_activeAccountId);
-                  final byType = _splitByType(entries);
+                  // §perfBigList — split mémoïsé : recalculé seulement quand la
+                  // playlist ou le compte change, PAS à chaque bump Favoris /
+                  // WatchProgress (qui déclenchent aussi ce ListenableBuilder).
+                  final byType = _byTypeMemoized();
 
                   if (widget.searchMode) {
                     // §1L-a — Grand champ recherche dans le body (sous l'AppBar
@@ -462,28 +463,30 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Map<M3uContentType, List<M3uEntry>> _splitByType(List<M3uEntry> all) {
-    final films = <M3uEntry>[];
-    final series = <M3uEntry>[];
-    final tv = <M3uEntry>[];
-    for (final e in all) {
-      switch (e.type) {
-        case M3uContentType.movie:
-          films.add(e);
-          break;
-        case M3uContentType.series:
-          series.add(e);
-          break;
-        case M3uContentType.tv:
-          if (!isHiddenTvVariant(e.title.rawTitle)) tv.add(e);
-          break;
-      }
-    }
-    return {
-      M3uContentType.movie: films,
-      M3uContentType.series: series,
+  // ── §perfBigList — split par type mémoïsé ───────────────────────────────
+  Map<M3uContentType, List<M3uEntry>>? _cachedByType;
+  String? _cachedByTypeKey;
+
+  /// Retourne le split films/séries/TV du compte actif, recalculé UNIQUEMENT
+  /// quand la playlist (`version`) ou le compte actif change. Réutilise les
+  /// listes pré-splittées de `ParsedPlaylistService` (zéro re-parcours des 600k
+  /// entrées) et applique le masquage TV (séparateurs déco / variantes cachées).
+  Map<M3uContentType, List<M3uEntry>> _byTypeMemoized() {
+    final key = '${ParsedPlaylistService.version.value}|$_activeAccountId';
+    if (_cachedByType != null && _cachedByTypeKey == key) return _cachedByType!;
+
+    final raw = ParsedPlaylistService.byTypeWithPriority(_activeAccountId);
+    final tv = raw[M3uContentType.tv]!
+        .where((e) => !isHiddenTvVariant(e.title.rawTitle))
+        .toList();
+    final byType = {
+      M3uContentType.movie: raw[M3uContentType.movie]!,
+      M3uContentType.series: raw[M3uContentType.series]!,
       M3uContentType.tv: tv,
     };
+    _cachedByType = byType;
+    _cachedByTypeKey = key;
+    return byType;
   }
 }
 
@@ -676,7 +679,11 @@ class _TypePage extends StatefulWidget {
       case 'Oscar':         return 4;
       case 'Cultes':        return 5;
       case 'Autres':        return 1000;
-      default:              return 100;
+      default:
+        // §Ultimate — régions étrangères (Italie, Arabe, Turquie…) reléguées
+        // sous les genres FR (100) mais au-dessus d'Autres (1000).
+        if (kForeignRegionLabels.contains(category)) return 500;
+        return 100;
     }
   }
 
@@ -726,32 +733,31 @@ class _TypePageState extends State<_TypePage> {
   /// Au-delà, un tile "Voir tout" est ajouté qui ouvre [CategoryListPage].
   static const int _maxItemsPerCategory = 25;
 
-  // ── Caches (memoization) ───────────────────────────────────────────────
-  // Recalculés uniquement quand l'une des sources sous-jacentes change.
+  // ── Caches (memoization) — §perfBigList ─────────────────────────────────
+  // CRUCIAL avec une grosse playlist (Ultimate ~600k entrées) : le GROUPEMENT
+  // par catégorie/titre est O(n) sur des centaines de milliers d'entrées. Il ne
+  // dépend QUE des entrées + playlist + favoris. Le HERO "featured" (reprise)
+  // dépend EN PLUS de WatchProgress, qui bump toutes les 10 s en lecture ET au
+  // retour du player → on cache les deux SÉPARÉMENT pour ne PAS re-grouper 500k
+  // entrées à chaque tick de progression (cause d'un gros freeze au retour du
+  // player avec Ultimate).
   Map<String, List<List<M3uEntry>>>? _cachedByCategory;
   List<String>? _cachedCategories;
   List<List<M3uEntry>>? _cachedFeatured;
-  int _cachedKey = -1;
+  int _cachedGroupingKey = -1;
+  int _cachedFeaturedKey = -1;
 
-  /// Clé d'invalidation : combinaison de la longueur d'entrées + versions des
-  /// services. Si elle change → on recompute. Sinon → réutilisation du cache.
-  ///
-  /// `entries.length` : suffit pour détecter un ajout/suppression de compte.
-  /// `ParsedPlaylistService.version` : bump si playlist re-téléchargée.
-  /// `FavoritesService.version` : bump si favori toggle (impacte la catégorie
-  /// virtuelle "Favoris").
-  /// `WatchProgressService.version` : bump à chaque save 10s pendant la lecture,
-  /// impacte l'ordre des cartes "Reprendre" dans le hero fan banner.
-  int _computeCacheKey() {
-    return widget.entries.length * 1000003 +
-        ParsedPlaylistService.version.value * 1009 +
-        FavoritesService.version.value * 1013 +
-        WatchProgressService.version.value;
-  }
+  /// Clé du GROUPEMENT (coûteux) : entrées + playlist + favoris. **PAS**
+  /// WatchProgress (sinon re-groupement complet toutes les 10 s en lecture).
+  int _groupingKey() =>
+      widget.entries.length * 1000003 +
+      ParsedPlaylistService.version.value * 1009 +
+      FavoritesService.version.value * 1013;
 
+  /// Groupe par catégorie puis par titre. Mémoïsé sur [_groupingKey].
   void _ensureGrouping() {
-    final key = _computeCacheKey();
-    if (_cachedByCategory != null && _cachedKey == key) return;
+    final key = _groupingKey();
+    if (_cachedByCategory != null && _cachedGroupingKey == key) return;
 
     final byCategory = _groupByCategoryThenByTitle(widget.entries, widget.type);
     final categories = byCategory.keys.toList()
@@ -761,6 +767,22 @@ class _TypePageState extends State<_TypePage> {
         if (pa != pb) return pa.compareTo(pb);
         return a.toLowerCase().compareTo(b.toLowerCase());
       });
+
+    _cachedByCategory = byCategory;
+    _cachedCategories = categories;
+    _cachedGroupingKey = key;
+    _cachedFeaturedKey = -1; // groupement changé → forcer le recalcul du hero
+  }
+
+  /// Compose le hero "featured" (reprise + nouveautés) à partir du groupement
+  /// déjà calculé. Dépend de WatchProgress → cache SÉPARÉ (léger) pour ne pas
+  /// re-grouper à chaque tick de progression.
+  void _ensureFeatured() {
+    final key = WatchProgressService.version.value;
+    if (_cachedFeatured != null && _cachedFeaturedKey == key) return;
+
+    final byCategory = _cachedByCategory!;
+    final categories = _cachedCategories!;
 
     // §heroFan — Composition du hero :
     //   - films/séries : 5 reprise (triées lastWatched desc) + 5 nouveautés
@@ -830,10 +852,8 @@ class _TypePageState extends State<_TypePage> {
       featured.addAll(byCategory[first]!.take(5));
     }
 
-    _cachedByCategory = byCategory;
-    _cachedCategories = categories;
     _cachedFeatured = featured;
-    _cachedKey = key;
+    _cachedFeaturedKey = key;
   }
 
   @override
@@ -841,6 +861,7 @@ class _TypePageState extends State<_TypePage> {
     if (widget.entries.isEmpty) return _buildEmpty(context);
 
     _ensureGrouping();
+    _ensureFeatured();
     final byCategory = _cachedByCategory!;
     final categories = _cachedCategories!;
     final featured = _cachedFeatured!;

@@ -26,6 +26,14 @@ class TitleMetadata {
 
   // Patterns compilés une seule fois pour toute la durée de l'app.
   static final _reSeason       = RegExp(r's\s*(\d{1,2})\s*e\s*(\d{1,2})', caseSensitive: false);
+  // §Ultimate — format épisode alternatif "NNxNN" (ex: "01x01" = saison 1
+  // épisode 1), présent dans certaines playlists (titres "… S01 … 01x01 …").
+  // Bornes anti-faux-positifs : `\d{1,2}` borné + pas de chiffre adjacent
+  // (`(?<!\d)…(?!\d)`) → ne matche PAS "1920x1080" ni les codecs "x264".
+  // ⚠️ Utilisé UNIQUEMENT pour extraire les numéros saison/épisode ; JAMAIS
+  // pour la classification (sinon une chaîne TV "ARENA SPORT 1x2" deviendrait
+  // une série). La classification reste sur `_reSeason` strict (voir m3u_parser).
+  static final _reSeasonAlt    = RegExp(r'(?<!\d)(\d{1,2})\s*x\s*(\d{1,2})(?!\d)', caseSensitive: false);
   static final _reYear         = RegExp(r'\b(19|20)\d{2}\b');
   static final _reQ4K          = RegExp(r'\b(4k|uhd|2160p)\b', caseSensitive: false);
   static final _reQFhd         = RegExp(r'\b(fhd|1080p)\b', caseSensitive: false);
@@ -92,8 +100,17 @@ class TitleMetadata {
     final lower = rawTitle.toLowerCase();
 
     final seasonMatch   = _reSeason.firstMatch(rawTitle);
-    final seasonNumber  = seasonMatch != null ? int.tryParse(seasonMatch.group(1) ?? '') : null;
-    final episodeNumber = seasonMatch != null ? int.tryParse(seasonMatch.group(2) ?? '') : null;
+    // Fallback NNxNN (ex: "01x01") UNIQUEMENT pour le format série signé par un
+    // marqueur "S\d" co-présent (§Ultimate : "… S01 … 01x01 …"). Cette double
+    // condition évite de capter le "NxN" d'un vrai titre de film ("4x4",
+    // "10x10") ou de chaîne ("2x2", "NDTV 24x7", "ARENA SPORT 1x2") → zéro
+    // régression sur les titres dont le NxN fait partie du nom.
+    final altMatch      = (seasonMatch == null && _reSeasonFb.hasMatch(rawTitle))
+        ? _reSeasonAlt.firstMatch(rawTitle)
+        : null;
+    final epMatch       = seasonMatch ?? altMatch;
+    final seasonNumber  = epMatch != null ? int.tryParse(epMatch.group(1) ?? '') : null;
+    final episodeNumber = epMatch != null ? int.tryParse(epMatch.group(2) ?? '') : null;
     final year          = _reYear.firstMatch(rawTitle)?.group(0);
 
     String? quality;
@@ -111,6 +128,14 @@ class TitleMetadata {
     base = base.replaceAll(_rePrefix, '');
     if (seasonMatch != null && seasonMatch.start <= base.length) {
       base = base.substring(0, seasonMatch.start).trim();
+    } else if (altMatch != null) {
+      // §Ultimate — altMatch implique un marqueur "S\d" co-présent. On coupe le
+      // titre de base à ce marqueur (calculé SUR base, post-préfixe) → donne un
+      // nom propre, ex: "… (MULTI) S01 |FR| Les Soprano 01x01 …" → "Les Soprano".
+      final sFb = _reSeasonFb.firstMatch(base);
+      if (sFb != null && sFb.start <= base.length) {
+        base = base.substring(0, sFb.start).trim();
+      }
     }
     base = base.replaceAll(_reDolby, '');        // multi-mots en premier
     base = base.replaceAll(_reQualityTags, '');
