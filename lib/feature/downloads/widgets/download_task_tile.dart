@@ -301,6 +301,8 @@ class DownloadTaskTile extends StatelessWidget {
     // _handleTap).
     return FocusableCard(
       decorateOnly: true,
+      // §tvErgo — tuile pleine largeur : pas de scale (sinon débordement écran).
+      scaleOnFocus: false,
       onTap: () => _handleTap(context),
       borderRadius: BorderRadius.circular(8),
       child: ListTile(

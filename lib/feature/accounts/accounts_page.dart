@@ -663,6 +663,8 @@ class _AccountCardState extends State<_AccountCard> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: FocusableCard(
         decorateOnly: true,
+        // §tvErgo — tuile pleine largeur : pas de scale (sinon débordement écran).
+        scaleOnFocus: false,
         onTap: widget.onTap,
         borderRadius: BorderRadius.circular(16),
         child: Material(
@@ -670,6 +672,10 @@ class _AccountCardState extends State<_AccountCard> {
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
             onTap: widget.onTap,
+            // §tvErgo — InkWell non focusable : évite le doublon d'arrêt D-pad
+            // (FocusableCard + InkWell sur la même action) tout en gardant les
+            // boutons imbriqués (Recharger / ⋯) focusables et le tap tactile.
+            canRequestFocus: false,
             borderRadius: BorderRadius.circular(16),
             splashColor: kAccentPrimary.withAlpha(30),
             highlightColor: kAccentPrimary.withAlpha(15),

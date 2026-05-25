@@ -2066,7 +2066,10 @@ class _SeeAllTile extends StatelessWidget {
     final isTv = type == M3uContentType.tv;
     final aspectRatio = isTv ? 1.0 : 2 / 3;
 
-    return InkWell(
+    // §tvErgo — FocusableCard (et non InkWell nu) pour afficher le glow Matrix
+    // au focus D-pad, cohérent avec les _HomeCard voisines du carrousel/grille.
+    // Tuile de même taille que les cartes → le scale(1.05) par défaut convient.
+    return FocusableCard(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(

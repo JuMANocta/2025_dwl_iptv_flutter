@@ -6,6 +6,7 @@ import 'package:aetherStream/data/services/pairing_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/feature/pairing/pairing_page.dart';
+import 'package:aetherStream/widgets/tv/focusable_card.dart';
 
 /// Sous-page Settings (§1g) : gestion de la clé API TMDB.
 ///
@@ -290,10 +291,19 @@ class _TvPairingCta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Material(
+    // §tvErgo — Wrap FocusableCard pour le glow Matrix au focus D-pad (cohérence
+    // avec les autres CTA TV). scaleOnFocus:false (CTA pleine largeur) +
+    // InkWell non focusable (évite le doublon d'arrêt D-pad).
+    return FocusableCard(
+      decorateOnly: true,
+      scaleOnFocus: false,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        canRequestFocus: false,
         borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.all(16),
@@ -353,6 +363,7 @@ class _TvPairingCta extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }
