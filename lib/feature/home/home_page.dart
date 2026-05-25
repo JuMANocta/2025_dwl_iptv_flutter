@@ -204,10 +204,14 @@ class _HomePageState extends State<HomePage> {
   /// retire du focus les pages non visibles (offstage) et scope la traversée
   /// directionnelle à la page courante. Neutre hors TV.
   Widget _pageFocusWrap(int index, Widget child) {
-    if (!PlatformTv.isTv) return child;
+    // §pageSmooth — RepaintBoundary isole le layer de chaque page → pendant le
+    // slide horizontal, peindre une page ne re-peint pas l'autre (compositing
+    // moins coûteux = moins de saccades sur les pages lourdes carrousels+hero).
+    final wrapped = RepaintBoundary(child: child);
+    if (!PlatformTv.isTv) return wrapped;
     return ExcludeFocus(
       excluding: _currentIndex != index,
-      child: FocusTraversalGroup(child: child),
+      child: FocusTraversalGroup(child: wrapped),
     );
   }
 
@@ -2987,7 +2991,12 @@ class _ResultSection extends StatelessWidget {
 class _FastPageScrollPhysics extends PageScrollPhysics {
   const _FastPageScrollPhysics({super.parent});
 
-  static const double _kPageFlickBoost = 1.8;
+  // §pageSmooth — Seuil de bascule ABAISSÉ : un glissement d'environ 1/3 de
+  // l'écran (au lieu des 50 % par défaut) suffit à passer à la page suivante.
+  // On décide la page cible selon le SENS du geste (signe de la vélocité au
+  // relâché) → fini le "retour à la page d'origine" quand on relâche vers la
+  // moitié. Ressort par défaut conservé (snap net, pas le ressort mou précédent).
+  static const double _kCommitBias = 0.18; // 0.5 - 0.18 ≈ bascule dès ~32 %
 
   @override
   _FastPageScrollPhysics applyTo(ScrollPhysics? ancestor) {
@@ -2996,7 +3005,28 @@ class _FastPageScrollPhysics extends PageScrollPhysics {
 
   @override
   Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) {
-    return super.createBallisticSimulation(position, velocity * _kPageFlickBoost);
+    final tol = toleranceFor(position);
+    final vp = position.viewportDimension;
+    if (vp <= 0) return super.createBallisticSimulation(position, velocity);
+    final page = position.pixels / vp;
+
+    double targetPage;
+    if (velocity.abs() < tol.velocity) {
+      // Relâché quasi immobile → arrondi standard (nearest, seuil 0.5).
+      targetPage = page.roundToDouble();
+    } else if (velocity > 0) {
+      // Geste vers la page suivante → bascule dès ~32 % de glissement.
+      targetPage = (page + _kCommitBias).roundToDouble();
+    } else {
+      // Geste vers la page précédente.
+      targetPage = (page - _kCommitBias).roundToDouble();
+    }
+
+    final target = (targetPage * vp)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if ((target - position.pixels).abs() < tol.distance) return null;
+    return ScrollSpringSimulation(spring, position.pixels, target, velocity,
+        tolerance: tol);
   }
 }
 

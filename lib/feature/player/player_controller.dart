@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../core/utils/platform_tv.dart';
+
 /// Wrapper media_kit — gère le cycle de vie du Player et du VideoController.
 ///
 /// **Audio boost** : `volume-max=200` permet de pousser `setVolume()` jusqu'à
