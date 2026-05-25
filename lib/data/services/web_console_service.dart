@@ -135,32 +135,33 @@ class WebConsoleService {
   }
 
   Future<void> _serveView(HttpRequest req, String? view) async {
+    final tk = _token ?? '';
     String page;
     switch (view) {
       case 'accounts':
         final accounts = await StreamAccountService.listAccounts();
         final cur = await StreamAccountService.getCurrentAccount();
-        page = html.buildAccounts(_theme, accounts, cur?.id);
+        page = html.buildAccounts(_theme, tk, accounts, cur?.id);
         break;
       case 'tmdb':
-        page = html.buildTmdb(_theme, await TmdbApiService.hasApiKey());
+        page = html.buildTmdb(_theme, tk, await TmdbApiService.hasApiKey());
         break;
       case 'xmltv':
-        page = html.buildXmltv(_theme, XmltvService.loadedAt, XmltvService.channelCount);
+        page = html.buildXmltv(_theme, tk, XmltvService.loadedAt, XmltvService.channelCount);
         break;
       case 'theme':
         final names = AppThemeConfig.presets.map((p) => p.name).toList();
         final current = _currentPresetName();
-        page = html.buildTheme(_theme, names, current);
+        page = html.buildTheme(_theme, tk, names, current);
         break;
       case 'backup':
-        page = html.buildBackup(_theme);
+        page = html.buildBackup(_theme, tk);
         break;
       case 'remote':
-        page = html.buildRemote(_theme);
+        page = html.buildRemote(_theme, tk);
         break;
       default:
-        page = html.buildDashboard(_theme);
+        page = html.buildDashboard(_theme, tk);
     }
     req.response.headers.contentType = ContentType.html;
     req.response.write(page);

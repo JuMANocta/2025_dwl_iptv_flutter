@@ -61,7 +61,7 @@ class _MainNavigationState extends State<MainNavigation> {
     if (isTv) {
       // §3c-6 — Layout TV : NavigationRail latéral, focusable au D-pad.
       // Pas de bottom bar (impossible à reach avec une télécommande).
-      return Scaffold(
+      return _wrapBack(Scaffold(
         body: Row(
           children: [
             _TvNavigationRail(
@@ -74,11 +74,11 @@ class _MainNavigationState extends State<MainNavigation> {
             Expanded(child: stack),
           ],
         ),
-      );
+      ));
     }
 
     // Mobile : NavigationBar bottom classique (comportement historique).
-    return Scaffold(
+    return _wrapBack(Scaffold(
       body: stack,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navIndex,
@@ -100,6 +100,21 @@ class _MainNavigationState extends State<MainNavigation> {
           ),
         ],
       ),
+    ));
+  }
+
+  /// §bug Back TV — Intercepte le Back quand on n'est PAS sur l'onglet Accueil :
+  /// au lieu de quitter l'app (route racine, rien à dépiler), on ramène vers
+  /// l'Accueil (sort du mode recherche ou de l'onglet Téléchargements). Sur
+  /// l'onglet Accueil, `canPop: true` → comportement natif (sortie app).
+  Widget _wrapBack(Widget child) {
+    return PopScope(
+      canPop: _navIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        setState(() => _navIndex = 0);
+      },
+      child: child,
     );
   }
 }

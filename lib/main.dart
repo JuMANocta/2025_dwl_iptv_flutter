@@ -13,6 +13,7 @@ import 'data/services/watch_progress_service.dart';
 import 'data/services/search_history_service.dart';
 import 'data/services/last_watched_channel_service.dart';
 import 'core/navigation/main_navigation.dart';
+import 'core/navigation/tv_back_handler.dart';
 import 'data/services/expiration_alert_service.dart';
 import 'feature/accounts/accounts_page.dart';
 import 'feature/accounts/expiration_alert_dialog.dart';
@@ -137,6 +138,13 @@ class MyApp extends StatelessWidget {
           final scaled = mq.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.0);
           wrapped = MediaQuery(
             data: mq.copyWith(textScaler: scaled),
+            child: wrapped,
+          );
+          // §bug Back TV — handler global de la touche Retour (le bouton Back
+          // des télécommandes Android TV / Fire TV arrive en key event `goBack`
+          // que rien d'autre ne mappe). Dernier recours : maybePop().
+          wrapped = TvBackHandler(
+            navigatorKey: navigatorKey,
             child: wrapped,
           );
         }

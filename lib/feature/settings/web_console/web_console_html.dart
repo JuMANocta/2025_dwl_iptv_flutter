@@ -131,38 +131,36 @@ async function api(path, payload){
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-String buildDashboard(AppThemeConfig t) {
-  // Les href des cartes sont réécrits avec le token via JS au chargement.
+String buildDashboard(AppThemeConfig t, String token) {
+  // §webConsoleFix — Les href sont rendus côté serveur avec le token déjà
+  // inclus (plus de réécriture JS fragile qui échouait car le `<script>` de
+  // rewrite s'exécutait AVANT la définition de `T` placée en bas du shell).
   final body = '''
   <p class="muted">Gère ta configuration AetherStream depuis ce navigateur. La TV reste synchronisée en direct.</p>
   <div class="grid" id="grid">
-    ${_navCard('accounts', '📺', 'Comptes IPTV', 'Ajouter / modifier / recharger')}
-    ${_navCard('tmdb', '🎬', 'Clé TMDB', 'Affiches & métadonnées')}
-    ${_navCard('xmltv', '📡', 'Guide chaînes', 'EPG XMLTV — TNT France')}
-    ${_navCard('theme', '🎨', 'Thème', 'Presets cyberpunk')}
-    ${_navCard('backup', '💾', 'Sauvegarde', 'Importer / exporter .aether')}
-    ${_navCard('remote', '🎮', 'Télécommande', 'Piloter la TV depuis ce tél.')}
+    ${_navCard(token, 'accounts', '📺', 'Comptes IPTV', 'Ajouter / modifier / recharger')}
+    ${_navCard(token, 'tmdb', '🎬', 'Clé TMDB', 'Affiches & métadonnées')}
+    ${_navCard(token, 'xmltv', '📡', 'Guide chaînes', 'EPG XMLTV — TNT France')}
+    ${_navCard(token, 'theme', '🎨', 'Thème', 'Presets cyberpunk')}
+    ${_navCard(token, 'backup', '💾', 'Sauvegarde', 'Importer / exporter .aether')}
+    ${_navCard(token, 'remote', '🎮', 'Télécommande', 'Piloter la TV depuis ce tél.')}
   </div>
-  <script>
-    document.querySelectorAll('[data-view]').forEach(el=>{
-      el.href = '/?t=' + encodeURIComponent(T) + '&view=' + el.dataset.view;
-    });
-  </script>
   ''';
   return _shell(t, 'Console web', body);
 }
 
-String _navCard(String view, String ic, String title, String sub) =>
-    '<a class="card" data-view="$view" href="#">'
-    '<div class="ic">$ic</div><div class="t">$title</div><div class="s">$sub</div></a>';
+String _navCard(String token, String view, String ic, String title, String sub) {
+  final href = '/?t=${Uri.encodeQueryComponent(token)}&view=$view';
+  return '<a class="card" href="$href">'
+      '<div class="ic">$ic</div><div class="t">$title</div><div class="s">$sub</div></a>';
+}
 
-String _backLink() =>
-    '<a class="back" data-home href="#">← Console</a>'
-    '<script>document.querySelector("[data-home]").href="/?t="+encodeURIComponent(T);</script>';
+String _backLink(String token) =>
+    '<a class="back" href="/?t=${Uri.encodeQueryComponent(token)}">← Console</a>';
 
 // ─── Comptes ────────────────────────────────────────────────────────────────
 
-String buildAccounts(AppThemeConfig t, List<StreamAccount> accounts, String? currentId) {
+String buildAccounts(AppThemeConfig t, String token, List<StreamAccount> accounts, String? currentId) {
   final sb = StringBuffer();
   if (accounts.isEmpty) {
     sb.write('<p class="muted">Aucun compte. Ajoute-en un ci-dessous.</p>');
@@ -196,7 +194,7 @@ String buildAccounts(AppThemeConfig t, List<StreamAccount> accounts, String? cur
       '"user":"${esc(a.username ?? '')}","pass":"${esc(a.password ?? '')}"}').join(',')}]';
 
   final body = '''
-  ${_backLink()}
+  ${_backLink(token)}
   <div class="sec"><h2>Comptes</h2>$sb</div>
   <div class="sec">
     <h2 id="formTitle">Ajouter un compte</h2>
@@ -275,9 +273,9 @@ String buildAccounts(AppThemeConfig t, List<StreamAccount> accounts, String? cur
 
 // ─── TMDB ────────────────────────────────────────────────────────────────────
 
-String buildTmdb(AppThemeConfig t, bool hasKey) {
+String buildTmdb(AppThemeConfig t, String token, bool hasKey) {
   final body = '''
-  ${_backLink()}
+  ${_backLink(token)}
   <div class="sec">
     <h2>Clé API TMDB</h2>
     <p class="muted">${hasKey ? '✅ Une clé est déjà configurée.' : 'Aucune clé configurée.'} Colle ton <b>Bearer Token v4</b> (commence par eyJ...).</p>
@@ -306,12 +304,12 @@ String buildTmdb(AppThemeConfig t, bool hasKey) {
 
 // ─── XMLTV ───────────────────────────────────────────────────────────────────
 
-String buildXmltv(AppThemeConfig t, DateTime? loadedAt, int channelCount) {
+String buildXmltv(AppThemeConfig t, String token, DateTime? loadedAt, int channelCount) {
   final status = loadedAt == null
       ? 'Jamais chargé.'
       : 'Chargé : $channelCount chaînes (le ${loadedAt.day}/${loadedAt.month} à ${loadedAt.hour.toString().padLeft(2, '0')}:${loadedAt.minute.toString().padLeft(2, '0')}).';
   final body = '''
-  ${_backLink()}
+  ${_backLink(token)}
   <div class="sec">
     <h2>Guide des chaînes (XMLTV)</h2>
     <p class="muted">$status</p>
@@ -331,12 +329,12 @@ String buildXmltv(AppThemeConfig t, DateTime? loadedAt, int channelCount) {
 
 // ─── Thème ───────────────────────────────────────────────────────────────────
 
-String buildTheme(AppThemeConfig t, List<String> presetNames, String currentName) {
+String buildTheme(AppThemeConfig t, String token, List<String> presetNames, String currentName) {
   final opts = presetNames
       .map((n) => '<option value="${esc(n)}"${n == currentName ? ' selected' : ''}>${esc(n)}</option>')
       .join();
   final body = '''
-  ${_backLink()}
+  ${_backLink(token)}
   <div class="sec">
     <h2>Thème</h2>
     <p class="muted">Applique un preset cyberpunk. La TV change instantanément.</p>
@@ -356,9 +354,9 @@ String buildTheme(AppThemeConfig t, List<String> presetNames, String currentName
 
 // ─── Sauvegarde ────────────────────────────────────────────────────────────────
 
-String buildBackup(AppThemeConfig t) {
+String buildBackup(AppThemeConfig t, String token) {
   final body = '''
-  ${_backLink()}
+  ${_backLink(token)}
   <div class="sec">
     <h2>Importer une sauvegarde</h2>
     <p class="muted">Sélectionne un fichier <b>.aether</b> et saisis son mot de passe. ⚠️ Écrase la configuration actuelle.</p>
@@ -408,9 +406,9 @@ String buildBackup(AppThemeConfig t) {
 
 // ─── Télécommande ──────────────────────────────────────────────────────────────
 
-String buildRemote(AppThemeConfig t) {
+String buildRemote(AppThemeConfig t, String token) {
   final body = '''
-  ${_backLink()}
+  ${_backLink(token)}
   <div class="sec">
     <h2>Télécommande</h2>
     <p class="muted">Pilote l'interface de la TV. Pendant la lecture : ←/→ = ±10s, ↑/↓ = volume, OK = pause.</p>

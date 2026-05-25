@@ -106,6 +106,14 @@ class _HomePageState extends State<HomePage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
+          // §tv4K — Log de calibration : permet de connaître la largeur logique
+          // réelle du device TV (1080p ≈ 960 dp, 4K parfois ≈ 1920 dp) pour
+          // ajuster les cibles de `_responsiveColumns` si besoin.
+          final mq = MediaQuery.of(context);
+          debugPrint(
+              '📺 TV MediaQuery → size=${mq.size}, dpr=${mq.devicePixelRatio}, '
+              'cols posters=${_responsiveColumns(mq.size.width, channel: false)}, '
+              'cols chaînes=${_responsiveColumns(mq.size.width, channel: true)}');
           FocusScope.of(context).nextFocus();
         });
       });
@@ -633,13 +641,21 @@ double _responsiveTileWidth(double available, {required bool channel}) {
 /// Vignette cible : ~130 px pour les chaînes (logo carré), ~145 px pour les
 /// posters 2:3. Borné [3, 10] pour rester lisible à 3 m sans micro-vignettes.
 int _responsiveColumns(double available, {required bool channel}) {
-  // §tvZoom — Sur TV, la largeur logique rapportée est petite (ex. ~960 dp pour
-  // du 1080p) → avec la cible smartphone (130/145) on obtenait trop peu de
-  // colonnes = vignettes géantes vues de loin. On vise des vignettes plus
-  // petites (et plus nombreuses) sur TV, avec un plafond de colonnes relevé.
+  // §tvZoom — Sur TV, on vise des vignettes plus petites (et plus nombreuses)
+  // que sur smartphone, mais lisibles à 3 m.
+  //
+  // §tv4K — Correctif : certains devices 4K rapportent une largeur logique
+  // **grande** (~1920 dp au lieu des ~960 dp d'un 1080p). Avec l'ancienne cible
+  // 105/118 px et un plafond à 14, on obtenait `1920/118 ≈ 16 → 14 colonnes` =
+  // vignettes minuscules. On relève la cible (≈150/170 px) et on **baisse le
+  // plafond** (8 chaînes / 7 posters) pour borner un nombre de colonnes
+  // raisonnable quelle que soit la largeur logique rapportée :
+  //   - 1080p (~960 dp)  → posters 960/170 ≈ 6, chaînes 960/150 ≈ 6
+  //   - 4K    (~1920 dp) → posters → 11 → clamp 7, chaînes → 13 → clamp 8
   if (PlatformTv.isTv) {
-    final target = channel ? 105.0 : 118.0;
-    return (available / target).round().clamp(4, 14);
+    final target = channel ? 150.0 : 170.0;
+    final maxCols = channel ? 8 : 7;
+    return (available / target).round().clamp(4, maxCols);
   }
   final target = channel ? 130.0 : 145.0;
   return (available / target).round().clamp(3, 10);
