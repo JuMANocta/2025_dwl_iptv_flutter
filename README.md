@@ -70,7 +70,7 @@
 - Squelettes (skeleton placeholders) pendant le chargement TMDB pour éviter les sauts d'UI
 
 ### 🏠 Accueil streaming-style
-- **Hero "jeu de cartes"** (films/séries) : pile de 10 cartes empilées en éventail avec effet 3D (padding blanc "papier" 3px + box-shadow stack simulant l'épaisseur). 5 cartes "Reprendre" triées par dernière lecture + 5 cartes "New" prioritaires
+- **Hero "jeu de cartes"** (films/séries) : pile de 10 cartes empilées en éventail avec effet 3D (padding blanc "papier" 3px + box-shadow stack simulant l'épaisseur). 5 cartes "Reprendre" triées par dernière lecture + **tendances TMDB de la semaine présentes dans la playlist** (matching exact, cache 24h ; repli sur les nouveautés si pas de clé TMDB)
 - **Swipe horizontal** sur le hero pour naviguer manuellement entre les cartes (pause auto-rotation pendant le drag, snap avec biais de vélocité au relâché)
 - Auto-rotation 6 s entre les cartes (continue après un swipe manuel)
 - Hero 16/9 classique conservé sur la page Chaînes (live)

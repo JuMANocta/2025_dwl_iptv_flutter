@@ -12,6 +12,7 @@ import 'package:aetherStream/data/services/search_history_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_poster_cache.dart';
+import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
@@ -777,6 +778,39 @@ class _TypePageState extends State<_TypePage> {
   int _cachedGroupingKey = -1;
   int _cachedFeaturedKey = -1;
 
+  // §trending — Titres tendance TMDB de la semaine (chargés une fois, cache
+  // 24h côté service). Null tant que pas chargé / pas de clé TMDB. Le croisement
+  // avec la playlist se fait dans `_ensureFeatured` (titres → groupes dispo).
+  List<TrendingTitle>? _trendingTitles;
+
+  @override
+  void initState() {
+    super.initState();
+    // Tendances seulement pour films/séries (pas de matching TMDB sur le live TV).
+    if (widget.type != M3uContentType.tv) _loadTrending();
+  }
+
+  /// §trending — Charge les tendances TMDB du type courant (movie/series) et
+  /// force un recalcul du hero pour y injecter les titres dispo.
+  Future<void> _loadTrending() async {
+    final isTv = widget.type == M3uContentType.series; // series → /trending/tv
+    final list = await TmdbService.instance.getTrending(isTv: isTv);
+    if (!mounted) return;
+    setState(() {
+      _trendingTitles = list;
+      _cachedFeaturedKey = -1; // invalide le hero → recompute avec les tendances
+    });
+  }
+
+  /// Normalisation titre (identique à ActorDetailsPage) pour le matching exact
+  /// TMDB ↔ playlist : minuscules, sans ponctuation/apostrophes, espaces réduits.
+  static String _normTitle(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r"['’`´]"), '')
+      .replaceAll(RegExp(r'[^\w\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
   /// Clé du GROUPEMENT (coûteux) : entrées + playlist + favoris. **PAS**
   /// WatchProgress (sinon re-groupement complet toutes les 10 s en lecture).
   int _groupingKey() =>
@@ -851,15 +885,45 @@ class _TypePageState extends State<_TypePage> {
         featured.add(item.group);
         resumeKeys.add(item.group.first.displayName);
       }
-      // Complète avec catégories prioritaires (sauf Favoris, sauf déjà inclus).
-      for (final cat in categories) {
-        if (featured.length >= maxFeatured) break;
-        if (cat == 'Favoris') continue;
-        if (_TypePage._categoryPriority(cat) >= 100) continue;
-        for (final group in byCategory[cat]!) {
+
+      // §trending — Complète avec les TENDANCES TMDB de la semaine DISPONIBLES
+      // dans la playlist (remplace les anciennes "nouveautés" du hero, déjà
+      // listées dans la rangée horizontale dessous). Les reprises restent en
+      // tête. Matching exact sur titre localisé OU original (ordre TMDB conservé).
+      bool usedTrending = false;
+      final trending = _trendingTitles;
+      if (trending != null && trending.isNotEmpty) {
+        final byName = <String, List<M3uEntry>>{};
+        for (final g in allGroups) {
+          byName.putIfAbsent(_normTitle(g.first.displayName), () => g);
+        }
+        for (final t in trending) {
           if (featured.length >= maxFeatured) break;
-          if (resumeKeys.contains(group.first.displayName)) continue;
-          featured.add(group);
+          var hit = byName[_normTitle(t.title)];
+          if (hit == null && t.originalTitle != null) {
+            hit = byName[_normTitle(t.originalTitle!)];
+          }
+          if (hit == null) continue;
+          final name = hit.first.displayName;
+          if (resumeKeys.contains(name)) continue;
+          if (featured.any((f) => f.first.displayName == name)) continue;
+          featured.add(hit);
+          usedTrending = true;
+        }
+      }
+
+      // Fallback : pas de clé TMDB / aucune tendance dispo → comportement
+      // historique (catégories prioritaires) pour ne pas laisser le hero vide.
+      if (!usedTrending) {
+        for (final cat in categories) {
+          if (featured.length >= maxFeatured) break;
+          if (cat == 'Favoris') continue;
+          if (_TypePage._categoryPriority(cat) >= 100) continue;
+          for (final group in byCategory[cat]!) {
+            if (featured.length >= maxFeatured) break;
+            if (resumeKeys.contains(group.first.displayName)) continue;
+            featured.add(group);
+          }
         }
       }
     } else {

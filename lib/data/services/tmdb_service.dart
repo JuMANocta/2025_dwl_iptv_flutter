@@ -4,9 +4,24 @@ import 'tmdb_api_service.dart';
 import 'package:aetherStream/data/models/media_model.dart';
 import 'package:aetherStream/data/models/person_model.dart';
 
+/// Titre tendance TMDB (léger) — sert à croiser avec la playlist par titre.
+/// On garde le titre localisé (fr-FR) ET le titre original (VO), car les
+/// providers IPTV utilisent souvent l'un ou l'autre.
+class TrendingTitle {
+  final String title;
+  final String? originalTitle;
+  const TrendingTitle({required this.title, this.originalTitle});
+}
+
 class TmdbService {
   Dio? _dio;
   String? _bearerToken;
+
+  // §trending — Cache des tendances de la semaine (TTL 24h), keyé par isTv.
+  // Vidé automatiquement au reset du singleton (changement de clé TMDB).
+  final Map<bool, List<TrendingTitle>> _trendingCache = {};
+  final Map<bool, DateTime> _trendingCacheAt = {};
+  static const Duration _trendingTtl = Duration(hours: 24);
 
   static TmdbService? _instance;
   static TmdbService get instance {
@@ -408,6 +423,43 @@ class TmdbService {
     } catch (e) {
       debugPrint("❌ Glitch TMDB (poster fallback) : $e");
       return null;
+    }
+  }
+
+  /// 🔥 §trending — Tendances de la semaine TMDB (`/trending/{movie|tv}/week`).
+  /// Retourne la liste des titres classés par popularité (ordre conservé pour
+  /// le carrousel). Cache mémoire 24h par type. Retourne `[]` si pas de clé
+  /// TMDB ou en cas d'erreur réseau (dégradation silencieuse).
+  Future<List<TrendingTitle>> getTrending({required bool isTv}) async {
+    if (!await _init()) return const [];
+
+    final cached = _trendingCache[isTv];
+    final at = _trendingCacheAt[isTv];
+    if (cached != null && at != null &&
+        DateTime.now().difference(at) < _trendingTtl) {
+      return cached;
+    }
+
+    try {
+      final path = isTv ? '/trending/tv/week' : '/trending/movie/week';
+      final resp = await _dio!.get(path);
+      final results = (resp.data['results'] as List?) ?? const [];
+      final list = <TrendingTitle>[];
+      for (final r in results) {
+        if (r is! Map<String, dynamic>) continue;
+        final title = (isTv ? r['name'] : r['title']) as String?;
+        final original =
+            (isTv ? r['original_name'] : r['original_title']) as String?;
+        if (title != null && title.trim().isNotEmpty) {
+          list.add(TrendingTitle(title: title, originalTitle: original));
+        }
+      }
+      _trendingCache[isTv] = list;
+      _trendingCacheAt[isTv] = DateTime.now();
+      return list;
+    } catch (e) {
+      debugPrint('❌ TMDB trending (isTv=$isTv) : $e');
+      return cached ?? const [];
     }
   }
 }
