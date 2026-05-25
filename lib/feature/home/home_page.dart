@@ -641,25 +641,28 @@ double _responsiveTileWidth(double available, {required bool channel}) {
 /// Vignette cible : ~130 px pour les chaînes (logo carré), ~145 px pour les
 /// posters 2:3. Borné [3, 10] pour rester lisible à 3 m sans micro-vignettes.
 int _responsiveColumns(double available, {required bool channel}) {
-  // §tvZoom — Sur TV, on vise des vignettes plus petites (et plus nombreuses)
-  // que sur smartphone, mais lisibles à 3 m.
+  // §tv4K-bis — Sur TV, nombre de colonnes **fixe** (indépendant de la largeur
+  // logique rapportée, qui varie de ~960 à ~1920 dp selon les devices 1080p/4K
+  // → un calcul par largeur cible donnait des tailles imprévisibles).
   //
-  // §tv4K — Correctif : certains devices 4K rapportent une largeur logique
-  // **grande** (~1920 dp au lieu des ~960 dp d'un 1080p). Avec l'ancienne cible
-  // 105/118 px et un plafond à 14, on obtenait `1920/118 ≈ 16 → 14 colonnes` =
-  // vignettes minuscules. On relève la cible (≈150/170 px) et on **baisse le
-  // plafond** (8 chaînes / 7 posters) pour borner un nombre de colonnes
-  // raisonnable quelle que soit la largeur logique rapportée :
-  //   - 1080p (~960 dp)  → posters 960/170 ≈ 6, chaînes 960/150 ≈ 6
-  //   - 4K    (~1920 dp) → posters → 11 → clamp 7, chaînes → 13 → clamp 8
+  // Demande utilisateur : carrousel films/séries trop petit → **gros posters**
+  // (peu de colonnes) ; grille chaînes trop grosse → **petites vignettes**
+  // (plus de colonnes). Ces deux constantes pilotent tout le rendu TV et sont
+  // faciles à ajuster d'un seul nombre :
+  //   - posters (carrousel) : 5 colonnes ≈ +40 % de taille vs l'ancien plafond 7
+  //   - chaînes (grille)     : 10 colonnes ≈ −25 % de taille vs l'ancien plafond 8
   if (PlatformTv.isTv) {
-    final target = channel ? 150.0 : 170.0;
-    final maxCols = channel ? 8 : 7;
-    return (available / target).round().clamp(4, maxCols);
+    return channel ? _kTvChannelCols : _kTvPosterCols;
   }
   final target = channel ? 130.0 : 145.0;
   return (available / target).round().clamp(3, 10);
 }
+
+/// §tv4K-bis — Colonnes fixes sur TV. Ajuster ici pour calibrer les tailles :
+/// baisser [_kTvPosterCols] = posters carrousel plus gros ; monter
+/// [_kTvChannelCols] = vignettes chaînes plus petites.
+const int _kTvPosterCols = 5;
+const int _kTvChannelCols = 10;
 
 // ─── Page d'un type ──────────────────────────────────────────────────────────
 

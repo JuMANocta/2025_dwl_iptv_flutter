@@ -9,11 +9,15 @@ import '../../../data/services/web_console_service.dart';
 
 /// §webConsole (Phase 1) — Écran "Console web".
 ///
-/// Démarre [WebConsoleService] au mount, affiche le QR + l'URL + le token à
-/// ouvrir depuis un navigateur du même réseau, et **arrête le serveur au
-/// dispose** (modèle sécurisé : actif uniquement pendant que cet écran est
-/// affiché). L'écran garde l'allumage (wakelock) pour laisser le temps de
-/// scanner / saisir l'URL.
+/// Démarre [WebConsoleService] au mount (ou réutilise la session en cours),
+/// affiche le QR + l'URL + le token à ouvrir depuis un navigateur du même
+/// réseau. L'écran garde l'allumage (wakelock) pour laisser le temps de scanner.
+///
+/// §webConsolePersist — Le serveur **ne s'arrête PLUS au dispose** : il reste
+/// actif en arrière-plan pour que la **télécommande téléphone** continue de
+/// piloter la TV après qu'on a quitté cet écran. L'arrêt se fait explicitement
+/// via le bouton "Arrêter le serveur" (ou le timeout de sécurité 30 min du
+/// service).
 class WebConsolePage extends StatefulWidget {
   const WebConsolePage({super.key});
 
@@ -38,7 +42,13 @@ class _WebConsolePageState extends State<WebConsolePage> {
 
   Future<void> _start() async {
     try {
-      await WebConsoleService.instance.start(theme: ThemeService.config.value);
+      // §webConsolePersist — Si une session tourne déjà (on revient sur l'écran
+      // pendant que la télécommande téléphone est active), on la réutilise au
+      // lieu de la redémarrer : sinon un nouveau token invaliderait la session
+      // ouverte sur le téléphone.
+      if (!WebConsoleService.instance.isRunning) {
+        await WebConsoleService.instance.start(theme: ThemeService.config.value);
+      }
       if (!mounted) return;
       setState(() {
         _starting = false;
@@ -59,10 +69,19 @@ class _WebConsolePageState extends State<WebConsolePage> {
     }
   }
 
+  /// §webConsolePersist — Arrêt explicite du serveur (l'utilisateur a fini
+  /// d'utiliser la télécommande / la console). Ferme la page ensuite.
+  Future<void> _stopServer() async {
+    await WebConsoleService.instance.stop();
+    if (mounted) Navigator.of(context).maybePop();
+  }
+
   @override
   void dispose() {
+    // §webConsolePersist — on relâche seulement le wakelock. Le serveur reste
+    // actif en arrière-plan (télécommande téléphone) jusqu'à l'arrêt explicite
+    // ou le timeout 30 min.
     WakelockPlus.disable();
-    WebConsoleService.instance.stop();
     super.dispose();
   }
 
@@ -177,12 +196,24 @@ class _WebConsolePageState extends State<WebConsolePage> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Le serveur ne reste actif que sur cet écran. Quitte cette page pour le fermer.',
+                  'Le serveur reste actif en arrière-plan tant que tu utilises la '
+                  'télécommande, même après avoir quitté cet écran. Arrête-le ici '
+                  'quand tu as fini (sinon fermeture auto après 30 min).',
                   style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
                 ),
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: _stopServer,
+          style: FilledButton.styleFrom(
+            backgroundColor: kWarning,
+            foregroundColor: Colors.black,
+          ),
+          icon: const Icon(Icons.power_settings_new),
+          label: const Text('Arrêter le serveur'),
         ),
       ],
     );
