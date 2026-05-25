@@ -125,9 +125,19 @@ class RemoteControlService {
   }
 
   void _move(TraversalDirection dir) {
+    // §tvMove3by3 — On résout le scope depuis l'ÉLÉMENT FOCUSÉ, pas depuis la
+    // racine du Navigator. `FocusScope.of(navigatorContext)` renvoyait le scope
+    // racine → `focusInDirection` y traversait à travers les `FocusTraversalGroup`
+    // imbriqués et pouvait sauter plusieurs cartes ("3 par 3"). En partant du
+    // `primaryFocus`, on reproduit exactement le comportement du D-pad natif :
+    // un déplacement = une carte.
+    final focused = FocusManager.instance.primaryFocus;
+    if (focused != null) {
+      focused.focusInDirection(dir);
+      return;
+    }
     final ctx = navigatorKey.currentContext;
-    if (ctx == null) return;
-    FocusScope.of(ctx).focusInDirection(dir);
+    if (ctx != null) FocusScope.of(ctx).focusInDirection(dir);
   }
 
   void _activateFocused() {
