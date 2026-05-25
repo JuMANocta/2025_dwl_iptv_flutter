@@ -45,6 +45,13 @@ class FocusableCard extends StatefulWidget {
   /// `surfaceContainerHighest.withAlpha(80)`. Si `null`, fond transparent.
   final Color? backgroundColor;
 
+  /// Applique le `scale(1.05)` au focus. À laisser `true` pour les vignettes
+  /// carrées (posters/logos). À passer **`false`** pour les éléments **pleine
+  /// largeur** (tuiles de liste, lignes de paramètres) : sinon l'agrandissement
+  /// horizontal fait déborder le rectangle hors de l'écran. Le focus reste
+  /// visible via la bordure + le glow (aucun coût layout).
+  final bool scaleOnFocus;
+
   const FocusableCard({
     super.key,
     required this.child,
@@ -55,6 +62,7 @@ class FocusableCard extends StatefulWidget {
     this.autofocus = false,
     this.decorateOnly = false,
     this.backgroundColor,
+    this.scaleOnFocus = true,
   });
 
   @override
@@ -115,11 +123,7 @@ class _FocusableCardState extends State<FocusableCard> {
     final glow = ext?.glowIntensity ?? 0.4;
     final borderW = ext?.focusBorderWidth ?? 2.0;
 
-    final decorated = AnimatedScale(
-      scale: showFocusEffect ? 1.05 : 1.0,
-      duration: const Duration(milliseconds: 140),
-      curve: Curves.easeOutCubic,
-      child: AnimatedContainer(
+    Widget decorated = AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         // §ergo — Le glow reste en `decoration` (boxShadow = zéro coût layout).
         decoration: BoxDecoration(
@@ -162,8 +166,18 @@ class _FocusableCardState extends State<FocusableCard> {
                   ),
                 ),
               ),
-      ),
-    );
+      );
+
+    // §tvErgo — scale(1.05) seulement pour les vignettes (scaleOnFocus true).
+    // Désactivé pour les tuiles pleine largeur (sinon le rectangle déborde).
+    if (widget.scaleOnFocus) {
+      decorated = AnimatedScale(
+        scale: showFocusEffect ? 1.05 : 1.0,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        child: decorated,
+      );
+    }
 
     return Focus(
       autofocus: widget.autofocus,

@@ -229,9 +229,17 @@ class _SettingsTile extends StatelessWidget {
       // Le tap mobile reste géré par l'InkWell interne (decorateOnly).
       child: FocusableCard(
         decorateOnly: true,
+        // §tvErgo — pas de scale (tuile pleine largeur → débordait à l'écran).
+        scaleOnFocus: false,
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
-        child: Material(
+        // §tvErgo — ExcludeFocus : l'InkWell interne est focusable par défaut et
+        // créait un 2e arrêt D-pad par tuile (doublon de sélection, sans glow).
+        // On le retire de la traversée ; seul le Focus du FocusableCard reste.
+        // Le tap tactile mobile fonctionne toujours (ExcludeFocus n'affecte que
+        // le focus, pas les événements pointeur).
+        child: ExcludeFocus(
+          child: Material(
           color: cs.surfaceContainer,
           borderRadius: BorderRadius.circular(14),
           child: InkWell(
@@ -281,6 +289,7 @@ class _SettingsTile extends StatelessWidget {
                 ],
               ),
             ),
+          ),
           ),
         ),
       ),
