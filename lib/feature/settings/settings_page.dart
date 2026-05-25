@@ -151,13 +151,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)',
               onTap: _openBackup,
             ),
-            _SettingsTile(
-              icon: Icons.lan_outlined,
-              accentColor: kAccentPrimary,
-              title: 'Console web',
-              subtitle: 'Gérer comptes/listes/sauvegardes depuis un navigateur',
-              onTap: _openWebConsole,
-            ),
+            // §webConsoleTvOnly — La console web (et la télécommande téléphone)
+            // n'a de sens que sur TV : piloter/configurer la TV depuis un
+            // navigateur du même réseau. Sur Android mobile pur, on la masque.
+            if (PlatformTv.isTv)
+              _SettingsTile(
+                icon: Icons.lan_outlined,
+                accentColor: kAccentPrimary,
+                title: 'Console web',
+                subtitle: 'Gérer comptes/listes/sauvegardes depuis un navigateur',
+                onTap: _openWebConsole,
+              ),
             const SizedBox(height: 8),
             _SectionHeader(title: 'Application'),
             _SettingsTile(
