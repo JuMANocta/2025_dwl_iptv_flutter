@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
 import '../../core/utils/platform_tv.dart';
 import '../../data/services/favorites_service.dart';
@@ -16,6 +15,7 @@ import '../../l10n/app_localizations.dart';
 import '../../widgets/tv/focusable_chip.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'actor_details_page.dart';
+import 'trailer_player_page.dart';
 
 Color _qualityColor(String? quality) {
   return switch (quality) {
@@ -288,10 +288,17 @@ class _DetailsPageState extends State<DetailsPage> {
     }
   }
 
-  Future<void> _launchTrailer() async {
-    if (_tmdbData?.trailerKey == null) return;
-    final url = Uri.parse('https://www.youtube.com/watch?v=${_tmdbData!.trailerKey}');
-    if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.platformDefault);
+  /// §trailerInApp — Ouvre la bande-annonce dans le lecteur YouTube embarqué
+  /// (jamais ajoutée à l'historique : indépendant de WatchProgressService).
+  void _launchTrailer() {
+    final key = _tmdbData?.trailerKey;
+    if (key == null || key.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => TrailerPlayerPage(
+        videoId: key,
+        title: 'Bande-annonce · ${_tmdbData?.title ?? widget.entry.displayName}',
+      ),
+    ));
   }
 
   // §quickwin — Bandeau incitant à configurer TMDB (affiché si pas de clé).
@@ -577,7 +584,9 @@ class _DetailsPageState extends State<DetailsPage> {
                             ?.copyWith(color: cs.onSurfaceVariant)),
                     Divider(color: cs.outlineVariant),
                     SizedBox(
-                      height: 156,
+                      // §castPhotos — hauteur = photo 104 + nom (2 lignes) + rôle
+                      // + marge pour une légère mise à l'échelle police système.
+                      height: 184,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1005,66 +1014,69 @@ class _DetailsPageState extends State<DetailsPage> {
         final progress = WatchProgressService.getProgress(_selectedEntry.url);
         final hasResume = progress != null && progress.position.inSeconds > 5;
 
-        return Row(
+        // §detailsActions — boutons pleine largeur, chacun sur sa ligne (plus
+        // ergonomique que deux boutons serrés côte à côte). Lire/Reprendre en
+        // tête, puis Télécharger + le cœur favori (icône) sur la 2e ligne.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // ── Bouton principal : Lire / Reprendre depuis X:XX ─────────────
-            Expanded(
-              flex: 5,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14)),
-                onPressed: () => _launchSelected(
-                    from: hasResume ? progress.position : null),
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: Text(
-                  hasResume
-                      ? 'REPRENDRE · ${_formatResumeShort(progress.position)}'
-                      : l10n.actionSheetPlay.toUpperCase(),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
-                ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16)),
+              onPressed: () =>
+                  _launchSelected(from: hasResume ? progress.position : null),
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: Text(
+                hasResume
+                    ? 'REPRENDRE · ${_formatResumeShort(progress.position)}'
+                    : l10n.actionSheetPlay.toUpperCase(),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(width: 8),
-            // ── Télécharger ─────────────────────────────────────────────────
-            // §1L-c : fond plein + bordure cyan pour rester contrasté sur le
-            // dark theme (plus de bouton transparent quasi-invisible).
-            Expanded(
-              flex: 4,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  foregroundColor: kAccentSecondary,
-                  side: BorderSide(color: kAccentSecondary.withAlpha(180), width: 1.5),
+            const SizedBox(height: 10),
+            // ── Télécharger (pleine largeur) + Favori (icône) ───────────────
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
+                      foregroundColor: kAccentSecondary,
+                      side: BorderSide(
+                          color: kAccentSecondary.withAlpha(180), width: 1.5),
+                    ),
+                    onPressed: () => verifierEtTelecharger(
+                        url: _selectedEntry.url,
+                        nom: _selectedEntry.displayName,
+                        context: context),
+                    icon: const Icon(Icons.download_rounded),
+                    label: Text(
+                      l10n.download.toUpperCase(),
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 ),
-                onPressed: () => verifierEtTelecharger(
-                    url: _selectedEntry.url,
-                    nom: _selectedEntry.displayName,
-                    context: context),
-                icon: const Icon(Icons.download_rounded),
-                label: Text(
-                  l10n.download.toUpperCase(),
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                const SizedBox(width: 8),
+                _FavoriteIconButton(
+                  isFav: isFav,
+                  onTap: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final added = await FavoritesService.toggle(favKey);
+                    if (!context.mounted) return;
+                    messenger.showSnackBar(SnackBar(
+                      content: Text(added
+                          ? '⭐ "${_selectedEntry.displayName}" ajouté aux favoris'
+                          : '🗑️ "${_selectedEntry.displayName}" retiré des favoris'),
+                      duration: const Duration(seconds: 2),
+                    ));
+                  },
                 ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // ── Favori (§1f-A) ──────────────────────────────────────────────
-            _FavoriteIconButton(
-              isFav: isFav,
-              onTap: () async {
-                final messenger = ScaffoldMessenger.of(context);
-                final added = await FavoritesService.toggle(favKey);
-                if (!context.mounted) return;
-                messenger.showSnackBar(SnackBar(
-                  content: Text(added
-                      ? '⭐ "${_selectedEntry.displayName}" ajouté aux favoris'
-                      : '🗑️ "${_selectedEntry.displayName}" retiré des favoris'),
-                  duration: const Duration(seconds: 2),
-                ));
-              },
+              ],
             ),
           ],
         );

@@ -62,7 +62,7 @@
 - Support des formats catchup : Xtream Codes path-based et Flussonic (`{utc}/{lutc}`)
 
 ### 🎬 TMDB
-- Enrichissement automatique : affiches, synopsis, casting, bande-annonce YouTube
+- Enrichissement automatique : affiches, synopsis, **casting avec photos**, bande-annonce YouTube **lue dans l'app** (lecteur intégré)
 - Recherche intelligente en 4 passes (type, année, langue...)
 - Désambiguïsation par année et genre `group-title` (évite les confusions films/séries homonymes)
 - Fiche épisode : still TMDB, titre épisode, note ★, date de diffusion, synopsis
