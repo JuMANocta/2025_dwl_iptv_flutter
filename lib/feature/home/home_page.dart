@@ -107,14 +107,6 @@ class _HomePageState extends State<HomePage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          // §tv4K — Log de calibration : permet de connaître la largeur logique
-          // réelle du device TV (1080p ≈ 960 dp, 4K parfois ≈ 1920 dp) pour
-          // ajuster les cibles de `_responsiveColumns` si besoin.
-          final mq = MediaQuery.of(context);
-          debugPrint(
-              '📺 TV MediaQuery → size=${mq.size}, dpr=${mq.devicePixelRatio}, '
-              'cols posters=${_responsiveColumns(mq.size.width, channel: false)}, '
-              'cols chaînes=${_responsiveColumns(mq.size.width, channel: true)}');
           FocusScope.of(context).nextFocus();
         });
       });
@@ -642,28 +634,15 @@ double _responsiveTileWidth(double available, {required bool channel}) {
 /// Vignette cible : ~130 px pour les chaînes (logo carré), ~145 px pour les
 /// posters 2:3. Borné [3, 10] pour rester lisible à 3 m sans micro-vignettes.
 int _responsiveColumns(double available, {required bool channel}) {
-  // §tv4K-bis — Sur TV, nombre de colonnes **fixe** (indépendant de la largeur
-  // logique rapportée, qui varie de ~960 à ~1920 dp selon les devices 1080p/4K
-  // → un calcul par largeur cible donnait des tailles imprévisibles).
-  //
-  // Demande utilisateur : carrousel films/séries trop petit → **gros posters**
-  // (peu de colonnes) ; grille chaînes trop grosse → **petites vignettes**
-  // (plus de colonnes). Ces deux constantes pilotent tout le rendu TV et sont
-  // faciles à ajuster d'un seul nombre :
-  //   - posters (carrousel) : 5 colonnes ≈ +40 % de taille vs l'ancien plafond 7
-  //   - chaînes (grille)     : 10 colonnes ≈ −25 % de taille vs l'ancien plafond 8
-  if (PlatformTv.isTv) {
-    return channel ? _kTvChannelCols : _kTvPosterCols;
-  }
+  // §tvSizeRevert (2026-05-25) — Retour au dimensionnement de BASE (celui du
+  // début du support Android TV, §3c). Les itérations §tvZoom/§tv4K/§tv4K-bis
+  // (branche TV par largeur cible puis colonnes fixes) ont rendu le carrousel
+  // minuscule sur device. Faute de pouvoir lire les logs sur la TV, on supprime
+  // toute la logique TV spécifique : TV et mobile partagent la même formule
+  // (carrousel un peu grand mais correct, jugé OK par l'utilisateur).
   final target = channel ? 130.0 : 145.0;
   return (available / target).round().clamp(3, 10);
 }
-
-/// §tv4K-bis — Colonnes fixes sur TV. Ajuster ici pour calibrer les tailles :
-/// baisser [_kTvPosterCols] = posters carrousel plus gros ; monter
-/// [_kTvChannelCols] = vignettes chaînes plus petites.
-const int _kTvPosterCols = 5;
-const int _kTvChannelCols = 10;
 
 // ─── Page d'un type ──────────────────────────────────────────────────────────
 
