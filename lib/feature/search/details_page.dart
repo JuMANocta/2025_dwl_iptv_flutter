@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
 import '../../core/utils/platform_tv.dart';
 import '../../data/services/favorites_service.dart';
@@ -15,7 +16,6 @@ import '../../l10n/app_localizations.dart';
 import '../../widgets/tv/focusable_chip.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'actor_details_page.dart';
-import 'trailer_player_page.dart';
 
 Color _qualityColor(String? quality) {
   return switch (quality) {
@@ -288,17 +288,16 @@ class _DetailsPageState extends State<DetailsPage> {
     }
   }
 
-  /// §trailerInApp — Ouvre la bande-annonce dans le lecteur YouTube embarqué
-  /// (jamais ajoutée à l'historique : indépendant de WatchProgressService).
-  void _launchTrailer() {
+  /// Ouvre la bande-annonce dans l'app YouTube / le navigateur externe.
+  /// (Lecteur in-app §trailerInApp retiré : beaucoup de trailers de studios
+  /// désactivent l'embedding → injouables dans un lecteur tiers.)
+  Future<void> _launchTrailer() async {
     final key = _tmdbData?.trailerKey;
     if (key == null || key.isEmpty) return;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => TrailerPlayerPage(
-        videoId: key,
-        title: 'Bande-annonce · ${_tmdbData?.title ?? widget.entry.displayName}',
-      ),
-    ));
+    final url = Uri.parse('https://www.youtube.com/watch?v=$key');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
   }
 
   // §quickwin — Bandeau incitant à configurer TMDB (affiché si pas de clé).

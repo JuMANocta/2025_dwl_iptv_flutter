@@ -40,7 +40,6 @@ dependencies:
   cryptography: ^2.7.0              # AES-256-GCM + PBKDF2 (sauvegarde §10)
   file_picker: ^8.1.7               # sélection fichier .aether (import §10)
   qr_flutter: ^4.1.0                # génération QR code (§3c-8 pairing mobile→TV)
-  youtube_player_iframe: ^5.2.0     # lecture bande-annonce YouTube in-app (§trailerInApp)
 
 dev_dependencies:
   flutter_test:
