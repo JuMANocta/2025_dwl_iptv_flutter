@@ -160,29 +160,29 @@ class _AboutPageState extends State<AboutPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    OutlinedButton.icon(
+                    // §detailsActions — boutons pleins (cohérence : plus de
+                    // mélange plein/contour). Couleurs distinctes pour la lisibilité.
+                    FilledButton.icon(
                       onPressed: () => _open(_ghRepo),
                       icon: const Icon(Icons.code),
-                      label: const Text('Voir le code sur GitHub'),
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: cs.surfaceContainerHighest,
-                        foregroundColor: kAccentSecondary,
-                        side: BorderSide(
-                            color: kAccentSecondary.withAlpha(180), width: 1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      label: const Text('Voir le code sur GitHub',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: kAccentSecondary,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
                     const SizedBox(height: 8),
-                    OutlinedButton.icon(
+                    FilledButton.icon(
                       onPressed: () => _open(_ghReleases),
                       icon: const Icon(Icons.archive_outlined),
-                      label: const Text('Toutes les releases'),
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: cs.surfaceContainerHighest,
-                        foregroundColor: kAccentTertiary,
-                        side: BorderSide(
-                            color: kAccentTertiary.withAlpha(180), width: 1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      label: const Text('Toutes les releases',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: kAccentTertiary,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
                     const SizedBox(height: 32),

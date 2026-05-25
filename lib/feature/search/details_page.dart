@@ -1039,14 +1039,14 @@ class _DetailsPageState extends State<DetailsPage> {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
+                  // §detailsActions — bouton PLEIN (cohérence : tous les boutons
+                  // d'action sont pleins, plus de mélange plein/contour). Cyan
+                  // plein + texte noir pour se distinguer du vert "Lire".
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor:
-                          Theme.of(context).colorScheme.surfaceContainerHighest,
-                      foregroundColor: kAccentSecondary,
-                      side: BorderSide(
-                          color: kAccentSecondary.withAlpha(180), width: 1.5),
+                      backgroundColor: kAccentSecondary,
+                      foregroundColor: Colors.black,
                     ),
                     onPressed: () => verifierEtTelecharger(
                         url: _selectedEntry.url,
@@ -1084,15 +1084,17 @@ class _DetailsPageState extends State<DetailsPage> {
   }
 
   Widget _buildTrailerButton() {
-    return OutlinedButton.icon(
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: Colors.red),
-        foregroundColor: Colors.red,
-        padding: const EdgeInsets.symmetric(vertical: 12),
+    // §detailsActions — bouton PLEIN rouge (cohérence : tous les boutons pleins).
+    return FilledButton.icon(
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.red,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 14),
       ),
       onPressed: _launchTrailer,
       icon: const Icon(Icons.play_circle_outline),
-      label: const Text('Bande-Annonce'),
+      label: const Text('Bande-Annonce',
+          style: TextStyle(fontWeight: FontWeight.bold)),
     );
   }
 

@@ -230,13 +230,15 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
                         children: [
                           if (_hasSavedKey)
                             Expanded(
-                              child: OutlinedButton.icon(
+                              child: FilledButton.icon(
                                 onPressed: _delete,
                                 icon: const Icon(Icons.delete_outline),
                                 label: const Text('Supprimer'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  side: const BorderSide(color: Colors.red),
+                                // §detailsActions — bouton plein (cohérence : plus
+                                // de mélange plein/contour). Rouge = destructif.
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                       vertical: 14),
                                 ),
@@ -453,14 +455,16 @@ class _InfoBlock extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          OutlinedButton.icon(
+          FilledButton.icon(
             onPressed: onOpenTmdb,
             icon: const Icon(Icons.open_in_new, size: 16),
-            label: const Text('Ouvrir themoviedb.org'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: kAccentSecondary,
-              side: BorderSide(color: kAccentSecondary.withAlpha(120)),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            label: const Text('Ouvrir themoviedb.org',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            // §detailsActions — plein (cohérence page : plus de bouton contour).
+            style: FilledButton.styleFrom(
+              backgroundColor: kAccentSecondary,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
           ),
         ],
