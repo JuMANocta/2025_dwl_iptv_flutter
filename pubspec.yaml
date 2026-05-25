@@ -81,10 +81,13 @@ flutter_native_splash:
   background_image: assets/splash/AetherStreamSplash.png
   background_image_dark: assets/splash/AetherStreamDarkSplash.png
 
-  # Spécifique pour Android 12+ (qui ne supporte pas background_image)
-  # On utilise des couleurs unies qui correspondent au thème de l'app.
+  # Spécifique pour Android 12+ : `image` est l'ICÔNE CENTRÉE du splash système
+  # (contrainte de taille stricte, rognée en cercle), PAS une image plein écran.
+  # Avant, on y passait AetherStreamSplash.png (fond 754 Ko) → icône démesurée
+  # → rendu cassé / crash du splash système sur Android 12+. On utilise la vraie
+  # icône (la même que pour Android ≤11). Android 12 ne supporte que icône + couleur.
   android_12:
-    image: assets/splash/AetherStreamSplash.png
-    image_dark: assets/splash/AetherStreamDarkSplash.png
+    image: assets/splash/AetherStreamIconSplash.png
+    image_dark: assets/splash/AetherStreamIconSplash.png
     color: "#F5F5F5"          # Fond blanc pour le mode clair
     color_dark: "#000000"     # Fond noir pour le mode sombre

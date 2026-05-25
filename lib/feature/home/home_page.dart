@@ -2977,14 +2977,17 @@ class _ResultSection extends StatelessWidget {
 
 // ─── Physics : swipe gauche/droite plus court (-20%) ─────────────────────────
 
-/// `PageScrollPhysics` plus sensible : amplifie modérément la vélocité au
-/// moment du release pour atteindre le seuil de tolérance plus facilement.
+/// `PageScrollPhysics` plus sensible : amplifie la vélocité au moment du release
+/// → un **swipe court et rapide** suffit à changer de page (plus besoin de
+/// traverser tout l'écran). Le seuil de distance (~50 %) reste celui de Flutter
+/// pour les drags lents ; c'est le flick qu'on rend sensible.
 ///
-/// Multiplicateur ×1.15 (au lieu de ×1.3) : compromis entre sensibilité
-/// (un swipe court suffit à changer de page) et fluidité du snap (pas de
-/// secousse abrupte sur les drags moyens).
+/// `_kPageFlickBoost` ×1.8 (au lieu de ×1.15) : compromis sensibilité / pas de
+/// secousse. Un seul chiffre à ajuster (monter = plus sensible).
 class _FastPageScrollPhysics extends PageScrollPhysics {
   const _FastPageScrollPhysics({super.parent});
+
+  static const double _kPageFlickBoost = 1.8;
 
   @override
   _FastPageScrollPhysics applyTo(ScrollPhysics? ancestor) {
@@ -2993,7 +2996,7 @@ class _FastPageScrollPhysics extends PageScrollPhysics {
 
   @override
   Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) {
-    return super.createBallisticSimulation(position, velocity * 1.15);
+    return super.createBallisticSimulation(position, velocity * _kPageFlickBoost);
   }
 }
 
