@@ -1202,12 +1202,9 @@ class _HeroBannerState extends State<_HeroBanner> {
           ),
         );
 
-    // §tvZoom — Sur TV (paysage), un 16/9 pleine largeur ≈ plein écran et
-    // masquait totalement les carrousels. On plafonne la hauteur à ~32 % de
-    // l'écran (bannière large et basse). Mobile : ratio 16/9 historique.
-    final Widget sized = PlatformTv.isTv
-        ? SizedBox(height: MediaQuery.sizeOf(context).height * 0.32, child: core)
-        : AspectRatio(aspectRatio: 16 / 9, child: core);
+    // §tvSizeRevert — Retour à la base : ratio 16/9 pour tous (le cap TV à 32 %
+    // §tvZoom rapetissait le hero). Comportement du début du support Android TV.
+    final Widget sized = AspectRatio(aspectRatio: 16 / 9, child: core);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
@@ -1569,19 +1566,10 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     return LayoutBuilder(
       builder: (ctx, constraints) {
         final screenW = constraints.maxWidth;
-        double cardW = math.min(screenW * 0.48, 220.0);
-        double cardH = cardW * 1.45;
-        // §tvZoom — Sur TV (paysage 16:9), le hero n'était borné que par la
-        // largeur → il occupait ~35-40 % de la hauteur et écrasait les
-        // carrousels. On plafonne la hauteur du hero à ~30 % de l'écran et on
-        // recalcule la largeur de carte pour garder le ratio 1.45.
-        if (PlatformTv.isTv) {
-          final maxCardH = MediaQuery.sizeOf(ctx).height * 0.30 - 60;
-          if (maxCardH > 0 && cardH > maxCardH) {
-            cardH = maxCardH;
-            cardW = cardH / 1.45;
-          }
-        }
+        // §tvSizeRevert — Pas de cap de hauteur TV (le §tvZoom 30 % rapetissait
+        // le hero). Retour au dimensionnement de base.
+        final cardW = math.min(screenW * 0.48, 220.0);
+        final cardH = cardW * 1.45;
         final containerH = cardH + 60;
         // 1 carte d'écart visuel = ~22 % de la largeur d'une carte.
         // Sensibilité du drag : 1 unité de `_current` = `cardSpacing` pixels.
