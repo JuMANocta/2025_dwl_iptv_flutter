@@ -32,6 +32,14 @@ enum PlayerBadgeType {
 }
 
 class PlayerPage extends StatefulWidget {
+  /// §nextEpPortrait — Quand on enchaîne sur l'épisode suivant, on POP le player
+  /// courant puis on en PUSH un nouveau. Le `dispose()` du player poppé restaure
+  /// le portrait (mobile) ~300 ms plus tard (fin d'anim de pop), donc APRÈS
+  /// l'`initState` landscape du nouveau player → l'épisode suivant s'ouvrait en
+  /// portrait. Ce flag, levé par l'appelant avant le pop, fait sauter la
+  /// restauration portrait du dispose (puis se réarme tout seul).
+  static bool suppressOrientationRestore = false;
+
   final String path;
   final String title;
   final VideoSourceType sourceType;
@@ -435,11 +443,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // §3c-bis — Sur TV, la sortie du player NE DOIT PAS basculer en portrait
     // (la TV n'a pas de portrait, ça casserait toute l'UI). On reste en
     // landscape. Sur mobile, on restaure le comportement portrait par défaut.
-    if (PlatformTv.isTv) {
+    if (PlatformTv.isTv || PlayerPage.suppressOrientationRestore) {
+      // TV : jamais de portrait. §nextEpPortrait : enchaînement épisode suivant
+      // → on garde landscape pour ne pas écraser l'orientation du player qui suit.
       SystemChrome.setPreferredOrientations(const [
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
+      PlayerPage.suppressOrientationRestore = false; // réarme pour la prochaine sortie
     } else {
       SystemChrome.setPreferredOrientations(const [
         DeviceOrientation.portraitUp,

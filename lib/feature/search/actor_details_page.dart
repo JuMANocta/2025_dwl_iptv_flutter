@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/themes/colors.dart';
+import '../../core/utils/platform_tv.dart';
 import '../../data/services/tmdb_service.dart';
 import '../../data/services/tmdb_api_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
@@ -83,6 +84,22 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
 
   // ── UI ─────────────────────────────────────────────────────────────────────
 
+  /// §tvDetailsShrink — Réduit le contenu de la fiche acteur sur TV : largeur max
+  /// centrée (820) + texte mis à l'échelle (0.85). Neutre sur mobile.
+  Widget _tvShrink(BuildContext context, bool isTv, Widget child) {
+    if (!isTv) return child;
+    final mq = MediaQuery.of(context);
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 820.0),
+        child: MediaQuery(
+          data: mq.copyWith(textScaler: const TextScaler.linear(0.85)),
+          child: child,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -105,10 +122,17 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
           final person     = snapshot.data!;
           final profileUrl = TmdbService.getPosterUrl(person.profilePath, size: 'w342');
 
+          // §tvDetailsShrink — Mêmes leviers que DetailsPage : sur TV, backdrop
+          // réduit + contenu en largeur max centrée + texte mis à l'échelle.
+          final bool isTvPlatform = PlatformTv.isTv;
+          final double screenH = MediaQuery.sizeOf(context).height;
+          final double headerHeight =
+              isTvPlatform ? (screenH * 0.42).clamp(180.0, 300.0) : 280.0;
+
           return CustomScrollView(
             slivers: [
               SliverAppBar(
-                expandedHeight: 280.0,
+                expandedHeight: headerHeight,
                 pinned: true,
                 backgroundColor: cs.surface,
                 flexibleSpace: FlexibleSpaceBar(
@@ -116,15 +140,46 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                       style: const TextStyle(
                           shadows: [Shadow(blurRadius: 5, color: Colors.black)])),
                   centerTitle: false,
-                  background: (profileUrl != null)
-                      ? Image.network(profileUrl, fit: BoxFit.cover)
-                      : Container(color: cs.surfaceContainerHighest),
+                  // §castPhotos — Header façon fiche film : image + dégradé de
+                  // lisibilité (transparent → noir → surface) pour le nom et une
+                  // transition douce vers le contenu.
+                  background: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (profileUrl != null)
+                        Image.network(
+                          profileUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              Container(color: cs.surfaceContainerHighest),
+                        )
+                      else
+                        Container(color: cs.surfaceContainerHighest),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black54,
+                              cs.surface,
+                            ],
+                            stops: const [0.0, 0.55, 1.0],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
               SliverList(
                 delegate: SliverChildListDelegate([
-                  Padding(
+                  _tvShrink(
+                    context,
+                    isTvPlatform,
+                    Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -215,6 +270,7 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                         }),
                       ],
                     ),
+                  ),
                   ),
                 ]),
               ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
+import '../../core/utils/platform_tv.dart';
 import '../../data/services/favorites_service.dart';
 import '../../data/services/tmdb_service.dart';
 import '../../data/services/tmdb_api_service.dart';
@@ -13,6 +14,7 @@ import '../downloads/logic/download_initiator.dart';
 import '../../data/models/m3u_entry.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/tv/focusable_chip.dart';
+import '../../widgets/tv/focusable_card.dart';
 import 'actor_details_page.dart';
 
 Color _qualityColor(String? quality) {
@@ -335,6 +337,33 @@ class _DetailsPageState extends State<DetailsPage> {
     );
   }
 
+  // §tvDetailsShrink — Réglages de réduction de la fiche sur TV (faciles à
+  // ajuster d'un seul nombre) :
+  //   - backdrop : fraction de la hauteur écran (clamp 180-300) vs 360 fixe mobile
+  //   - largeur max de la colonne d'infos (centrée) → évite le texte étalé
+  //   - échelle du texte de la fiche (0.85 = -15%) pour réduire "toute la partie infos"
+  static const double _kTvBackdropFraction = 0.42;
+  static const double _kTvContentMaxWidth = 820.0;
+  static const double _kTvContentTextScale = 0.85;
+
+  /// Enveloppe le contenu de la fiche pour le réduire sur TV : largeur max
+  /// centrée + texte mis à l'échelle. Neutre sur mobile.
+  Widget _tvShrinkContent(BuildContext context, bool isTv, Widget child) {
+    if (!isTv) return child;
+    final mq = MediaQuery.of(context);
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: _kTvContentMaxWidth),
+        child: MediaQuery(
+          data: mq.copyWith(
+            textScaler: TextScaler.linear(_kTvContentTextScale),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
   // ── BUILD ──────────────────────────────────────────────────────────────────
 
   @override
@@ -383,13 +412,23 @@ class _DetailsPageState extends State<DetailsPage> {
         ? epOverview
         : _tmdbData?.overview;
 
+    // §tvDetailsShrink — Sur TV, la fiche paraissait énorme : backdrop fixe 360px
+    // (énorme part d'un écran à hauteur logique courte) + colonne d'infos étalée
+    // sur toute la largeur + texte natif. On réduit les 3 leviers, uniquement sur
+    // TV (mobile inchangé). Tunables ci-dessous.
+    final bool isTvPlatform = PlatformTv.isTv;
+    final double screenH = MediaQuery.sizeOf(context).height;
+    final double headerHeight = isTvPlatform
+        ? (screenH * _kTvBackdropFraction).clamp(180.0, 300.0)
+        : 360.0;
+
     return Scaffold(
       backgroundColor: cs.surface,
       body: CustomScrollView(
         slivers: [
           // ── HEADER ────────────────────────────────────────────────────────
           SliverAppBar(
-            expandedHeight: 360.0,
+            expandedHeight: headerHeight,
             pinned: true,
             stretch: true,
             backgroundColor: cs.surface,
@@ -423,7 +462,10 @@ class _DetailsPageState extends State<DetailsPage> {
 
           // ── CONTENU ───────────────────────────────────────────────────────
           SliverToBoxAdapter(
-            child: Padding(
+            child: _tvShrinkContent(
+              context,
+              isTvPlatform,
+              Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -526,8 +568,29 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 24),
                   ],
 
-                  // CASTING (toujours)
-                  if (hasTmdb && _tmdbData!.cast.isNotEmpty) ...[
+                  // CASTING — vignettes acteurs avec photo (carrousel horizontal)
+                  if (hasTmdb && _tmdbData!.castMembers.isNotEmpty) ...[
+                    Text('Casting principal',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(color: cs.onSurfaceVariant)),
+                    Divider(color: cs.outlineVariant),
+                    SizedBox(
+                      height: 156,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        itemCount: _tmdbData!.castMembers.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 12),
+                        itemBuilder: (_, i) =>
+                            _CastCard(member: _tmdbData!.castMembers[i]),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ]
+                  // Fallback : anciens noms seuls si pas de casting enrichi.
+                  else if (hasTmdb && _tmdbData!.cast.isNotEmpty) ...[
                     Text('Casting principal',
                         style: Theme.of(context)
                             .textTheme
@@ -629,6 +692,7 @@ class _DetailsPageState extends State<DetailsPage> {
                     ),
                 ],
               ),
+            ),
             ),
           ),
         ],
@@ -916,6 +980,10 @@ class _DetailsPageState extends State<DetailsPage> {
             ? () {
                 // Retour à DetailsPage + sélection auto épisode suivant +
                 // relance du player. Évite d'empiler des PlayerPage.
+                // §nextEpPortrait — On supprime la restauration portrait du
+                // dispose du player courant (qui sinon écraserait, ~300 ms plus
+                // tard, le landscape du player suivant → épisode en portrait).
+                PlayerPage.suppressOrientationRestore = true;
                 Navigator.of(context).pop();
                 _goToNextEpisode();
                 WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1141,6 +1209,73 @@ class _FavoriteIconButton extends StatelessWidget {
             color: isFav ? kAccentTertiary : cs.onSurfaceVariant,
             size: 22,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// §castPhotos — Vignette d'acteur (photo + nom + rôle) du carrousel casting de
+/// la fiche détail. Tap → [ActorDetailsPage] (id direct, sans recherche par nom).
+/// Mobile + TV (focus glow via [FocusableCard], sans scale pour ne pas déborder
+/// la rangée à hauteur fixe).
+class _CastCard extends StatelessWidget {
+  final CastMember member;
+  const _CastCard({required this.member});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final photoUrl = TmdbService.getPosterUrl(member.profilePath, size: 'w185');
+
+    Widget placeholder() => Container(
+          width: 92,
+          height: 104,
+          color: cs.surfaceContainerHighest,
+          child: Icon(Icons.person, color: cs.onSurfaceVariant, size: 36),
+        );
+
+    return FocusableCard(
+      scaleOnFocus: false,
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: member.id)),
+      ),
+      child: SizedBox(
+        width: 92,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: photoUrl != null
+                  ? Image.network(
+                      photoUrl,
+                      width: 92,
+                      height: 104,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => placeholder(),
+                    )
+                  : placeholder(),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              member.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface),
+            ),
+            if (member.character != null && member.character!.isNotEmpty)
+              Text(
+                member.character!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+              ),
+          ],
         ),
       ),
     );

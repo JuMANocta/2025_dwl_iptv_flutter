@@ -1,3 +1,19 @@
+/// Membre du casting TMDB (acteur + rôle + photo). Utilisé pour afficher les
+/// vignettes d'acteurs sur la fiche détail (mobile + TV).
+class CastMember {
+  final int id;
+  final String name;
+  final String? character;
+  final String? profilePath;
+
+  const CastMember({
+    required this.id,
+    required this.name,
+    this.character,
+    this.profilePath,
+  });
+}
+
 class Media {
   final int id;
   final String title;
@@ -10,6 +26,8 @@ class Media {
   final String? runtimeOrEpisodeLength;
   final String? productionCompanies;
   final List<String> cast;
+  /// Casting enrichi (id + rôle + photo) pour les vignettes d'acteurs.
+  final List<CastMember> castMembers;
   final String? trailerKey;
 
   Media({
@@ -24,17 +42,31 @@ class Media {
     this.runtimeOrEpisodeLength,
     this.productionCompanies,
     required this.cast,
+    this.castMembers = const [],
     this.trailerKey,
   });
 
   factory Media.fromJson(Map<String, dynamic> json) {
     final isMovie = json.containsKey('title');
 
-    // 1. Extraction des 5 premiers acteurs du champ 'credits'
-    final castList = (json['credits']?['cast'] as List<dynamic>?)
-        ?.take(5)
+    // 1. Extraction des acteurs du champ 'credits'
+    final rawCast = (json['credits']?['cast'] as List<dynamic>?) ?? const [];
+    // Noms (compat existante) — 5 premiers.
+    final castList = rawCast
+        .take(5)
         .map((a) => a['name'] as String)
-        .toList() ?? [];
+        .toList();
+    // Casting enrichi (id + rôle + photo) — 12 premiers pour le carrousel acteurs.
+    final castMembersList = rawCast
+        .take(12)
+        .where((a) => a['id'] != null && a['name'] != null)
+        .map((a) => CastMember(
+              id: a['id'] as int,
+              name: a['name'] as String,
+              character: a['character'] as String?,
+              profilePath: a['profile_path'] as String?,
+            ))
+        .toList();
 
     // 2. Recherche de la première bande-annonce (Trailer) en FR ou ANGLAIS
     String? foundTrailerKey;
@@ -92,6 +124,7 @@ class Media {
       runtimeOrEpisodeLength: runtime,
       productionCompanies: companies,
       cast: castList,
+      castMembers: castMembersList,
       trailerKey: foundTrailerKey,
     );
   }
