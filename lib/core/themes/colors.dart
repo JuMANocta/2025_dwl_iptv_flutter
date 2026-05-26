@@ -47,7 +47,8 @@ const Color kBadgeFilmType = kAetherSecondaryCyan;  // Chip FILM dans filmograph
 Color get kBadgeSeriesType => kAccentPrimary;       // suit le thème
 
 // ── Statuts / alertes ────────────────────────────────────────────────────────
-const Color kWarning = Color(0xFFFF8C00); // Orange avertissement
+const Color kWarning  = Color(0xFFFF8C00); // Orange avertissement (reprise/oubli)
+const Color kFavorite = Color(0xFFE040FB); // Rose/purple — favori actif
 Color get kDispo     => kAccentPrimary;   // suit le thème
 
 // ── Dégradé principal (boutons, pills actives) ───────────────────────────────

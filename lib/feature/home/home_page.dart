@@ -26,6 +26,7 @@ import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
+import 'package:aetherStream/core/utils/app_snackbar.dart';
 
 /// §tvRails — Politique de traversée focus "façon Netflix" pour la home TV.
 ///
@@ -1653,11 +1654,20 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     return LayoutBuilder(
       builder: (ctx, constraints) {
         final screenW = constraints.maxWidth;
-        // §tvSizeRevert — Pas de cap de hauteur TV (le §tvZoom 30 % rapetissait
-        // le hero). Retour au dimensionnement de base.
-        final cardW = math.min(screenW * 0.48, 220.0);
+        final screenH = MediaQuery.sizeOf(context).height;
+        final isTv = PlatformTv.isTv;
+        // §responsiveHero — La carte active vise ~58 % (TV) / ~42 % (mobile) de la
+        // hauteur d'écran (proportionnel → scale tout seul, pas de pixels fixes).
+        // Le conteneur n'ajoute qu'une marge BASSE fixe (inclinaison des cartes
+        // ~42 px + dots) ; combiné au Stack aligné en haut, le carrousel remonte
+        // au plus près du status bar (zéro vide en haut, §heroLift).
+        final maxCardH = isTv ? screenH * 0.58 : screenH * 0.42;
+        final cardWByH = maxCardH / 1.45;
+        // Sécurité largeur (écrans larges / ultra-wide) : la carte ne dépasse
+        // pas 40 % (TV) / 55 % (mobile) de la largeur dispo.
+        final cardW = math.min(cardWByH, screenW * (isTv ? 0.40 : 0.55));
         final cardH = cardW * 1.45;
-        final containerH = cardH + 60;
+        final containerH = cardH + 52;
         // 1 carte d'écart visuel = ~22 % de la largeur d'une carte.
         // Sensibilité du drag : 1 unité de `_current` = `cardSpacing` pixels.
         final cardSpacing = cardW * 0.22;
@@ -1678,11 +1688,15 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
           onHorizontalDragEnd: _onDragEnd,
           onHorizontalDragCancel: _onDragCancel,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 18),
+            padding: const EdgeInsets.fromLTRB(8, 2, 8, 14),
             child: SizedBox(
               height: containerH,
+              // §heroLift — Cartes alignées EN HAUT (au lieu de centrées) : la
+              // carte active touche le haut du conteneur, la marge basse (52 px)
+              // accueille l'inclinaison des cartes + les dots. Supprime le ~11 %
+              // de vide qui existait au-dessus du carrousel.
               child: Stack(
-                alignment: Alignment.center,
+                alignment: Alignment.topCenter,
                 clipBehavior: Clip.none,
                 children: [
                   for (final c in cards)
@@ -2636,9 +2650,9 @@ class _HomeCardState extends State<_HomeCard> {
                         for (final v in widget.versions) {
                           await WatchProgressService.clearProgress(v.url);
                         }
-                        messenger.showSnackBar(SnackBar(
+                        AppSnackBar.showVia(messenger, SnackBar(
                           content: const Text('Reprise oubliée'),
-                          duration: const Duration(seconds: 4),
+                          duration: const Duration(seconds: 5),
                           action: SnackBarAction(
                             label: 'Annuler',
                             onPressed: () {

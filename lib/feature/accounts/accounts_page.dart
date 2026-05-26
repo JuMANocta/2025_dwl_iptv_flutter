@@ -216,7 +216,7 @@ class _AccountsPageState extends State<AccountsPage> {
         await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
       } catch (e) {
         if (!mounted) return;
-        messenger.showSnackBar(
+        messenger..hideCurrentSnackBar()..showSnackBar(
           SnackBar(content: Text('Échec : $e')),
         );
         return;
@@ -229,7 +229,7 @@ class _AccountsPageState extends State<AccountsPage> {
       ParsedPlaylistService.invalidate(acc.id);
     }
     if (!mounted) return;
-    messenger.showSnackBar(
+    messenger..hideCurrentSnackBar()..showSnackBar(
       SnackBar(content: Text('✅ Cache vidé pour ${acc.label}')),
     );
   }
@@ -609,7 +609,7 @@ class _AccountCardState extends State<_AccountCard> {
         newPath,
       );
       if (!mounted) return;
-      messenger.showSnackBar(
+      messenger..hideCurrentSnackBar()..showSnackBar(
         SnackBar(
           content: Text('✅ Playlist rechargée pour ${widget.account.label}'),
           backgroundColor: kAccentPrimary.withAlpha(180),
@@ -618,7 +618,7 @@ class _AccountCardState extends State<_AccountCard> {
       widget.onReloaded();
     } catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text('❌ Échec : $e')));
+      messenger..hideCurrentSnackBar()..showSnackBar(SnackBar(content: Text('❌ Échec : $e')));
     } finally {
       if (mounted) setState(() => _reloading = false);
     }

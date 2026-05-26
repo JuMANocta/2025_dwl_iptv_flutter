@@ -8,6 +8,7 @@ import '../../data/services/tmdb_api_service.dart';
 import '../settings/tmdb_key_page.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/services/watch_progress_service.dart';
+import '../../core/utils/app_snackbar.dart';
 import '../../data/models/media_model.dart';
 import '../player/player_page.dart';
 import '../downloads/logic/download_initiator.dart';
@@ -282,7 +283,7 @@ class _DetailsPageState extends State<DetailsPage> {
       Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: personId)));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)..hideCurrentSnackBar()..showSnackBar(
         SnackBar(content: Text("TMDB n'a pas trouvé de fiche pour $actorName.")),
       );
     }
@@ -583,9 +584,9 @@ class _DetailsPageState extends State<DetailsPage> {
                             ?.copyWith(color: cs.onSurfaceVariant)),
                     Divider(color: cs.outlineVariant),
                     SizedBox(
-                      // §castPhotos — hauteur = photo 104 + nom (2 lignes) + rôle
-                      // + marge pour une légère mise à l'échelle police système.
-                      height: 184,
+                      // §castPhotos — hauteur = photo portrait 2:3 (92×138) + nom
+                      // (2 lignes) + rôle + marge pour le textScaler TV ×1.3.
+                      height: 218,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1013,67 +1014,80 @@ class _DetailsPageState extends State<DetailsPage> {
         final progress = WatchProgressService.getProgress(_selectedEntry.url);
         final hasResume = progress != null && progress.position.inSeconds > 5;
 
-        // §detailsActions — boutons pleine largeur, chacun sur sa ligne (plus
-        // ergonomique que deux boutons serrés côte à côte). Lire/Reprendre en
-        // tête, puis Télécharger + le cœur favori (icône) sur la 2e ligne.
+        // §detailsActions — Deux lignes au même gabarit 75/25 : action principale
+        // (75 %) + action secondaire (25 %, même taille de chaque côté).
+        //   Ligne 1 : Lire/Reprendre + Oublier la reprise (si reprise).
+        //   Ligne 2 : Télécharger + Favori.
+        // Boutons pleins avec bordure fine + glow coloré (cf. _glowButton).
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Bouton principal : Lire / Reprendre depuis X:XX ─────────────
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16)),
-              onPressed: () =>
-                  _launchSelected(from: hasResume ? progress.position : null),
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: Text(
-                hasResume
-                    ? 'REPRENDRE · ${_formatResumeShort(progress.position)}'
-                    : l10n.actionSheetPlay.toUpperCase(),
-                style: const TextStyle(fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(height: 10),
-            // ── Télécharger (pleine largeur) + Favori (icône) ───────────────
+            // ── Ligne 1 : Lire / Reprendre (75 %) + Oublier (25 %) ──────────
             Row(
               children: [
                 Expanded(
-                  // §detailsActions — bouton PLEIN (cohérence : tous les boutons
-                  // d'action sont pleins, plus de mélange plein/contour). Cyan
-                  // plein + texte noir pour se distinguer du vert "Lire".
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: kAccentSecondary,
-                      foregroundColor: Colors.black,
-                    ),
-                    onPressed: () => verifierEtTelecharger(
-                        url: _selectedEntry.url,
-                        nom: _selectedEntry.displayName,
-                        context: context),
-                    icon: const Icon(Icons.download_rounded),
-                    label: Text(
-                      l10n.download.toUpperCase(),
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                  flex: 3,
+                  child: _glowButton(
+                    color: kAccentPrimary,
+                    onPressed: () => _launchSelected(
+                        from: hasResume ? progress.position : null),
+                    child: _btnContent(
+                      Icons.play_arrow_rounded,
+                      hasResume
+                          ? 'REPRENDRE · ${_formatResumeShort(progress.position)}'
+                          : l10n.actionSheetPlay.toUpperCase(),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                _FavoriteIconButton(
-                  isFav: isFav,
-                  onTap: () async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    final added = await FavoritesService.toggle(favKey);
-                    if (!context.mounted) return;
-                    messenger.showSnackBar(SnackBar(
-                      content: Text(added
-                          ? '⭐ "${_selectedEntry.displayName}" ajouté aux favoris'
-                          : '🗑️ "${_selectedEntry.displayName}" retiré des favoris'),
-                      duration: const Duration(seconds: 2),
-                    ));
-                  },
+                // Slot droit TOUJOURS présent (gabarit 75/25 constant, aligné
+                // avec la ligne Télécharger/Favori). Actif = Oublier la reprise ;
+                // sans reprise = placeholder désactivé "vide" (comme un favori
+                // inactif) → évite que "Lire" s'étire à 100 %.
+                Expanded(
+                  flex: 1,
+                  child: _glowButton(
+                    color: kWarning,
+                    onPressed: hasResume ? () => _forgetResume(progress) : null,
+                    child: const Icon(Icons.history_toggle_off),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            // ── Ligne 2 : Télécharger (75 %) + Favori (25 %) ────────────────
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: _glowButton(
+                    color: kAccentSecondary,
+                    onPressed: () => verifierEtTelecharger(
+                        url: _selectedEntry.url,
+                        nom: _selectedEntry.displayName,
+                        context: context),
+                    child: _btnContent(
+                        Icons.download_rounded, l10n.download.toUpperCase()),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 1,
+                  child: _glowButton(
+                    color: kFavorite,
+                    active: isFav,
+                    onPressed: () async {
+                      final added = await FavoritesService.toggle(favKey);
+                      if (!mounted) return;
+                      AppSnackBar.show(
+                        context,
+                        added
+                            ? '⭐ "${_selectedEntry.displayName}" ajouté aux favoris'
+                            : '🗑️ "${_selectedEntry.displayName}" retiré des favoris',
+                      );
+                    },
+                    child: Icon(isFav ? Icons.favorite : Icons.favorite_border),
+                  ),
                 ),
               ],
             ),
@@ -1083,18 +1097,102 @@ class _DetailsPageState extends State<DetailsPage> {
     );
   }
 
-  Widget _buildTrailerButton() {
-    // §detailsActions — bouton PLEIN rouge (cohérence : tous les boutons pleins).
-    return FilledButton.icon(
-      style: FilledButton.styleFrom(
-        backgroundColor: Colors.red,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 14),
+  /// §detailsActions — Bouton d'action style **contour néon** : bordure ET texte
+  /// à la couleur du thème [color], fond quasi transparent (léger voile teinté),
+  /// + glow coloré. [active] `false` ou `onPressed == null` → bouton **grisé**
+  /// (bord + texte éteints, pas de glow) tout en gardant le gabarit. Sert aussi
+  /// d'indicateur d'état (ex. favori allumé/éteint).
+  Widget _glowButton({
+    required Color color,
+    required VoidCallback? onPressed,
+    required Widget child,
+    bool active = true,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lit = active && onPressed != null;
+    // Éteint : gris discret adapté au mode (nuit/jour).
+    final dimmed = isDark ? Colors.white38 : Colors.black38;
+    final fg = lit ? color : dimmed; // bordure + texte + icône
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: lit
+            ? [
+                BoxShadow(
+                  color: color.withAlpha(70),
+                  blurRadius: 14,
+                  spreadRadius: -2,
+                ),
+              ]
+            : null,
       ),
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          foregroundColor: fg,
+          disabledForegroundColor: dimmed,
+          // Léger voile teinté quand allumé pour un peu de corps, sinon transparent.
+          backgroundColor:
+              lit ? color.withAlpha(isDark ? 26 : 16) : Colors.transparent,
+          side: BorderSide(color: fg, width: 1.6),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        onPressed: onPressed,
+        child: child,
+      ),
+    );
+  }
+
+  /// Contenu icône + libellé centré pour un [_glowButton] (le texte s'ellipse).
+  Widget _btnContent(IconData icon, String label) => Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      );
+
+  /// §forgetResume — Efface la reprise du film en cours + snackbar UNDO 4 s
+  /// (restauration via `saveProgress` du snapshot). Comportement identique à
+  /// l'action sheet / long-press home.
+  Future<void> _forgetResume(WatchProgress snapshot) async {
+    await WatchProgressService.clearProgress(_selectedEntry.url);
+    if (!mounted) return;
+    AppSnackBar.showCustom(
+      context,
+      SnackBar(
+        content: const Text('Reprise oubliée'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Annuler',
+          onPressed: () {
+            WatchProgressService.saveProgress(
+              _selectedEntry.url,
+              snapshot.position,
+              snapshot.duration,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrailerButton() {
+    // §detailsActions — Aligné sur le style des autres boutons (_glowButton :
+    // plein + bordure + glow). Couleur du thème (tertiaire) au lieu du rouge
+    // hors-thème, pour rester cohérent (vert=Lire, cyan=Télécharger, magenta=BA).
+    return _glowButton(
+      color: kAccentTertiary,
       onPressed: _launchTrailer,
-      icon: const Icon(Icons.play_circle_outline),
-      label: const Text('Bande-Annonce',
-          style: TextStyle(fontWeight: FontWeight.bold)),
+      child: _btnContent(Icons.play_circle_outline, 'BANDE-ANNONCE'),
     );
   }
 
@@ -1190,44 +1288,6 @@ class _DetailsPageState extends State<DetailsPage> {
   }
 }
 
-// ─── §1f-A : bouton favori compact (icon-only) ───────────────────────────────
-
-class _FavoriteIconButton extends StatelessWidget {
-  final bool isFav;
-  final VoidCallback onTap;
-  const _FavoriteIconButton({required this.isFav, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 52,
-      height: 52,
-      child: Material(
-        color: isFav
-            ? kAccentTertiary.withAlpha(35)
-            : cs.surfaceContainerHighest,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(
-            color: isFav ? kAccentTertiary : cs.outline.withAlpha(80),
-            width: isFav ? 1.5 : 1,
-          ),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Icon(
-            isFav ? Icons.favorite : Icons.favorite_border,
-            color: isFav ? kAccentTertiary : cs.onSurfaceVariant,
-            size: 22,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// §castPhotos — Vignette d'acteur (photo + nom + rôle) du carrousel casting de
 /// la fiche détail. Tap → [ActorDetailsPage] (id direct, sans recherche par nom).
 /// Mobile + TV (focus glow via [FocusableCard], sans scale pour ne pas déborder
@@ -1241,9 +1301,11 @@ class _CastCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final photoUrl = TmdbService.getPosterUrl(member.profilePath, size: 'w185');
 
+    // §castPhotos — portrait 2:3 (92×138) : les photos TMDB sont des portraits ;
+    // un cadre quasi carré + BoxFit.cover recadrait sur la bouche.
     Widget placeholder() => Container(
           width: 92,
-          height: 104,
+          height: 138,
           color: cs.surfaceContainerHighest,
           child: Icon(Icons.person, color: cs.onSurfaceVariant, size: 36),
         );
@@ -1265,8 +1327,11 @@ class _CastCard extends StatelessWidget {
                   ? Image.network(
                       photoUrl,
                       width: 92,
-                      height: 104,
+                      height: 138,
                       fit: BoxFit.cover,
+                      // Cadre sur le haut → garde le visage (yeux) plutôt que de
+                      // recentrer sur le bas (bouche/menton).
+                      alignment: Alignment.topCenter,
                       errorBuilder: (_, __, ___) => placeholder(),
                     )
                   : placeholder(),

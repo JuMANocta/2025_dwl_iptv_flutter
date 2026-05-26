@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
@@ -458,7 +459,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                           )),
                         );
                       } else {
-                        ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+                        ScaffoldMessenger.of(navigatorKey.currentContext!)..hideCurrentSnackBar()..showSnackBar(
                           const SnackBar(content: Text("Replay indisponible pour ce flux")),
                         );
                       }
@@ -573,9 +574,9 @@ class _PlayResumeTiles extends StatelessWidget {
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(context);
                 await WatchProgressService.clearProgress(entry.url);
-                messenger.showSnackBar(SnackBar(
+                AppSnackBar.showVia(messenger, SnackBar(
                   content: const Text('Reprise oubliée'),
-                  duration: const Duration(seconds: 4),
+                  duration: const Duration(seconds: 5),
                   action: SnackBarAction(
                     label: 'Annuler',
                     onPressed: () {
@@ -623,7 +624,7 @@ class _FavoriteToggleTile extends StatelessWidget {
             final messenger = ScaffoldMessenger.of(context);
             final added = await FavoritesService.toggle(favKey);
             if (!context.mounted) return;
-            messenger.showSnackBar(SnackBar(
+            messenger..hideCurrentSnackBar()..showSnackBar(SnackBar(
               content: Text(added
                   ? '⭐ "${entry.displayName}" ajouté aux favoris'
                   : '🗑️ "${entry.displayName}" retiré des favoris'),

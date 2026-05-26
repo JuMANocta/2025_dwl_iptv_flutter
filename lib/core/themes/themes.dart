@@ -3,6 +3,30 @@ import 'colors.dart';
 import 'app_theme_config.dart';
 import 'aether_theme_extension.dart';
 
+/// §snackTheme — Thème global des SnackBars (toasts).
+///
+/// Avant, les SnackBars utilisaient le rendu Material par défaut (bandeau
+/// quasi blanc en thème clair, gris foncé en sombre) → hors identité visuelle.
+/// On force ici un rendu **cohérent avec le thème cyberpunk** dans les deux
+/// modes : surface sombre, bordure + action à la couleur principale, flottant
+/// et arrondi. Appliqué à TOUTES les SnackBars de l'app sans toucher aux
+/// appels individuels.
+SnackBarThemeData _snackBarTheme(AppThemeConfig config) => SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: kContainerDark,
+      contentTextStyle: const TextStyle(
+        color: kTextDarkPrimary,
+        fontWeight: FontWeight.w500,
+      ),
+      actionTextColor: config.primaryColor,
+      elevation: 6,
+      insetPadding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(config.borderRadius + 4),
+        side: BorderSide(color: config.primaryColor.withAlpha(70)),
+      ),
+    );
+
 // Thème Clair AetherStream
 ThemeData lightTheme(AppThemeConfig config) {
   return ThemeData(
@@ -81,6 +105,7 @@ ThemeData lightTheme(AppThemeConfig config) {
       unselectedItemColor: kMediumGrey,
       selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
     ),
+    snackBarTheme: _snackBarTheme(config),
   );
 }
 
@@ -162,5 +187,6 @@ ThemeData darkTheme(AppThemeConfig config) {
       unselectedItemColor: kMediumGrey,
       selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
     ),
+    snackBarTheme: _snackBarTheme(config),
   );
 }
