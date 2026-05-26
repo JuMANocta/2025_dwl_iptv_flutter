@@ -3,6 +3,9 @@ import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
+import 'package:aetherStream/feature/settings/settings_apply_service.dart';
+import 'package:aetherStream/feature/pairing/pairing_page.dart';
+import 'package:aetherStream/data/services/pairing_service.dart';
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
 ///
@@ -43,6 +46,35 @@ class _MainNavigationState extends State<MainNavigation> {
     setState(() => _navIndex = i);
   }
 
+  /// §18 — Sur TV, le bouton « Paramètres » du rail ouvre la webapp Settings via
+  /// pairing QR (le mobile sert de télécommande de config) plutôt que le hub
+  /// Material natif, hostile à la télécommande (sliders, color picker). Un
+  /// fallback « Modifier sur la TV » réouvre le hub natif en mode dégradé.
+  Future<void> _openSettingsTv() async {
+    final result = await Navigator.of(context).push<PairingResult>(
+      MaterialPageRoute(
+        builder: (_) => PairingPage(
+          kind: PairingKind.settings,
+          onManualFallback: () {
+            // Ferme la page pairing puis ouvre le hub Settings natif.
+            Navigator.of(context).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            );
+          },
+        ),
+      ),
+    );
+    if (result is PairingSettingsResult) {
+      final changed = await SettingsApplyService.apply(result.patch);
+      if (changed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Paramètres appliqués depuis le mobile.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isTv = PlatformTv.isTv;
@@ -67,9 +99,7 @@ class _MainNavigationState extends State<MainNavigation> {
             _TvNavigationRail(
               selectedIndex: _navIndex,
               onDestinationSelected: _onTap,
-              onOpenSettings: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsPage()),
-              ),
+              onOpenSettings: _openSettingsTv,
             ),
             Expanded(child: stack),
           ],

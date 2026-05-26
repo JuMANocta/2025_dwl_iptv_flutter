@@ -541,6 +541,322 @@ String buildTmdbForm({required AppThemeConfig theme, required String token}) {
 ''';
 }
 
+/// §18 — String d'un [ThemeMode] pour le wire JSON ('system' / 'light' / 'dark').
+String _modeStr(ThemeMode m) => switch (m) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    };
+
+/// §18 — Webapp Settings complète servie au mobile (thème + TMDB + EPG).
+///
+/// Élimine les focus-traps TV : color picker (`input type=color` natif OS),
+/// sliders (`input type=range`), TextField clé TMDB. Sections repliables via
+/// `<details>` natif. Mini-preview live du thème rendue en CSS.
+///
+/// [tmdbConfigured] : si `true`, le champ TMDB est laissé vide (placeholder
+/// "déjà configurée") — l'envoyer vide = inchangé ; cocher "supprimer" = effacer.
+String buildSettingsForm({
+  required AppThemeConfig theme,
+  required String token,
+  required bool tmdbConfigured,
+}) {
+  final presetsJs = AppThemeConfig.presets.map((p) {
+    final c = p.config;
+    return "'${p.name}':{primary:'${_hex(c.primaryColor)}',accent:'${_hex(c.accentColor)}',"
+        "tertiary:'${_hex(c.tertiaryColor)}',glow:${c.glowIntensity},"
+        "radius:${c.borderRadius},mode:'${_modeStr(c.themeMode)}'}";
+  }).join(',');
+
+  final presetOptions = AppThemeConfig.presets
+      .map((p) => '<option value="${p.name}">${p.name}</option>')
+      .join();
+
+  final curPrimary = _hex(theme.primaryColor);
+  final curAccent = _hex(theme.accentColor);
+  final curTertiary = _hex(theme.tertiaryColor);
+  final curGlow = theme.glowIntensity;
+  final curRadius = theme.borderRadius;
+  final curMode = _modeStr(theme.themeMode);
+
+  return '''
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>AetherStream · Paramètres</title>
+  $_googleFontsLink
+  <style>
+    ${_commonCss(theme)}
+
+    details {
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    details[open] { box-shadow: var(--glow); }
+    summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 16px 18px;
+      font-size: 13px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "▾"; color: var(--text-dim); transition: transform .2s; }
+    details[open] summary::after { transform: rotate(180deg); }
+    .section-body { padding: 4px 18px 20px; }
+
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .row label { margin: 0; flex: 0 0 auto; }
+
+    input[type=color] {
+      -webkit-appearance: none; appearance: none;
+      width: 52px; height: 34px;
+      background: none; border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px; cursor: pointer; padding: 2px;
+    }
+    input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type=color]::-webkit-color-swatch { border: none; border-radius: 6px; }
+
+    input[type=range] {
+      -webkit-appearance: none; appearance: none;
+      width: 60%; height: 4px; border-radius: 4px;
+      background: var(--surface-2); outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--primary); box-shadow: var(--glow); cursor: pointer;
+    }
+
+    select {
+      width: 100%; background: var(--surface-2);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: calc(var(--radius) - 2px);
+      padding: 12px 14px; color: var(--text);
+      font-family: inherit; font-size: 14px;
+    }
+
+    .preview {
+      margin: 4px 0 16px; padding: 16px;
+      border-radius: var(--pv-radius, 8px);
+      background: var(--surface-2);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .preview .pv-title {
+      font-family: 'VT323', monospace; font-size: 26px; letter-spacing: 2px;
+      color: var(--pv-primary, var(--primary));
+      text-shadow: 0 0 var(--pv-glow, 10px) var(--pv-primary, var(--primary));
+      margin: 0 0 10px;
+    }
+    .pv-chips { display: flex; gap: 8px; }
+    .pv-chip {
+      flex: 1; height: 30px; border-radius: var(--pv-radius, 8px);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; color: #000;
+    }
+
+    .check-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+    .check-row input { width: 18px; height: 18px; accent-color: var(--primary); }
+    .check-row label { margin: 0; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">AETHERSTREAM</div>
+      <div class="subtitle">Paramètres</div>
+    </div>
+
+    <div class="error-box" id="errBox"></div>
+
+    <!-- ── THÈME ─────────────────────────────────────────────── -->
+    <details open>
+      <summary>Thème</summary>
+      <div class="section-body">
+        <div class="preview" id="preview">
+          <div class="pv-title">AETHERSTREAM</div>
+          <div class="pv-chips">
+            <div class="pv-chip" id="pvC1">PRINCIPALE</div>
+            <div class="pv-chip" id="pvC2">ACCENT</div>
+            <div class="pv-chip" id="pvC3">TERTIAIRE</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="preset">Preset</label>
+          <select id="preset" onchange="applyPreset()">
+            <option value="">— Personnalisé —</option>
+            $presetOptions
+          </select>
+        </div>
+
+        <div class="row"><label>Couleur principale</label><input type="color" id="primary" value="$curPrimary" oninput="onThemeInput()"></div>
+        <div class="row"><label>Couleur accent</label><input type="color" id="accent" value="$curAccent" oninput="onThemeInput()"></div>
+        <div class="row"><label>Couleur tertiaire</label><input type="color" id="tertiary" value="$curTertiary" oninput="onThemeInput()"></div>
+        <div class="row"><label>Intensité glow</label><input type="range" id="glow" min="0" max="1" step="0.05" value="$curGlow" oninput="onThemeInput()"></div>
+        <div class="row"><label>Arrondi des coins</label><input type="range" id="radius" min="0" max="16" step="1" value="$curRadius" oninput="onThemeInput()"></div>
+
+        <div class="field">
+          <label for="mode">Mode d'affichage</label>
+          <select id="mode">
+            <option value="system">Système</option>
+            <option value="dark">Sombre</option>
+            <option value="light">Clair</option>
+          </select>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── TMDB ──────────────────────────────────────────────── -->
+    <details>
+      <summary>Clé TMDB</summary>
+      <div class="section-body">
+        <div class="field">
+          <label for="tmdb">Bearer Token v4</label>
+          <textarea id="tmdb" autocomplete="off" placeholder="${tmdbConfigured ? 'Déjà configurée — laisse vide pour ne pas changer' : 'eyJhbGciOiJIUzI1NiJ9…'}"></textarea>
+          <div class="hint">
+            Récupère ton token sur
+            <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color: var(--accent);">themoviedb.org/settings/api</a>
+            (Read Access Token v4).
+          </div>
+        </div>
+        ${tmdbConfigured ? '''<div class="check-row">
+          <input type="checkbox" id="tmdbClear">
+          <label for="tmdbClear">Supprimer la clé TMDB existante</label>
+        </div>''' : ''}
+      </div>
+    </details>
+
+    <!-- ── EPG XMLTV ─────────────────────────────────────────── -->
+    <details>
+      <summary>Guide des chaînes (EPG)</summary>
+      <div class="section-body">
+        <div class="check-row">
+          <input type="checkbox" id="refreshXmltv">
+          <label for="refreshXmltv">Rafraîchir le guide TNT France maintenant</label>
+        </div>
+      </div>
+    </details>
+
+    <button type="button" class="submit" id="submitBtn" onclick="submitForm()">Appliquer sur la TV</button>
+
+    <p class="footer-note">
+      Cette page est servie par ta TV.<br>
+      Tes réglages restent sur ton réseau local.
+    </p>
+  </div>
+
+  <script>
+    const PRESETS = {$presetsJs};
+
+    // Préselectionne le mode courant.
+    document.getElementById('mode').value = '$curMode';
+
+    function applyPreset() {
+      const name = document.getElementById('preset').value;
+      const p = PRESETS[name];
+      if (!p) return;
+      document.getElementById('primary').value = p.primary;
+      document.getElementById('accent').value = p.accent;
+      document.getElementById('tertiary').value = p.tertiary;
+      document.getElementById('glow').value = p.glow;
+      document.getElementById('radius').value = p.radius;
+      document.getElementById('mode').value = p.mode;
+      onThemeInput();
+    }
+
+    function onThemeInput() {
+      const primary = document.getElementById('primary').value;
+      const accent = document.getElementById('accent').value;
+      const tertiary = document.getElementById('tertiary').value;
+      const glow = parseFloat(document.getElementById('glow').value);
+      const radius = parseFloat(document.getElementById('radius').value);
+      const pv = document.getElementById('preview');
+      pv.style.setProperty('--pv-primary', primary);
+      pv.style.setProperty('--pv-radius', radius + 'px');
+      pv.style.setProperty('--pv-glow', Math.round(glow * 20) + 'px');
+      document.getElementById('pvC1').style.background = primary;
+      document.getElementById('pvC2').style.background = accent;
+      document.getElementById('pvC3').style.background = tertiary;
+      // Dès qu'on touche un réglage manuel, on repasse en "Personnalisé".
+      // (sauf si l'appel vient de applyPreset, qui resélectionne ensuite)
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('errBox');
+      box.textContent = msg;
+      box.classList.add('show');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function hideError() { document.getElementById('errBox').classList.remove('show'); }
+
+    async function submitForm() {
+      hideError();
+      const btn = document.getElementById('submitBtn');
+      const payload = {
+        theme: {
+          primary: document.getElementById('primary').value,
+          accent: document.getElementById('accent').value,
+          tertiary: document.getElementById('tertiary').value,
+          glow: parseFloat(document.getElementById('glow').value),
+          radius: parseFloat(document.getElementById('radius').value),
+          mode: document.getElementById('mode').value,
+        },
+        refreshXmltv: document.getElementById('refreshXmltv').checked,
+      };
+
+      const tmdbVal = (document.getElementById('tmdb').value || '').trim();
+      const clearEl = document.getElementById('tmdbClear');
+      if (clearEl && clearEl.checked) {
+        payload.tmdb = '';
+      } else if (tmdbVal) {
+        if (tmdbVal.length < 20) return showError('Clé TMDB trop courte — vérifie le copier-coller.');
+        payload.tmdb = tmdbVal;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Envoi en cours…';
+      try {
+        const res = await fetch('/submit?t=$token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          document.documentElement.innerHTML = await res.text();
+        } else {
+          const j = await res.json().catch(() => ({ error: 'Erreur serveur.' }));
+          showError(j.error || 'Erreur serveur.');
+          btn.disabled = false;
+          btn.textContent = 'Appliquer sur la TV';
+        }
+      } catch (e) {
+        showError('Connexion perdue avec la TV.');
+        btn.disabled = false;
+        btn.textContent = 'Appliquer sur la TV';
+      }
+    }
+
+    // Init preview.
+    onThemeInput();
+  </script>
+</body>
+</html>
+''';
+}
+
 /// Page de confirmation affichée sur le mobile après submit OK.
 String buildSuccessPage({required AppThemeConfig theme}) {
   return '''
