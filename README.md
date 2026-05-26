@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.15+63-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.8.16+64-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -241,7 +241,8 @@ lib/
 - [x] **Filmographie acteur DISPO** — badge sur les films présents dans la playlist + navigation `DetailsPage`
 - [x] **Android TV / Fire Stick** (v1.6.0+) — Détection plateforme native, NavigationRail latéral, focus visible Matrix glow sur toutes les cards, action sheets en Dialog focusable, player entièrement contrôlable à la télécommande (OK / ← → / ↑ ↓ / MediaPlayPause / Menu), textScaler ×1.3 pour lisibilité 3 m+
 - [x] **Pairing QR mobile→TV** (v1.7.0) — Pour ajouter une playlist ou coller le Bearer Token TMDB sur Android TV, scanner le QR avec son téléphone : la TV ouvre un mini-serveur HTTP local, le mobile remplit le formulaire au clavier confortable, le résultat arrive sur la TV. Page web thémée selon le preset (Matrix, Blade Runner, Tron…). Aucune saisie texte au D-pad nécessaire
-- [x] **Paramètres TV via mobile** (§18 Phase A) — Sur Android TV, le bouton « Paramètres » du rail ouvre un QR : le mobile sert de **télécommande de configuration** pour le **thème** (preset + sélecteurs de couleur natifs + sliders glow/arrondi + mode), la **clé TMDB** et le **rafraîchissement du guide EPG**. Élimine les contrôles hostiles à la télécommande (sliders, color picker). Fallback « Modifier sur la TV » pour le hub natif
+- [x] **Paramètres TV via mobile** (§18 Phase A) — Sur Android TV, le hub Paramètres propose **en premier** « Configurer depuis le téléphone » : un QR ouvre une webapp où le mobile sert de **télécommande de configuration** pour le **thème** (preset + sélecteurs de couleur natifs + sliders glow/arrondi + mode), la **clé TMDB** et le **rafraîchissement du guide EPG**. Lancé à la demande uniquement ; le reste des paramètres reste pilotable à la télécommande
+- [x] **Navigation TV affinée** — Déplacement ↑/↓ « façon Netflix » (change de rangée et se cale à gauche, ne saute plus les rangées courtes comme les favoris), filmographie acteur parcourable ligne par ligne, et **double-appui sur Retour** pour quitter depuis l'accueil (évite les sorties accidentelles à la télécommande)
 - [x] **Console web** (v1.8.8) — Settings → Console web affiche un QR + une URL : depuis un PC/téléphone du même réseau, gérer les **comptes IPTV** (CRUD + recharger), la **clé TMDB**, le **guide XMLTV**, le **thème**, et **importer/exporter une sauvegarde `.aether`** (mot de passe dans le navigateur). Bonus **télécommande** : pavé directionnel + transport player pour piloter la TV depuis le téléphone. Serveur LAN-only sécurisé par token, actif uniquement pendant l'écran Console
 - [x] **Page d'accueil streaming-style** — carousels par catégorie + recherche in-place + navigation bottom bar
 - [x] **Favoris** — films, séries et chaînes (auto-ajout au play, long-press menu contextuel)
