@@ -10,9 +10,8 @@ import '../../../core/utils/platform_tv.dart';
 class _TogglePlayPauseIntent extends Intent { const _TogglePlayPauseIntent(); }
 class _SeekForwardIntent     extends Intent { const _SeekForwardIntent();     }
 class _SeekBackwardIntent    extends Intent { const _SeekBackwardIntent();    }
-class _VolumeUpIntent        extends Intent { const _VolumeUpIntent();        }
-class _VolumeDownIntent      extends Intent { const _VolumeDownIntent();      }
 class _ToggleControlsIntent  extends Intent { const _ToggleControlsIntent();  }
+class _ShowControlsIntent    extends Intent { const _ShowControlsIntent();    }
 class _ExitPlayerIntent      extends Intent { const _ExitPlayerIntent();      }
 
 /// Callbacks fournis par [PlayerPage] pour réaliser les actions.
@@ -24,6 +23,9 @@ class PlayerActionHandlers {
   final void Function(double delta) changeVolume;
   /// Bascule la visibilité des contrôles overlay.
   final VoidCallback toggleControls;
+  /// Affiche (sans masquer) les contrôles/options du lecteur.
+  /// Sur TV, ↑/↓ révèlent les options plutôt que de modifier le volume.
+  final VoidCallback showControls;
   /// Quitte le player (typiquement `Navigator.pop`).
   final VoidCallback exitPlayer;
 
@@ -32,6 +34,7 @@ class PlayerActionHandlers {
     required this.seek,
     required this.changeVolume,
     required this.toggleControls,
+    required this.showControls,
     required this.exitPlayer,
   });
 }
@@ -47,8 +50,7 @@ class PlayerActionHandlers {
 /// | MediaPlayPause / MediaPlay / MediaPause      | Play / Pause          |
 /// | ←  (arrowLeft) / MediaRewind                 | Recul −10 s           |
 /// | →  (arrowRight) / MediaFastForward / MediaTrackNext / MediaTrackPrevious | Avance +10 s |
-/// | ↑  (arrowUp)                                 | Volume +              |
-/// | ↓  (arrowDown)                               | Volume −              |
+/// | ↑  (arrowUp) / ↓ (arrowDown)                 | Afficher les options  |
 /// | Menu / Info / ContextMenu                    | Toggle overlay        |
 /// | Escape / Back / GameButtonB                  | Quitter le player     |
 class TvPlayerShortcuts extends StatelessWidget {
@@ -84,9 +86,10 @@ class TvPlayerShortcuts extends StatelessWidget {
     const SingleActivator(LogicalKeyboardKey.mediaTrackPrevious):const _SeekBackwardIntent(),
     const SingleActivator(LogicalKeyboardKey.mediaTrackNext):    const _SeekForwardIntent(),
 
-    // Volume
-    const SingleActivator(LogicalKeyboardKey.arrowUp):    const _VolumeUpIntent(),
-    const SingleActivator(LogicalKeyboardKey.arrowDown):  const _VolumeDownIntent(),
+    // Haut / Bas → révèle les options du lecteur (le volume reste géré par
+    // les touches volume natives du téléviseur / de la télécommande).
+    const SingleActivator(LogicalKeyboardKey.arrowUp):    const _ShowControlsIntent(),
+    const SingleActivator(LogicalKeyboardKey.arrowDown):  const _ShowControlsIntent(),
 
     // Overlay toggle
     const SingleActivator(LogicalKeyboardKey.contextMenu):   const _ToggleControlsIntent(),
@@ -128,15 +131,9 @@ class TvPlayerShortcuts extends StatelessWidget {
               return null;
             },
           ),
-          _VolumeUpIntent: CallbackAction<_VolumeUpIntent>(
+          _ShowControlsIntent: CallbackAction<_ShowControlsIntent>(
             onInvoke: (_) {
-              handlers.changeVolume(volumeStep);
-              return null;
-            },
-          ),
-          _VolumeDownIntent: CallbackAction<_VolumeDownIntent>(
-            onInvoke: (_) {
-              handlers.changeVolume(-volumeStep);
+              handlers.showControls();
               return null;
             },
           ),

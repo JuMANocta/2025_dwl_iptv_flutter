@@ -17,9 +17,11 @@ import '../../core/utils/platform_tv.dart';
 /// évite que mpv mette en pause sur de petits creux de buffer, ce qui
 /// désynchronise les dialogues sur les flux HLS un peu instables.
 class AetherPlayerController {
-  /// Volume initial poussé à 130% pour compenser les flux IPTV faiblement encodés.
+  /// Volume initial poussé à 130% (mobile) pour compenser les flux IPTV
+  /// faiblement encodés. Sur Android TV / Fire TV, le boost natif des
+  /// téléviseurs est déjà important → on démarre à 125%.
   /// L'utilisateur peut monter jusqu'à 200% via le swipe vertical.
-  static const double initialVolume = 130.0;
+  static double get initialVolume => PlatformTv.isTv ? 125.0 : 130.0;
   static const double maxVolume = 200.0;
 
   late final Player player;

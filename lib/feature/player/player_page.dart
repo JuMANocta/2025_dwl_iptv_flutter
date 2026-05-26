@@ -155,6 +155,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       seek: _handleSeek,
       changeVolume: _handleVolumeChange,
       toggleControls: _toggleControls,
+      showControls: _showControls,
       exitPlayer: () { if (mounted) Navigator.of(context).maybePop(); },
     );
     RemoteControlService.instance.registerPlayer(_remoteHandlers);

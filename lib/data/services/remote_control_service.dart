@@ -82,10 +82,14 @@ class RemoteControlService {
         p.seek(const Duration(seconds: 10));
         break;
       case 'up':
+      case 'down':
+        // Haut / Bas → révèle les options du lecteur (cohérent avec la
+        // télécommande TV physique). Le volume reste sur volup/voldown.
+        p.showControls();
+        break;
       case 'volup':
         p.changeVolume(5);
         break;
-      case 'down':
       case 'voldown':
         p.changeVolume(-5);
         break;

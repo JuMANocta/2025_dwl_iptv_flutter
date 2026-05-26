@@ -27,6 +27,85 @@ import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 
+/// §tvRails — Politique de traversée focus "façon Netflix" pour la home TV.
+///
+/// Problème corrigé : la traversée directionnelle par défaut (géométrique)
+/// conserve la position horizontale en montant/descendant. Depuis le MILIEU
+/// d'un carrousel, ↓ atterrissait au milieu de la rangée suivante — et si cette
+/// rangée n'a qu'1-2 éléments (ex: ⭐ Favoris), aucun n'était sous le curseur →
+/// la rangée était carrément **sautée**.
+///
+/// Comportement voulu : ↑/↓ = changement de RANGÉE, et on se cale toujours sur
+/// l'élément le **plus à gauche** de la rangée cible (point d'entrée stable).
+/// ←/→ gardent le comportement géométrique par défaut (déplacement intra-rangée
+/// + sortie vers le NavigationRail à gauche).
+///
+/// Le NavigationRail (menu latéral) est exclu des candidats ↑/↓ : il s'étend sur
+/// toute la hauteur et serait sinon vu comme "l'élément le plus à gauche" de
+/// chaque bande.
+class _TvRailsTraversalPolicy extends ReadingOrderTraversalPolicy {
+  /// Tolérance verticale (px) pour considérer deux éléments comme sur la même
+  /// rangée (centres Y proches malgré le scale focus / paddings).
+  static const double _rowTolerance = 30.0;
+
+  bool _isInNavigationRail(FocusNode node) {
+    final ctx = node.context;
+    if (ctx == null) return false;
+    return ctx.findAncestorWidgetOfExactType<NavigationRail>() != null;
+  }
+
+  @override
+  bool inDirection(FocusNode currentNode, TraversalDirection direction) {
+    // ←/→ et navigation dans le rail : comportement par défaut.
+    if (direction == TraversalDirection.left ||
+        direction == TraversalDirection.right ||
+        _isInNavigationRail(currentNode)) {
+      return super.inDirection(currentNode, direction);
+    }
+
+    final scope = currentNode.nearestScope;
+    if (scope == null) return super.inDirection(currentNode, direction);
+
+    final candidates = scope.traversalDescendants
+        .where((n) =>
+            n.canRequestFocus &&
+            !n.skipTraversal &&
+            !_isInNavigationRail(n))
+        .toList();
+    if (candidates.isEmpty) return super.inDirection(currentNode, direction);
+
+    final curCenterY = currentNode.rect.center.dy;
+
+    // Cherche le centre Y de la rangée immédiatement au-dessus/en-dessous.
+    double? targetRowY;
+    for (final n in candidates) {
+      final cy = n.rect.center.dy;
+      if ((cy - curCenterY).abs() <= _rowTolerance) continue; // même rangée
+      if (direction == TraversalDirection.down && cy > curCenterY) {
+        if (targetRowY == null || cy < targetRowY) targetRowY = cy;
+      } else if (direction == TraversalDirection.up && cy < curCenterY) {
+        if (targetRowY == null || cy > targetRowY) targetRowY = cy;
+      }
+    }
+    if (targetRowY == null) {
+      // Pas de rangée dans cette direction → laisser le défaut (peut sortir du
+      // groupe, ex: remonter vers le hero/onglets).
+      return super.inDirection(currentNode, direction);
+    }
+
+    // Parmi la rangée cible, prendre l'élément le plus à gauche.
+    FocusNode? target;
+    for (final n in candidates) {
+      if ((n.rect.center.dy - targetRowY).abs() > _rowTolerance) continue;
+      if (target == null || n.rect.left < target.rect.left) target = n;
+    }
+    if (target == null) return super.inDirection(currentNode, direction);
+
+    requestFocusCallback(target);
+    return true;
+  }
+}
+
 /// Page d'accueil — design streaming premium (§1b phases 2 + 3, §navUX).
 ///
 /// Layout (§navUX — hero en TOP, tabs SOUS le hero) :
@@ -211,7 +290,11 @@ class _HomePageState extends State<HomePage> {
     if (!PlatformTv.isTv) return wrapped;
     return ExcludeFocus(
       excluding: _currentIndex != index,
-      child: FocusTraversalGroup(child: wrapped),
+      // §tvRails — ↑/↓ change de rangée et se cale à gauche (cf. politique).
+      child: FocusTraversalGroup(
+        policy: _TvRailsTraversalPolicy(),
+        child: wrapped,
+      ),
     );
   }
 
