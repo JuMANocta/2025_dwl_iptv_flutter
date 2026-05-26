@@ -8,6 +8,9 @@ import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
 import 'package:aetherStream/feature/settings/xmltv_page.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
+import 'package:aetherStream/feature/settings/settings_apply_service.dart';
+import 'package:aetherStream/feature/pairing/pairing_page.dart';
+import 'package:aetherStream/data/services/pairing_service.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
@@ -82,6 +85,29 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// §18 — Lance le pairing QR (webapp Settings sur le téléphone) à la demande.
+  /// Le serveur n'est démarré que si l'utilisateur choisit explicitement cette
+  /// entrée → pas de surcharge pour qui préfère la télécommande. `onManualFallback`
+  /// referme simplement la page (on reste dans le hub natif).
+  Future<void> _openPhoneConfig() async {
+    final result = await Navigator.of(context).push<PairingResult>(
+      MaterialPageRoute(
+        builder: (_) => PairingPage(
+          kind: PairingKind.settings,
+          onManualFallback: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+    if (result is PairingSettingsResult) {
+      final changed = await SettingsApplyService.apply(result.patch);
+      if (changed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Paramètres appliqués depuis le téléphone.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -112,6 +138,22 @@ class _SettingsPageState extends State<SettingsPage> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
+            // §18 — Sur TV, on propose EN PREMIER la config depuis le téléphone
+            // (pairing QR à la demande). Sélectionnable d'emblée pour qui veut le
+            // clavier confortable du mobile ; sinon on continue à la télécommande
+            // dans les sections natives ci-dessous (aucun serveur lancé tant que
+            // cette entrée n'est pas choisie).
+            if (PlatformTv.isTv) ...[
+              _SectionHeader(title: 'Configuration rapide'),
+              _SettingsTile(
+                icon: Icons.smartphone,
+                accentColor: kAccentPrimary,
+                title: 'Configurer depuis le téléphone',
+                subtitle: 'Scanner un QR : thème, clé TMDB & guide EPG au clavier',
+                onTap: _openPhoneConfig,
+              ),
+              const SizedBox(height: 8),
+            ],
             _SectionHeader(title: 'Configuration'),
             _SettingsTile(
               icon: Icons.account_circle_outlined,

@@ -2030,19 +2030,28 @@ class _CategoryRow extends StatelessWidget {
                   ),
                 ),
                 // Bouton "Voir tout" si plus de 25 items, sinon juste le compteur.
+                // §tvRails — Sur TV, ce bouton d'en-tête est RETIRÉ du focus :
+                // il formait une "rangée" intermédiaire focusable entre deux
+                // carrousels → la navigation ↑/↓ s'arrêtait dessus (on
+                // "sélectionnait le compteur"). La tuile "Voir tout" en fin de
+                // carrousel (`_SeeAllTile`, atteignable en allant à droite) offre
+                // déjà la même action → aucune perte de fonctionnalité.
                 if (hasMore)
-                  TextButton.icon(
-                    onPressed: () => _openCategoryListPage(context),
-                    icon: Text('$totalCount',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: kAccentPrimary)),
-                    label: Icon(Icons.chevron_right, size: 18, color: kAccentPrimary),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                      minimumSize: const Size(0, 28),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ExcludeFocus(
+                    excluding: PlatformTv.isTv,
+                    child: TextButton.icon(
+                      onPressed: () => _openCategoryListPage(context),
+                      icon: Text('$totalCount',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: kAccentPrimary)),
+                      label: Icon(Icons.chevron_right, size: 18, color: kAccentPrimary),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                        minimumSize: const Size(0, 28),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                     ),
                   )
                 else

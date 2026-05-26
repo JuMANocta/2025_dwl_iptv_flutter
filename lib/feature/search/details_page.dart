@@ -1272,22 +1272,32 @@ class _CastCard extends StatelessWidget {
                   : placeholder(),
             ),
             const SizedBox(height: 6),
-            Text(
-              member.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface),
-            ),
-            if (member.character != null && member.character!.isNotEmpty)
-              Text(
-                member.character!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+            // §tvRails — Le texte est mis en retrait (horizontal + bas) pour ne
+            // pas coller à la bordure/glow de focus de la FocusableCard.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    member.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface),
+                  ),
+                  if (member.character != null && member.character!.isNotEmpty)
+                    Text(
+                      member.character!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                    ),
+                ],
               ),
+            ),
           ],
         ),
       ),

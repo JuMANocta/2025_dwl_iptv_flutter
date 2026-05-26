@@ -6,6 +6,7 @@ import '../../data/services/tmdb_api_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/models/person_model.dart';
 import '../../data/models/m3u_entry.dart';
+import '../../widgets/tv/focusable_card.dart';
 import 'details_page.dart';
 
 class ActorDetailsPage extends StatefulWidget {
@@ -211,7 +212,7 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                           // Films ET séries : tappable → DetailsPage (si clé TMDB configurée)
                           final canNavigate = isAvailable && _hasTmdbKey;
 
-                          return ListTile(
+                          final tile = ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: Text(
                               credit.year?.toString() ?? 'N/A',
@@ -266,6 +267,30 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                                 ],
                               ],
                             ),
+                          );
+
+                          // §tvRails — Sur TV, chaque ligne de filmographie est
+                          // focusable (FocusableCard) pour une navigation D-pad
+                          // ligne par ligne. Avant, seules les lignes DISPO (avec
+                          // onTap) étaient focusables → le focus sautait par-dessus
+                          // tous les films non disponibles. Les lignes non-DISPO
+                          // restent focusables (lecture) mais sans action sur OK.
+                          if (!PlatformTv.isTv) return tile;
+                          return FocusableCard(
+                            scaleOnFocus: false,
+                            decorateOnly: true,
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: canNavigate
+                                ? () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => DetailsPage(
+                                          entry: matches.first,
+                                          versions: matches,
+                                        ),
+                                      ),
+                                    )
+                                : null,
+                            child: tile,
                           );
                         }),
                       ],

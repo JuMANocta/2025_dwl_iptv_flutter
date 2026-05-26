@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
-import 'package:aetherStream/feature/settings/settings_apply_service.dart';
-import 'package:aetherStream/feature/pairing/pairing_page.dart';
-import 'package:aetherStream/data/services/pairing_service.dart';
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
 ///
@@ -41,38 +39,22 @@ class _MainNavigationState extends State<MainNavigation> {
   bool get _searchMode => _navIndex == 1;
   int  get _stackIndex => _navIndex == 2 ? 1 : 0;
 
+  /// §backExit — Horodatage du dernier Back sur l'onglet Accueil (double-back).
+  DateTime? _lastBackPress;
+
   void _onTap(int i) {
     if (i == _navIndex) return;
     setState(() => _navIndex = i);
   }
 
-  /// §18 — Sur TV, le bouton « Paramètres » du rail ouvre la webapp Settings via
-  /// pairing QR (le mobile sert de télécommande de config) plutôt que le hub
-  /// Material natif, hostile à la télécommande (sliders, color picker). Un
-  /// fallback « Modifier sur la TV » réouvre le hub natif en mode dégradé.
+  /// Ouvre le hub Settings natif. §18 — Depuis que la navigation D-pad du hub
+  /// fonctionne, on n'auto-lance plus le serveur de pairing : le hub natif est
+  /// le chemin par défaut (zéro surcharge réseau) et propose en tout premier une
+  /// entrée « Configurer depuis le téléphone » (pairing QR à la demande).
   Future<void> _openSettingsTv() async {
-    final result = await Navigator.of(context).push<PairingResult>(
-      MaterialPageRoute(
-        builder: (_) => PairingPage(
-          kind: PairingKind.settings,
-          onManualFallback: () {
-            // Ferme la page pairing puis ouvre le hub Settings natif.
-            Navigator.of(context).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsPage()),
-            );
-          },
-        ),
-      ),
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SettingsPage()),
     );
-    if (result is PairingSettingsResult) {
-      final changed = await SettingsApplyService.apply(result.patch);
-      if (changed && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Paramètres appliqués depuis le mobile.')),
-        );
-      }
-    }
   }
 
   @override
@@ -133,16 +115,44 @@ class _MainNavigationState extends State<MainNavigation> {
     ));
   }
 
-  /// §bug Back TV — Intercepte le Back quand on n'est PAS sur l'onglet Accueil :
-  /// au lieu de quitter l'app (route racine, rien à dépiler), on ramène vers
-  /// l'Accueil (sort du mode recherche ou de l'onglet Téléchargements). Sur
-  /// l'onglet Accueil, `canPop: true` → comportement natif (sortie app).
+  /// §bug Back TV + §backExit — Gestion du Back à la racine :
+  ///   - **Hors onglet Accueil** : ramène vers l'Accueil (sort du mode recherche
+  ///     ou de l'onglet Téléchargements) — pas de sortie d'app.
+  ///   - **Sur l'onglet Accueil** : **double-back** pour quitter. Le 1er Back
+  ///     affiche un message ("Appuie à nouveau…") ; un 2e Back en moins de 2 s
+  ///     quitte réellement l'app (`SystemNavigator.pop`). Évite les sorties
+  ///     accidentelles à la télécommande TV.
+  ///
+  /// `canPop: false` en permanence → on intercepte toujours le Back nous-mêmes
+  /// (le pop natif ne quitte jamais l'app directement).
   Widget _wrapBack(Widget child) {
     return PopScope(
-      canPop: _navIndex == 0,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        setState(() => _navIndex = 0);
+
+        // Pas sur l'accueil → y revenir (sort recherche / téléchargements).
+        if (_navIndex != 0) {
+          setState(() => _navIndex = 0);
+          return;
+        }
+
+        // Sur l'accueil → double-back pour quitter.
+        final now = DateTime.now();
+        if (_lastBackPress != null &&
+            now.difference(_lastBackPress!) < const Duration(seconds: 2)) {
+          SystemNavigator.pop(); // quitte réellement l'application
+          return;
+        }
+        _lastBackPress = now;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Appuie à nouveau sur Retour pour quitter'),
+              duration: Duration(seconds: 2),
+            ),
+          );
       },
       child: child,
     );
