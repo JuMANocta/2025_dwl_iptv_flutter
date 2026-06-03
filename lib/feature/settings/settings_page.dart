@@ -8,9 +8,6 @@ import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
 import 'package:aetherStream/feature/settings/xmltv_page.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
-import 'package:aetherStream/feature/settings/settings_apply_service.dart';
-import 'package:aetherStream/feature/pairing/pairing_page.dart';
-import 'package:aetherStream/data/services/pairing_service.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
@@ -79,33 +76,14 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _openWebConsole() async {
+  /// §18 — Ouvre la **Console web** depuis la TV. Couvre comptes IPTV, TMDB,
+  /// EPG, thème, sauvegarde, télécommande et à propos en une seule webapp
+  /// servie sur le LAN. Remplace la pairing webapp §18 Phase A (devenue
+  /// orpheline et retirée — la Console web est le canal officiel).
+  Future<void> _openPhoneConfig() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const WebConsolePage()),
     );
-  }
-
-  /// §18 — Lance le pairing QR (webapp Settings sur le téléphone) à la demande.
-  /// Le serveur n'est démarré que si l'utilisateur choisit explicitement cette
-  /// entrée → pas de surcharge pour qui préfère la télécommande. `onManualFallback`
-  /// referme simplement la page (on reste dans le hub natif).
-  Future<void> _openPhoneConfig() async {
-    final result = await Navigator.of(context).push<PairingResult>(
-      MaterialPageRoute(
-        builder: (_) => PairingPage(
-          kind: PairingKind.settings,
-          onManualFallback: () => Navigator.of(context).pop(),
-        ),
-      ),
-    );
-    if (result is PairingSettingsResult) {
-      final changed = await SettingsApplyService.apply(result.patch);
-      if (changed && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Paramètres appliqués depuis le téléphone.')),
-        );
-      }
-    }
   }
 
   @override
@@ -138,18 +116,19 @@ class _SettingsPageState extends State<SettingsPage> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
-            // §18 — Sur TV, on propose EN PREMIER la config depuis le téléphone
-            // (pairing QR à la demande). Sélectionnable d'emblée pour qui veut le
-            // clavier confortable du mobile ; sinon on continue à la télécommande
-            // dans les sections natives ci-dessous (aucun serveur lancé tant que
-            // cette entrée n'est pas choisie).
+            // §18 — Sur TV, on propose EN PREMIER l'accès à la Console web
+            // (entrée prioritaire pour la télécommande, focusée d'emblée). Lance
+            // un mini-serveur HTTP local + QR : le mobile devient une console
+            // complète (comptes, sauvegarde, thème, TMDB, EPG, télécommande,
+            // à propos). Aucun serveur tant que cette entrée n'est pas choisie.
             if (PlatformTv.isTv) ...[
-              _SectionHeader(title: 'Configuration rapide'),
+              _SectionHeader(title: 'Piloter depuis le téléphone'),
               _SettingsTile(
                 icon: Icons.smartphone,
                 accentColor: kAccentPrimary,
-                title: 'Configurer depuis le téléphone',
-                subtitle: 'Scanner un QR : thème, clé TMDB & guide EPG au clavier',
+                title: 'Console web',
+                subtitle:
+                    'Comptes, sauvegarde, thème, EPG, TMDB + télécommande (QR)',
                 onTap: _openPhoneConfig,
               ),
               const SizedBox(height: 8),
@@ -193,17 +172,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)',
               onTap: _openBackup,
             ),
-            // §webConsoleTvOnly — La console web (et la télécommande téléphone)
-            // n'a de sens que sur TV : piloter/configurer la TV depuis un
-            // navigateur du même réseau. Sur Android mobile pur, on la masque.
-            if (PlatformTv.isTv)
-              _SettingsTile(
-                icon: Icons.lan_outlined,
-                accentColor: kAccentPrimary,
-                title: 'Console web',
-                subtitle: 'Gérer comptes/listes/sauvegardes depuis un navigateur',
-                onTap: _openWebConsole,
-              ),
             const SizedBox(height: 8),
             _SectionHeader(title: 'Application'),
             _SettingsTile(

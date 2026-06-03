@@ -6,9 +6,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../../core/themes/app_theme_config.dart';
-import '../models/settings_patch.dart';
 import '../models/stream_account.dart';
-import 'tmdb_api_service.dart';
 import '../../feature/pairing/pairing_html.dart';
 
 /// Type de saisie demandée par le pairing (§3c-8).
@@ -21,10 +19,6 @@ enum PairingKind {
 
   /// Form 1 textarea : Bearer Token TMDB v4.
   tmdb,
-
-  /// §18 — Webapp Settings complète (thème + TMDB + EPG) servie au mobile.
-  /// Évite les focus-traps TV (sliders, color picker, TextFields).
-  settings,
 }
 
 /// Résultat envoyé via le `Stream<PairingResult>` quand le mobile valide le form.
@@ -45,12 +39,6 @@ class PairingAccountResult extends PairingResult {
 class PairingTmdbResult extends PairingResult {
   final String token;
   const PairingTmdbResult(this.token);
-}
-
-/// §18 — Patch de paramètres complet validé depuis la webapp mobile.
-class PairingSettingsResult extends PairingResult {
-  final SettingsPatch patch;
-  const PairingSettingsResult(this.patch);
 }
 
 /// Mini-serveur HTTP local pour la saisie depuis mobile (§3c-8).
@@ -95,11 +83,7 @@ class PairingService {
   /// URL complète à encoder dans le QR, ou `null` si pas démarré.
   String? get pairingUrl {
     if (_server == null || _localIp == null || _token == null) return null;
-    final k = switch (_kind) {
-      PairingKind.tmdb => 'tmdb',
-      PairingKind.settings => 'settings',
-      _ => 'account',
-    };
+    final k = _kind == PairingKind.tmdb ? 'tmdb' : 'account';
     return 'http://$_localIp:${_server!.port}/?t=$_token&k=$k';
   }
 
@@ -215,22 +199,9 @@ class PairingService {
 
   Future<void> _serveForm(HttpRequest req) async {
     final theme = _theme ?? AppThemeConfig.defaults;
-    final String html;
-    switch (_kind) {
-      case PairingKind.tmdb:
-        html = buildTmdbForm(theme: theme, token: _token!);
-      case PairingKind.settings:
-        // Le form Settings pré-remplit l'état courant : couleurs/glow/radius du
-        // thème actif + présence d'une clé TMDB (sans exposer le token en clair).
-        html = buildSettingsForm(
-          theme: theme,
-          token: _token!,
-          tmdbConfigured: await TmdbApiService.hasApiKey(),
-        );
-      case PairingKind.account:
-      case null:
-        html = buildAccountForm(theme: theme, token: _token!);
-    }
+    final html = _kind == PairingKind.tmdb
+        ? buildTmdbForm(theme: theme, token: _token!)
+        : buildAccountForm(theme: theme, token: _token!);
     req.response.headers.contentType = ContentType.html;
     req.response.write(html);
     await req.response.close();
@@ -254,21 +225,6 @@ class PairingService {
         return;
       }
       _controller?.add(PairingTmdbResult(token));
-      _serveSuccess(req, theme);
-      return;
-    }
-
-    if (_kind == PairingKind.settings) {
-      // Le token TMDB est optionnel ici : s'il est fourni, on valide sa longueur.
-      if (payload.containsKey('tmdb')) {
-        final t = (payload['tmdb'] as String?)?.trim() ?? '';
-        if (t.isNotEmpty && t.length < 20) {
-          _replyJson(req, 400, {'ok': false, 'error': 'Clé TMDB trop courte.'});
-          return;
-        }
-      }
-      final patch = SettingsPatch.fromJson(payload);
-      _controller?.add(PairingSettingsResult(patch));
       _serveSuccess(req, theme);
       return;
     }

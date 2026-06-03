@@ -32,9 +32,17 @@ import 'data/services/update_service.dart';
 import 'data/services/xmltv_service.dart';
 import 'feature/update/update_dialog.dart';
 import 'core/utils/platform_tv.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Clé globale pour le Navigator, permettant une navigation programmatique sans `BuildContext`.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// §perfBg — Observateur de routes global. Utilisé par les écrans qui doivent
+/// **mettre en pause leur travail en arrière-plan** quand une route les couvre
+/// (ex. lecture du player) : auto-rotation du hero, etc. Indispensable sur TV
+/// (CPU/GPU limités → repaints invisibles = saccades).
+final RouteObserver<PageRoute<dynamic>> appRouteObserver =
+    RouteObserver<PageRoute<dynamic>>();
 
 /// Point d'entrée de l'application.
 void main() async {
@@ -103,6 +111,7 @@ class MyApp extends StatelessWidget {
   Widget _buildApp(AppThemeConfig config) {
     return MaterialApp(
       navigatorKey: navigatorKey,
+      navigatorObservers: [appRouteObserver],
       title: 'AetherStream',
       themeMode: config.themeMode,
       theme: lightTheme(config),
@@ -342,22 +351,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       future: _initFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          final cs = Theme.of(context).colorScheme;
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'AetherStream',
-                    style: TextStyle(color: cs.onSurface, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-                  ),
-                  const SizedBox(height: 32),
-                  CircularProgressIndicator(color: cs.primary),
-                ],
-              ),
-            ),
-          );
+          return const _LoadingScreen();
         }
         if (snapshot.hasError) {
           return Scaffold(body: Center(child: Padding(padding: const EdgeInsets.all(24.0), child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -427,6 +421,85 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
           ),
         );
       },
+    );
+  }
+}
+
+/// §loadingScreen — Écran d'accueil affiché pendant l'initialisation de l'app
+/// (chargement playlist active, parsing, cache TMDB, etc.). Remplace un
+/// `CircularProgressIndicator` mono-thread qui saccadait pendant le parsing M3U.
+///
+/// Design "terminal cyberpunk" cohérent avec l'identité de l'app :
+///   - Fond sombre + radial gradient sur la couleur primaire (comme la home).
+///   - Wordmark **AETHERSTREAM** en VT323 (police monospace pixel-art) avec glow.
+///   - Sous-titre style terminal "// initialisation…".
+///   - Barre de progression indéterminée linéaire (moins sensible aux jank du
+///     thread UI qu'un spinner circulaire), thémée à la couleur primaire.
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final primary = cs.primary;
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: cs.surface,
+          gradient: RadialGradient(
+            center: const Alignment(0, -0.2),
+            radius: 1.2,
+            colors: [primary.withAlpha(32), cs.surface],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Wordmark glow VT323 (Matrix terminal).
+                Text(
+                  'AetherStream',
+                  style: GoogleFonts.vt323(
+                    color: primary,
+                    fontSize: 56,
+                    letterSpacing: 4,
+                    shadows: [
+                      Shadow(color: primary.withAlpha(180), blurRadius: 18),
+                      Shadow(color: primary.withAlpha(120), blurRadius: 32),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Sous-titre terminal.
+                Text(
+                  '// initialisation…',
+                  style: GoogleFonts.sourceCodePro(
+                    color: cs.onSurfaceVariant.withAlpha(180),
+                    fontSize: 13,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 40),
+                // Barre de progression thémée (indéterminée).
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      minHeight: 5,
+                      backgroundColor: cs.surfaceContainerHighest,
+                      valueColor: AlwaysStoppedAnimation<Color>(primary),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

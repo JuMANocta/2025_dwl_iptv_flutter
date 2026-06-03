@@ -150,11 +150,9 @@ class _PairingPageState extends State<PairingPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          switch (widget.kind) {
-            PairingKind.tmdb => 'Configurer TMDB',
-            PairingKind.settings => 'Paramètres',
-            PairingKind.account => 'Ajouter une playlist',
-          },
+          widget.kind == PairingKind.tmdb
+              ? 'Configurer TMDB'
+              : 'Ajouter une playlist',
         ),
         elevation: 0,
         scrolledUnderElevation: 0,

@@ -30,70 +30,130 @@ String _css(AppThemeConfig t) {
   final p = _hex(t.primaryColor);
   final a = _hex(t.accentColor);
   final ter = _hex(t.tertiaryColor);
+  // ignore: deprecated_member_use
+  final pv = t.primaryColor.value;
+  final pRgb = '${(pv >> 16) & 0xFF}, ${(pv >> 8) & 0xFF}, ${pv & 0xFF}';
+  final glowBlur = (20 * t.glowIntensity).round().clamp(0, 40);
+  final glowAlpha = (0.45 * t.glowIntensity).clamp(0.0, 0.8);
   return '''
-    :root { --p: $p; --a: $a; --ter: $ter; }
-    * { box-sizing: border-box; }
+    :root {
+      --p: $p; --a: $a; --ter: $ter;
+      --bg: #050505; --surface: #121212; --surface-2: #1c1c1c;
+      --text: #ffffff; --text-dim: #9a9a9a;
+      --radius: ${t.borderRadius}px;
+      --glow: 0 0 ${glowBlur}px rgba($pRgb, $glowAlpha);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; min-height: 100vh; -webkit-font-smoothing: antialiased; }
     body {
-      margin: 0; padding: 0; background: #0b0d0f; color: #e8eaed;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background:
+        radial-gradient(ellipse at top, rgba(255,255,255,0.02) 0%, transparent 60%),
+        var(--bg);
+      color: var(--text);
+      font-family: 'Source Code Pro', ui-monospace, 'SF Mono', Menlo, monospace;
       line-height: 1.5;
     }
-    .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 64px; }
-    header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-    header h1 { font-size: 20px; margin: 0; color: #fff; }
-    .logo { width: 34px; height: 34px; border-radius: 8px;
-      background: linear-gradient(135deg, var(--p), var(--a));
-      box-shadow: 0 0 16px ${_hex(t.primaryColor)}66; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+
+    /* En-tête : wordmark "AetherStream" VT323 glow + sous-titre */
+    header { text-align: center; margin-bottom: 28px; }
+    header .logo {
+      font-family: 'VT323', monospace; font-size: 44px; color: var(--p);
+      letter-spacing: 3px; text-shadow: var(--glow); line-height: 1;
+    }
+    header h1 {
+      font-size: 11px; margin: 6px 0 0; color: var(--text-dim);
+      letter-spacing: 2px; text-transform: uppercase; font-weight: 700;
+    }
     a { color: var(--a); text-decoration: none; }
-    .back { display: inline-block; margin-bottom: 16px; font-size: 14px; }
+    .back { display: inline-block; margin-bottom: 16px; font-size: 13px;
+      letter-spacing: 1px; text-transform: uppercase; }
+    .back:hover { color: var(--p); }
+
+    /* Grille du dashboard : cartes "néon" */
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 12px; }
     .card {
-      display: block; background: #15191d; border: 1px solid #23282e;
-      border-radius: 14px; padding: 16px; transition: .15s;
+      display: block; background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius); padding: 18px; transition: border-color .15s, box-shadow .15s;
+      color: var(--text);
     }
-    .card:hover { border-color: var(--p); box-shadow: 0 0 14px ${_hex(t.primaryColor)}44; }
-    .card .ic { font-size: 26px; }
-    .card .t { font-weight: 600; color: #fff; margin-top: 8px; }
-    .card .s { font-size: 12px; color: #9aa0a6; margin-top: 2px; }
-    .sec { background: #15191d; border: 1px solid #23282e; border-radius: 14px;
-      padding: 16px; margin-bottom: 16px; }
-    .sec h2 { font-size: 15px; margin: 0 0 12px; color: var(--p);
-      letter-spacing: .5px; text-transform: uppercase; }
-    label { display: block; font-size: 12px; color: #9aa0a6; margin: 10px 0 4px; }
+    .card:hover, .card:focus {
+      border-color: var(--p); box-shadow: var(--glow); outline: none;
+    }
+    .card .ic { font-size: 28px; line-height: 1; }
+    .card .t { font-weight: 700; color: var(--text); margin-top: 10px;
+      letter-spacing: .5px; }
+    .card .s { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+    /* Panneaux de section */
+    .sec { background: var(--surface); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+      box-shadow: var(--glow); }
+    .sec h2 { font-size: 12px; margin: 0 0 14px; color: var(--p);
+      letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; }
+
+    /* Champs de saisie */
+    label { display: block; font-size: 10px; color: var(--text-dim);
+      margin: 12px 0 6px; letter-spacing: 1.5px; text-transform: uppercase;
+      font-weight: 700; }
     input, select, textarea {
-      width: 100%; background: #0b0d0f; border: 1px solid #2c333a; color: #fff;
-      border-radius: 10px; padding: 11px 12px; font-size: 15px; font-family: inherit;
+      width: 100%; background: var(--surface-2);
+      border: 1px solid rgba(255,255,255,0.08); color: var(--text);
+      border-radius: calc(var(--radius) - 2px); padding: 13px 14px;
+      font-size: 15px; font-family: inherit; transition: border-color .15s, box-shadow .15s;
     }
-    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p); }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: var(--p);
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.04), var(--glow);
+    }
+
+    /* Boutons */
     button {
-      background: linear-gradient(135deg, var(--p), var(--a)); color: #0b0d0f;
-      border: none; border-radius: 10px; padding: 12px 18px; font-size: 15px;
-      font-weight: 700; cursor: pointer; margin-top: 14px;
+      background: var(--p); color: #000; border: none;
+      border-radius: var(--radius); padding: 14px 18px; font-size: 13px;
+      font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+      cursor: pointer; margin-top: 14px; box-shadow: var(--glow);
+      transition: transform .1s;
+      font-family: inherit;
     }
-    button.ghost { background: transparent; color: var(--a); border: 1px solid #2c333a; }
-    button.danger { background: linear-gradient(135deg, #ff4444, #c71585); color: #fff; }
+    button:active { transform: translateY(1px); }
+    button.ghost { background: transparent; color: var(--a);
+      border: 1px solid rgba(255,255,255,0.12); box-shadow: none; }
+    button.danger { background: #ff4444; color: #fff; box-shadow: 0 0 18px rgba(255,68,68,0.4); }
+
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .acc { border: 1px solid #23282e; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
-    .acc .nm { font-weight: 600; color: #fff; }
-    .acc .meta { font-size: 12px; color: #9aa0a6; margin-top: 2px; word-break: break-all; }
-    .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px;
-      background: ${_hex(t.primaryColor)}22; color: var(--p); border: 1px solid ${_hex(t.primaryColor)}55; }
-    .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
-      background: #15191d; border: 1px solid var(--p); color: #fff; padding: 12px 18px;
-      border-radius: 10px; opacity: 0; transition: .2s; pointer-events: none; }
+    .acc { border: 1px solid rgba(255,255,255,0.08); border-radius: calc(var(--radius) - 2px);
+      padding: 14px; margin-bottom: 10px; background: var(--surface-2); }
+    .acc .nm { font-weight: 700; color: var(--text); letter-spacing: .5px; }
+    .acc .meta { font-size: 12px; color: var(--text-dim); margin-top: 4px; word-break: break-all; }
+    .badge { font-size: 10px; padding: 3px 9px; border-radius: 999px;
+      background: rgba($pRgb, 0.15); color: var(--p);
+      border: 1px solid rgba($pRgb, 0.4); letter-spacing: 1px;
+      text-transform: uppercase; font-weight: 700; }
+
+    /* Toast */
+    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--p); color: var(--text);
+      padding: 12px 20px; border-radius: var(--radius); opacity: 0;
+      transition: .2s; pointer-events: none; box-shadow: var(--glow);
+      font-size: 13px; letter-spacing: .5px; }
     .toast.show { opacity: 1; }
     .hidden { display: none; }
-    .muted { color: #9aa0a6; font-size: 13px; }
+    .muted { color: var(--text-dim); font-size: 13px; }
+
     /* Télécommande */
     .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
       max-width: 320px; margin: 8px auto 18px; touch-action: manipulation; }
     .key { user-select: none; -webkit-user-select: none; touch-action: manipulation;
-      background: #15191d; border: 1px solid #2c333a; border-radius: 14px;
-      color: #fff; font-size: 26px; height: 78px; display: flex;
-      align-items: center; justify-content: center; cursor: pointer; }
-    .key:active { background: var(--p); color: #0b0d0f; transform: scale(.96); }
-    .key.ok { background: linear-gradient(135deg, var(--p), var(--a)); color: #0b0d0f;
-      font-weight: 700; font-size: 18px; }
+      background: var(--surface); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius); color: var(--text); font-size: 26px;
+      height: 78px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: .1s; }
+    .key:active { background: var(--p); color: #000; transform: scale(.96);
+      box-shadow: var(--glow); }
+    .key.ok { background: var(--p); color: #000;
+      font-weight: 700; font-size: 18px; letter-spacing: 1px; box-shadow: var(--glow); }
     .key.empty { background: transparent; border: none; pointer-events: none; }
     .bar { display: flex; gap: 10px; max-width: 320px; margin: 0 auto 12px; }
     .bar .key { flex: 1; height: 60px; font-size: 18px; }
@@ -105,11 +165,18 @@ String _shell(AppThemeConfig t, String title, String body) => '''
 <html lang="fr"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="color-scheme" content="dark">
 <title>$title — AetherStream</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Source+Code+Pro:wght@400;600;800&display=swap" rel="stylesheet">
 <style>${_css(t)}</style>
 </head><body>
 <div class="wrap">
-<header><div class="logo"></div><h1>$title</h1></header>
+<header>
+  <div class="logo">AetherStream</div>
+  <h1>$title</h1>
+</header>
 $body
 </div>
 <div class="toast" id="toast"></div>
@@ -144,9 +211,35 @@ String buildDashboard(AppThemeConfig t, String token) {
     ${_navCard(token, 'theme', '🎨', 'Thème', 'Presets cyberpunk')}
     ${_navCard(token, 'backup', '💾', 'Sauvegarde', 'Importer / exporter .aether')}
     ${_navCard(token, 'remote', '🎮', 'Télécommande', 'Piloter la TV depuis ce tél.')}
+    ${_navCard(token, 'about', 'ℹ️', 'À propos', 'Version & liens GitHub')}
   </div>
   ''';
   return _shell(t, 'Console web', body);
+}
+
+// ─── Vue « À propos » ────────────────────────────────────────────────────────
+
+String buildAbout(AppThemeConfig t, String token, String version) {
+  final body = '''
+  ${_backLink(token)}
+  <div class="sec">
+    <h2>AetherStream</h2>
+    <p class="muted">Client IPTV multi-comptes (Flutter Android) — playlist M3U,
+      enrichissement TMDB, lecteur libmpv, téléchargements, EPG XMLTV.</p>
+    <label>Version installée</label>
+    <div class="acc"><div class="nm">${esc(version)}</div></div>
+    <label>Liens</label>
+    <div class="row">
+      <a class="card" href="https://github.com/JuMANocta/2025_dwl_iptv_flutter" target="_blank">
+        <div class="ic">⚙️</div><div class="t">Code source</div><div class="s">github.com</div>
+      </a>
+      <a class="card" href="https://github.com/JuMANocta/2025_dwl_iptv_flutter/releases" target="_blank">
+        <div class="ic">🚀</div><div class="t">Releases</div><div class="s">Notes & APK</div>
+      </a>
+    </div>
+  </div>
+  ''';
+  return _shell(t, 'À propos', body);
 }
 
 String _navCard(String token, String view, String ic, String title, String sub) {

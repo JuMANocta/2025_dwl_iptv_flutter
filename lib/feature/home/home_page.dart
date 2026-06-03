@@ -27,6 +27,7 @@ import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
+import 'package:aetherStream/main.dart' show appRouteObserver;
 
 /// §tvRails — Politique de traversée focus "façon Netflix" pour la home TV.
 ///
@@ -1186,10 +1187,14 @@ class _HeroBanner extends StatefulWidget {
   State<_HeroBanner> createState() => _HeroBannerState();
 }
 
-class _HeroBannerState extends State<_HeroBanner> {
+class _HeroBannerState extends State<_HeroBanner> with RouteAware {
   late final PageController _ctrl;
   Timer? _timer;
   int _current = 0;
+  /// §perfBg — Mis à `true` quand une route est poussée par-dessus la home (ex.
+  /// player). Bloque la rotation automatique : sinon le `Timer` continue à tourner
+  /// en arrière-plan et rebuild → repaint invisibles = saccades sur TV.
+  bool _bgPaused = false;
 
   @override
   void initState() {
@@ -1199,14 +1204,35 @@ class _HeroBannerState extends State<_HeroBanner> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) appRouteObserver.subscribe(this, route);
+  }
+
+  @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     _timer?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
 
+  @override
+  void didPushNext() {
+    _bgPaused = true;
+    _timer?.cancel();
+  }
+
+  @override
+  void didPopNext() {
+    _bgPaused = false;
+    _scheduleNext();
+  }
+
   void _scheduleNext() {
     _timer?.cancel();
+    if (_bgPaused) return;
     if (widget.featured.length <= 1) return;
     _timer = Timer.periodic(const Duration(seconds: 6), (_) {
       if (!mounted || !_ctrl.hasClients) return;
@@ -1335,6 +1361,11 @@ class _HeroSlide extends StatelessWidget {
             fit: BoxFit.cover,
             color: Colors.black.withAlpha(80),
             colorBlendMode: BlendMode.darken,
+            // §imgPerf — Décodage borné (au lieu du bitmap pleine résolution
+            // TMDB ~780 px) : moins de RAM, moins d'évictions du `ImageCache`,
+            // moins de saccades sur TV. Backdrop flouté/sombre → 540 suffit.
+            cacheWidth: 540,
+            gaplessPlayback: true,
             errorBuilder: (_, __, ___) => Container(color: kAccentPrimary.withAlpha(20)),
           )
         else
@@ -1377,6 +1408,10 @@ class _HeroSlide extends StatelessWidget {
                       ? Image.network(
                           logoUrl,
                           fit: type == M3uContentType.tv ? BoxFit.contain : BoxFit.cover,
+                          // §imgPerf — Affiché en 110×165 → 220 px de décodage
+                          // (2× pour la densité écran).
+                          cacheWidth: 220,
+                          gaplessPlayback: true,
                           errorBuilder: (_, __, ___) => Icon(fallbackIcon, color: Colors.white54, size: 40),
                         )
                       : Icon(fallbackIcon, color: Colors.white54, size: 40),
@@ -1483,7 +1518,7 @@ class _HeroFanBanner extends StatefulWidget {
 }
 
 class _HeroFanBannerState extends State<_HeroFanBanner>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware {
   static const _autoDuration = Duration(seconds: 6);
   static const _animDuration = Duration(milliseconds: 520);
 
@@ -1494,6 +1529,11 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   /// rotation en pause : sinon la rotation 6 s ferait basculer la carte active
   /// sous le focus (perte/saut de focus). Reprend dès qu'on quitte le hero.
   bool _focusPaused = false;
+
+  /// §perfBg — Mis à `true` quand une route est poussée par-dessus la home
+  /// (ex. player). Le `Timer` continuait à tourner en arrière-plan → repaints
+  /// invisibles = saccades sur TV.
+  bool _bgPaused = false;
 
   /// Position lissée (peut être fractionnaire). On ne wrap PAS sur [0, N) :
   /// la valeur incrémente continument et chaque carte calcule son `delta`
@@ -1511,12 +1551,32 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) appRouteObserver.subscribe(this, route);
+  }
+
+  @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     _timer?.cancel();
     _animCtrl
       ..removeListener(_onTick)
       ..dispose();
     super.dispose();
+  }
+
+  @override
+  void didPushNext() {
+    _bgPaused = true;
+    _timer?.cancel();
+  }
+
+  @override
+  void didPopNext() {
+    _bgPaused = false;
+    _scheduleNext();
   }
 
   void _onTick() {
@@ -1529,7 +1589,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
 
   void _scheduleNext() {
     _timer?.cancel();
-    if (widget.featured.length <= 1 || _focusPaused) return;
+    if (widget.featured.length <= 1 || _focusPaused || _bgPaused) return;
     _timer = Timer.periodic(_autoDuration, (_) {
       if (!mounted) return;
       _advance();
@@ -1871,6 +1931,9 @@ class _HeroFanCard extends StatelessWidget {
               Image.network(
                 logoUrl,
                 fit: BoxFit.cover,
+                // §imgPerf — Vignette ~120-180 px → cap 320 px de décodage.
+                cacheWidth: 320,
+                gaplessPlayback: true,
                 errorBuilder: (_, __, ___) => _fallback(fallbackIcon),
               )
             else
@@ -2542,7 +2605,7 @@ class _HomeCardState extends State<_HomeCard> {
                       width: 50,
                       height: widget.type == M3uContentType.tv ? 50 : 75,
                       child: (entry.logoUrl != null && entry.logoUrl!.isNotEmpty)
-                          ? Image.network(entry.logoUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink())
+                          ? Image.network(entry.logoUrl!, fit: BoxFit.cover, cacheWidth: 150, gaplessPlayback: true, errorBuilder: (_, __, ___) => const SizedBox.shrink())
                           : const SizedBox.shrink(),
                     ),
                   ),
@@ -2791,6 +2854,12 @@ class _HomeCardState extends State<_HomeCard> {
                       Image.network(
                         logoUrl,
                         fit: isTv ? BoxFit.contain : BoxFit.cover,
+                        // §imgPerf — Carte poster ~120-200 px ; on cap le
+                        // décodage à 360 px. Combiné à `gaplessPlayback`, plus
+                        // de flash blanc / re-décodage au rebuild (focus, auto-
+                        // rotation, version bumps).
+                        cacheWidth: 360,
+                        gaplessPlayback: true,
                         errorBuilder: (_, __, ___) =>
                             _fallback(fallbackIcon, cs),
                         loadingBuilder: (_, child, progress) =>
@@ -3351,6 +3420,8 @@ class _LastWatchedTvTile extends StatelessWidget {
                       child: (last.logoUrl != null && last.logoUrl!.isNotEmpty)
                           ? Image.network(last.logoUrl!,
                               fit: BoxFit.contain,
+                              cacheWidth: 144,
+                              gaplessPlayback: true,
                               errorBuilder: (_, __, ___) => const Icon(
                                   Icons.live_tv,
                                   color: Colors.white54))

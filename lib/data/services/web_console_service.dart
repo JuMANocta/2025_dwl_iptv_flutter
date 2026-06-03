@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
@@ -159,6 +160,10 @@ class WebConsoleService {
         break;
       case 'remote':
         page = html.buildRemote(_theme, tk);
+        break;
+      case 'about':
+        final info = await PackageInfo.fromPlatform();
+        page = html.buildAbout(_theme, tk, '${info.version}+${info.buildNumber}');
         break;
       default:
         page = html.buildDashboard(_theme, tk);

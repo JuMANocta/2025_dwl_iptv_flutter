@@ -2,7 +2,7 @@ name: aetherStream
 description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
-version: 1.8.17+66
+version: 1.8.17+67
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -61,33 +61,24 @@ flutter_launcher_icons:
   image_path: "assets/icon/AetherStreamIcon.png"
   min_sdk_android: 24
 
-flutter_native_splash:
-  android: true
-  ios: false
-  web: false
-
-  # Logo centré
-  image: assets/splash/AetherStreamIconSplash.png
-
-  # ----------------------------------------------------
-  # ✅ CORRECTION APPLIQUÉE ICI
-  # ----------------------------------------------------
-
-  # Pour Android 11 et inférieur (le background_image sera prioritaire)
-  color: "#F5F5F5"          # Fond blanc pour le mode clair
-  color_dark: "#000000"     # Fond noir pour le mode sombre
-
-  # Image de fond pour un effet stylisé sur les anciennes versions
-  background_image: assets/splash/AetherStreamSplash.png
-  background_image_dark: assets/splash/AetherStreamDarkSplash.png
-
-  # Spécifique pour Android 12+ : `image` est l'ICÔNE CENTRÉE du splash système
-  # (contrainte de taille stricte, rognée en cercle), PAS une image plein écran.
-  # Avant, on y passait AetherStreamSplash.png (fond 754 Ko) → icône démesurée
-  # → rendu cassé / crash du splash système sur Android 12+. On utilise la vraie
-  # icône (la même que pour Android ≤11). Android 12 ne supporte que icône + couleur.
-  android_12:
-    image: assets/splash/AetherStreamIconSplash.png
-    image_dark: assets/splash/AetherStreamIconSplash.png
-    color: "#F5F5F5"          # Fond blanc pour le mode clair
-    color_dark: "#000000"     # Fond noir pour le mode sombre
+# §splashOff — Splash custom DÉSACTIVÉ. Les drawables `launch_background.xml`
+# (Android ≤11) et styles `windowSplashScreenAnimatedIcon` (Android 12+) ont été
+# édités à la main pour ne montrer qu'un fond uni (plus de logo). Ne PAS relancer
+# `dart run flutter_native_splash:create` sans réactiver cette config — ça
+# remplacerait nos drawables. Pour réactiver : décommenter le bloc ci-dessous +
+# regénérer.
+#
+# flutter_native_splash:
+#   android: true
+#   ios: false
+#   web: false
+#   image: assets/splash/AetherStreamIconSplash.png
+#   color: "#F5F5F5"
+#   color_dark: "#000000"
+#   background_image: assets/splash/AetherStreamSplash.png
+#   background_image_dark: assets/splash/AetherStreamDarkSplash.png
+#   android_12:
+#     image: assets/splash/AetherStreamIconSplash.png
+#     image_dark: assets/splash/AetherStreamIconSplash.png
+#     color: "#F5F5F5"
+#     color_dark: "#000000"
