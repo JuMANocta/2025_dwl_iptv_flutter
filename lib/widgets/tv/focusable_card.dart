@@ -192,22 +192,15 @@ class _FocusableCardState extends State<FocusableCard> {
         } else {
           RemoteControlService.instance.clearActivate(this);
         }
-        // §3c-bis #7 — Si la card vient de prendre le focus sur TV, l'amener
-        // dans le viewport du ScrollView ancêtre (carrousel horizontal /
-        // ListView vertical). Sans ça, le focus peut se déplacer sur une card
-        // hors-écran → utilisateur perdu, scroll figé.
-        if (f && isTv) {
-          // post-frame pour laisser le layout se stabiliser avant le scroll.
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            Scrollable.ensureVisible(
-              context,
-              alignment: 0.5,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-            );
-          });
-        }
+        // §focusScroll — Volontairement PAS de `Scrollable.ensureVisible` manuel
+        // ici : le framework Flutter (`DirectionalFocusTraversalPolicyMixin`)
+        // appelle déjà `ensureVisible` avec la BONNE alignmentPolicy selon la
+        // direction (`keepVisibleAtEnd` pour droite/bas, `keepVisibleAtStart`
+        // pour gauche/haut). L'ancien appel manuel `alignment: 0.5` recentrait
+        // la carte à chaque focus → la géométrie changeait → le focus suivant
+        // sautait 2-3 vignettes ("voir tout" devenait inaccessible). En se
+        // reposant sur le framework, on a un scroll minimal et un focus
+        // prévisible 1 par 1.
       },
       onKeyEvent: _onKey,
       child: decorated,

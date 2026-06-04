@@ -590,6 +590,10 @@ class _DetailsPageState extends State<DetailsPage> {
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(vertical: 4),
+                        // §focusScroll — cache plus large pour que la nav D-pad
+                        // trouve toujours la card suivante dans l'arbre de focus.
+                        // ignore: deprecated_member_use
+                        cacheExtent: 600,
                         itemCount: _tmdbData!.castMembers.length,
                         separatorBuilder: (_, __) => const SizedBox(width: 12),
                         itemBuilder: (_, i) =>

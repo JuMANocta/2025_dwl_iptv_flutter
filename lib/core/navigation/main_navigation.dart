@@ -4,6 +4,7 @@ import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
+import 'package:aetherStream/main.dart' show checkForUpdate;
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
 ///
@@ -41,6 +42,17 @@ class _MainNavigationState extends State<MainNavigation> {
 
   /// §backExit — Horodatage du dernier Back sur l'onglet Accueil (double-back).
   DateTime? _lastBackPress;
+
+  @override
+  void initState() {
+    super.initState();
+    // §updateDelay — Délai long avant le check MAJ (laisse la home se stabiliser,
+    // évite que le dialog MAJ s'affiche pendant que le focus TV se met en place
+    // → user ne pouvait plus sélectionner / fermer le dialog).
+    Future.delayed(const Duration(seconds: 10), () {
+      if (mounted) checkForUpdate();
+    });
+  }
 
   void _onTap(int i) {
     if (i == _navIndex) return;

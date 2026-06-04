@@ -32,6 +32,12 @@ class FocusableChip extends StatefulWidget {
   /// pause une auto-rotation pendant que l'élément est focusé sur TV).
   final ValueChanged<bool>? onFocusChange;
 
+  /// Optionnel — intercepte ←/→ quand l'élément est focusé (utile pour les
+  /// "carrousels-single-focus" type hero fan : ←/→ font tourner les cartes au
+  /// lieu d'essayer de sortir du chip).
+  final VoidCallback? onArrowLeft;
+  final VoidCallback? onArrowRight;
+
   const FocusableChip({
     super.key,
     required this.child,
@@ -40,6 +46,8 @@ class FocusableChip extends StatefulWidget {
     this.autofocus = false,
     this.borderRadius,
     this.onFocusChange,
+    this.onArrowLeft,
+    this.onArrowRight,
   });
 
   @override
@@ -61,6 +69,16 @@ class _FocusableChipState extends State<FocusableChip> {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     if (_activationKeys.contains(event.logicalKey)) {
       widget.onTap?.call();
+      return KeyEventResult.handled;
+    }
+    if (widget.onArrowLeft != null &&
+        event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      widget.onArrowLeft!();
+      return KeyEventResult.handled;
+    }
+    if (widget.onArrowRight != null &&
+        event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      widget.onArrowRight!();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;

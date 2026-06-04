@@ -148,12 +148,28 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with RouteAware {
   static const int _initialPageIndex = 1; // Films par défaut
 
   late final PageController _pageController;
   int _currentIndex = _initialPageIndex;
-  bool _loading = true;
+  /// §initBoot — Initialement `true` UNIQUEMENT si la playlist active n'a pas
+  /// encore été parsée (cas rares : changement de compte runtime, hot reload).
+  /// Au boot normal, `main._initializeApp` a déjà appelé `loadActive` → la
+  /// home apparait sans spinner intermédiaire (pas de flash hors-écran
+  /// AetherStream).
+  bool _loading = false;
+
+  /// §perfBg — Écoute manuelle des notifiers globaux (playlist / favoris /
+  /// progression) pour pouvoir IGNORER les notifications quand la home est en
+  /// arrière-plan (player devant). Avant : un `ListenableBuilder` rebuild la
+  /// home toutes les ~10 s (le player sauve la progression périodiquement) →
+  /// repaints invisibles = saccades sur TV. Maintenant : `_inBackground` gate
+  /// l'appel à `setState` ; on rattrape une éventuelle MAJ ratée à la sortie
+  /// via `_pendingRefresh`.
+  late final Listenable _homeListenable;
+  bool _inBackground = false;
+  bool _pendingRefresh = false;
 
   /// Compte actif courant — peut changer en cours de session si l'utilisateur
   /// modifie la priorité dans `AccountsPage`. On lit la valeur initiale dans
@@ -175,9 +191,24 @@ class _HomePageState extends State<HomePage> {
     _searchFocus.addListener(_onSearchFocusChanged);
     _activeAccountId = widget.initialData.accountId;
     _activeAccountName = widget.initialData.accountName;
+    // §initBoot — Si la playlist active a déjà été parsée par `_initializeApp`,
+    // on saute le spinner ; sinon on l'affiche le temps que `_ensureLoaded`
+    // termine (cas hot reload / changement de compte runtime).
+    if (_activeAccountId.isNotEmpty &&
+        ParsedPlaylistService.getAccount(_activeAccountId) == null) {
+      _loading = true;
+    }
     _ensureLoaded(initialPath: widget.initialData.path);
     StreamAccountService.currentAccountIdNotifier
         .addListener(_onCurrentAccountChanged);
+
+    // §perfBg — Écoute manuelle gated par _inBackground (cf. doc du champ).
+    _homeListenable = Listenable.merge([
+      ParsedPlaylistService.version,
+      FavoritesService.version,
+      WatchProgressService.version,
+    ]);
+    _homeListenable.addListener(_onHomeNotifier);
 
     // §3c-bis #3 — Auto-focus initial sur TV. Sans ça, le focus reste à la
     // racine du tree (invisible) → l'utilisateur appuie au hasard pour trouver
@@ -231,7 +262,42 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // §perfBg — Abonnement RouteAware : permet de savoir si une route est
+    // poussée par-dessus la home (player → didPushNext) pour ignorer les
+    // notifications playlist/favoris/progression pendant la lecture.
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) appRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPushNext() {
+    _inBackground = true;
+  }
+
+  @override
+  void didPopNext() {
+    _inBackground = false;
+    // Rejouer une éventuelle notification ignorée pendant l'arrière-plan.
+    if (_pendingRefresh && mounted) {
+      _pendingRefresh = false;
+      setState(() {});
+    }
+  }
+
+  void _onHomeNotifier() {
+    if (_inBackground) {
+      _pendingRefresh = true;
+      return;
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
+    _homeListenable.removeListener(_onHomeNotifier);
     _searchDebounce?.cancel();
     _searchCtrl.dispose();
     _searchFocus.removeListener(_onSearchFocusChanged);
@@ -375,16 +441,12 @@ class _HomePageState extends State<HomePage> {
         ),
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : ListenableBuilder(
-                listenable: Listenable.merge([
-                  ParsedPlaylistService.version,
-                  FavoritesService.version,
-                  WatchProgressService.version,
-                ]),
-                builder: (context, _) {
+            : Builder(
+                builder: (context) {
                   // §perfBigList — split mémoïsé : recalculé seulement quand la
                   // playlist ou le compte change, PAS à chaque bump Favoris /
-                  // WatchProgress (qui déclenchent aussi ce ListenableBuilder).
+                  // WatchProgress. §perfBg — le rebuild de la home est déclenché
+                  // via `_onHomeNotifier` (`setState` gated par `_inBackground`).
                   final byType = _byTypeMemoized();
 
                   if (widget.searchMode) {
@@ -1778,6 +1840,10 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
         return FocusableChip(
           onTap: () => _onCardTap(context, activeIndex),
           onFocusChange: _setFocusPaused,
+          // §heroFanDpad — ←/→ télécommande font tourner le fan (avant : le hero
+          // ne réagissait qu'au tap OK et on ne pouvait pas changer de carte).
+          onArrowLeft: n <= 1 ? null : () => _gotoCard((activeIndex - 1 + n) % n),
+          onArrowRight: n <= 1 ? null : () => _gotoCard((activeIndex + 1) % n),
           borderRadius: BorderRadius.circular(16),
           child: fan,
         );
@@ -2209,6 +2275,14 @@ class _CategoryRow extends StatelessWidget {
                       horizontal: 16,
                       vertical: PlatformTv.isTv ? 24 : 0,
                     ),
+                    // §focusScroll — Cache plus large que la valeur par défaut
+                    // (250 px) : sur TV, la dernière tuile "Voir tout" (en bout
+                    // de carrousel) n'était pas encore buildée quand le focus
+                    // arrivait → focus directionnel sautait dessus une fois,
+                    // sans effet. ~2 cartes en avance suffit pour la rendre
+                    // toujours dans l'arbre de focus.
+                    // ignore: deprecated_member_use
+                    cacheExtent: 600,
                     itemCount: groups.length + (hasMore ? 1 : 0),
                     // §ergo — écartement un peu plus large entre les cartes
                     // (10 → 16) pour aérer le carrousel sans toucher au style.

@@ -75,9 +75,10 @@ void main() async {
 
   runApp(const MyApp());
 
-  // Vérification silencieuse des mises à jour après le démarrage (non-bloquant).
-  // Délai court pour laisser l'UI s'afficher avant la requête réseau.
-  Future.delayed(const Duration(seconds: 3), _checkForUpdate);
+  // §updateDelay — La vérification de MAJ est déplacée vers
+  // `_MainNavigationState.initState` (avec un délai plus long) : avant, lancée
+  // à 3 s depuis `main()`, elle se superposait à l'apparition du menu → focus
+  // TV se battait avec le dialog → impossible de sélectionner / fermer la MAJ.
 
   // Préchargement du guide des chaînes (EPG XMLTV) en arrière-plan, non-bloquant.
   // Sans ça, le guide était vide au 1er lancement tant qu'on n'ouvrait pas une
@@ -88,7 +89,9 @@ void main() async {
 
 /// Vérifie silencieusement si une mise à jour est disponible.
 /// Affiche le dialogue uniquement si une nouvelle version existe.
-Future<void> _checkForUpdate() async {
+/// Public car appelé depuis `MainNavigation.initState` après que la home est
+/// stable (cf. §updateDelay).
+Future<void> checkForUpdate() async {
   final info = await UpdateService.checkForUpdate();
   if (info == null) return;
   final context = navigatorKey.currentContext;
@@ -218,14 +221,26 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     final path = await PlaylistService.getOrDownloadPlaylist();
     final acc  = await StreamAccountService.getCurrentAccount();
 
+    // §initBoot — Parsing du M3U actif AWAITED ici (au lieu de le faire dans
+    // `HomePage._ensureLoaded` plus tard) : la home se montait avec
+    // `_loading = true` → spinner hors-écran AetherStream visible une fraction
+    // de seconde. Maintenant l'écran AetherStream tient jusqu'à ce que la
+    // playlist active soit en mémoire → MainNavigation apparait directement.
+    if (acc != null) {
+      await ParsedPlaylistService.loadActive(acc.id, acc.label, path);
+    }
+
     // Multi-comptes : charger les autres playlists pour que la recherche et la
     // home agrègent tous les contenus disponibles.
-    //   1. Préchargement disque immédiat (rapide)
-    //   2. Téléchargement + parsing en arrière-plan des comptes manquants
+    //   1. Préchargement disque AWAITED (rapide, ~quelques ms par compte) →
+    //      le menu n'apparait que quand tout est prêt à afficher (plus de
+    //      "carrousels qui se remplissent en différé" derrière le menu).
+    //   2. Téléchargement + parsing réseau des manquants RESTE en arrière-plan
+    //      (peut prendre plusieurs secondes, on ne bloque pas le boot dessus).
     if (accounts.length > 1) {
       final others = accounts.where((a) => a.id != acc?.id).toList();
-      ParsedPlaylistService.preloadOthersFromDisk(others);  // fire & forget
-      _hydrateSecondaryAccounts(others);                    // fire & forget
+      await ParsedPlaylistService.preloadOthersFromDisk(others);
+      _hydrateSecondaryAccounts(others); // fire & forget
     }
 
     // §17b — Fetch background des AccountInfo pour TOUS les comptes
