@@ -25,6 +25,23 @@ import '../models/stream_account.dart';
 class XtreamApiService {
   XtreamApiService._();
 
+  /// §xtreamEpisodesCache — Cache LRU mémoire des épisodes série fetched via
+  /// `fetchEpisodes`. Évite un re-fetch si l'utilisateur referme/rouvre la
+  /// même fiche série rapidement. Capacité 60 séries, TTL 15 min (au-delà on
+  /// re-fetch pour rester frais — l'utilisateur peut avoir ajouté des
+  /// épisodes côté provider).
+  static final _episodesCache = <String, ({DateTime at, List<M3uEntry> eps})>{};
+  static const int _maxCacheEntries = 60;
+  static const Duration _cacheTtl = Duration(minutes: 15);
+
+  static String _cacheKey(String accountId, int seriesId) =>
+      '$accountId#$seriesId';
+
+  /// Invalide une entrée du cache (utile si on ajoute un refresh manuel un jour).
+  static void invalidateEpisodes(String accountId, int seriesId) {
+    _episodesCache.remove(_cacheKey(accountId, seriesId));
+  }
+
   /// Construit le Dio pour appeler `player_api.php` du host de [account].
   /// Hérite du profil IPTV (UA `IPTVSmartersPro`, Accept-Encoding gzip).
   static Future<Dio> _dio(StreamAccount account) async {
@@ -127,6 +144,17 @@ class XtreamApiService {
     StreamAccount account,
     int seriesId,
   ) async {
+    // §xtreamEpisodesCache — cache LRU lookup
+    final key = _cacheKey(account.id, seriesId);
+    final cached = _episodesCache[key];
+    if (cached != null &&
+        DateTime.now().difference(cached.at) < _cacheTtl) {
+      // Hit : on remet l'entrée en tête (LRU) en la ré-insérant
+      _episodesCache.remove(key);
+      _episodesCache[key] = cached;
+      return cached.eps;
+    }
+
     final info = await getSeriesInfo(account, seriesId);
     if (info == null) return const [];
     final creds = credentialsOf(account);
@@ -178,6 +206,16 @@ class XtreamApiService {
         ));
       }
     });
+
+    // §xtreamEpisodesCache — Store : éviction LRU si capacité atteinte
+    // (LinkedHashMap garde l'ordre d'insertion ; on retire le 1er élément
+    // == le plus ancien, puis on insère le nouveau en fin == le plus récent).
+    if (out.isNotEmpty) {
+      if (_episodesCache.length >= _maxCacheEntries) {
+        _episodesCache.remove(_episodesCache.keys.first);
+      }
+      _episodesCache[key] = (at: DateTime.now(), eps: out);
+    }
     return out;
   }
 

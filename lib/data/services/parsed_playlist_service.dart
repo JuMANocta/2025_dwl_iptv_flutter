@@ -45,6 +45,26 @@ class ParsedPlaylistService {
   static final ValueNotifier<Map<String, AccountLoadState>> loadStates =
       ValueNotifier<Map<String, AccountLoadState>>({});
 
+  /// §lazyUnload — Timestamp du dernier accès en lecture par compte. Utilisé
+  /// par [unloadIdleSecondaries] pour décharger de mémoire les comptes
+  /// secondaires qui n'ont pas été consultés depuis longtemps (M3U + cache
+  /// JSON.gz restent sur disque → rechargement ~50 ms si re-demandés).
+  static final Map<String, DateTime> _lastAccess = {};
+
+  /// Marque un compte comme "accédé récemment" → reset son délai d'idle.
+  /// Appelé automatiquement par tous les accesseurs ([entries],
+  /// [entriesWithPriority], [byTypeWithPriority], [getAccount]).
+  static void markAccessed(String accountId) {
+    _lastAccess[accountId] = DateTime.now();
+  }
+
+  static void _touchAllLoaded() {
+    final now = DateTime.now();
+    for (final id in _memory.keys) {
+      _lastAccess[id] = now;
+    }
+  }
+
   /// Marque l'état d'un compte et notifie les listeners (immutable copy).
   static void setLoadState(String accountId, AccountLoadState state) {
     final next = Map<String, AccountLoadState>.from(loadStates.value);
@@ -209,13 +229,16 @@ class ParsedPlaylistService {
 
   /// Toutes les entrées de tous les comptes actuellement chargés en mémoire.
   /// Utilisé par ActorDetailsPage, FavoritesService, etc.
-  static List<M3uEntry> get entries =>
-      _memory.values.expand((p) => p.entries).toList();
+  static List<M3uEntry> get entries {
+    _touchAllLoaded();
+    return _memory.values.expand((p) => p.entries).toList();
+  }
 
   /// Entrées avec le compte prioritaire en PREMIER.
   /// À utiliser dans RechercheM3U pour que putIfAbsent donne la priorité
   /// aux URLs/qualités du compte actif sur les autres comptes chargés.
   static List<M3uEntry> entriesWithPriority(String priorityAccountId) {
+    _touchAllLoaded();
     final priority = _memory[priorityAccountId]?.entries ?? [];
     final others   = _memory.entries
         .where((e) => e.key != priorityAccountId)
@@ -233,6 +256,7 @@ class ParsedPlaylistService {
   /// filtre `isHiddenTvVariant` reste à la charge de l'appelant (couche feature).
   static Map<M3uContentType, List<M3uEntry>> byTypeWithPriority(
       String priorityAccountId) {
+    _touchAllLoaded();
     final accounts = <ParsedPlaylist>[];
     final prio = _memory[priorityAccountId];
     if (prio != null) accounts.add(prio);
@@ -255,7 +279,11 @@ class ParsedPlaylistService {
   }
 
   /// Playlist d'un compte spécifique (null si pas encore chargée).
-  static ParsedPlaylist? getAccount(String accountId) => _memory[accountId];
+  static ParsedPlaylist? getAccount(String accountId) {
+    final p = _memory[accountId];
+    if (p != null) _lastAccess[accountId] = DateTime.now();
+    return p;
+  }
 
   /// Vrai si plusieurs comptes sont chargés en mémoire → afficher les badges provider.
   static bool get isMultiAccount => _memory.length > 1;
@@ -338,8 +366,53 @@ class ParsedPlaylistService {
   static void clear() {
     _memory.clear();
     _accountNames.clear();
+    _lastAccess.clear();
     loadStates.value = {};
     version.value++;
+  }
+
+  /// §lazyUnload — Décharge UN compte secondaire de la mémoire (le cache disque
+  /// JSON.gz reste intact → rechargement ~50 ms quand re-demandé via
+  /// [loadSecondary] ou [preloadOthersFromDisk]). Le compte actif ne doit
+  /// JAMAIS être passé ici (vérif côté appelant). Bumpe `version` pour
+  /// invalider les caches mémoire de la home (regroupements multi-comptes).
+  /// L'état de chargement repasse à `notLoaded` → l'UI sait que la playlist
+  /// est sur disque uniquement.
+  static void unloadSecondary(String accountId) {
+    if (!_memory.containsKey(accountId)) return;
+    _memory.remove(accountId);
+    _lastAccess.remove(accountId);
+    setLoadState(accountId, AccountLoadState.notLoaded);
+    version.value++;
+    debugPrint('💤 ParsedPlaylist: déchargé mémoire (cache disque conservé) — $accountId');
+  }
+
+  /// §lazyUnload — Décharge tous les comptes secondaires inactifs depuis plus
+  /// de [idle]. Le compte [activeAccountId] est protégé (jamais déchargé).
+  /// À appeler périodiquement depuis l'UI (timer ~2 min) ou sur événement
+  /// (passage au player, bascule d'écran). Retourne le nombre de comptes
+  /// effectivement déchargés.
+  static int unloadIdleSecondaries({
+    required String activeAccountId,
+    Duration idle = const Duration(minutes: 5),
+  }) {
+    final now = DateTime.now();
+    final toUnload = <String>[];
+    for (final id in _memory.keys) {
+      if (id == activeAccountId) continue;
+      final last = _lastAccess[id];
+      // Si pas d'accès enregistré → marquer maintenant (grâce d'un cycle) puis
+      // décharger au prochain passage.
+      if (last == null) {
+        _lastAccess[id] = now;
+        continue;
+      }
+      if (now.difference(last) >= idle) toUnload.add(id);
+    }
+    for (final id in toUnload) {
+      unloadSecondary(id);
+    }
+    return toUnload.length;
   }
 
   // ── Disque — JSON gzippé ──────────────────────────────────────────────────

@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
+import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
@@ -43,6 +47,36 @@ class _MainNavigationState extends State<MainNavigation> {
   /// §backExit — Horodatage du dernier Back sur l'onglet Accueil (double-back).
   DateTime? _lastBackPress;
 
+  /// §railExit — Scope dédié au contenu (la page active). Permet au rail TV
+  /// d'envoyer explicitement le focus dans le contenu sur flèche droite, même
+  /// si la traversée géométrique par défaut ne trouve pas de cible visible.
+  final FocusScopeNode _contentScopeNode = FocusScopeNode(debugLabel: 'content');
+
+  /// §lazyUnload — Timer périodique qui décharge de la mémoire les comptes
+  /// secondaires non consultés depuis [_idleThreshold]. Le cache disque
+  /// JSON.gz est conservé → rechargement ~50 ms quand un compte secondaire
+  /// est re-demandé (recherche cross-comptes, action sheet multi-providers).
+  Timer? _idleUnloadTimer;
+  static const Duration _idleCheckInterval = Duration(minutes: 2);
+  static const Duration _idleThreshold     = Duration(minutes: 5);
+
+  @override
+  void dispose() {
+    _idleUnloadTimer?.cancel();
+    _contentScopeNode.dispose();
+    super.dispose();
+  }
+
+  /// §railExit — Appelé quand l'utilisateur appuie ←→ sur le rail TV : on
+  /// focus le 1er focusable du contenu (en ordre de traversée). Fallback
+  /// implicite si le scope n'a rien (la home se reconstruit) → no-op.
+  void _focusContentArea() {
+    final first = _contentScopeNode.traversalDescendants
+        .where((n) => n.canRequestFocus && !n.skipTraversal)
+        .firstOrNull;
+    first?.requestFocus();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +86,42 @@ class _MainNavigationState extends State<MainNavigation> {
     Future.delayed(const Duration(seconds: 10), () {
       if (mounted) checkForUpdate();
     });
+
+    // §backExitHint — Sur TV uniquement, premier lancement : affiche un hint
+    // discret expliquant le double-back pour quitter (sinon l'utilisateur
+    // pense que Back ne fait rien sur l'Accueil au 1er essai).
+    if (PlatformTv.isTv) {
+      _maybeShowBackExitHint();
+    }
+
+    // §lazyUnload — Le compte actif est dans `widget.initialData.accountId` ;
+    // il est marqué comme accédé avant chaque check pour ne JAMAIS être
+    // déchargé (la home le lit en permanence de toute façon).
+    _idleUnloadTimer = Timer.periodic(_idleCheckInterval, (_) {
+      ParsedPlaylistService.markAccessed(widget.initialData.accountId);
+      ParsedPlaylistService.unloadIdleSecondaries(
+        activeAccountId: widget.initialData.accountId,
+        idle: _idleThreshold,
+      );
+    });
+  }
+
+  Future<void> _maybeShowBackExitHint() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      const key = 'hint_double_back_seen_v1';
+      if (prefs.getBool(key) ?? false) return;
+      await Future.delayed(const Duration(seconds: 4));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text(
+              '💡 Pour quitter l\'application : appuie 2 fois sur Retour'),
+          duration: Duration(seconds: 6),
+        ));
+      await prefs.setBool(key, true);
+    } catch (_) {/* silent */}
   }
 
   void _onTap(int i) {
@@ -87,6 +157,8 @@ class _MainNavigationState extends State<MainNavigation> {
     if (isTv) {
       // §3c-6 — Layout TV : NavigationRail latéral, focusable au D-pad.
       // Pas de bottom bar (impossible à reach avec une télécommande).
+      // §railExit — Le contenu vit dans un `FocusScope` dédié pour que le rail
+      // puisse y envoyer explicitement le focus sur flèche droite.
       return _wrapBack(Scaffold(
         body: Row(
           children: [
@@ -94,8 +166,11 @@ class _MainNavigationState extends State<MainNavigation> {
               selectedIndex: _navIndex,
               onDestinationSelected: _onTap,
               onOpenSettings: _openSettingsTv,
+              onExitRight: _focusContentArea,
             ),
-            Expanded(child: stack),
+            Expanded(
+              child: FocusScope(node: _contentScopeNode, child: stack),
+            ),
           ],
         ),
       ));
@@ -198,55 +273,79 @@ class _TvNavigationRail extends StatelessWidget {
   final ValueChanged<int> onDestinationSelected;
   final VoidCallback onOpenSettings;
 
+  /// §railExit — Appelé quand le focus est dans le rail et que l'utilisateur
+  /// appuie sur la flèche droite : la `MainNavigation` répond en focusant le
+  /// 1er focusable du contenu (sinon la traversée géométrique de Flutter peut
+  /// échouer si rien n'est aligné à droite des destinations).
+  final VoidCallback? onExitRight;
+
   const _TvNavigationRail({
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.onOpenSettings,
+    this.onExitRight,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return NavigationRail(
-      selectedIndex: selectedIndex,
-      minWidth: 64,
-      labelType: NavigationRailLabelType.all,
-      backgroundColor: cs.surface,
-      indicatorColor: cs.primary.withAlpha(40),
-      selectedIconTheme: IconThemeData(color: cs.primary),
-      selectedLabelTextStyle:
-          TextStyle(color: cs.primary, fontWeight: FontWeight.bold),
-      onDestinationSelected: (i) {
-        if (i == 3) {
-          // §3c-bis — Paramètres : on ne modifie pas selectedIndex (resterait
-          // coincé sur "Paramètres" au retour). On pousse la route et on
-          // laisse l'index courant intact.
-          onOpenSettings();
-          return;
+    // §railExit — Focus parent qui capture ← → quand un descendant (les
+    // destinations) a le focus. arrow right → on délègue à `onExitRight`.
+    return Focus(
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
+            onExitRight != null) {
+          onExitRight!();
+          return KeyEventResult.handled;
         }
-        onDestinationSelected(i);
+        return KeyEventResult.ignored;
       },
-      destinations: const [
-        NavigationRailDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home),
-          label: Text('Accueil'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.search),
-          label: Text('Recherche'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.download_outlined),
-          selectedIcon: Icon(Icons.download),
-          label: Text('Téléchargements'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.settings_outlined),
-          selectedIcon: Icon(Icons.settings),
-          label: Text('Paramètres'),
-        ),
-      ],
+      child: NavigationRail(
+        selectedIndex: selectedIndex,
+        minWidth: 64,
+        // §railCenter — Centrage vertical des destinations dans la hauteur
+        // disponible (par défaut elles s'empilent en haut, ce qui laisse un
+        // grand vide en bas sur TV 16:9).
+        groupAlignment: 0.0,
+        labelType: NavigationRailLabelType.all,
+        backgroundColor: cs.surface,
+        indicatorColor: cs.primary.withAlpha(40),
+        selectedIconTheme: IconThemeData(color: cs.primary),
+        selectedLabelTextStyle:
+            TextStyle(color: cs.primary, fontWeight: FontWeight.bold),
+        onDestinationSelected: (i) {
+          if (i == 3) {
+            // §3c-bis — Paramètres : on ne modifie pas selectedIndex (resterait
+            // coincé sur "Paramètres" au retour). On pousse la route et on
+            // laisse l'index courant intact.
+            onOpenSettings();
+            return;
+          }
+          onDestinationSelected(i);
+        },
+        destinations: const [
+          NavigationRailDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: Text('Accueil'),
+          ),
+          NavigationRailDestination(
+            icon: Icon(Icons.search),
+            label: Text('Recherche'),
+          ),
+          NavigationRailDestination(
+            icon: Icon(Icons.download_outlined),
+            selectedIcon: Icon(Icons.download),
+            label: Text('Téléchargements'),
+          ),
+          NavigationRailDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: Text('Paramètres'),
+          ),
+        ],
+      ),
     );
   }
 }

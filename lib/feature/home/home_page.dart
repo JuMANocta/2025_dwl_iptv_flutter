@@ -274,16 +274,39 @@ class _HomePageState extends State<HomePage> with RouteAware {
   @override
   void didPushNext() {
     _inBackground = true;
+    // §perfBgFull — Cancel debounce recherche (timer de 220 ms pendant frappe) :
+    // sinon il peut fire pendant la lecture et provoquer un setState dans la
+    // home invisible derrière le player → CPU pour rien + contention décodeur.
+    _searchDebounce?.cancel();
+    _searchDebounce = null;
   }
 
   @override
   void didPopNext() {
     _inBackground = false;
+    // §lazyUnload — Si des comptes secondaires ont été déchargés pendant qu'on
+    // était sur le player, on les re-précharge depuis le cache disque JSON.gz
+    // (~50 ms par compte). Idempotent : skip ceux déjà en mémoire.
+    _rehydrateSecondariesIfNeeded();
     // Rejouer une éventuelle notification ignorée pendant l'arrière-plan.
     if (_pendingRefresh && mounted) {
       _pendingRefresh = false;
       setState(() {});
     }
+  }
+
+  Future<void> _rehydrateSecondariesIfNeeded() async {
+    try {
+      final accounts = await StreamAccountService.listAccounts();
+      final current  = await StreamAccountService.getCurrentAccount();
+      final others   = accounts.where((a) => a.id != current?.id).toList();
+      if (others.isEmpty) return;
+      // Vérifie qu'au moins un compte secondaire a été déchargé.
+      final missing = others.any(
+          (a) => ParsedPlaylistService.getAccount(a.id) == null);
+      if (!missing) return;
+      await ParsedPlaylistService.preloadOthersFromDisk(others);
+    } catch (_) {/* silent — pas de cache disque = re-DL au prochain boot */}
   }
 
   void _onHomeNotifier() {
@@ -372,6 +395,37 @@ class _HomePageState extends State<HomePage> with RouteAware {
     );
   }
 
+  /// §refreshHome — Vide le cache disque du compte actif, re-télécharge le M3U
+  /// (via le pipeline §xtreamApi qui retentera la JSON API puis fallback get.php)
+  /// et re-parse. Tient l'utilisateur au courant via snackbars succès/erreur.
+  Future<void> _refreshActivePlaylist() async {
+    final messenger = ScaffoldMessenger.of(context);
+    AppSnackBar.show(context, 'Rafraîchissement de la playlist…',
+        duration: const Duration(seconds: 4));
+    try {
+      await PlaylistService.deleteForAccountId(_activeAccountId);
+      ParsedPlaylistService.invalidate(_activeAccountId);
+      final path = await PlaylistService.downloadCurrentM3U();
+      await ParsedPlaylistService.loadActive(
+          _activeAccountId, _activeAccountName, path);
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text('✅ Playlist rafraîchie'),
+          duration: Duration(seconds: 2),
+        ));
+    } catch (e) {
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text('❌ Échec : $e'),
+          duration: const Duration(seconds: 4),
+        ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -407,14 +461,25 @@ class _HomePageState extends State<HomePage> with RouteAware {
         // §3c-bis — Sur TV, l'icône ⚙️ est redondante avec la 4e destination
         // "Paramètres" du NavigationRail latéral (et inaccessible au D-pad de
         // toute façon, le focus traversal ne remonte pas dans l'AppBar).
-        actions: (widget.searchMode || PlatformTv.isTv)
+        actions: widget.searchMode
             ? const []
             : [
+                // §refreshHome — Rafraîchissement du compte actif sans passer
+                // par Paramètres → Comptes IPTV. Pratique pour valider qu'une
+                // playlist côté provider a bien été mise à jour.
                 IconButton(
-                  icon: const Icon(Icons.settings_outlined),
-                  tooltip: 'Paramètres',
-                  onPressed: _openSettings,
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Recharger la playlist',
+                  onPressed: _refreshActivePlaylist,
                 ),
+                if (!PlatformTv.isTv)
+                  // §3c-bis — Sur TV, l'icône ⚙️ est redondante avec la
+                  // destination "Paramètres" du rail. On la masque.
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined),
+                    tooltip: 'Paramètres',
+                    onPressed: _openSettings,
+                  ),
                 const SizedBox(width: 4),
               ],
       ),
@@ -497,7 +562,15 @@ class _HomePageState extends State<HomePage> with RouteAware {
                     );
                   }
 
-                  return PageView(
+                  return Column(
+                    children: [
+                      // §loadingBanner — Bandeau discret en haut de la home
+                      // tant que les comptes secondaires se téléchargent/parsent
+                      // en arrière-plan. L'utilisateur sait pourquoi certains
+                      // films/séries d'un compte non-actif "manquent" temporairement.
+                      const _SecondaryAccountsLoadingBanner(),
+                      Expanded(
+                        child: PageView(
                     controller: _pageController,
                     // §3c-7 — Sur TV : pas de swipe horizontal (la nav
                     // Films/Séries/Chaînes se fait via les tabs cliquables
@@ -558,6 +631,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
                           entries: byType[M3uContentType.tv]!,
                           topInset: defaultTopInset,
                           tabsBuilder: buildTabs,
+                        ),
+                      ),
+                    ],
                         ),
                       ),
                     ],
@@ -779,6 +855,66 @@ class _AnimatedTabIndicatorState extends State<_AnimatedTabIndicator> {
 double _responsiveTileWidth(double available, {required bool channel}) {
   final cols = _responsiveColumns(available, channel: channel);
   return available / cols;
+}
+
+/// §loadingBanner — Banner discret en haut de la home : visible uniquement
+/// quand au moins un compte secondaire est en cours de téléchargement / parse
+/// (background `_hydrateSecondaryAccounts`). Disparait dès que tout est chargé.
+/// Permet à l'utilisateur de comprendre pourquoi certains contenus d'un compte
+/// non-actif "manquent" temporairement.
+class _SecondaryAccountsLoadingBanner extends StatelessWidget {
+  const _SecondaryAccountsLoadingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Map<String, AccountLoadState>>(
+      valueListenable: ParsedPlaylistService.loadStates,
+      builder: (ctx, states, _) {
+        final loading = states.entries
+            .where((e) =>
+                e.value == AccountLoadState.downloading ||
+                e.value == AccountLoadState.parsing)
+            .length;
+        if (loading == 0) return const SizedBox.shrink();
+        final total = states.length;
+        final loaded = total - loading;
+        return Container(
+          width: double.infinity,
+          padding: EdgeInsets.only(
+            top: MediaQuery.of(context).padding.top + 6,
+            left: 16,
+            right: 16,
+            bottom: 8,
+          ),
+          color: kAccentPrimary.withAlpha(15),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(kAccentPrimary),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Chargement des comptes secondaires… ($loaded/$total prêts)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: kAccentPrimary,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 /// Nombre de colonnes / vignettes visibles cible selon la largeur disponible.
@@ -1633,6 +1769,10 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   void didPushNext() {
     _bgPaused = true;
     _timer?.cancel();
+    // §perfBgFull — Une animation lancée par `_advance()` continue de ticer
+    // jusqu'à sa fin (520 ms) même après cancel du timer → `_onTick`
+    // setState invisible derrière le player → contention CPU. Stop net.
+    if (_animCtrl.isAnimating) _animCtrl.stop();
   }
 
   @override

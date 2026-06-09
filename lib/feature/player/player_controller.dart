@@ -57,6 +57,18 @@ class AetherPlayerController {
       await np.setProperty('cache-pause', 'no');
       // Latence audio plus serrée → meilleure synchro lèvres.
       await np.setProperty('audio-buffer', '0.2');
+      // §avSync — Sync agressive sur streams instables : autorise mpv à
+      // "tricher" sur les PTS pour rester collé à l'audio (drop frames vidéo
+      // ou rate-resample audio plutôt que de laisser dériver). Indispensable
+      // sur les flux IPTV qui ont parfois des PTS dégueulasses (encodeurs
+      // bidons des panels).
+      await np.setProperty('video-latency-hacks', 'yes');
+      // Évite un seek subtil au démarrage de certains MKV qui désync 200-500 ms
+      // dès la première lecture (probe du start time → dérive PTS).
+      await np.setProperty('demuxer-mkv-probe-start-time', 'no');
+      // Force la correction des PTS aberrants côté demuxer (au lieu d'attendre
+      // que le décodeur s'en aperçoive et lag).
+      await np.setProperty('correct-pts', 'yes');
     } catch (e) {
       debugPrint('⚠️ AetherPlayerController: audio tuning échoué — $e');
     }
