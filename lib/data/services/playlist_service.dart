@@ -6,6 +6,7 @@ import 'package:aetherStream/data/models/stream_account.dart';
 import '../../core/utils/network.dart';
 import 'stream_account_service.dart';
 import 'parsed_playlist_service.dart';
+import 'xtream_m3u_builder.dart';
 
 class PlaylistService {
   static const String _playlistBaseName = 'playlist';
@@ -84,6 +85,22 @@ class PlaylistService {
 
     final tempPath = '$path.part';
     try {
+      // §xtreamApi — Tentative 1 : JSON API. Si OK, on évite get.php.
+      try {
+        final m3u = await XtreamM3uBuilder.build(acc);
+        if (m3u != null && m3u.isNotEmpty) {
+          final temp = File(tempPath);
+          await temp.writeAsString(m3u, flush: true);
+          await temp.rename(path);
+          ParsedPlaylistService.invalidate(acc.id);
+          debugPrint('✅ Playlist via JSON API pour ${acc.label}.');
+          return path;
+        }
+      } catch (e) {
+        debugPrint('⚠️ JSON API ${acc.label} échec ($e), fallback get.php');
+      }
+
+      // §xtreamApi — Tentative 2 : fallback get.php.
       final dio = await NetworkUtils.buildDio(url);
       await dio.download(
         url,
@@ -101,7 +118,7 @@ class PlaylistService {
       }
       await temp.rename(path);
       ParsedPlaylistService.invalidate(acc.id);
-      debugPrint("✅ Playlist téléchargée pour ${acc.label}.");
+      debugPrint("✅ Playlist via get.php (fallback) pour ${acc.label}.");
       return path;
     } catch (e) {
       debugPrint("❌ ensureDownloadedForAccount(${acc.label}): $e");
@@ -134,6 +151,32 @@ class PlaylistService {
       destinationPath = await playlistPath();
       tempPath = '$destinationPath.part';
 
+      // §xtreamApi — TENTATIVE 1 : construction de la playlist via la JSON API
+      // (`player_api.php?action=…`). Plus fiable que `get.php` qui plante sur
+      // certains panels (PHP timeout sur grosse génération). On dégrade vers
+      // `get.php` (TENTATIVE 2) si l'API échoue. Voir `XtreamM3uBuilder`.
+      final acc = await StreamAccountService.getCurrentAccount();
+      if (acc != null) {
+        try {
+          final m3u = await XtreamM3uBuilder.build(acc);
+          if (m3u != null && m3u.isNotEmpty) {
+            final tempFile = File(tempPath);
+            await tempFile.writeAsString(m3u, flush: true);
+            await tempFile.rename(destinationPath);
+            debugPrint('✅ Playlist construite via JSON API '
+                '(${await File(destinationPath).length()} octets).');
+            ParsedPlaylistService.invalidate(acc.id);
+            return destinationPath;
+          }
+          debugPrint('⚠️ JSON API n\'a rien retourné, fallback sur get.php');
+        } catch (e) {
+          debugPrint('⚠️ JSON API a échoué ($e), fallback sur get.php');
+        }
+      }
+
+      // §xtreamApi — TENTATIVE 2 : fallback historique sur `get.php`.
+      // Plus fragile mais nécessaire pour les panels qui n'exposent pas la
+      // JSON API ou pour les comptes non-Xtream (Flussonic, M3U custom…).
       final dio = await NetworkUtils.buildDio(url);
 
       await dio.download(
@@ -153,10 +196,9 @@ class PlaylistService {
       }
 
       await tempFile.rename(destinationPath);
-      debugPrint("✅ Playlist téléchargée et mise en cache avec succès.");
+      debugPrint("✅ Playlist téléchargée via get.php (fallback) et mise en cache.");
 
-      // Invalider le cache parsé — le prochain loadActive() re-parsera le nouveau fichier
-      final acc = await StreamAccountService.getCurrentAccount();
+      // Invalider le cache parsé — le prochain loadActive() re-parsera le fichier.
       if (acc != null) ParsedPlaylistService.invalidate(acc.id);
 
       return destinationPath;

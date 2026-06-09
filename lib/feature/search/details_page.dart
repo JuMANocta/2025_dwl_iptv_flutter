@@ -7,7 +7,9 @@ import '../../data/services/tmdb_service.dart';
 import '../../data/services/tmdb_api_service.dart';
 import '../settings/tmdb_key_page.dart';
 import '../../data/services/parsed_playlist_service.dart';
+import '../../data/services/stream_account_service.dart';
 import '../../data/services/watch_progress_service.dart';
+import '../../data/services/xtream_api_service.dart';
 import '../../core/utils/app_snackbar.dart';
 import '../../data/models/media_model.dart';
 import '../player/player_page.dart';
@@ -124,29 +126,16 @@ class _DetailsPageState extends State<DetailsPage> {
     _buildSeasonEpisodes();
 
     if (_seasonEpisodes.isNotEmpty) {
-      final season = widget.entry.title.seasonNumber;
-      final epNum  = widget.entry.title.episodeNumber;
-
-      if (season != null && epNum != null) {
-        final group = _seasonEpisodes[season]
-            ?.where((g) => g.episodeNumber == epNum)
-            .firstOrNull;
-        if (group != null) {
-          _episodeSelected = true;
-          _selectedSeason  = season;
-          _currentEpisode  = group.best;
-          _uniqueVersions  = _deduplicateVersions(group.versions);
-          _selectedEntry   = _uniqueVersions.isNotEmpty ? _uniqueVersions.first : group.best;
-        } else {
-          _episodeSelected = false;
-          _uniqueVersions  = [];
-          _selectedEntry   = widget.entry;
-        }
-      } else {
-        _episodeSelected = false;
-        _uniqueVersions  = [];
-        _selectedEntry   = widget.entry;
-      }
+      _applyInitialEpisodeSelection();
+    } else if (widget.entry.type == M3uContentType.series) {
+      // §xtreamEpisodes — Pas d'épisodes trouvés dans le M3U parsé : c'est
+      // probablement une entrée série issue de la JSON API (un seul stub par
+      // série, sans épisodes). On va les chercher à la demande via
+      // `XtreamApiService.fetchEpisodes(seriesId)` — lazy load, on ne pré-
+      // charge pas les 19 000+ séries au boot.
+      _uniqueVersions = _deduplicateVersions(widget.versions);
+      _selectedEntry  = _uniqueVersions.isNotEmpty ? _uniqueVersions.first : widget.entry;
+      _fetchEpisodesFromXtreamApi();
     } else {
       _uniqueVersions = _deduplicateVersions(widget.versions);
       _selectedEntry  = _uniqueVersions.isNotEmpty ? _uniqueVersions.first : widget.entry;
@@ -165,6 +154,91 @@ class _DetailsPageState extends State<DetailsPage> {
   void dispose() {
     _episodeScrollController.dispose();
     super.dispose();
+  }
+
+  /// §xtreamEpisodes — Applique la sélection initiale d'épisode après que
+  /// `_seasonEpisodes` est rempli (que ce soit via le parser M3U OU via le
+  /// lazy fetch de la JSON API). Factorisé pour pouvoir être appelé depuis
+  /// initState ET depuis `_fetchEpisodesFromXtreamApi`.
+  void _applyInitialEpisodeSelection() {
+    final season = widget.entry.title.seasonNumber;
+    final epNum  = widget.entry.title.episodeNumber;
+    if (season != null && epNum != null) {
+      final group = _seasonEpisodes[season]
+          ?.where((g) => g.episodeNumber == epNum)
+          .firstOrNull;
+      if (group != null) {
+        _episodeSelected = true;
+        _selectedSeason  = season;
+        _currentEpisode  = group.best;
+        _uniqueVersions  = _deduplicateVersions(group.versions);
+        _selectedEntry   = _uniqueVersions.isNotEmpty
+            ? _uniqueVersions.first
+            : group.best;
+        return;
+      }
+    }
+    _episodeSelected = false;
+    _uniqueVersions  = const [];
+    _selectedEntry   = widget.entry;
+  }
+
+  /// §xtreamEpisodes — Récupère les épisodes via la JSON API Xtream à la
+  /// demande (séries listées en stubs au boot, épisodes chargés à l'ouverture).
+  Future<void> _fetchEpisodesFromXtreamApi() async {
+    final seriesId = _extractSeriesIdFromUrl(widget.entry.url);
+    if (seriesId == null) return;
+    final account = await StreamAccountService.getAccount(widget.entry.accountId);
+    if (account == null) return;
+
+    final episodes = await XtreamApiService.fetchEpisodes(account, seriesId);
+    if (!mounted || episodes.isEmpty) return;
+
+    // Regroupement saison → épisode → versions (1 seule version par épisode
+    // côté API, mais on garde la structure pour rester compatible avec le
+    // pipeline existant qui gère les épisodes en doublon).
+    final tmp = <int, Map<int, List<M3uEntry>>>{};
+    for (final ep in episodes) {
+      final s = ep.title.seasonNumber;
+      final e = ep.title.episodeNumber;
+      if (s == null || e == null) continue;
+      tmp.putIfAbsent(s, () => {}).putIfAbsent(e, () => []).add(ep);
+    }
+    final result = <int, List<_EpGroup>>{};
+    for (final entry in tmp.entries) {
+      final groups = entry.value.entries
+          .map((e) => _EpGroup(e.key, e.value))
+          .toList()
+        ..sort((a, b) => a.episodeNumber.compareTo(b.episodeNumber));
+      result[entry.key] = groups;
+    }
+    final sortedSeasons = result.keys.toList()..sort();
+
+    if (!mounted) return;
+    setState(() {
+      _seasonEpisodes = {for (final s in sortedSeasons) s: result[s]!};
+      _selectedSeason = null;
+      _applyInitialEpisodeSelection();
+    });
+  }
+
+  /// Extrait le `series_id` d'une URL stub `/series/{user}/{pass}/{id}`
+  /// (sans extension). Retourne `null` si :
+  /// - URL pas de format `series`
+  /// - dernier segment a une extension (= URL d'épisode, pas un stub)
+  /// - dernier segment pas un entier
+  static int? _extractSeriesIdFromUrl(String url) {
+    try {
+      final segments = Uri.parse(url).pathSegments;
+      if (segments.length < 4 || segments[0].toLowerCase() != 'series') {
+        return null;
+      }
+      final last = segments.last;
+      if (last.contains('.')) return null; // c'est une URL d'épisode
+      return int.tryParse(last);
+    } catch (_) {
+      return null;
+    }
   }
 
   void _buildSeasonEpisodes() {
@@ -716,52 +790,168 @@ class _DetailsPageState extends State<DetailsPage> {
   // ── Navigateur série ────────────────────────────────────────────────────────
 
   Widget _buildSeriesNavigator(ColorScheme cs, AppLocalizations l10n) {
+    final hasSeasons = _seasonEpisodes.isNotEmpty;
+    final totalSeasons = _seasonEpisodes.length;
+    final totalEpisodes =
+        _seasonEpisodes.values.fold<int>(0, (acc, eps) => acc + eps.length);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // SAISONS
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+        // ── §seasonsUI — En-tête de section "SAISONS" + total ────────────────
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
           child: Row(
-            children: _seasonEpisodes.keys.map((sNum) {
-              final isSelected = sNum == _selectedSeason;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                // §3c Phase 1 — FocusableChip : la saison devient sélectionnable
-                // au D-pad (avant : GestureDetector tap-only). onTap reste
-                // toujours défini pour que le chip sélectionné garde le focus.
-                child: FocusableChip(
-                  onTap: () => _selectSeason(sNum),
-                  borderRadius: BorderRadius.circular(24),
-                  child: GestureDetector(
-                    onTap: isSelected ? null : () => _selectSeason(sNum),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 9),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? cs.primary
-                            : cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Text(
-                        'Saison $sNum',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+            children: [
+              Container(
+                width: 4,
+                height: 18,
+                decoration: BoxDecoration(
+                  gradient: kAetherGradient,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'SAISONS',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.5,
+                  color: kAccentPrimary,
+                ),
+              ),
+              if (hasSeasons) ...[
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    totalSeasons == 1
+                        ? '$totalSeasons saison · $totalEpisodes épisodes'
+                        : '$totalSeasons saisons · $totalEpisodes épisodes',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        // ── SAISONS (chips contour néon cohérent avec le style fiche) ────────
+        if (!hasSeasons)
+          // §xtreamEpisodes — état chargement pendant le fetch async des épisodes
+          // (lazy load via XtreamApiService.fetchEpisodes), si on est sur une
+          // série stub issue de la JSON API.
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(kAccentPrimary),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Chargement des épisodes…',
+                  style: TextStyle(
+                      fontSize: 13, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          )
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _seasonEpisodes.entries.map((entry) {
+                final sNum = entry.key;
+                final epCount = entry.value.length;
+                final isSelected = sNum == _selectedSeason;
+                final accent = isSelected ? kAccentPrimary : cs.onSurfaceVariant;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FocusableChip(
+                    onTap: () => _selectSeason(sNum),
+                    borderRadius: BorderRadius.circular(14),
+                    child: GestureDetector(
+                      onTap: isSelected ? null : () => _selectSeason(sNum),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
                           color: isSelected
-                              ? cs.onPrimary
-                              : cs.onSurfaceVariant,
+                              ? kAccentPrimary.withAlpha(28)
+                              : cs.surfaceContainer,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isSelected
+                                ? kAccentPrimary
+                                : cs.outline.withAlpha(40),
+                            width: isSelected ? 1.8 : 1,
+                          ),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: kAccentPrimary.withAlpha(70),
+                                    blurRadius: 12,
+                                    spreadRadius: -2,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Saison ${sNum.toString().padLeft(2, '0')}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.4,
+                                color: accent,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? kAccentPrimary.withAlpha(45)
+                                    : cs.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '$epCount ép.',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: accent,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ),
-                ),
-              );
-            }).toList(),
+                );
+              }).toList(),
+            ),
           ),
-        ),
 
         // ÉPISODES (scroll horizontal, apparaît dès qu'une saison est choisie)
         if (_selectedSeason != null &&
