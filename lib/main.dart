@@ -19,6 +19,7 @@ import 'feature/accounts/accounts_page.dart';
 import 'feature/accounts/expiration_alert_dialog.dart';
 import 'feature/onboarding/onboarding_page.dart';
 import 'feature/settings/backup_restore_flow.dart';
+import 'feature/settings/web_console/web_console_page.dart';
 import 'feature/pairing/pairing_page.dart';
 import 'data/services/pairing_service.dart';
 import 'data/services/playlist_service.dart';
@@ -326,6 +327,17 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     _retryInitialization();
   }
 
+  /// §webConsoleFirstLaunch — Ouvre la Console web (même flux que
+  /// Settings → Console web) depuis l'écran "aucun compte". Au retour, on
+  /// relance l'init : si l'utilisateur a créé un compte côté navigateur,
+  /// l'app bascule directement sur la home.
+  Future<void> _openWebConsole() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WebConsolePage()),
+    );
+    if (mounted) _retryInitialization();
+  }
+
   /// §3c-8 — Sur TV : ouvre directement le pairing QR (saisie au D-pad
   /// impossible). En cas de succès, sauvegarde le compte et relance _init.
   Future<void> _openPairingTv() async {
@@ -415,6 +427,17 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
                     label: Text(isTv
                         ? 'Configurer depuis mon téléphone'
                         : 'Configurer les comptes'),
+                  ),
+                  // §webConsoleFirstLaunch — Console web : même flux que
+                  // Settings → Console web. Accessible TV + mobile pour
+                  // gérer la 1ʳᵉ config depuis un navigateur (clavier
+                  // complet, plus simple que la saisie au D-pad ou que
+                  // l'app native sur petit écran).
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _openWebConsole,
+                    icon: const Icon(Icons.language, size: 18),
+                    label: const Text('Configurer via Console web'),
                   ),
                   // §restore — Récupérer une sauvegarde .aether existante.
                   const SizedBox(height: 8),

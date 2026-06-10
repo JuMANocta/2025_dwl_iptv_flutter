@@ -52,6 +52,12 @@ class _MainNavigationState extends State<MainNavigation> {
   /// si la traversée géométrique par défaut ne trouve pas de cible visible.
   final FocusScopeNode _contentScopeNode = FocusScopeNode(debugLabel: 'content');
 
+  /// §railExit (bidir) — Scope dédié au rail. Permet de renvoyer
+  /// explicitement le focus dans le rail quand on quitte le contenu par la
+  /// gauche (sinon le FocusScope du contenu piège le focus → impossible de
+  /// revenir au menu sur Android TV).
+  final FocusScopeNode _railScopeNode = FocusScopeNode(debugLabel: 'rail');
+
   /// §lazyUnload — Timer périodique qui décharge de la mémoire les comptes
   /// secondaires non consultés depuis [_idleThreshold]. Le cache disque
   /// JSON.gz est conservé → rechargement ~50 ms quand un compte secondaire
@@ -64,6 +70,7 @@ class _MainNavigationState extends State<MainNavigation> {
   void dispose() {
     _idleUnloadTimer?.cancel();
     _contentScopeNode.dispose();
+    _railScopeNode.dispose();
     super.dispose();
   }
 
@@ -72,6 +79,16 @@ class _MainNavigationState extends State<MainNavigation> {
   /// implicite si le scope n'a rien (la home se reconstruit) → no-op.
   void _focusContentArea() {
     final first = _contentScopeNode.traversalDescendants
+        .where((n) => n.canRequestFocus && !n.skipTraversal)
+        .firstOrNull;
+    first?.requestFocus();
+  }
+
+  /// §railExit (bidir) — Symétrique de [_focusContentArea]. Appelé quand
+  /// le focus est dans le contenu et qu'on appuie ← au bord gauche : on
+  /// renvoie le focus sur la destination sélectionnée du rail.
+  void _focusRailArea() {
+    final first = _railScopeNode.traversalDescendants
         .where((n) => n.canRequestFocus && !n.skipTraversal)
         .firstOrNull;
     first?.requestFocus();
@@ -162,14 +179,36 @@ class _MainNavigationState extends State<MainNavigation> {
       return _wrapBack(Scaffold(
         body: Row(
           children: [
-            _TvNavigationRail(
-              selectedIndex: _navIndex,
-              onDestinationSelected: _onTap,
-              onOpenSettings: _openSettingsTv,
-              onExitRight: _focusContentArea,
+            FocusScope(
+              node: _railScopeNode,
+              child: _TvNavigationRail(
+                selectedIndex: _navIndex,
+                onDestinationSelected: _onTap,
+                onOpenSettings: _openSettingsTv,
+                onExitRight: _focusContentArea,
+              ),
             ),
             Expanded(
-              child: FocusScope(node: _contentScopeNode, child: stack),
+              // §railExit (bidir) — Catch arrowLeft au niveau du contenu :
+              //   1. Essaie la traversée naturelle dans le scope contenu
+              //      (carrousels horizontaux, carte précédente).
+              //   2. Si rien à gauche dans le scope → on est au bord, on
+              //      renvoie le focus au rail (`_focusRailArea`).
+              child: Focus(
+                onKeyEvent: (node, event) {
+                  if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                  if (event.logicalKey != LogicalKeyboardKey.arrowLeft) {
+                    return KeyEventResult.ignored;
+                  }
+                  final moved = _contentScopeNode
+                      .focusInDirection(TraversalDirection.left);
+                  if (!moved) {
+                    _focusRailArea();
+                  }
+                  return KeyEventResult.handled;
+                },
+                child: FocusScope(node: _contentScopeNode, child: stack),
+              ),
             ),
           ],
         ),

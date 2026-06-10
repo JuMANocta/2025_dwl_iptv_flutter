@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.20+70-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.8.21+71-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -271,6 +271,8 @@ lib/
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
+- [ ] **Lot nettoyage audit 2026-06-10** — suppression code mort (`recherche_page`/`recherche_m3u`, ~1 600 lignes orphelines), archivage `lib/iptv_exemple/` (303 Mo debug), hygiène roadmap (détail : `.claude/roadmap.md` § AUDIT 2026-06-10)
+- [ ] **Découpage `home_page.dart`** (3 696 lignes) — extraction hero/cards/rows/search vers `home/widgets/` (après les tests unitaires)
 - [ ] **Grille EPG XMLTV pour replay** — sélection programme dans la grille (en complément du picker manuel)
 - [ ] **Pistes audio + sous-titres** — sélection in-player (embarqués + sous-titres externes)
 - [ ] **File d'attente DL + WiFi-only** — sémaphore, reprise auto au retour réseau
