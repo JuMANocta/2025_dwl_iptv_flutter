@@ -36,10 +36,12 @@ class FavoritesService {
   // ── Génération des clés canoniques ──────────────────────────────────────
 
   /// Clé canonique pour une entrée M3U (cross-comptes, indépendante de la variante).
+  /// §23 — films/séries via [contentGroupKey] (minuscules) pour suivre la
+  /// fusion cross-listes insensible à la casse. TV inchangé (tvGroupKey).
   static String keyFor(M3uEntry e) {
     final groupKey = e.type == M3uContentType.tv
         ? tvGroupKey(e.displayName)
-        : e.displayName;
+        : contentGroupKey(e);
     return keyForGroup(e.type, groupKey);
   }
 
@@ -63,7 +65,27 @@ class FavoritesService {
       final raw = prefs.getString(_prefsKey);
       if (raw != null && raw.isNotEmpty) {
         final list = (jsonDecode(raw) as List).cast<String>();
-        _cache.addAll(list);
+        // §23b — Migration one-shot : les clés movie/series étaient stockées
+        // avec la casse + ponctuation d'origine du displayName ; la clé
+        // canonique est désormais `TitleMetadata.computeGroupKey` (minuscules
+        // + ponctuation → espace, alignée sur la fusion cross-listes).
+        // On migre à la lecture pour ne perdre aucun favori existant.
+        var migrated = false;
+        for (final key in list) {
+          final sep = key.indexOf('|');
+          if (sep > 0 && (key.startsWith('movie|') || key.startsWith('series|'))) {
+            final normalized = key.substring(0, sep + 1) +
+                TitleMetadata.computeGroupKey(key.substring(sep + 1));
+            if (normalized != key) migrated = true;
+            _cache.add(normalized);
+          } else {
+            _cache.add(key);
+          }
+        }
+        if (migrated) {
+          debugPrint('🔄 FavoritesService: clés migrées en minuscules (§23)');
+          _persist(); // fire & forget
+        }
       }
     } catch (e) {
       debugPrint('❌ FavoritesService: erreur chargement — $e');

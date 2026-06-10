@@ -343,11 +343,13 @@ class _MemoryStatsCardState extends State<_MemoryStatsCard> {
       final list = <({String label, int entries, int diskMb})>[];
       for (final acc in accounts) {
         final entries = ParsedPlaylistService.getAccount(acc.id)?.entries.length ?? 0;
-        // playlist M3U
+        // playlist source : catalogue .json (§23) OU .m3u legacy
+        final catalog = File('${docsDir.path}/playlist_${acc.id}.json');
         final m3u = File('${docsDir.path}/playlist_${acc.id}.m3u');
         // parsed cache JSON.gz
         final json = File('${supportDir.path}/parsed_playlist_${acc.id}.json.gz');
         int disk = 0;
+        if (await catalog.exists()) disk += await catalog.length();
         if (await m3u.exists()) disk += await m3u.length();
         if (await json.exists()) disk += await json.length();
         list.add((

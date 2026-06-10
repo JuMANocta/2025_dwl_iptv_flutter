@@ -168,6 +168,29 @@ class TmdbService {
   /// [explicitYear] : année déjà extraite par TitleMetadata (prioritaire sur l'extraction depuis rawQuery).
   /// [groupTitle]   : group-title M3U → converti en hints de genre pour désambiguïser les homonymes.
   /// Permet de désambiguïser les homonymes (ex: One Piece anime 1999 vs live-action 2023).
+  /// §23c — Détails EXACTS par ID TMDB fourni par le provider (`tmdb_id` des
+  /// catalogues JSON player_api). Court-circuite la recherche floue par titre,
+  /// qui pouvait verrouiller un homonyme ("Michael" → "Michael Collins",
+  /// série "H" → "M.A.S.H"). Retourne `null` si l'ID est invalide côté TMDB
+  /// (l'appelant retombe alors sur [getFullDetails]).
+  Future<Media?> getFullDetailsById(int id, {required bool isTv}) async {
+    if (!await _init()) return null;
+    try {
+      debugPrint('🎯 TMDB byId: $id (${isTv ? 'TV' : 'Film'}) — ID provider, zéro ambiguïté');
+      final detailResponse = await _dio!.get(
+        isTv ? '/tv/$id' : '/movie/$id',
+        queryParameters: {
+          'language': 'fr-FR',
+          'append_to_response': 'credits,videos',
+        },
+      );
+      return Media.fromJson(detailResponse.data);
+    } catch (e) {
+      debugPrint('⚠️ TMDB byId($id, isTv=$isTv) échec : $e — fallback recherche titre');
+      return null;
+    }
+  }
+
   Future<Media?> getFullDetails(String rawQuery, {required bool isTv, String? explicitYear, String? groupTitle}) async {
     if (!await _init()) return null;
 

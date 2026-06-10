@@ -4,13 +4,14 @@ import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
+import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 
 // ─── Poster partagé ──────────────────────────────────────────────────────────
 
 Widget _poster(List<M3uEntry> versions, IconData fallbackIcon, Color accentColor) {
-  final logoUrl = versions
-      .map((e) => e.logoUrl)
-      .firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
+  // §23 — image de la version du compte le plus riche (politique « plus
+  // grosse liste »), fallback par taille décroissante.
+  final logoUrl = ParsedPlaylistService.bestLogoUrl(versions);
   return ClipRRect(
     borderRadius: BorderRadius.circular(8),
     child: SizedBox(

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.21+71-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.9.0+72-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -238,6 +238,7 @@ lib/
 - [x] **Système de thème sémantique** — variables `kAccentPrimary/Secondary/Tertiary`, constantes qualité/langue/badges centralisées
 - [x] **Thème personnalisable in-app** — `AppThemeConfig` runtime + 5 presets + page Personnalisation
 - [x] **Téléchargement playlist via JSON API Xtream** (§xtreamApi, 2026-06-04) — Au lieu de tirer `get.php` (qui retourne souvent HTTP 500 silencieux sur les gros panels à cause du timeout PHP), AetherStream construit la playlist en interne via les endpoints `player_api.php?action=…` (live + VOD + séries, 6 actions en parallèle). C'est ce que font tous les clients IPTV modernes (TiviMate, IPTV Smarters Pro, ZenIPTV…). Marche sur des panels où `get.php` ne marche pas. Fallback automatique sur `get.php` pour les providers non-Xtream. Profil de requête `User-Agent: IPTVSmartersPro` (whitelisté par les panels). **Séries** : 1 entrée par série au boot, épisodes chargés à l'ouverture de la fiche (lazy load)
+- [x] **Catalogue unifié JSON direct** (§23, 2026-06-10) — les réponses `player_api.php` sont sauvegardées brutes (`playlist_<id>.json`) et parsées **directement** en entrées (plus de round-trip M3U texte) : zéro perte de métadonnées (tmdb_id, synopsis, note, genres, casting, backdrops, replay `tv_archive`). Regex de titre réécrites sur les formats réels des 3 providers (préfixes composés `|FR-4K DV|`, `|VO|STFR|`, suffixes `(MULTI) FHD 2025`, `[MULTi]`, `_sub`) → un même film présent sur plusieurs listes fusionne en **une seule vignette** (8 600+ films communs validés). Image affichée = celle de la **plus grosse liste** (fallback automatique). Fiche film/série complète (synopsis, note, genres) **même sans clé TMDB**. Fallback `get.php` conservé pour les comptes non-Xtream
 - [x] **Catégories M3U** — chips de filtre par catégorie dans la recherche (films + séries)
 - [x] **Filmographie acteur DISPO** — badge sur les films présents dans la playlist + navigation `DetailsPage`
 - [x] **Android TV / Fire Stick** (v1.6.0+) — Détection plateforme native, NavigationRail latéral, focus visible Matrix glow sur toutes les cards, action sheets en Dialog focusable, player entièrement contrôlable à la télécommande (OK / ← → / ↑ ↓ / MediaPlayPause / Menu), textScaler ×1.3 pour lisibilité 3 m+

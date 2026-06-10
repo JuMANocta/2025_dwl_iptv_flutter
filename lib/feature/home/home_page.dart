@@ -1310,8 +1310,9 @@ class _TypePageState extends State<_TypePage> {
     List<M3uEntry> entries,
     M3uContentType type,
   ) {
+    // §23 — contentGroupKey est insensible à la casse (fusion cross-listes).
     String groupKey(M3uEntry e) =>
-        type == M3uContentType.tv ? tvGroupKey(e.displayName) : e.displayName;
+        type == M3uContentType.tv ? tvGroupKey(e.displayName) : contentGroupKey(e);
 
     final byGroup = <String, List<M3uEntry>>{};
     for (final e in entries) {
@@ -1539,9 +1540,8 @@ class _HeroSlide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entry = versions.first;
-    final logoUrl = versions
-        .map((e) => e.logoUrl)
-        .firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
+    // §23 — politique image « plus grosse liste ».
+    final logoUrl = ParsedPlaylistService.bestLogoUrl(versions);
 
     final fallbackIcon = switch (type) {
       M3uContentType.movie  => Icons.movie_outlined,
@@ -2079,9 +2079,8 @@ class _HeroFanCard extends StatelessWidget {
       versions.map((e) => e.url),
     );
     final hasResume = progress != null && progress.ratio < 0.95;
-    final logoUrl = versions
-        .map((e) => e.logoUrl)
-        .firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
+    // §23 — politique image « plus grosse liste ».
+    final logoUrl = ParsedPlaylistService.bestLogoUrl(versions);
 
     final fallbackIcon = switch (type) {
       M3uContentType.movie => Icons.movie_outlined,
@@ -3004,10 +3003,9 @@ class _HomeCardState extends State<_HomeCard> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final entry = widget.versions.first;
+    // §23 — politique image « plus grosse liste ».
     // §Ultimate — fallback affiche TMDB quand le M3U ne fournit aucun tvg-logo.
-    final logoUrl = widget.versions
-        .map((e) => e.logoUrl)
-        .firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null)
+    final logoUrl = ParsedPlaylistService.bestLogoUrl(widget.versions)
         ?? _tmdbPoster;
 
     final isTv = widget.type == M3uContentType.tv;
@@ -3251,8 +3249,9 @@ class _SearchView extends StatelessWidget {
         e.displayName.toLowerCase().contains(q) ||
         e.rawTitle.toLowerCase().contains(q);
 
+    // §23 — contentGroupKey est insensible à la casse (fusion cross-listes).
     String key(M3uEntry e) =>
-        type == M3uContentType.tv ? tvGroupKey(e.displayName) : e.displayName;
+        type == M3uContentType.tv ? tvGroupKey(e.displayName) : contentGroupKey(e);
 
     final byGroup = <String, List<M3uEntry>>{};
     for (final e in entries) {

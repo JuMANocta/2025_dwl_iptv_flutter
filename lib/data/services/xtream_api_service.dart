@@ -20,8 +20,10 @@ import '../models/stream_account.dart';
 /// 1. `auth(account)` — vérifie les credentials (et récupère `server_info`).
 /// 2. `get*Categories()` — liste les catégories (TV / VOD / Séries).
 /// 3. `get*Streams()` — liste les flux (id + nom + logo + catégorie).
-/// 4. Le builder (`XtreamM3uBuilder`) reconstitue un fichier M3U Plus à partir
-///    de tout ça, qui est ensuite parsé par le pipeline existant.
+/// 4. §23 — `XtreamCatalogService` sauvegarde les réponses brutes dans
+///    `playlist_<id>.json`, parsé directement par `XtreamCatalogParser`
+///    (l'ancien `XtreamM3uBuilder` qui reconstituait un M3U texte a été
+///    supprimé — plus de round-trip ni de perte de métadonnées).
 class XtreamApiService {
   XtreamApiService._();
 

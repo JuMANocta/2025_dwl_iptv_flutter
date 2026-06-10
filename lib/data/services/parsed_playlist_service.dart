@@ -6,6 +6,7 @@ import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/feature/search/m3u_parser.dart';
+import 'package:aetherStream/feature/search/xtream_catalog_parser.dart';
 
 /// État de chargement d'un compte IPTV en mémoire (§16).
 ///
@@ -80,6 +81,26 @@ class ParsedPlaylistService {
   static AccountLoadState stateOf(String accountId) =>
       loadStates.value[accountId] ?? AccountLoadState.notLoaded;
 
+  /// §23 — Route vers le bon parser selon le type de fichier source :
+  ///   - `.json` → [XtreamCatalogParser] (catalogue JSON direct player_api,
+  ///     isolate, métadonnées riches)
+  ///   - `.m3u` (ou autre) → [M3uParser] (texte M3U, regex — fallback get.php)
+  static Future<void> _parsePlaylistFile(
+    String path,
+    List<M3uEntry> films,
+    List<M3uEntry> series,
+    List<M3uEntry> tv, {
+    required String accountId,
+    void Function(double)? onProgress,
+  }) {
+    if (path.toLowerCase().endsWith('.json')) {
+      return XtreamCatalogParser.parseFile(path, films, series, tv,
+          accountId: accountId, onProgress: onProgress);
+    }
+    return M3uParser.parseFile(path, films, series, tv,
+        accountId: accountId, onProgress: onProgress);
+  }
+
   // ── API publique ───────────────────────────────────────────────────────────
 
   /// Charge le compte actif.
@@ -120,7 +141,7 @@ class ParsedPlaylistService {
     final series  = <M3uEntry>[];
     final tv      = <M3uEntry>[];
     try {
-      await M3uParser.parseFile(
+      await _parsePlaylistFile(
         m3uPath, films, series, tv,
         accountId: accountId,
         onProgress: onProgress,
@@ -157,9 +178,14 @@ class ParsedPlaylistService {
   static Future<void> preloadOthersFromDisk(List<StreamAccount> accounts) async {
     for (final acc in accounts) {
       if (_memory.containsKey(acc.id)) continue;
-      // Construire le chemin M3U attendu (même convention que PlaylistService)
+      // §23 — Résolution du fichier source (même convention que
+      // PlaylistService.pathForAccountId, dupliquée ici pour éviter un import
+      // circulaire) : catalogue .json prioritaire, sinon .m3u legacy.
       final dir = await getApplicationDocumentsDirectory();
-      final m3uPath = '${dir.path}/playlist_${acc.id}.m3u';
+      var m3uPath = '${dir.path}/playlist_${acc.id}.json';
+      if (!File(m3uPath).existsSync()) {
+        m3uPath = '${dir.path}/playlist_${acc.id}.m3u';
+      }
       if (!File(m3uPath).existsSync()) continue;
 
       final disk = await _loadFromDisk(acc.id, m3uPath);
@@ -203,7 +229,7 @@ class ParsedPlaylistService {
     final series = <M3uEntry>[];
     final tv     = <M3uEntry>[];
     try {
-      await M3uParser.parseFile(m3uPath, films, series, tv, accountId: accountId);
+      await _parsePlaylistFile(m3uPath, films, series, tv, accountId: accountId);
     } catch (e) {
       debugPrint('❌ ParsedPlaylist secondaire — parse échoué pour $accountName: $e');
       setLoadState(accountId, AccountLoadState.error);
@@ -285,6 +311,43 @@ class ParsedPlaylistService {
     return p;
   }
 
+  /// Nombre d'entrées en mémoire pour un compte (0 si non chargé).
+  /// Lecture de stats : ne touche PAS `_lastAccess` (§lazyUnload).
+  static int entriesCountOf(String accountId) =>
+      _memory[accountId]?.entries.length ?? 0;
+
+  /// §23 — Politique image « plus grosse liste » : pour un groupe
+  /// multi-versions, l'image affichée vient de la version portée par le
+  /// compte totalisant le PLUS d'entrées en mémoire (= la liste la plus
+  /// riche, donc les visuels les plus soignés), avec fallback sur les
+  /// suivantes par taille décroissante si elle n'a pas d'image. Décision
+  /// utilisateur 2026-06-10 : « on prendra toujours celle de la plus grosse
+  /// liste ». S'applique films + séries + chaînes.
+  static String? bestLogoUrl(List<M3uEntry> versions) =>
+      _bestImage(versions, (e) => e.logoUrl);
+
+  /// §23 — Même politique pour les backdrops séries (champ v5).
+  static String? bestBackdropUrl(List<M3uEntry> versions) =>
+      _bestImage(versions, (e) => e.backdropUrl);
+
+  static String? _bestImage(
+    List<M3uEntry> versions,
+    String? Function(M3uEntry) pick,
+  ) {
+    if (versions.isEmpty) return null;
+    if (versions.length == 1) {
+      final v = pick(versions.first);
+      return (v == null || v.isEmpty) ? null : v;
+    }
+    final sorted = [...versions]..sort((a, b) =>
+        entriesCountOf(b.accountId).compareTo(entriesCountOf(a.accountId)));
+    for (final v in sorted) {
+      final img = pick(v);
+      if (img != null && img.isNotEmpty) return img;
+    }
+    return null;
+  }
+
   /// Vrai si plusieurs comptes sont chargés en mémoire → afficher les badges provider.
   static bool get isMultiAccount => _memory.length > 1;
 
@@ -317,7 +380,7 @@ class ParsedPlaylistService {
     final series = <M3uEntry>[];
     final tv     = <M3uEntry>[];
     try {
-      await M3uParser.parseFile(m3uPath, films, series, tv, accountId: accountId);
+      await _parsePlaylistFile(m3uPath, films, series, tv, accountId: accountId);
     } catch (e) {
       debugPrint('❌ ParsedPlaylist.reloadFromDisk — parse échoué : $e');
       return null;

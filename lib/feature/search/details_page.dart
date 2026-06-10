@@ -19,6 +19,7 @@ import '../../l10n/app_localizations.dart';
 import '../../widgets/tv/focusable_chip.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'actor_details_page.dart';
+import 'm3u_filter.dart';
 
 Color _qualityColor(String? quality) {
   return switch (quality) {
@@ -243,9 +244,13 @@ class _DetailsPageState extends State<DetailsPage> {
 
   void _buildSeasonEpisodes() {
     if (widget.entry.type != M3uContentType.series) return;
-    final seriesName = widget.entry.displayName;
+    // §23b — comparaison par clé de regroupement normalisée (casse +
+    // ponctuation) pour agréger les épisodes cross-comptes, alignée sur la
+    // fusion des vignettes.
+    final seriesKey = contentGroupKey(widget.entry);
     final all = ParsedPlaylistService.entriesWithPriority(widget.entry.accountId)
-        .where((e) => e.type == M3uContentType.series && e.displayName == seriesName)
+        .where((e) =>
+            e.type == M3uContentType.series && contentGroupKey(e) == seriesKey)
         .toList();
 
     final tmp = <int, Map<int, List<M3uEntry>>>{};
@@ -303,9 +308,42 @@ class _DetailsPageState extends State<DetailsPage> {
     });
   }
 
+  /// §23c — ID TMDB fourni par le provider (catalogue JSON v5), scanné sur
+  /// l'entrée + toutes les versions. Null si aucun (fallback get.php, vieux
+  /// caches, provider sans tmdb_id).
+  int? _providerTmdbId() {
+    for (final e in [widget.entry, ..._uniqueVersions, _currentEpisode]) {
+      final id = int.tryParse(e.tmdbId ?? '');
+      if (id != null && id > 0) return id;
+    }
+    return null;
+  }
+
   Future<void> _loadData() async {
     final service  = TmdbService.instance;
     final isSeries = widget.entry.type == M3uContentType.series;
+
+    // §23c — PRIORITÉ à l'ID TMDB exact du provider : zéro recherche floue,
+    // zéro homonyme verrouillé ("Michael" → "Michael Collins"). Fallback
+    // smart search par titre si pas d'ID ou ID invalide côté TMDB.
+    Future<Media?> fetchFull({required bool isTv}) async {
+      final pid = _providerTmdbId();
+      Media? data;
+      if (pid != null) {
+        data = await service.getFullDetailsById(pid, isTv: isTv);
+      }
+      return data ??
+          await service.getFullDetails(
+            isSeries ? widget.entry.displayName : _currentEpisode.displayName,
+            isTv: isTv,
+            explicitYear: isSeries
+                ? widget.entry.title.year
+                : _currentEpisode.title.year,
+            groupTitle: isSeries
+                ? widget.entry.groupTitle
+                : _currentEpisode.groupTitle,
+          );
+    }
 
     if (_isEpisode) {
       final results = await Future.wait([
@@ -316,12 +354,7 @@ class _DetailsPageState extends State<DetailsPage> {
           yearFilter: widget.entry.title.year,
           groupTitle: widget.entry.groupTitle,
         ),
-        service.getFullDetails(
-          widget.entry.displayName,
-          isTv: true,
-          explicitYear: widget.entry.title.year,
-          groupTitle: widget.entry.groupTitle,
-        ),
+        fetchFull(isTv: true),
       ]);
       if (mounted) {
         setState(() {
@@ -331,16 +364,7 @@ class _DetailsPageState extends State<DetailsPage> {
         });
       }
     } else {
-      final data = await service.getFullDetails(
-        isSeries ? widget.entry.displayName : _currentEpisode.displayName,
-        isTv: isSeries || _currentEpisode.isSerie,
-        explicitYear: isSeries
-            ? widget.entry.title.year
-            : _currentEpisode.title.year,
-        groupTitle: isSeries
-            ? widget.entry.groupTitle
-            : _currentEpisode.groupTitle,
-      );
+      final data = await fetchFull(isTv: isSeries || _currentEpisode.isSerie);
       if (mounted) {
         setState(() {
           _tmdbData  = data;
@@ -460,10 +484,14 @@ class _DetailsPageState extends State<DetailsPage> {
         ? stillPath
         : _tmdbData?.backdropPath;
     // §quickwin — fallback affiche playlist quand pas de backdrop TMDB.
-    // Sans clé TMDB, le header était un rectangle gris : on récupère la 1re
-    // logoUrl non vide (versions affichées → épisode courant → entrée).
+    // §23 — priorité au BACKDROP provider (champ v5 du catalogue JSON,
+    // format paysage = idéal pour le header), choisi selon la politique
+    // « plus grosse liste » ; sinon poster/logo (même politique) ; sinon
+    // épisode courant / entrée.
     final String? playlistPoster = <String?>[
-      ..._uniqueVersions.map((e) => e.logoUrl),
+      ParsedPlaylistService.bestBackdropUrl(_uniqueVersions),
+      widget.entry.backdropUrl,
+      ParsedPlaylistService.bestLogoUrl(_uniqueVersions),
       _currentEpisode.logoUrl,
       widget.entry.logoUrl,
     ].firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
@@ -477,10 +505,23 @@ class _DetailsPageState extends State<DetailsPage> {
     final String? epAirDate  = _episodeData?['air_date'] as String?;
     final double? epRating   = (_episodeData?['vote_average'] as num?)?.toDouble();
 
-    // Titre et métadonnées : épisode prioritaire sur série
-    final double  rating      = epRating ?? _tmdbData?.voteAverage ?? 0.0;
+    // §23 — Métadonnées PROVIDER (catalogue JSON v5) en fallback de TMDB :
+    // sans clé TMDB, la fiche affiche quand même synopsis/note/genre/année
+    // venus de la playlist (séries surtout — la JSON API les transporte).
+    T? fromVersions<T>(T? Function(M3uEntry) pick) {
+      for (final e in [widget.entry, ..._uniqueVersions]) {
+        final v = pick(e);
+        if (v != null) return v;
+      }
+      return null;
+    }
+
+    // Titre et métadonnées : épisode prioritaire sur série, TMDB puis provider
+    final double  rating      = epRating ?? _tmdbData?.voteAverage
+        ?? fromVersions((e) => e.rating) ?? 0.0;
     final String? releaseDate = epAirDate?.split('-').first
-        ?? _tmdbData?.releaseDate?.split('-').first;
+        ?? _tmdbData?.releaseDate?.split('-').first
+        ?? fromVersions((e) => e.releaseDate)?.split('-').first;
 
     // Titre affiché : nom épisode si sélectionné, sinon nom série/film
     final String seriesTitle = (_tmdbData?.title.isNotEmpty == true)
@@ -488,10 +529,21 @@ class _DetailsPageState extends State<DetailsPage> {
         : widget.entry.displayName;
     final bool showEpTitle = _isEpisode && epName != null && epName.isNotEmpty;
 
-    // Synopsis : épisode si sélectionné, sinon série/film
+    // Synopsis : épisode si sélectionné, sinon série/film (TMDB → provider §23)
     final String? displayOverview = (_isEpisode && epOverview?.isNotEmpty == true)
         ? epOverview
-        : _tmdbData?.overview;
+        : ((_tmdbData?.overview.isNotEmpty == true)
+            ? _tmdbData!.overview
+            : fromVersions((e) => e.plot));
+
+    // §23 — Genres : TMDB prioritaire, sinon champ provider ("Action / Drame").
+    final List<String> displayGenres = (_tmdbData?.genres.isNotEmpty == true)
+        ? _tmdbData!.genres
+        : (fromVersions((e) => e.genre)
+                ?.split(RegExp(r'\s*[/,]\s*'))
+                .where((g) => g.trim().isNotEmpty)
+                .toList() ??
+            const []);
 
     // §tvDetailsShrink — Sur TV, la fiche paraissait énorme : backdrop fixe 360px
     // (énorme part d'un écran à hauteur logique courte) + colonne d'infos étalée
@@ -704,12 +756,12 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 24),
                   ],
 
-                  // GENRES (toujours)
-                  if (hasTmdb && _tmdbData!.genres.isNotEmpty) ...[
+                  // GENRES (toujours — TMDB ou provider §23)
+                  if (displayGenres.isNotEmpty) ...[
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: _tmdbData!.genres
+                      children: displayGenres
                           .map((g) => Chip(
                                 label: Text(g),
                                 backgroundColor: cs.surfaceContainerHighest,

@@ -7,7 +7,7 @@ class ParsedPlaylist {
   /// Version du schéma de sérialisation.
   /// Incrémenter quand la structure de [M3uEntry] ou [TitleMetadata] change
   /// → invalide automatiquement tous les caches disque existants.
-  static const int schemaVersion = 6; // v6 : cache disque NDJSON streamé (anti-OOM grosse liste)
+  static const int schemaVersion = 7; // v7 : §23 — champs riches JSON API (tmdbId/plot/genre/cast/rating/releaseDate/backdrop) + TitleMetadata.parse réécrite (préfixes composés)
 
   final String accountId;
   /// Version du schéma au moment de la sauvegarde — comparé à [schemaVersion] à la relecture.

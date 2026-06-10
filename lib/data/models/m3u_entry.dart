@@ -4,6 +4,12 @@ enum M3uContentType { movie, series, tv }
 class TitleMetadata {
   final String rawTitle;
   final String baseTitle;
+  /// §23b — Clé de REGROUPEMENT pré-calculée : minuscules + toute ponctuation
+  /// réduite en espace ("M.A.S.H" → "m a s h", "L'affaire X" → "l affaire x").
+  /// Distincte de [baseTitle] qui conserve la ponctuation pour l'AFFICHAGE.
+  /// Permet la fusion cross-listes même quand les providers ponctuent
+  /// différemment, sans dégrader le titre montré à l'utilisateur.
+  final String groupKey;
   final String? year;
   final int? seasonNumber;
   final int? episodeNumber;
@@ -16,6 +22,7 @@ class TitleMetadata {
   const TitleMetadata({
     required this.rawTitle,
     required this.baseTitle,
+    this.groupKey = '',
     this.year,
     this.seasonNumber,
     this.episodeNumber,
@@ -23,6 +30,12 @@ class TitleMetadata {
     this.languages = const [],
     this.versionLabel,
   });
+
+  /// §23b — Normalisation de la clé de regroupement (unicode-aware : les
+  /// lettres accentuées sont CONSERVÉES, seule la ponctuation saute).
+  static final _reKeyNorm = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
+  static String computeGroupKey(String title) =>
+      title.toLowerCase().replaceAll(_reKeyNorm, ' ').trim();
 
   // Patterns compilés une seule fois pour toute la durée de l'app.
   static final _reSeason       = RegExp(r's\s*(\d{1,2})\s*e\s*(\d{1,2})', caseSensitive: false);
@@ -43,10 +56,33 @@ class TitleMetadata {
   static final _reLangVostfr   = RegExp(r'\bvostfr\b', caseSensitive: false);
   static final _reLangVf       = RegExp(r'\b(vf|vff|truefrench|french)\b', caseSensitive: false);
 
-  // Préfixe provider : uniquement la forme |XX| — le pattern \w{2,}[:-] était trop large
-  // et découpait des titres comme "Thor:", "Mission:", "Spider-Man:", etc.
-  static final _rePrefix       = RegExp(r'^\|[A-Z0-9\s]+\|\s*');
-  static final _reLabelPrefix  = RegExp(r'^\|[A-Z0-9\s]+\|', caseSensitive: false);
+  // §23 — Préfixe provider en BLOC : gère les formes composées observées sur
+  // les listes réelles (PLATINIUM & co) que l'ancien `^\|[A-Z0-9\s]+\|` ratait :
+  //   |FR|            simple (déjà géré avant)
+  //   |FR-4K|         tiret (qualité dans le préfixe)
+  //   |FR-4K DV|      tiret + espace + tag
+  //   |LEG.|          point (legendado PT)
+  //   |VO-LEG.|       combiné
+  //   |VO|STFR|       DOUBLE pipe (lu comme une suite de segments)
+  //   |LIGUE 1+|      chiffres + symbole +
+  // Forme générale : une suite de segments `XXX|` (charset MAJ/chiffres/
+  // espace/./+/-, 1-12 chars) ouverte par un pipe. Le charset exclut les
+  // minuscules pour ne pas mordre un vrai titre contenant un pipe.
+  static final _rePrefix       = RegExp(r'^\s*\|(?:[A-Z0-9 .+\-]{1,12}\|)+\s*');
+  static final _reLabelPrefix  = RegExp(r'^\s*\|(?:[A-Z0-9 .+\-]{1,12}\|)+');
+
+  // §23 — Suffixe "_sub" (liste VOD : "Incredibles 2_sub", "Nancy_sub") :
+  // marqueur sous-titres du provider, à retirer du titre de base.
+  static final _reSubSuffix    = RegExp(r'[_\s]+subs?\s*$', caseSensitive: false);
+
+  // §23 — Tags qualité en exposants Unicode (live : "NATIONAL GEO ᶠᴴᴰ").
+  // Normalisés vers leur équivalent ASCII AVANT toute détection.
+  static const _superscripts = {
+    'ᶠᴴᴰ': ' FHD', 'ᴴᴰ': ' HD', 'ˢᴰ': ' SD', '⁴ᴷ': ' 4K', 'ᵁᴴᴰ': ' UHD',
+  };
+
+  // §23 — VOSTFR éclaté dans le préfixe : `|VO|STFR|` → langue VOSTFR.
+  static final _reVoStfr       = RegExp(r'\|\s*VO\s*\|\s*STFR\s*\|', caseSensitive: false);
 
   // Tags DOLBY multi-mots (DOLBY VISION, DOLBY ATMOS, etc.) — appliqués avant _reQualityTags
   static final _reDolby        = RegExp(r'(?<!\w)DOLBY(?:\s+(?:VISION|ATMOS|DIGITAL(?:\s+PLUS)?|TRUEHD|SURROUND|STEREO))?(?!\w)', caseSensitive: false);
@@ -68,14 +104,18 @@ class TitleMetadata {
     caseSensitive: false,
   );
 
-  static final _reLangTags     = RegExp(r'\b(MULTI|VOSTFR|VOST|VF|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH)\b', caseSensitive: false);
+  // §23 — `VF\d?` couvre aussi les variantes numérotées "VF2" (liste VOD :
+  // "[MULTi VF2]") qui survivaient dans le titre de base.
+  static final _reLangTags     = RegExp(r'\b(MULTI|VOSTFR|VOST|VF\d?|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH)\b', caseSensitive: false);
 
   // Codes langue/version dans parenthèses : (FR), (EN), (AR), (MULTI), (VOST FR), (MUET)…
   // Placé après _reQualityTags pour ne pas interférer avec (4K), (3D) etc. déjà retirés.
   static final _reLangParens   = RegExp(r'[\(\[]\s*[A-Z]{2,6}(?:\s+[A-Z]{2,6})?\s*[\)\]]', caseSensitive: false);
 
   static final _reYearClean    = RegExp(r'\(?(19|20)\d{2}\)?');
-  static final _rePunct        = RegExp(r'[\(\)\[\]\.\-_/]');
+  // §23b — Paires de parenthèses/crochets vidées par le strip des tags
+  // ("[4K DV HDR MULTi]" → "[ ]") : à effacer du titre d'affichage.
+  static final _reEmptyBrackets = RegExp(r'[\(\[]\s*[\)\]]');
   static final _reSeasonClean  = RegExp(r'S\s*\d{1,2}\s*E\s*\d{1,2}', caseSensitive: false);
   static final _reSpaces       = RegExp(r'\s+');
   static final _reSeasonFb     = RegExp(r'S\s*\d{1,2}', caseSensitive: false);
@@ -89,17 +129,28 @@ class TitleMetadata {
     r'|BLURAY|BLU[-.]RAY|BDRIP|BRRIP'
     r'|WEB[-.]?DL|WEBRIP|HDRIP'
     r'|DVDRIP|DVDSCR|HDCAM|HDTS'
-    r'|MULTI|VOSTFR|VOST|VF|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH'
+    r'|MULTI|VOSTFR|VOST|VF\d?|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH'
     r')(?!\w)',
     caseSensitive: false,
   );
   static final _reTrimStart    = RegExp(r'^[ \t\-_.\(\)\[\]]+');
   static final _reTrimEnd      = RegExp(r'[ \t\-_.\(\)\[\]]+$');
+  // §23b — Trim du TITRE D'AFFICHAGE : ne mange PAS les parenthèses/crochets
+  // (sinon "Totally Killer (Dezesseis Facadas)" perdait sa fermante — les
+  // paires vides résiduelles sont déjà traitées par _reEmptyBrackets).
+  static final _reTrimBaseStart = RegExp(r'^[ \t\-_.]+');
+  static final _reTrimBaseEnd   = RegExp(r'[ \t\-_.]+$');
 
   factory TitleMetadata.parse(String rawTitle) {
-    final lower = rawTitle.toLowerCase();
+    // §23 — Pré-normalisation : superscripts Unicode → ASCII (live "GEO ᶠᴴᴰ")
+    // pour que la détection qualité/le nettoyage fonctionnent dessus.
+    String work = rawTitle;
+    for (final e in _superscripts.entries) {
+      if (work.contains(e.key)) work = work.replaceAll(e.key, e.value);
+    }
+    final lower = work.toLowerCase();
 
-    final seasonMatch   = _reSeason.firstMatch(rawTitle);
+    final seasonMatch   = _reSeason.firstMatch(work);
     // Fallback NNxNN (ex: "01x01") UNIQUEMENT pour le format série signé par un
     // marqueur "S\d" co-présent (§Ultimate : "… S01 … 01x01 …"). Cette double
     // condition évite de capter le "NxN" d'un vrai titre de film ("4x4",
@@ -121,19 +172,28 @@ class TitleMetadata {
 
     final langs = <String>[];
     if (_reLangMulti.hasMatch(lower))  langs.add('MULTI');
-    if (_reLangVostfr.hasMatch(lower)) langs.add('VOSTFR');
+    // §23 — VOSTFR : forme compacte ("vostfr") OU éclatée dans le préfixe
+    // PLATINIUM (`|VO|STFR|`).
+    if (_reLangVostfr.hasMatch(lower) || _reVoStfr.hasMatch(work)) {
+      langs.add('VOSTFR');
+    }
     if (_reLangVf.hasMatch(lower))     langs.add('VF');
 
-    String base = rawTitle;
+    String base = work;
     base = base.replaceAll(_rePrefix, '');
-    if (seasonMatch != null && seasonMatch.start <= base.length) {
-      base = base.substring(0, seasonMatch.start).trim();
+    base = base.replaceAll(_reSubSuffix, '');
+    // §23 — Coupe au marqueur SxxExx recalculé SUR base (post-préfixe).
+    // L'ancien code réutilisait l'index calculé sur rawTitle, décalé dès que
+    // le préfixe était retiré → coupe au mauvais endroit sur les préfixes longs.
+    final seasonInBase = _reSeason.firstMatch(base);
+    if (seasonInBase != null) {
+      base = base.substring(0, seasonInBase.start).trim();
     } else if (altMatch != null) {
       // §Ultimate — altMatch implique un marqueur "S\d" co-présent. On coupe le
-      // titre de base à ce marqueur (calculé SUR base, post-préfixe) → donne un
-      // nom propre, ex: "… (MULTI) S01 |FR| Les Soprano 01x01 …" → "Les Soprano".
+      // titre de base à ce marqueur → donne un nom propre, ex:
+      // "… (MULTI) S01 |FR| Les Soprano 01x01 …" → "Les Soprano".
       final sFb = _reSeasonFb.firstMatch(base);
-      if (sFb != null && sFb.start <= base.length) {
+      if (sFb != null) {
         base = base.substring(0, sFb.start).trim();
       }
     }
@@ -142,19 +202,38 @@ class TitleMetadata {
     base = base.replaceAll(_reLangTags, '');
     base = base.replaceAll(_reLangParens, ' '); // (FR), (AR), (VOST FR), (MUET)…
     base = base.replaceAll(_reYearClean, '');
-    base = base.replaceAll(_rePunct, ' ');
+    // §23b — La PONCTUATION INTERNE est CONSERVÉE pour l'affichage
+    // ("M.A.S.H", "Cape Fear - Les Nerfs à vif", "Narcos: Mexico").
+    // L'ancien `_rePunct → espace` produisait "M A S H" à l'écran. Le
+    // matching cross-listes insensible à la ponctuation est désormais porté
+    // par [groupKey] (voir computeGroupKey). On ne retire ici que les
+    // artefacts laissés par le strip des tags : paires de parenthèses/
+    // crochets VIDES ("Michael [ ]" après retrait de "[4K DV HDR MULTi]").
+    base = base.replaceAll(_reEmptyBrackets, ' ');
     base = base.replaceAll(_reSeasonClean, ' ');
     base = base.replaceAll(_reSpaces, ' ').trim();
-    if (base.length < 2) {
-      base = rawTitle.split(_reSeasonFb).first;
+    base = base.replaceAll(_reTrimBaseStart, '').replaceAll(_reTrimBaseEnd, '');
+    if (base.isEmpty) {
+      // §23b — Fallback RÉPARÉ : l'ancien `length < 2` rejetait les titres
+      // légitimes d'1 caractère (séries "H", "V") et retombait sur le titre
+      // BRUT (préfixe `|FR|` + année inclus) → clé "|fr| h (1998)" → tuile
+      // moche + zéro fusion. Nouveau repli : version post-préfixe/année,
+      // ponctuation conservée ; brut seulement en dernier recours.
+      var fb = work
+          .replaceAll(_rePrefix, '')
+          .replaceAll(_reYearClean, '')
+          .replaceAll(_reSpaces, ' ')
+          .trim();
+      fb = fb.replaceAll(_reTrimBaseStart, '').replaceAll(_reTrimBaseEnd, '');
+      base = fb.isNotEmpty ? fb : work.trim();
     }
-    if (base.isEmpty) base = rawTitle.trim();
 
     String? versionLabel;
     if (base.isNotEmpty) {
-      String label = rawTitle;
+      String label = work;
       label = label.replaceAll(RegExp(RegExp.escape(base), caseSensitive: false), '');
       label = label.replaceAll(_reLabelPrefix, '');
+      label = label.replaceAll(_reSubSuffix, '');
       label = label.replaceAll(_reYearClean, '');
       label = label.replaceAll(_reDolby, '');    // multi-mots en premier
       label = label.replaceAll(_reAllTags, '');
@@ -168,6 +247,7 @@ class TitleMetadata {
     return TitleMetadata(
       rawTitle: rawTitle,
       baseTitle: base,
+      groupKey: computeGroupKey(base),
       year: year,
       seasonNumber: seasonNumber,
       episodeNumber: episodeNumber,
@@ -177,10 +257,12 @@ class TitleMetadata {
     );
   }
 
-  /// Désérialisation depuis le cache JSON — aucune regex, lecture directe des champs pré-calculés.
+  /// Désérialisation depuis le cache JSON — aucune regex, lecture directe des
+  /// champs pré-calculés (le `groupKey` absent d'un vieux cache est recalculé).
   factory TitleMetadata.fromJson(Map<String, dynamic> j) => TitleMetadata(
     rawTitle:      j['r']  as String,
     baseTitle:     j['b']  as String,
+    groupKey:      j['k']  as String? ?? computeGroupKey(j['b'] as String),
     year:          j['y']  as String?,
     seasonNumber:  j['s']  as int?,
     episodeNumber: j['e']  as int?,
@@ -192,6 +274,7 @@ class TitleMetadata {
   Map<String, dynamic> toJson() => {
     'r': rawTitle,
     'b': baseTitle,
+    'k': groupKey,
     if (year          != null) 'y': year,
     if (seasonNumber  != null) 's': seasonNumber,
     if (episodeNumber != null) 'e': episodeNumber,
@@ -216,6 +299,25 @@ class M3uEntry {
   /// Catégorie M3U extraite des séparateurs provider (ex: "ACTION", "3D") — alimenté par §1c.
   final String? category;
 
+  // §23 (schema v5) — Métadonnées riches issues de la JSON API `player_api.php`.
+  // Disponibles uniquement quand la playlist vient du pipeline JSON direct
+  // (XtreamCatalogParser) ; null sur le fallback get.php. Permettent à
+  // DetailsPage d'afficher synopsis/note/genre SANS clé TMDB.
+  /// ID TMDB fourni par le provider (string brute, ex: "506971"). Films + séries.
+  final String? tmdbId;
+  /// Synopsis (séries uniquement — la liste VOD ne le transporte pas).
+  final String? plot;
+  /// Genres bruts provider (ex: "Science-Fiction / Action / Drame").
+  final String? genre;
+  /// Casting brut provider (noms séparés par des virgules).
+  final String? castNames;
+  /// Note /10 (champ `rating` provider).
+  final double? rating;
+  /// Date de sortie ISO (ex: "2018-04-13").
+  final String? releaseDate;
+  /// Première image backdrop (séries — `backdrop_path[0]`).
+  final String? backdropUrl;
+
   const M3uEntry({
     required this.url,
     required this.type,
@@ -228,6 +330,13 @@ class M3uEntry {
     this.catchupSource,
     this.groupTitle,
     this.category,
+    this.tmdbId,
+    this.plot,
+    this.genre,
+    this.castNames,
+    this.rating,
+    this.releaseDate,
+    this.backdropUrl,
   });
 
   bool get supportsCatchup => catchupDays != null && catchupDays! > 0;
@@ -250,6 +359,13 @@ class M3uEntry {
     catchupSource: j['cs']  as String?,
     groupTitle:    j['g']   as String?,
     category:      j['cat'] as String?,
+    tmdbId:        j['tm']  as String?,
+    plot:          j['p']   as String?,
+    genre:         j['ge']  as String?,
+    castNames:     j['ca']  as String?,
+    rating:        (j['ra'] as num?)?.toDouble(),
+    releaseDate:   j['rd']  as String?,
+    backdropUrl:   j['bd']  as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -264,5 +380,12 @@ class M3uEntry {
     if (catchupSource != null) 'cs':  catchupSource,
     if (groupTitle    != null) 'g':   groupTitle,
     if (category      != null) 'cat': category,
+    if (tmdbId        != null) 'tm':  tmdbId,
+    if (plot          != null) 'p':   plot,
+    if (genre         != null) 'ge':  genre,
+    if (castNames     != null) 'ca':  castNames,
+    if (rating        != null) 'ra':  rating,
+    if (releaseDate   != null) 'rd':  releaseDate,
+    if (backdropUrl   != null) 'bd':  backdropUrl,
   };
 }

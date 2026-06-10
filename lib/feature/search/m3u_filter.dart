@@ -155,7 +155,16 @@ String? contentCategoryLabel(String? groupTitle) {
 /// N'inclut PAS la catégorie : deux entrées du même titre provenant de
 /// providers différents (avec des groupTitle différents) doivent toujours
 /// tomber dans le même groupe, notamment pour partager logos et versions.
-String contentGroupKey(M3uEntry e) => e.displayName;
+/// §23b — Clé PRÉ-CALCULÉE à parse-time (`TitleMetadata.groupKey`) :
+/// minuscules + ponctuation réduite en espace. Insensible à la casse ET à la
+/// ponctuation ("M.A.S.H" / "M.A.S.H." / "m a s h" → même groupe ; mesuré
+/// ~470 films + ~70 séries perdus rien que sur la casse). L'affichage garde
+/// la forme d'origine (`group.first.displayName`), seule la CLÉ est
+/// normalisée. Fallback calcul à la volée pour les entrées construites sans
+/// `parse()` (épisodes API…).
+String contentGroupKey(M3uEntry e) => e.title.groupKey.isNotEmpty
+    ? e.title.groupKey
+    : TitleMetadata.computeGroupKey(e.displayName);
 
 /// Clé de regroupement pour les chaînes TV.
 String tvGroupKey(String name) {
