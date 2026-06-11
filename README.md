@@ -234,7 +234,7 @@ lib/
 - [x] **Refonte complète du player** — `media_kit`, contrôles custom, gestures, reconnexion auto *(PiP reporté)*
 - [x] **Mise à jour in-app** — vérification + téléchargement APK depuis GitHub Releases
 - [x] **Grille EPG XMLTV** — sélection programme dans la grille pour le replay
-- [x] **Refactoring** — découpage `recherche_page.dart` en modules séparés (parser, filter, widgets)
+- [x] **Refactoring recherche** — modules séparés (parser, filter, widgets) puis suppression du code mort `recherche_page`/`recherche_m3u` (lot A, 2026-06-11)
 - [x] **Système de thème sémantique** — variables `kAccentPrimary/Secondary/Tertiary`, constantes qualité/langue/badges centralisées
 - [x] **Thème personnalisable in-app** — `AppThemeConfig` runtime + 5 presets + page Personnalisation
 - [x] **Téléchargement playlist via JSON API Xtream** (§xtreamApi, 2026-06-04) — Au lieu de tirer `get.php` (qui retourne souvent HTTP 500 silencieux sur les gros panels à cause du timeout PHP), AetherStream construit la playlist en interne via les endpoints `player_api.php?action=…` (live + VOD + séries, 6 actions en parallèle). C'est ce que font tous les clients IPTV modernes (TiviMate, IPTV Smarters Pro, ZenIPTV…). Marche sur des panels où `get.php` ne marche pas. Fallback automatique sur `get.php` pour les providers non-Xtream. Profil de requête `User-Agent: IPTVSmartersPro` (whitelisté par les panels). **Séries** : 1 entrée par série au boot, épisodes chargés à l'ouverture de la fiche (lazy load)
@@ -272,7 +272,6 @@ lib/
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
-- [ ] **Lot nettoyage audit 2026-06-10** — suppression code mort (`recherche_page`/`recherche_m3u`, ~1 600 lignes orphelines), archivage `lib/iptv_exemple/` (303 Mo debug), hygiène roadmap (détail : `.claude/roadmap.md` § AUDIT 2026-06-10)
 - [ ] **Découpage `home_page.dart`** (3 696 lignes) — extraction hero/cards/rows/search vers `home/widgets/` (après les tests unitaires)
 - [ ] **Grille EPG XMLTV pour replay** — sélection programme dans la grille (en complément du picker manuel)
 - [ ] **Pistes audio + sous-titres** — sélection in-player (embarqués + sous-titres externes)
