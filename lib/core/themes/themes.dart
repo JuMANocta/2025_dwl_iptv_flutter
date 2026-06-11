@@ -39,12 +39,17 @@ ThemeData lightTheme(AppThemeConfig config) {
       primary:   config.primaryColor,
       secondary: config.accentColor,
       tertiary:  config.tertiaryColor,
+      error:     config.errorColor, // §themePlus
     ),
     extensions: [
       AetherThemeExtension(
         primaryColor:    config.primaryColor,
         accentColor:     config.accentColor,
         tertiaryColor:   config.tertiaryColor,
+        favoriteColor:   config.favoriteColor,
+        warningColor:    config.warningColor,
+        errorColor:      config.errorColor,
+        successColor:    config.successColor,
         glowIntensity:   config.glowIntensity,
         borderRadius:    config.borderRadius,
         // §3c-2 — focus TV : on s'aligne sur la couleur principale du thème.
@@ -121,12 +126,17 @@ ThemeData darkTheme(AppThemeConfig config) {
       primary:   config.primaryColor,
       secondary: config.accentColor,
       tertiary:  config.tertiaryColor,
+      error:     config.errorColor, // §themePlus
     ),
     extensions: [
       AetherThemeExtension(
         primaryColor:    config.primaryColor,
         accentColor:     config.accentColor,
         tertiaryColor:   config.tertiaryColor,
+        favoriteColor:   config.favoriteColor,
+        warningColor:    config.warningColor,
+        errorColor:      config.errorColor,
+        successColor:    config.successColor,
         glowIntensity:   config.glowIntensity,
         borderRadius:    config.borderRadius,
         // §3c-2 — focus TV : on s'aligne sur la couleur principale du thème.

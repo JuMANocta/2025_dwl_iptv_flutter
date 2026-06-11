@@ -106,7 +106,7 @@ class _WebConsolePageState extends State<WebConsolePage> {
   Widget _buildError(ColorScheme cs) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.wifi_off_rounded, size: 56, color: kWarning),
+          Icon(Icons.wifi_off_rounded, size: 56, color: kWarning),
           const SizedBox(height: 16),
           Text(_error!, textAlign: TextAlign.center,
               style: TextStyle(color: cs.onSurfaceVariant)),

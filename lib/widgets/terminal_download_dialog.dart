@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../data/models/download_task.dart';
 import '../data/services/download_manager_service.dart';
@@ -287,9 +288,9 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.black.withAlpha((255 * 0.9).round()),
-          border: Border.all(color: Colors.green.withAlpha(50)),
+          border: Border.all(color: kSuccess.withAlpha(50)),
           borderRadius: BorderRadius.circular(8),
-          boxShadow: [BoxShadow(color: Colors.green.withAlpha(20), blurRadius: 10, spreadRadius: 2)],
+          boxShadow: [BoxShadow(color: kSuccess.withAlpha(20), blurRadius: 10, spreadRadius: 2)],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -297,9 +298,9 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
           children: [
             Text(
               l10n.terminalTitle,
-              style: GoogleFonts.vt323(color: Colors.green, fontSize: 22),
+              style: GoogleFonts.vt323(color: kSuccess, fontSize: 22),
             ),
-            const Divider(color: Colors.green),
+            Divider(color: kSuccess),
             Flexible(
               child: SizedBox(
                 width: double.maxFinite,
@@ -340,7 +341,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                                 Text(
                                   '> [!] ${messages.length} ERREUR(S) PRÉCÉDENTE(S)  ${isExpanded ? '▲ MASQUER' : '▼ AFFICHER'}',
                                   style: GoogleFonts.sourceCodePro(
-                                    color: Colors.orange.withAlpha(200),
+                                    color: kWarning.withAlpha(200),
                                     fontSize: 12,
                                   ),
                                 ),
@@ -368,7 +369,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                           case 'error':  color = const Color(0xFFFF5555); break;
                           case 'matrix': color = Colors.white; break;
                           case 'boot':   color = const Color(0xFF00AA00); break;
-                          case 'retry':  color = Colors.orange; break;
+                          case 'retry':  color = kWarning; break;
                           default:       color = const Color(0xFFADFF2F); break;
                         }
                         return Text(
@@ -390,7 +391,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                   BlinkingCursor(),
                 ],
               ),
-            const Divider(color: Colors.green),
+            Divider(color: kSuccess),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
@@ -529,7 +530,7 @@ class _MatrixRainPainter extends CustomPainter {
           text: TextSpan(
             text: chars[charIndex],
             style: TextStyle(
-              color: Colors.greenAccent.withAlpha(140),
+              color: kSuccess.withAlpha(140),
               fontSize: 11,
               fontWeight: FontWeight.bold,
             ),

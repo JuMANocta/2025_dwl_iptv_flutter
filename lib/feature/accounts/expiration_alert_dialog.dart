@@ -45,7 +45,7 @@ class ExpirationAlertDialog extends StatelessWidget {
   }
 
   Color _lineColor(int daysLeft) {
-    if (daysLeft < 0 || daysLeft <= 7) return Colors.red;
+    if (daysLeft < 0 || daysLeft <= 7) return kError;
     return kWarning;
   }
 
@@ -65,7 +65,7 @@ class ExpirationAlertDialog extends StatelessWidget {
       icon: Icon(
         Icons.warning_amber_rounded,
         size: 40,
-        color: blocking ? Colors.red : kWarning,
+        color: blocking ? kError : kWarning,
       ),
       title: Text(
         blocking

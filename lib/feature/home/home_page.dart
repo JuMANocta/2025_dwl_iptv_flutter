@@ -2977,13 +2977,14 @@ class _HomeCardState extends State<_HomeCard> {
               builder: (ctx, _, __) {
                 final isFav = FavoritesService.isFavorite(favKey);
                 return ListTile(
+                  // §themePlus — couleur favori unifiée (kFavorite partout).
                   leading: Icon(
                     isFav ? Icons.favorite : Icons.favorite_border,
-                    color: isFav ? kAccentTertiary : null,
+                    color: isFav ? kFavorite : null,
                   ),
                   title: Text(
                     isFav ? 'Retirer des favoris' : 'Ajouter aux favoris',
-                    style: TextStyle(color: isFav ? kAccentTertiary : null),
+                    style: TextStyle(color: isFav ? kFavorite : null),
                   ),
                   onTap: () async {
                     await FavoritesService.toggle(favKey);

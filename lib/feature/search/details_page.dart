@@ -639,12 +639,12 @@ class _DetailsPageState extends State<DetailsPage> {
                       ],
                       const Spacer(),
                       if (rating > 0) ...[
-                        const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
+                        Icon(Icons.star_rounded, color: kWarning, size: 18),
                         const SizedBox(width: 3),
                         Text(
                           rating.toStringAsFixed(1),
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, color: Colors.amber, fontSize: 14),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, color: kWarning, fontSize: 14),
                         ),
                       ],
                     ],
@@ -1124,12 +1124,12 @@ class _DetailsPageState extends State<DetailsPage> {
               ],
               if (epRating != null && epRating > 0) ...[
                 const Spacer(),
-                const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                Icon(Icons.star_rounded, color: kWarning, size: 14),
                 const SizedBox(width: 2),
                 Text(
                   epRating.toStringAsFixed(1),
-                  style: const TextStyle(
-                      fontSize: 12, color: Colors.amber, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      fontSize: 12, color: kWarning, fontWeight: FontWeight.bold),
                 ),
               ],
             ],

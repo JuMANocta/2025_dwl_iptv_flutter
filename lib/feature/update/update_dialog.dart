@@ -1,11 +1,12 @@
 import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../data/services/update_service.dart';
 
 /// §updateGreen — Vert vif du dialog de MAJ (style « Matrix terminal », figé,
-/// indépendant du thème). Remplace `Colors.green` (#4CAF50, trop terne sur fond
+/// indépendant du thème). Remplace `kSuccess` (#4CAF50, trop terne sur fond
 /// sombre) pour rendre les boutons/séparateurs bien visibles.
 const Color _kTermGreen = Color(0xFF00FF41);
 
@@ -349,7 +350,7 @@ class _MiniRainPainter extends CustomPainter {
         text: TextSpan(
           text: _chars[charIndex],
           style: TextStyle(
-            color: Colors.greenAccent.withAlpha(80),
+            color: kSuccess.withAlpha(80),
             fontSize: 9, fontWeight: FontWeight.bold,
           ),
         ),

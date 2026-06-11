@@ -100,6 +100,16 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                   (c) => _apply(_config.copyWith(accentColor: c))),
               _buildColorRow('Tertiaire',   _config.tertiaryColor,
                   (c) => _apply(_config.copyWith(tertiaryColor: c))),
+              // §themePlus — couleurs d'état (favori / reprise / erreur / succès)
+              _sectionLabel('Couleurs d\'état', cs),
+              _buildColorRow('Favori ❤',     _config.favoriteColor,
+                  (c) => _apply(_config.copyWith(favoriteColor: c))),
+              _buildColorRow('Reprise / Alerte', _config.warningColor,
+                  (c) => _apply(_config.copyWith(warningColor: c))),
+              _buildColorRow('Erreur',       _config.errorColor,
+                  (c) => _apply(_config.copyWith(errorColor: c))),
+              _buildColorRow('Succès',       _config.successColor,
+                  (c) => _apply(_config.copyWith(successColor: c))),
               _sectionLabel('Effets', cs),
               _buildSlider(
                 label:     'Glow',
@@ -229,7 +239,12 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
   bool _isPresetActive(AppThemeConfig p) =>
       _config.primaryColor  == p.primaryColor  &&
       _config.accentColor   == p.accentColor   &&
-      _config.tertiaryColor == p.tertiaryColor;
+      _config.tertiaryColor == p.tertiaryColor &&
+      // §themePlus — les couleurs d'état font partie de l'identité du preset.
+      _config.favoriteColor == p.favoriteColor &&
+      _config.warningColor  == p.warningColor  &&
+      _config.errorColor    == p.errorColor    &&
+      _config.successColor  == p.successColor;
 
   Widget _dot(Color c) => Container(
     width: 12,

@@ -39,9 +39,9 @@ class _XmltvPageState extends State<XmltvPage> {
       await XmltvService.ensureLoaded();
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text('✅ Guide des chaînes mis à jour'),
-          backgroundColor: Colors.green,
+          backgroundColor: kSuccess,
         ),
       );
     } catch (e) {
@@ -49,7 +49,7 @@ class _XmltvPageState extends State<XmltvPage> {
       messenger.showSnackBar(
         SnackBar(
           content: Text('❌ Échec mise à jour : $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: kError,
         ),
       );
     } finally {

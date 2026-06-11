@@ -65,9 +65,9 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
         _hasSavedKey = true;
       });
       messenger.showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text('✅ TMDb connecté'),
-          backgroundColor: Colors.green,
+          backgroundColor: kSuccess,
         ),
       );
     }
@@ -93,9 +93,9 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
     setState(() => _hasSavedKey = true);
     FocusScope.of(context).unfocus();
     messenger.showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text('✅ TMDb connecté'),
-        backgroundColor: Colors.green,
+        backgroundColor: kSuccess,
       ),
     );
   }
@@ -110,9 +110,9 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
       _hasSavedKey = false;
     });
     messenger.showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text('🗑️ Clé TMDB supprimée'),
-        backgroundColor: Colors.red,
+        backgroundColor: kError,
       ),
     );
   }
@@ -237,7 +237,7 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
                                 // §detailsActions — bouton plein (cohérence : plus
                                 // de mélange plein/contour). Rouge = destructif.
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: Colors.red,
+                                  backgroundColor: kError,
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                       vertical: 14),

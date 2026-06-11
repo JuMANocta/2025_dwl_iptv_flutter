@@ -548,7 +548,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 56),
+              Icon(Icons.error_outline, color: kError, size: 56),
               const SizedBox(height: 16),
               Text(
                 _errorMessage,

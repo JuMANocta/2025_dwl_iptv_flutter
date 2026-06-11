@@ -248,7 +248,7 @@ class _AccountsPageState extends State<AccountsPage> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(l10n.deleteAccountConfirm,
-                style: const TextStyle(color: Colors.red)),
+                style: TextStyle(color: kError)),
           ),
         ],
       ),
@@ -300,9 +300,9 @@ class _AccountsPageState extends State<AccountsPage> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                leading: Icon(Icons.delete_outline, color: kError),
                 title: Text(l10n.accountActionDelete,
-                    style: const TextStyle(color: Colors.red)),
+                    style: TextStyle(color: kError)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _delete(acc);
@@ -909,7 +909,7 @@ class _AccountStateChips extends StatelessWidget {
       case AccountLoadState.parsing:
         return _Chip(text: 'CHARGEMENT…', color: kAccentSecondary);
       case AccountLoadState.error:
-        return _Chip(text: 'ERREUR', color: Colors.red);
+        return _Chip(text: 'ERREUR', color: kError);
       case AccountLoadState.notLoaded:
         return _Chip(text: 'NON CHARGÉ', color: Colors.grey);
     }
@@ -919,7 +919,7 @@ class _AccountStateChips extends StatelessWidget {
     if (days < 0) {
       return _Chip(
         text: 'EXPIRÉE',
-        color: Colors.red,
+        color: kError,
         filled: true,
         icon: Icons.warning_amber_rounded,
       );
@@ -927,7 +927,7 @@ class _AccountStateChips extends StatelessWidget {
     if (days == 0) {
       return _Chip(
         text: 'EXPIRE AUJOURD\'HUI',
-        color: Colors.red,
+        color: kError,
         filled: true,
         icon: Icons.warning_amber_rounded,
       );
@@ -935,7 +935,7 @@ class _AccountStateChips extends StatelessWidget {
     final critical = days <= 7;
     return _Chip(
       text: 'EXPIRE DANS $days J',
-      color: critical ? Colors.red : kWarning,
+      color: critical ? kError : kWarning,
       filled: critical,
       icon: Icons.warning_amber_rounded,
     );
@@ -1247,8 +1247,8 @@ class _XtreamInfoBlock extends StatelessWidget {
     final today = DateTime(now.year, now.month, now.day);
     final expDay = DateTime(exp.year, exp.month, exp.day);
     final days = expDay.difference(today).inDays;
-    if (days < 0) return Colors.red;
-    if (days <= 7) return Colors.red;
+    if (days < 0) return kError;
+    if (days <= 7) return kError;
     if (days < ExpirationAlertService.kAlertThresholdDays) return kWarning;
     return kAccentPrimary;
   }

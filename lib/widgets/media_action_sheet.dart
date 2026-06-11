@@ -201,7 +201,7 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                       padding: const EdgeInsets.only(top: 6.0),
                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                         if (voteAvg != null && voteAvg > 0) ...[
-                          const Icon(Icons.star_rounded, size: 15, color: Colors.amber),
+                          Icon(Icons.star_rounded, size: 15, color: kWarning),
                           const SizedBox(width: 3),
                           Text(voteAvg.toStringAsFixed(1), style: Theme.of(context).textTheme.bodySmall),
                           if (airDate != null) const SizedBox(width: 12),
@@ -609,14 +609,16 @@ class _FavoriteToggleTile extends StatelessWidget {
       builder: (ctx, _, __) {
         final isFav = FavoritesService.isFavorite(favKey);
         return ListTile(
+          // §themePlus — couleur favori unifiée (avant : kAccentTertiary ici
+          // mais kFavorite sur la fiche → deux couleurs pour le même concept).
           leading: Icon(
             isFav ? Icons.favorite : Icons.favorite_border,
-            color: isFav ? kAccentTertiary : null,
+            color: isFav ? kFavorite : null,
           ),
           title: Text(
             isFav ? 'Retirer des favoris' : 'Ajouter aux favoris',
             style: TextStyle(
-              color: isFav ? kAccentTertiary : null,
+              color: isFav ? kFavorite : null,
               fontWeight: isFav ? FontWeight.w600 : FontWeight.normal,
             ),
           ),

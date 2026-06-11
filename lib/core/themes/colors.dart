@@ -47,9 +47,13 @@ const Color kBadgeFilmType = kAetherSecondaryCyan;  // Chip FILM dans filmograph
 Color get kBadgeSeriesType => kAccentPrimary;       // suit le thème
 
 // ── Statuts / alertes ────────────────────────────────────────────────────────
-const Color kWarning  = Color(0xFFFF8C00); // Orange avertissement (reprise/oubli)
-const Color kFavorite = Color(0xFFE040FB); // Rose/purple — favori actif
-Color get kDispo     => kAccentPrimary;   // suit le thème
+// §themePlus (2026-06-11) — les 4 couleurs d'état suivent désormais le thème
+// (personnalisables in-app via ThemeSettingsPage, définies par les presets).
+Color get kWarning  => ThemeService.config.value.warningColor;  // reprise/alertes
+Color get kFavorite => ThemeService.config.value.favoriteColor; // favori actif
+Color get kError    => ThemeService.config.value.errorColor;    // erreur/danger
+Color get kSuccess  => ThemeService.config.value.successColor;  // succès/confirmé
+Color get kDispo    => kAccentPrimary;   // suit le thème
 
 // ── Dégradé principal (boutons, pills actives) ───────────────────────────────
 LinearGradient get kAetherGradient => LinearGradient(

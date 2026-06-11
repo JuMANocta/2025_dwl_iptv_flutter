@@ -116,7 +116,7 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
           if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
             return Center(
               child: Text('Erreur : Fiche Acteur non trouvée.',
-                  style: TextStyle(color: Colors.red.shade400)),
+                  style: TextStyle(color: kError)),
             );
           }
 
