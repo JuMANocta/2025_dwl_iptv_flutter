@@ -31,6 +31,11 @@ const Color kQuality4K  = Color(0xFFE53935); // Rouge vif
 const Color kQualityFHD = Color(0xFFFFC107); // Ambre
 const Color kQualityHD  = kAetherSecondaryCyan; // Cyan
 const Color kQualitySD  = kMatrixGreenDim;   // Vert Matrix dim
+/// Qualité non détectée dans le nom (fréquent : PLATINIUM `|FR| Titre (2022)`
+/// sans tag). Blanc cassé fixe (décision user 2026-06-11) — remplace l'ancien
+/// gris terne, distinct des 4 couleurs qualité ci-dessus et lisible sur fond
+/// sombre sans crier.
+const Color kQualityUnknown = Color(0xFFF0EAD6);
 
 // ── Langues ─────────────────────────────────────────────────────────────────
 Color get kLangMulti     => kAccentPrimary;       // suit le thème

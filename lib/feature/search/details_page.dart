@@ -27,7 +27,7 @@ Color _qualityColor(String? quality) {
     'FHD' => kQualityFHD,
     'HD'  => kQualityHD,
     'SD'  => kQualitySD,
-    _     => Colors.grey,
+    _     => kQualityUnknown, // blanc cassé — plus de gris terne
   };
 }
 
