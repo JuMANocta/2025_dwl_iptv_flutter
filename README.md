@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.9.2+74-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.9.3+75-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>

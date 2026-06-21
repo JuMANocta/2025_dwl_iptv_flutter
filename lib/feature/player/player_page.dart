@@ -141,7 +141,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
     _currentPath = widget.path;
-    _ctrl = AetherPlayerController();
+    // §replayBuffer — profil mpv timeshift (buffering propre aux frontières
+    // de segments HLS longs) quand on lit un replay.
+    _ctrl = AetherPlayerController(
+      timeshift: widget.sourceType == VideoSourceType.networkReplay,
+    );
     _listenErrors();
     _listenPlaybackForWakelock();
     WidgetsBinding.instance.addObserver(this);
