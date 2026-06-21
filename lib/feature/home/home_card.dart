@@ -97,7 +97,6 @@ class _HomeCardState extends State<_HomeCard> {
     if (widget.versions.isEmpty) return;
     HapticFeedback.mediumImpact();
     final entry = widget.versions.first;
-    final favKey = FavoritesService.keyFor(entry);
 
     // §3c-4 — bifurque mobile/TV pour le menu contextuel long-press.
     await showAdaptiveActionSheet<void>(
@@ -156,7 +155,7 @@ class _HomeCardState extends State<_HomeCard> {
 
                 void play({Duration? from}) {
                   Navigator.pop(sheetCtx);
-                  FavoritesService.add(favKey);
+                  FavoritesService.addEntry(entry);
                   Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerPage(
                     path: entry.url,
                     title: entry.displayName,
@@ -276,7 +275,7 @@ class _HomeCardState extends State<_HomeCard> {
             ValueListenableBuilder<int>(
               valueListenable: FavoritesService.version,
               builder: (ctx, _, __) {
-                final isFav = FavoritesService.isFavorite(favKey);
+                final isFav = FavoritesService.isEntryFavorite(entry);
                 return ListTile(
                   // §themePlus — couleur favori unifiée (kFavorite partout).
                   leading: Icon(
@@ -288,7 +287,7 @@ class _HomeCardState extends State<_HomeCard> {
                     style: TextStyle(color: isFav ? kFavorite : null),
                   ),
                   onTap: () async {
-                    await FavoritesService.toggle(favKey);
+                    await FavoritesService.toggleEntry(entry);
                     if (sheetCtx.mounted) Navigator.pop(sheetCtx);
                   },
                 );

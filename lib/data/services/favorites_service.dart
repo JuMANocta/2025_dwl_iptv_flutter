@@ -38,12 +38,24 @@ class FavoritesService {
   /// Clé canonique pour une entrée M3U (cross-comptes, indépendante de la variante).
   /// §23 — films/séries via [contentGroupKey] (minuscules) pour suivre la
   /// fusion cross-listes insensible à la casse. TV inchangé (tvGroupKey).
+  /// §favYear — Les FILMS incluent l'année (`movie|titre|année`) pour ne pas
+  /// mélanger les homonymes/remakes (cohérent avec §homonymYear des carrousels).
+  /// Séries/TV inchangés.
   static String keyFor(M3uEntry e) {
+    if (e.type == M3uContentType.movie) {
+      return 'movie|${contentGroupKey(e)}|${e.title.year ?? ''}';
+    }
     final groupKey = e.type == M3uContentType.tv
         ? tvGroupKey(e.displayName)
         : contentGroupKey(e);
     return keyForGroup(e.type, groupKey);
   }
+
+  /// §favYear — Ancienne clé film SANS année (`movie|titre`), telle que stockée
+  /// avant 2026-06-11. Conservée pour la rétro-compat : un favori legacy
+  /// continue d'allumer le cœur (cf. [isEntryFavorite]) jusqu'à ce que
+  /// l'utilisateur le re-toggle (qui le nettoie via [toggleEntry]).
+  static String _legacyMovieKey(M3uEntry e) => 'movie|${contentGroupKey(e)}';
 
   /// Clé canonique pour un groupe (type + clé de regroupement).
   static String keyForGroup(M3uContentType type, String groupKey) {
@@ -116,7 +128,42 @@ class FavoritesService {
   static bool isFavorite(String key) => _cache.contains(key);
 
   /// Vrai si l'entrée M3U correspond à un favori.
-  static bool isEntryFavorite(M3uEntry e) => isFavorite(keyFor(e));
+  /// §favYear — Pour un FILM, on accepte AUSSI l'ancienne clé sans année
+  /// (favori legacy) → le cœur reste allumé après mise à jour de l'app.
+  static bool isEntryFavorite(M3uEntry e) {
+    if (e.type == M3uContentType.movie) {
+      return _cache.contains(keyFor(e)) || _cache.contains(_legacyMovieKey(e));
+    }
+    return isFavorite(keyFor(e));
+  }
+
+  /// §favYear — Toggle/ajout/retrait À PARTIR DE L'ENTRÉE (recommandé pour les
+  /// films) : gère la clé avec année ET nettoie l'éventuelle clé legacy au
+  /// retrait. Retourne le nouvel état (`true` = ajouté).
+  static Future<bool> toggleEntry(M3uEntry e) async {
+    await _ensureLoaded();
+    if (isEntryFavorite(e)) {
+      await _removeEntry(e);
+      return false;
+    }
+    await add(keyFor(e));
+    return true;
+  }
+
+  /// Ajoute un favori depuis l'entrée (clé avec année pour les films).
+  static Future<void> addEntry(M3uEntry e) => add(keyFor(e));
+
+  static Future<void> _removeEntry(M3uEntry e) async {
+    await _ensureLoaded();
+    // Retire la clé courante ET la legacy (films) en une seule notification.
+    final removed = _cache.remove(keyFor(e));
+    final removedLegacy = e.type == M3uContentType.movie &&
+        _cache.remove(_legacyMovieKey(e));
+    if (removed || removedLegacy) {
+      version.value++;
+      await _persist();
+    }
+  }
 
   /// Ajoute un favori. Idempotent.
   static Future<void> add(String key) async {

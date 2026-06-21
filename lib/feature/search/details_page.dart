@@ -1304,7 +1304,7 @@ class _DetailsPageState extends State<DetailsPage> {
 
   void _launchSelected({Duration? from}) {
     // Auto-ajout favoris au play, cohérent avec le reste de l'app (§1d)
-    FavoritesService.add(FavoritesService.keyFor(_selectedEntry));
+    FavoritesService.addEntry(_selectedEntry);
     // §1i — Si on lance un épisode et qu'il existe un suivant, on passe le
     // callback au player pour exposer le bouton "épisode suivant" (▶▶).
     final hasNext = _isEpisode && _nextEpisode != null;
@@ -1341,8 +1341,7 @@ class _DetailsPageState extends State<DetailsPage> {
       listenable: Listenable.merge(
           [FavoritesService.version, WatchProgressService.version]),
       builder: (ctx, _) {
-        final favKey = FavoritesService.keyFor(_selectedEntry);
-        final isFav = FavoritesService.isFavorite(favKey);
+        final isFav = FavoritesService.isEntryFavorite(_selectedEntry);
         final progress = WatchProgressService.getProgress(_selectedEntry.url);
         final hasResume = progress != null && progress.position.inSeconds > 5;
 
@@ -1409,7 +1408,8 @@ class _DetailsPageState extends State<DetailsPage> {
                     color: kFavorite,
                     active: isFav,
                     onPressed: () async {
-                      final added = await FavoritesService.toggle(favKey);
+                      final added =
+                          await FavoritesService.toggleEntry(_selectedEntry);
                       if (!mounted) return;
                       AppSnackBar.show(
                         context,

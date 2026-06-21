@@ -10,7 +10,10 @@ import 'package:aetherStream/data/models/person_model.dart';
 class TrendingTitle {
   final String title;
   final String? originalTitle;
-  const TrendingTitle({required this.title, this.originalTitle});
+  /// §trendingYear — Année de sortie TMDB (release_date / first_air_date),
+  /// pour matcher la BONNE année quand la playlist a des homonymes/remakes.
+  final String? year;
+  const TrendingTitle({required this.title, this.originalTitle, this.year});
 }
 
 class TmdbService {
@@ -473,8 +476,16 @@ class TmdbService {
         final title = (isTv ? r['name'] : r['title']) as String?;
         final original =
             (isTv ? r['original_name'] : r['original_title']) as String?;
+        // §trendingYear — "YYYY-MM-DD" → année (4 premiers chars). Peut être
+        // absente/vide (films à venir sans date) → year null.
+        final rawDate =
+            (isTv ? r['first_air_date'] : r['release_date']) as String?;
+        final year = (rawDate != null && rawDate.length >= 4)
+            ? rawDate.substring(0, 4)
+            : null;
         if (title != null && title.trim().isNotEmpty) {
-          list.add(TrendingTitle(title: title, originalTitle: original));
+          list.add(TrendingTitle(
+              title: title, originalTitle: original, year: year));
         }
       }
       _trendingCache[isTv] = list;

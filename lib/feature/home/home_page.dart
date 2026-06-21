@@ -1195,15 +1195,35 @@ class _TypePageState extends State<_TypePage> {
       bool usedTrending = false;
       final trending = _trendingTitles;
       if (trending != null && trending.isNotEmpty) {
-        final byName = <String, List<M3uEntry>>{};
+        // §trendingYear — Un titre peut avoir PLUSIEURS groupes (homonymes
+        // splittés par année, §homonymYear). On garde la liste des candidats
+        // et on choisit celui dont l'année matche le retour TMDB → fini le
+        // "mauvais film d'une autre époque" remonté par le hero Tendances.
+        final byName = <String, List<List<M3uEntry>>>{};
         for (final g in allGroups) {
-          byName.putIfAbsent(_normTitle(g.first.displayName), () => g);
+          byName.putIfAbsent(_normTitle(g.first.displayName), () => []).add(g);
         }
+        List<M3uEntry>? pick(String norm, String? tmdbYear) {
+          final cands = byName[norm];
+          if (cands == null || cands.isEmpty) return null;
+          if (cands.length == 1) return cands.first;
+          if (tmdbYear != null) {
+            for (final c in cands) {
+              if (c.first.title.year == tmdbYear) return c;
+            }
+          }
+          // Pas de match exact → la plus récente (trending = actualité).
+          final sorted = [...cands]
+            ..sort((a, b) =>
+                (b.first.title.year ?? '').compareTo(a.first.title.year ?? ''));
+          return sorted.first;
+        }
+
         for (final t in trending) {
           if (featured.length >= maxFeatured) break;
-          var hit = byName[_normTitle(t.title)];
+          var hit = pick(_normTitle(t.title), t.year);
           if (hit == null && t.originalTitle != null) {
-            hit = byName[_normTitle(t.originalTitle!)];
+            hit = pick(_normTitle(t.originalTitle!), t.year);
           }
           if (hit == null) continue;
           final name = hit.first.displayName;

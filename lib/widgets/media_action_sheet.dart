@@ -383,7 +383,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
 
   void playVersion(M3uEntry v) {
     // Auto-ajout aux favoris au lancement de la lecture (§1d)
-    FavoritesService.add(FavoritesService.keyFor(v));
+    FavoritesService.addEntry(v);
     // §1i — Mémoriser la dernière chaîne pour la tuile "Reprendre la chaîne".
     LastWatchedChannelService.save(
       url: v.url,
@@ -497,7 +497,7 @@ String _formatResumeLabel(Duration d) {
 }
 
 void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPosition}) {
-  FavoritesService.add(FavoritesService.keyFor(entry));
+  FavoritesService.addEntry(entry);
   Navigator.pop(context);
   Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
     path: entry.url,
@@ -606,11 +606,10 @@ class _FavoriteToggleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final favKey = FavoritesService.keyFor(entry);
     return ValueListenableBuilder<int>(
       valueListenable: FavoritesService.version,
       builder: (ctx, _, __) {
-        final isFav = FavoritesService.isFavorite(favKey);
+        final isFav = FavoritesService.isEntryFavorite(entry);
         return ListTile(
           // §themePlus — couleur favori unifiée (avant : kAccentTertiary ici
           // mais kFavorite sur la fiche → deux couleurs pour le même concept).
@@ -627,7 +626,7 @@ class _FavoriteToggleTile extends StatelessWidget {
           ),
           onTap: () async {
             final messenger = ScaffoldMessenger.of(context);
-            final added = await FavoritesService.toggle(favKey);
+            final added = await FavoritesService.toggleEntry(entry);
             if (!context.mounted) return;
             messenger..hideCurrentSnackBar()..showSnackBar(SnackBar(
               content: Text(added
