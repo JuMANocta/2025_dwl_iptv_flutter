@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:aetherStream/core/utils/secure_storage_compte.dart';
@@ -224,8 +225,26 @@ class StreamAccountService {
         debugPrint("❌ Erreur API Info Compte (${response.statusCode}): ${response.data}");
         return null;
       }
+    } on DioException catch (e) {
+      // §logHygiene — Ne JAMAIS dumper `$e` brut : pour certains types
+      // l'exception inclut l'URL de requête AVEC les credentials Xtream
+      // (`?username=…&password=…`). De plus, connection error / timeout =
+      // condition RÉSEAU (serveur down, hors-ligne, DNS qui ne résout pas le
+      // host IPTV) → attendu, pas une erreur applicative. On log une raison
+      // utile sans fuite, en ⚠️ (soft : l'info compte est juste indisponible).
+      final reason = switch (e.type) {
+        DioExceptionType.connectionError ||
+        DioExceptionType.connectionTimeout ||
+        DioExceptionType.receiveTimeout ||
+        DioExceptionType.sendTimeout =>
+          'serveur injoignable (réseau / DNS)',
+        DioExceptionType.badResponse => 'HTTP ${e.response?.statusCode ?? '?'}',
+        _ => 'erreur réseau',
+      };
+      debugPrint("⚠️ Infos compte '${account.label}' indisponibles — $reason");
+      return null;
     } catch (e) {
-      debugPrint("❌ Exception lors du fetch des infos du compte '${account.label}': $e");
+      debugPrint("⚠️ Infos compte '${account.label}' indisponibles (erreur inattendue)");
       return null;
     }
   }

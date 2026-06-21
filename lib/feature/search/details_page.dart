@@ -63,6 +63,16 @@ class _DetailsPageState extends State<DetailsPage> {
   bool _episodeSelected = false;
   Map<int, List<_EpGroup>> _seasonEpisodes = {};
   int? _selectedSeason;
+  /// §seriesFlow — Vrai tant que le fetch lazy des épisodes (API Xtream) tourne.
+  /// Pilote l'état du navigateur série : spinner pendant le chargement, liste
+  /// des saisons une fois prêt, message "aucun épisode" si le fetch ne renvoie
+  /// rien. Évite l'ancien double-affichage (fiche en mode FILM avec les
+  /// versions provider, puis bascule en mode série).
+  bool _episodesLoading = false;
+  /// §seriesMultiList — Stubs série (1 par compte) à fetcher via la JSON API,
+  /// pour que chaque épisode porte les versions de TOUTES les listes qui ont
+  /// la série (et pas juste le compte d'origine de la vignette).
+  List<M3uEntry> _apiSeriesStubs = const [];
 
   final ScrollController _episodeScrollController = ScrollController();
 
@@ -126,17 +136,22 @@ class _DetailsPageState extends State<DetailsPage> {
     _currentEpisode = widget.entry;
     _buildSeasonEpisodes();
 
-    if (_seasonEpisodes.isNotEmpty) {
-      _applyInitialEpisodeSelection();
-    } else if (widget.entry.type == M3uContentType.series) {
-      // §xtreamEpisodes — Pas d'épisodes trouvés dans le M3U parsé : c'est
-      // probablement une entrée série issue de la JSON API (un seul stub par
-      // série, sans épisodes). On va les chercher à la demande via
-      // `XtreamApiService.fetchEpisodes(seriesId)` — lazy load, on ne pré-
-      // charge pas les 19 000+ séries au boot.
+    if (widget.entry.type == M3uContentType.series) {
       _uniqueVersions = _deduplicateVersions(widget.versions);
       _selectedEntry  = _uniqueVersions.isNotEmpty ? _uniqueVersions.first : widget.entry;
-      _fetchEpisodesFromXtreamApi();
+      // Épisodes déjà présents (M3U parsé, fallback get.php) → affichage immédiat.
+      if (_seasonEpisodes.isNotEmpty) {
+        _applyInitialEpisodeSelection();
+        _autoRevealFirstSeason();
+      }
+      // §seriesMultiList — Stubs API présents (catalogue §23) → fetch des
+      // épisodes de TOUS les comptes en parallèle, mergés avec l'éventuel M3U.
+      // `_episodesLoading` → navigateur série EN CHARGEMENT (jamais le layout
+      // film + versions provider) tant qu'aucun épisode n'est encore là.
+      if (_apiSeriesStubs.isNotEmpty) {
+        _episodesLoading = _seasonEpisodes.isEmpty;
+        _fetchAllEpisodes();
+      }
     } else {
       _uniqueVersions = _deduplicateVersions(widget.versions);
       _selectedEntry  = _uniqueVersions.isNotEmpty ? _uniqueVersions.first : widget.entry;
@@ -160,7 +175,7 @@ class _DetailsPageState extends State<DetailsPage> {
   /// §xtreamEpisodes — Applique la sélection initiale d'épisode après que
   /// `_seasonEpisodes` est rempli (que ce soit via le parser M3U OU via le
   /// lazy fetch de la JSON API). Factorisé pour pouvoir être appelé depuis
-  /// initState ET depuis `_fetchEpisodesFromXtreamApi`.
+  /// initState ET depuis `_fetchAllEpisodes`.
   void _applyInitialEpisodeSelection() {
     final season = widget.entry.title.seasonNumber;
     final epNum  = widget.entry.title.episodeNumber;
@@ -186,18 +201,50 @@ class _DetailsPageState extends State<DetailsPage> {
 
   /// §xtreamEpisodes — Récupère les épisodes via la JSON API Xtream à la
   /// demande (séries listées en stubs au boot, épisodes chargés à l'ouverture).
-  Future<void> _fetchEpisodesFromXtreamApi() async {
-    final seriesId = _extractSeriesIdFromUrl(widget.entry.url);
-    if (seriesId == null) return;
-    final account = await StreamAccountService.getAccount(widget.entry.accountId);
-    if (account == null) return;
+  /// §seriesMultiList — Fetch les épisodes de TOUS les stubs (un par compte qui
+  /// a la série) en parallèle, puis merge avec les épisodes déjà présents (M3U)
+  /// → chaque épisode porte les versions de toutes les listes. Remplace
+  /// l'ancien fetch mono-compte qui ne montrait qu'un seul provider.
+  Future<void> _fetchAllEpisodes() async {
+    final futures = _apiSeriesStubs.map((stub) async {
+      final sid = _extractSeriesIdFromUrl(stub.url);
+      if (sid == null) return const <M3uEntry>[];
+      final acc = await StreamAccountService.getAccount(stub.accountId);
+      if (acc == null) return const <M3uEntry>[];
+      return XtreamApiService.fetchEpisodes(acc, sid);
+    }).toList();
 
-    final episodes = await XtreamApiService.fetchEpisodes(account, seriesId);
-    if (!mounted || episodes.isEmpty) return;
+    final lists = await Future.wait(futures);
+    if (!mounted) return;
+    final apiEpisodes = lists.expand((e) => e).toList();
+    if (apiEpisodes.isEmpty) return _finishEpisodesLoading();
 
-    // Regroupement saison → épisode → versions (1 seule version par épisode
-    // côté API, mais on garde la structure pour rester compatible avec le
-    // pipeline existant qui gère les épisodes en doublon).
+    // Merge épisodes M3U déjà groupés + nouveaux épisodes API → regroupe tout.
+    final merged = <M3uEntry>[..._flattenSeasonEpisodes(), ...apiEpisodes];
+    final regrouped = _regroupEpisodes(merged);
+
+    setState(() {
+      _seasonEpisodes = regrouped;
+      _episodesLoading = false;
+      // Ne ré-applique la sélection auto que si l'utilisateur n'a pas déjà
+      // navigué pendant le (bref) chargement.
+      if (!_episodeSelected && _selectedSeason == null) {
+        _applyInitialEpisodeSelection();
+        _autoRevealFirstSeason();
+      }
+    });
+  }
+
+  /// Aplatit `_seasonEpisodes` en liste d'épisodes bruts (pour re-merger).
+  List<M3uEntry> _flattenSeasonEpisodes() => [
+        for (final groups in _seasonEpisodes.values)
+          for (final g in groups) ...g.versions,
+      ];
+
+  /// Regroupe une liste plate d'épisodes en `saison → [épisodes triés]`, chaque
+  /// épisode portant ses versions dédupliquées (cross-comptes = plusieurs
+  /// listes pour le même S/E).
+  Map<int, List<_EpGroup>> _regroupEpisodes(List<M3uEntry> episodes) {
     final tmp = <int, Map<int, List<M3uEntry>>>{};
     for (final ep in episodes) {
       final s = ep.title.seasonNumber;
@@ -208,19 +255,34 @@ class _DetailsPageState extends State<DetailsPage> {
     final result = <int, List<_EpGroup>>{};
     for (final entry in tmp.entries) {
       final groups = entry.value.entries
-          .map((e) => _EpGroup(e.key, e.value))
+          .map((e) => _EpGroup(e.key, _deduplicateVersions(e.value)))
           .toList()
         ..sort((a, b) => a.episodeNumber.compareTo(b.episodeNumber));
       result[entry.key] = groups;
     }
     final sortedSeasons = result.keys.toList()..sort();
+    return {for (final s in sortedSeasons) s: result[s]!};
+  }
 
-    if (!mounted) return;
-    setState(() {
-      _seasonEpisodes = {for (final s in sortedSeasons) s: result[s]!};
-      _selectedSeason = null;
-      _applyInitialEpisodeSelection();
-    });
+  /// §seriesFlow — Termine l'état de chargement des épisodes (échec/série
+  /// introuvable/aucun épisode). Le navigateur série bascule alors sur le
+  /// message "aucun épisode disponible" au lieu d'un spinner infini.
+  void _finishEpisodesLoading() {
+    if (!mounted) {
+      _episodesLoading = false;
+      return;
+    }
+    setState(() => _episodesLoading = false);
+  }
+
+  /// §seriesFlow — À l'ouverture d'une série (aucun épisode précis demandé), on
+  /// révèle d'emblée les épisodes de la 1re saison pour que l'utilisateur voie
+  /// la liste sans devoir choisir une saison d'abord. Ne sélectionne PAS
+  /// d'épisode → garde le synopsis/visuel au niveau série.
+  void _autoRevealFirstSeason() {
+    if (_episodeSelected || _selectedSeason != null) return;
+    if (_seasonEpisodes.isEmpty) return;
+    _selectedSeason = _seasonEpisodes.keys.first;
   }
 
   /// Extrait le `series_id` d'une URL stub `/series/{user}/{pass}/{id}`
@@ -253,25 +315,24 @@ class _DetailsPageState extends State<DetailsPage> {
             e.type == M3uContentType.series && contentGroupKey(e) == seriesKey)
         .toList();
 
-    final tmp = <int, Map<int, List<M3uEntry>>>{};
+    // §seriesMultiList — On sépare : (a) épisodes M3U réels (SxxExx présents)
+    // → groupés tout de suite ; (b) stubs série (un par compte, URL
+    // `/series/.../id` sans épisode) → à fetcher via la JSON API pour récupérer
+    // leurs épisodes. Un stub par compte (dédup accountId).
+    final m3uEpisodes = <M3uEntry>[];
+    final stubsByAccount = <String, M3uEntry>{};
     for (final e in all) {
-      final s  = e.title.seasonNumber;
-      final ep = e.title.episodeNumber;
-      if (s == null || ep == null) continue;
-      tmp.putIfAbsent(s, () => {}).putIfAbsent(ep, () => []).add(e);
+      final hasEp =
+          e.title.seasonNumber != null && e.title.episodeNumber != null;
+      if (hasEp) {
+        m3uEpisodes.add(e);
+      } else if (_extractSeriesIdFromUrl(e.url) != null) {
+        stubsByAccount.putIfAbsent(e.accountId, () => e);
+      }
     }
 
-    final result = <int, List<_EpGroup>>{};
-    for (final entry in tmp.entries) {
-      final groups = entry.value.entries
-          .map((e) => _EpGroup(e.key, e.value))
-          .toList()
-        ..sort((a, b) => a.episodeNumber.compareTo(b.episodeNumber));
-      result[entry.key] = groups;
-    }
-
-    final sortedSeasons = result.keys.toList()..sort();
-    _seasonEpisodes = {for (final s in sortedSeasons) s: result[s]!};
+    _apiSeriesStubs = stubsByAccount.values.toList();
+    _seasonEpisodes = _regroupEpisodes(m3uEpisodes);
     _selectedSeason = null;
   }
 
@@ -476,7 +537,11 @@ class _DetailsPageState extends State<DetailsPage> {
     final l10n    = AppLocalizations.of(context)!;
     final cs      = Theme.of(context).colorScheme;
     final hasTmdb = _tmdbData != null;
-    final isSeries = _seasonEpisodes.isNotEmpty;
+    // §seriesFlow — basé sur le TYPE (pas sur `_seasonEpisodes.isNotEmpty`) :
+    // une série rend TOUJOURS le navigateur série dès la 1re frame (en
+    // chargement si les épisodes arrivent en lazy), jamais le layout film +
+    // versions provider. Supprime le double-affichage.
+    final isSeries = widget.entry.type == M3uContentType.series;
 
     // Image header : still épisode (si sélectionné) > backdrop série
     final String? stillPath    = _episodeData?['still_path'] as String?;
@@ -898,10 +963,8 @@ class _DetailsPageState extends State<DetailsPage> {
         ),
 
         // ── SAISONS (chips contour néon cohérent avec le style fiche) ────────
-        if (!hasSeasons)
-          // §xtreamEpisodes — état chargement pendant le fetch async des épisodes
-          // (lazy load via XtreamApiService.fetchEpisodes), si on est sur une
-          // série stub issue de la JSON API.
+        if (!hasSeasons && _episodesLoading)
+          // §seriesFlow — chargement lazy des épisodes (XtreamApiService).
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Row(
@@ -919,6 +982,26 @@ class _DetailsPageState extends State<DetailsPage> {
                   'Chargement des épisodes…',
                   style: TextStyle(
                       fontSize: 13, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          )
+        else if (!hasSeasons)
+          // §seriesFlow — fetch terminé mais aucun épisode (série introuvable
+          // côté API, compte non-Xtream, réseau down). Plus de spinner infini.
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.tv_off_outlined,
+                    size: 18, color: cs.onSurfaceVariant),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Aucun épisode disponible pour cette série.',
+                    style: TextStyle(
+                        fontSize: 13, color: cs.onSurfaceVariant),
+                  ),
                 ),
               ],
             ),

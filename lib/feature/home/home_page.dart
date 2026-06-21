@@ -113,7 +113,7 @@ class _TvRailsTraversalPolicy extends ReadingOrderTraversalPolicy {
 /// Layout (§navUX — hero en TOP, tabs SOUS le hero) :
 ///   AppBar              (⚙️ uniquement, transparente posée sur le fond)
 ///   PageView de _TypePage
-///     ↳ _HeroBanner     (carrousel 16/9 d'items mis en avant — auto-rotation 6s)
+///     ↳ _HeroFanBanner  (jeu de cartes empilées — TOUTES les pages, §heroUnify)
 ///     ↳ _AnimatedTabIndicator (Séries · Films · Chaînes — injectées par parent)
 ///     ↳ _LastWatchedTvTile    (page TV uniquement — "Reprendre la chaîne")
 ///     ↳ _CategoryRow    (Favoris ⭐ d'abord, puis France/New/genres alpha)
@@ -431,13 +431,11 @@ class _HomePageState extends State<HomePage> with RouteAware {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final statusBarHeight = MediaQuery.of(context).padding.top;
-    // §heroFan ergo — Pour movie/series, le hero "fan" remonte jusqu'au status
-    // bar : l'inclinaison des cartes laisse le coin haut-droit libre pour
-    // l'icône ⚙️ qui flotte par-dessus. Pour TV (hero 16/9 plein largeur),
-    // on conserve l'offset AppBar sinon le titre du hero entre en collision
-    // avec l'icône.
+    // §heroFan ergo / §heroUnify — Le hero "fan" (désormais utilisé par TOUTES
+    // les pages, y compris Chaînes) remonte jusqu'au status bar : l'inclinaison
+    // des cartes laisse le coin haut-droit libre pour les icônes refresh/⚙️ qui
+    // flottent par-dessus. Même topInset partout → zéro saut vertical au swipe.
     final liftedTopInset = statusBarHeight + 4;
-    final defaultTopInset = statusBarHeight + kToolbarHeight;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -514,10 +512,15 @@ class _HomePageState extends State<HomePage> with RouteAware {
                   // via `_onHomeNotifier` (`setState` gated par `_inBackground`).
                   final byType = _byTypeMemoized();
 
-                  if (widget.searchMode) {
-                    // §1L-a — Grand champ recherche dans le body (sous l'AppBar
-                    // transparente) au lieu d'un mini-champ dans le title.
-                    return Column(
+                  // §tabPersist — On garde le PageView (browse) MONTÉ en
+                  // permanence via un IndexedStack : entrer/sortir de la
+                  // recherche ne détache plus le `_pageController` → l'onglet
+                  // sélectionné ne se réinitialise plus à Films (bug "retour à
+                  // Films" au toggle recherche). La recherche est un calque
+                  // frère, pas un remplacement de l'arbre.
+                  // §1L-a — Grand champ recherche dans le body (sous l'AppBar
+                  // transparente) au lieu d'un mini-champ dans le title.
+                  final Widget searchBody = Column(
                       children: [
                         SizedBox(
                           height: MediaQuery.of(context).padding.top +
@@ -543,7 +546,6 @@ class _HomePageState extends State<HomePage> with RouteAware {
                         ),
                       ],
                     );
-                  }
 
                   // §navUX — Builder de la barre Séries/Films/Chaînes injectée
                   // sous le hero dans chaque _TypePage. Toutes les instances
@@ -562,7 +564,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
                     );
                   }
 
-                  return Column(
+                  final Widget browseBody = Column(
                     children: [
                       // §loadingBanner — Bandeau discret en haut de la home
                       // tant que les comptes secondaires se téléchargent/parsent
@@ -571,6 +573,10 @@ class _HomePageState extends State<HomePage> with RouteAware {
                       const _SecondaryAccountsLoadingBanner(),
                       Expanded(
                         child: PageView(
+                    // §tabPersist — restaure la page courante si le PageView est
+                    // recréé (ex: cycle `_loading` lors d'un changement de
+                    // compte / refresh) → l'onglet ne retombe pas sur Films.
+                    key: const PageStorageKey('homeTypePages'),
                     controller: _pageController,
                     // §3c-7 — Sur TV : pas de swipe horizontal (la nav
                     // Films/Séries/Chaînes se fait via les tabs cliquables
@@ -579,6 +585,12 @@ class _HomePageState extends State<HomePage> with RouteAware {
                     physics: PlatformTv.isTv
                         ? const NeverScrollableScrollPhysics()
                         : const _FastPageScrollPhysics(),
+                    // §heroSwipePerf — Pré-construit/peint les pages adjacentes
+                    // (hors écran) → la page entrante n'est plus peinte À FROID
+                    // au démarrage du swipe (le hero fan = ~7 cartes avec
+                    // saveLayer + ombres floutées, très coûteux au 1er paint).
+                    // Supprime la saccade de début de glissement.
+                    allowImplicitScrolling: true,
                     onPageChanged: (i) {
                       setState(() => _currentIndex = i);
                       // §3c Phase 2 — Après un changement d'onglet sur TV,
@@ -629,13 +641,31 @@ class _HomePageState extends State<HomePage> with RouteAware {
                           key: ValueKey('tv_$_activeAccountId'),
                           type: M3uContentType.tv,
                           entries: byType[M3uContentType.tv]!,
-                          topInset: defaultTopInset,
+                          // §heroUnify — même topInset que films/séries → le
+                          // hero fan des Chaînes démarre à la même hauteur (plus
+                          // de saut vertical au swipe). `defaultTopInset` n'est
+                          // plus utilisé que par le calcul (gardé pour réf).
+                          topInset: liftedTopInset,
                           tabsBuilder: buildTabs,
                         ),
                       ),
                     ],
                         ),
                       ),
+                    ],
+                  );
+
+                  // §tabPersist — Browse (PageView) en index 0 = toujours
+                  // monté ; recherche en index 1. StackFit.expand pour que les
+                  // Column(Expanded) reçoivent une hauteur bornée. ExcludeFocus
+                  // sur l'enfant caché → le D-pad TV ne tombe pas dans la page
+                  // invisible.
+                  return IndexedStack(
+                    sizing: StackFit.expand,
+                    index: widget.searchMode ? 1 : 0,
+                    children: [
+                      ExcludeFocus(excluding: widget.searchMode, child: browseBody),
+                      ExcludeFocus(excluding: !widget.searchMode, child: searchBody),
                     ],
                   );
                 },
@@ -721,7 +751,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
 
 // ─── Indicateur d'onglets animé ──────────────────────────────────────────────
 
-class _AnimatedTabIndicator extends StatefulWidget {
+class _AnimatedTabIndicator extends StatelessWidget {
   final PageController controller;
   final int currentIndex;
   final List<int> counts; // [series, films, tv]
@@ -734,55 +764,32 @@ class _AnimatedTabIndicator extends StatefulWidget {
     required this.onTap,
   });
 
-  @override
-  State<_AnimatedTabIndicator> createState() => _AnimatedTabIndicatorState();
-}
-
-class _AnimatedTabIndicatorState extends State<_AnimatedTabIndicator> {
   static const _labels = ['Séries', 'Films', 'Chaînes'];
-
-  double _page = 1.0;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_onScroll);
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_onScroll);
-    super.dispose();
-  }
-
-  void _onScroll() {
-    final p = widget.controller.page;
-    if (p != null && p != _page) {
-      setState(() => _page = p);
-    }
-  }
+  // §navHeight — Barre plus haute + police plus grande : meilleure cible
+  // tactile et lisibilité (l'ancienne 26px/20px était petite à viser).
+  static const double _barHeight = 38;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    // §navUX — Le tab indicator est maintenant injecté SOUS le hero dans la
-    // liste de _TypePage, donc plus besoin d'offset status bar (le ListView
-    // gère lui-même son padding-top via widget.topInset).
+    // §navUX — Le tab indicator est injecté SOUS le hero dans la liste de
+    // _TypePage, donc plus besoin d'offset status bar (le ListView gère son
+    // padding-top via widget.topInset).
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
       child: LayoutBuilder(
         builder: (ctx, constraints) {
           final tabWidth = constraints.maxWidth / 3;
 
           return SizedBox(
-            height: 26,
+            height: _barHeight,
             child: Stack(
               children: [
                 Row(
                   children: List.generate(3, (i) {
-                    final active = i == widget.currentIndex;
-                    final isEmpty = widget.counts[i] == 0;
+                    final active = i == currentIndex;
+                    final isEmpty = counts[i] == 0;
                     final color = isEmpty
                         ? cs.onSurface.withAlpha(60)
                         : active
@@ -794,16 +801,16 @@ class _AnimatedTabIndicatorState extends State<_AnimatedTabIndicator> {
                     return Expanded(
                       child: FocusableChip(
                         enabled: !isEmpty,
-                        onTap: isEmpty ? null : () => widget.onTap(i),
+                        onTap: isEmpty ? null : () => onTap(i),
                         borderRadius: BorderRadius.circular(8),
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: isEmpty ? null : () => widget.onTap(i),
+                          onTap: isEmpty ? null : () => onTap(i),
                           child: AnimatedDefaultTextStyle(
                             duration: const Duration(milliseconds: 220),
                             curve: Curves.easeOut,
                             style: TextStyle(
-                              fontSize: active ? 20 : 14,
+                              fontSize: active ? 22 : 16,
                               fontWeight: active ? FontWeight.w800 : FontWeight.w500,
                               letterSpacing: active ? 0.5 : 0.2,
                               color: color,
@@ -815,24 +822,41 @@ class _AnimatedTabIndicatorState extends State<_AnimatedTabIndicator> {
                     );
                   }),
                 ),
-                // Underline animé
-                Positioned(
-                  bottom: 0,
-                  left: _page * tabWidth + tabWidth * 0.3,
-                  child: Container(
-                    width: tabWidth * 0.4,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      gradient: kAetherGradient,
-                      borderRadius: BorderRadius.circular(2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: kAccentPrimary.withAlpha(140),
-                          blurRadius: 8,
-                          offset: const Offset(0, 1),
+                // §pageSmooth — Underline piloté par un AnimatedBuilder écoutant
+                // le PageController : SEUL l'underline se re-peint à chaque frame
+                // du swipe (avant : `setState` de TOUTE la barre 60×/s sur 2
+                // instances → jank). Le reste (textes/tabs) ne rebuild qu'au
+                // commit d'onglet (currentIndex).
+                Positioned.fill(
+                  child: AnimatedBuilder(
+                    animation: controller,
+                    builder: (ctx, _) {
+                      final page = controller.hasClients
+                          ? (controller.page ?? currentIndex.toDouble())
+                          : currentIndex.toDouble();
+                      return Align(
+                        alignment: Alignment.bottomLeft,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                              left: page * tabWidth + tabWidth * 0.3),
+                          child: Container(
+                            width: tabWidth * 0.4,
+                            height: 3,
+                            decoration: BoxDecoration(
+                              gradient: kAetherGradient,
+                              borderRadius: BorderRadius.circular(2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: kAccentPrimary.withAlpha(140),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -1193,12 +1217,20 @@ class _TypePageState extends State<_TypePage> {
         }
       }
     } else {
-      // TV : comportement historique (catégorie prioritaire, max 5).
-      for (final cat in categories) {
-        if (cat == 'Favoris') continue;
-        if (_TypePage._categoryPriority(cat) < 100) {
-          featured.addAll(byCategory[cat]!.take(5));
-          break;
+      // §favHeroTv — Chaînes : le hero met en avant les chaînes FAVORITES de
+      // l'utilisateur (équivalent des "reprises" pour le live). Fallback sur la
+      // 1re catégorie prioritaire (France/New) s'il n'a aucun favori → le hero
+      // n'est jamais vide.
+      final favs = byCategory['Favoris'];
+      if (favs != null && favs.isNotEmpty) {
+        featured.addAll(favs.take(maxFeatured));
+      } else {
+        for (final cat in categories) {
+          if (cat == 'Favoris') continue;
+          if (_TypePage._categoryPriority(cat) < 100) {
+            featured.addAll(byCategory[cat]!.take(5));
+            break;
+          }
         }
       }
     }
@@ -1247,11 +1279,11 @@ class _TypePageState extends State<_TypePage> {
         var cursor = 0;
         if (hasHero) {
           if (i == cursor) {
-            // §heroFan — fan "jeu de cartes" pour films/séries (avec reprise
-            // en tête), hero 16/9 classique pour les chaînes TV.
-            return widget.type == M3uContentType.tv
-                ? _HeroBanner(featured: featured, type: widget.type)
-                : _HeroFanBanner(featured: featured, type: widget.type);
+            // §heroUnify — TOUTES les pages (y compris Chaînes) utilisent le
+            // hero "fan" → même hauteur/position au swipe entre Séries/Films/
+            // Chaînes. Avant : TV avait un banner 16/9 plus court + un topInset
+            // différent → l'ensemble "sautait" verticalement en passant dessus.
+            return _HeroFanBanner(featured: featured, type: widget.type);
           }
           cursor += 1;
         }
@@ -1372,328 +1404,6 @@ class _TypePageState extends State<_TypePage> {
 
     return byCategory;
   }
-}
-
-// ─── Hero banner rotatif ─────────────────────────────────────────────────────
-
-class _HeroBanner extends StatefulWidget {
-  final List<List<M3uEntry>> featured;
-  final M3uContentType type;
-
-  const _HeroBanner({required this.featured, required this.type});
-
-  @override
-  State<_HeroBanner> createState() => _HeroBannerState();
-}
-
-class _HeroBannerState extends State<_HeroBanner> with RouteAware {
-  late final PageController _ctrl;
-  Timer? _timer;
-  int _current = 0;
-  /// §perfBg — Mis à `true` quand une route est poussée par-dessus la home (ex.
-  /// player). Bloque la rotation automatique : sinon le `Timer` continue à tourner
-  /// en arrière-plan et rebuild → repaint invisibles = saccades sur TV.
-  bool _bgPaused = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = PageController();
-    _scheduleNext();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final route = ModalRoute.of(context);
-    if (route is PageRoute) appRouteObserver.subscribe(this, route);
-  }
-
-  @override
-  void dispose() {
-    appRouteObserver.unsubscribe(this);
-    _timer?.cancel();
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didPushNext() {
-    _bgPaused = true;
-    _timer?.cancel();
-  }
-
-  @override
-  void didPopNext() {
-    _bgPaused = false;
-    _scheduleNext();
-  }
-
-  void _scheduleNext() {
-    _timer?.cancel();
-    if (_bgPaused) return;
-    if (widget.featured.length <= 1) return;
-    _timer = Timer.periodic(const Duration(seconds: 6), (_) {
-      if (!mounted || !_ctrl.hasClients) return;
-      final next = (_current + 1) % widget.featured.length;
-      _ctrl.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 600),
-        curve: Curves.easeInOut,
-      );
-    });
-  }
-
-  Future<void> _openItem(BuildContext context, List<M3uEntry> versions) async {
-    if (versions.isEmpty) return;
-    final entry = versions.first;
-    if (widget.type == M3uContentType.tv) {
-      await showTvActionSheet(context, versions);
-      return;
-    }
-    final hasTmdb = await TmdbApiService.hasApiKey();
-    if (!context.mounted) return;
-    // §bugfix — Les séries vont toujours sur DetailsPage (picker saison/épisode
-    // construit depuis la playlist), même sans clé TMDB : sinon l'action sheet
-    // ne lit que le 1er épisode et l'utilisateur ne peut pas choisir.
-    if (hasTmdb || entry.type == M3uContentType.series) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => DetailsPage(entry: entry, versions: versions),
-      ));
-    } else {
-      await showMediaActionSheet(context, entry);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final core = ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              PageView.builder(
-                controller: _ctrl,
-                onPageChanged: (i) => setState(() => _current = i),
-                itemCount: widget.featured.length,
-                itemBuilder: (ctx, i) {
-                  final versions = widget.featured[i];
-                  return _HeroSlide(
-                    versions: versions,
-                    type: widget.type,
-                    onPlay: () => _openItem(ctx, versions),
-                  );
-                },
-              ),
-              // Indicateur dots en bas-droite
-              if (widget.featured.length > 1)
-                Positioned(
-                  right: 16,
-                  bottom: 16,
-                  child: Row(
-                    children: List.generate(widget.featured.length, (i) {
-                      final active = i == _current;
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 280),
-                        margin: const EdgeInsets.symmetric(horizontal: 3),
-                        width: active ? 18 : 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: active
-                              ? kAccentPrimary
-                              : Colors.white.withAlpha(120),
-                          borderRadius: BorderRadius.circular(3),
-                          boxShadow: active
-                              ? [BoxShadow(color: kAccentPrimary.withAlpha(180), blurRadius: 6)]
-                              : null,
-                        ),
-                      );
-                    }),
-                  ),
-                ),
-            ],
-          ),
-        );
-
-    // §tvSizeRevert — Retour à la base : ratio 16/9 pour tous (le cap TV à 32 %
-    // §tvZoom rapetissait le hero). Comportement du début du support Android TV.
-    final Widget sized = AspectRatio(aspectRatio: 16 / 9, child: core);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-      child: sized,
-    );
-  }
-}
-
-class _HeroSlide extends StatelessWidget {
-  final List<M3uEntry> versions;
-  final M3uContentType type;
-  final VoidCallback onPlay;
-
-  const _HeroSlide({
-    required this.versions,
-    required this.type,
-    required this.onPlay,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final entry = versions.first;
-    // §23 — politique image « plus grosse liste ».
-    final logoUrl = ParsedPlaylistService.bestLogoUrl(versions);
-
-    final fallbackIcon = switch (type) {
-      M3uContentType.movie  => Icons.movie_outlined,
-      M3uContentType.series => Icons.tv_outlined,
-      M3uContentType.tv     => Icons.live_tv_outlined,
-    };
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Image de fond floutée + agrandie (utilise le poster comme backdrop)
-        if (logoUrl != null && logoUrl.isNotEmpty)
-          Image.network(
-            logoUrl,
-            fit: BoxFit.cover,
-            color: Colors.black.withAlpha(80),
-            colorBlendMode: BlendMode.darken,
-            // §imgPerf — Décodage borné (au lieu du bitmap pleine résolution
-            // TMDB ~780 px) : moins de RAM, moins d'évictions du `ImageCache`,
-            // moins de saccades sur TV. Backdrop flouté/sombre → 540 suffit.
-            cacheWidth: 540,
-            gaplessPlayback: true,
-            errorBuilder: (_, __, ___) => Container(color: kAccentPrimary.withAlpha(20)),
-          )
-        else
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [kAccentPrimary.withAlpha(35), kAccentSecondary.withAlpha(35)],
-              ),
-            ),
-          ),
-        // Gradient sombre pour la lisibilité
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topRight,
-              end: Alignment.bottomLeft,
-              colors: [
-                Colors.black.withAlpha(40),
-                Colors.black.withAlpha(180),
-              ],
-            ),
-          ),
-        ),
-        // Contenu : poster à gauche + infos à droite
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Poster mis en avant
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: 110,
-                  height: 165,
-                  color: Colors.black26,
-                  child: logoUrl != null && logoUrl.isNotEmpty
-                      ? Image.network(
-                          logoUrl,
-                          fit: type == M3uContentType.tv ? BoxFit.contain : BoxFit.cover,
-                          // §imgPerf — Affiché en 110×165 → 220 px de décodage
-                          // (2× pour la densité écran).
-                          cacheWidth: 220,
-                          gaplessPlayback: true,
-                          errorBuilder: (_, __, ___) => Icon(fallbackIcon, color: Colors.white54, size: 40),
-                        )
-                      : Icon(fallbackIcon, color: Colors.white54, size: 40),
-                ),
-              ),
-              const SizedBox(width: 16),
-              // Bloc texte + bouton
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: kAccentPrimary.withAlpha(50),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: kAccentPrimary.withAlpha(180), width: 1),
-                      ),
-                      child: Text(
-                        _featuredLabel(type),
-                        style: TextStyle(
-                          color: kAccentPrimary,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      entry.displayName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        height: 1.15,
-                        shadows: [Shadow(color: Colors.black54, blurRadius: 6)],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 36,
-                      child: ElevatedButton.icon(
-                        onPressed: onPlay,
-                        icon: const Icon(Icons.play_arrow, size: 20),
-                        label: const Text('Lire'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: kAccentPrimary,
-                          foregroundColor: Colors.black,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          elevation: 6,
-                          shadowColor: kAccentPrimary.withAlpha(180),
-                          textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        // Tap sur la zone vide → ouvre l'item
-        Positioned.fill(
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(onTap: onPlay),
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _featuredLabel(M3uContentType t) => switch (t) {
-        M3uContentType.movie  => 'À LA UNE',
-        M3uContentType.series => 'NOUVELLE SÉRIE',
-        M3uContentType.tv     => 'EN DIRECT',
-      };
 }
 
 // ─── Hero "fan" — empilement carte de jeu (§heroFan) ─────────────────────────
@@ -1840,6 +1550,12 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   Future<void> _openItem(BuildContext context, List<M3uEntry> versions) async {
     if (versions.isEmpty) return;
     final entry = versions.first;
+    // §heroUnify — Le fan sert aussi aux Chaînes : une chaîne ouvre l'action
+    // sheet TV (qualités + EPG), pas DetailsPage.
+    if (widget.type == M3uContentType.tv) {
+      await showTvActionSheet(context, versions);
+      return;
+    }
     final hasTmdb = await TmdbApiService.hasApiKey();
     if (!context.mounted) return;
     // §bugfix — Les séries vont toujours sur DetailsPage (picker saison/épisode
@@ -2015,18 +1731,25 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
       alignment: Alignment.bottomCenter,
       child: Opacity(
         opacity: opacity,
-        child: SizedBox(
-          width: w,
-          height: h,
-          // §3c Phase 2 — Sur TV, les InkWell des cartes empilées sont exclus du
-          // focus : seule la cible unique (FocusableChip du build) est focusable.
-          child: ExcludeFocus(
-            excluding: PlatformTv.isTv,
-            child: _HeroFanCard(
-              versions: widget.featured[i],
-              type: widget.type,
-              isActive: isActive,
-              onTap: () => _onCardTap(context, i),
+        // §heroSwipePerf — RepaintBoundary : chaque carte est mise en cache en
+        // texture. Le Transform (translate/rotate/scale) + l'Opacity
+        // s'appliquent alors sur la texture (GPU) au lieu de re-peindre image +
+        // ombres floutées à chaque frame du glissement.
+        child: RepaintBoundary(
+          child: SizedBox(
+            width: w,
+            height: h,
+            // §3c Phase 2 — Sur TV, les InkWell des cartes empilées sont exclus
+            // du focus : seule la cible unique (FocusableChip du build) est
+            // focusable.
+            child: ExcludeFocus(
+              excluding: PlatformTv.isTv,
+              child: _HeroFanCard(
+                versions: widget.featured[i],
+                type: widget.type,
+                isActive: isActive,
+                onTap: () => _onCardTap(context, i),
+              ),
             ),
           ),
         ),
@@ -2133,14 +1856,30 @@ class _HeroFanCard extends StatelessWidget {
               fit: StackFit.expand,
               children: [
             if (logoUrl != null && logoUrl.isNotEmpty)
-              Image.network(
-                logoUrl,
-                fit: BoxFit.cover,
-                // §imgPerf — Vignette ~120-180 px → cap 320 px de décodage.
-                cacheWidth: 320,
-                gaplessPlayback: true,
-                errorBuilder: (_, __, ___) => _fallback(fallbackIcon),
-              )
+              // §heroUnify — Chaînes : logo (souvent carré/transparent) en
+              // `contain` sur fond sombre → rendu "tuile chaîne" propre, pas de
+              // crop/étirement. Films/séries : poster en `cover` (inchangé).
+              type == M3uContentType.tv
+                  ? Container(
+                      color: const Color(0xFF15171C),
+                      padding: const EdgeInsets.all(16),
+                      alignment: Alignment.center,
+                      child: Image.network(
+                        logoUrl,
+                        fit: BoxFit.contain,
+                        cacheWidth: 320,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, __, ___) => _fallback(fallbackIcon),
+                      ),
+                    )
+                  : Image.network(
+                      logoUrl,
+                      fit: BoxFit.cover,
+                      // §imgPerf — Vignette ~120-180 px → cap 320 px de décodage.
+                      cacheWidth: 320,
+                      gaplessPlayback: true,
+                      errorBuilder: (_, __, ___) => _fallback(fallbackIcon),
+                    )
             else
               _fallback(fallbackIcon),
             // Gradient sombre en bas pour la lisibilité du titre.
