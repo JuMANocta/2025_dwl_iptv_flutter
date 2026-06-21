@@ -638,6 +638,9 @@ class _DetailsPageState extends State<DetailsPage> {
                     Image.network(
                       headerUrl,
                       fit: BoxFit.cover,
+                      // §imgPerf — backdrop header full-width → cap décodage.
+                      cacheWidth: 720,
+                      gaplessPlayback: true,
                       errorBuilder: (_, __, ___) =>
                           Container(color: cs.surfaceContainerHighest),
                     )
@@ -1658,6 +1661,9 @@ class _CastCard extends StatelessWidget {
                       width: 92,
                       height: 138,
                       fit: BoxFit.cover,
+                      // §imgPerf — photo casting 92×138 → cap décodage (2×).
+                      cacheWidth: 220,
+                      gaplessPlayback: true,
                       // Cadre sur le haut → garde le visage (yeux) plutôt que de
                       // recentrer sur le bas (bouche/menton).
                       alignment: Alignment.topCenter,

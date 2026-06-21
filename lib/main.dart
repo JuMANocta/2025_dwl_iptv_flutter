@@ -66,13 +66,21 @@ void main() async {
       DeviceOrientation.landscapeRight,
     ]);
   }
+  // Migration legacy d'abord (touche le secure storage des comptes).
   await StreamAccountService.migrateFromLegacyIfNeeded();
-  await DownloadManagerService().init();
-  await FavoritesService.init();
-  await WatchProgressService.init();
-  await SearchHistoryService.init();
-  await LastWatchedChannelService.init();
-  await ThemeService.load();
+  // §startupParallel — Ces 6 init() sont des lectures de cache INDÉPENDANTES
+  // (SharedPreferences / secure storage propres à chaque service). Avant elles
+  // s'enchaînaient en série (temps additif au cold start) ; en parallèle, le
+  // démarrage attend juste la plus lente. Toutes terminées avant runApp (MyApp
+  // lit ThemeService.config).
+  await Future.wait([
+    DownloadManagerService().init(),
+    FavoritesService.init(),
+    WatchProgressService.init(),
+    SearchHistoryService.init(),
+    LastWatchedChannelService.init(),
+    ThemeService.load(),
+  ]);
 
   runApp(const MyApp());
 

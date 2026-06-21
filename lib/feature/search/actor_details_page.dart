@@ -151,6 +151,9 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                         Image.network(
                           profileUrl,
                           fit: BoxFit.cover,
+                          // §imgPerf — header full-width → cap décodage.
+                          cacheWidth: 720,
+                          gaplessPlayback: true,
                           errorBuilder: (_, __, ___) =>
                               Container(color: cs.surfaceContainerHighest),
                         )

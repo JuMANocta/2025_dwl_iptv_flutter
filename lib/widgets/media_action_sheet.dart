@@ -165,6 +165,9 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                           height: stillPath != null ? 160 : 140,
                           width: double.infinity,
                           fit: stillPath != null ? BoxFit.cover : BoxFit.contain,
+                          // §imgPerf — bandeau ~full-width × 160 → cap décodage.
+                          cacheWidth: 720,
+                          gaplessPlayback: true,
                           errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                         ),
                       ),
@@ -238,7 +241,7 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(entry.logoUrl!, height: 150, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                  child: Image.network(entry.logoUrl!, height: 150, cacheWidth: 320, gaplessPlayback: true, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
                 ),
               ),
             Padding(
