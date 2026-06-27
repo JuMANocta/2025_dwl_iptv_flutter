@@ -1203,20 +1203,44 @@ class _TypePageState extends State<_TypePage> {
         for (final g in allGroups) {
           byName.putIfAbsent(_normTitle(g.first.displayName), () => []).add(g);
         }
+        // §trendingYearProx — Tolérance d'écart d'année (en années) entre le
+        // retour TMDB et le candidat playlist. Les tendances sont l'ACTUALITÉ
+        // (films récents), donc l'année doit coller de près : au-delà, c'est un
+        // homonyme d'une autre époque qu'on NE promeut PAS dans le hero.
+        // Off-by-one toléré (décalage de sortie selon pays).
+        const yearTol = 1;
         List<M3uEntry>? pick(String norm, String? tmdbYear) {
           final cands = byName[norm];
           if (cands == null || cands.isEmpty) return null;
-          if (cands.length == 1) return cands.first;
-          if (tmdbYear != null) {
-            for (final c in cands) {
-              if (c.first.title.year == tmdbYear) return c;
+          final mostRecent = ([...cands]
+                ..sort((a, b) =>
+                    (b.first.title.year ?? '').compareTo(a.first.title.year ?? '')))
+              .first;
+          final ty = int.tryParse(tmdbYear ?? '');
+          // Pas d'année TMDB exploitable (souvent les séries) → permissif :
+          // le titre est le seul signal, on prend la plus récente.
+          if (ty == null) return mostRecent;
+
+          List<M3uEntry>? bestClose;
+          var bestDelta = 1 << 30;
+          var anyYearKnown = false;
+          for (final c in cands) {
+            final cy = int.tryParse(c.first.title.year ?? '');
+            if (cy == null) continue;
+            anyYearKnown = true;
+            if (cy == ty) return c; // match d'année exact
+            final d = (cy - ty).abs();
+            if (d < bestDelta) {
+              bestDelta = d;
+              bestClose = c;
             }
           }
-          // Pas de match exact → la plus récente (trending = actualité).
-          final sorted = [...cands]
-            ..sort((a, b) =>
-                (b.first.title.year ?? '').compareTo(a.first.title.year ?? ''));
-          return sorted.first;
+          // Aucun candidat daté → titre seul, permissif.
+          if (!anyYearKnown) return mostRecent;
+          // Le plus proche est-il dans la tolérance ? Sinon on REJETTE (homonyme
+          // d'une autre époque) → la tendance suivante sera tentée à la place.
+          if (bestClose != null && bestDelta <= yearTol) return bestClose;
+          return null;
         }
 
         for (final t in trending) {
@@ -1370,11 +1394,11 @@ class _TypePageState extends State<_TypePage> {
     );
   }
 
-  /// §homonymYear — Sépare les groupes-titre FILMS qui mélangent plusieurs
-  /// années (homonymes/remakes). 0 ou 1 année distincte → groupe inchangé
-  /// (fusion conservée, les versions sans année rejoignent l'unique année).
-  /// ≥2 années → un sous-groupe par année + un sous-groupe pour les sans-année.
-  static List<List<M3uEntry>> _splitMoviesByYear(
+  /// §homonymYear — Sépare les groupes-titre (FILMS et SÉRIES) qui mélangent
+  /// plusieurs années (homonymes/remakes). 0 ou 1 année distincte → groupe
+  /// inchangé (fusion conservée, les versions sans année rejoignent l'unique
+  /// année). ≥2 années → un sous-groupe par année + un pour les sans-année.
+  static List<List<M3uEntry>> _splitGroupsByYear(
       Iterable<List<M3uEntry>> titleGroups) {
     final out = <List<M3uEntry>>[];
     for (final group in titleGroups) {
@@ -1413,12 +1437,13 @@ class _TypePageState extends State<_TypePage> {
       }
     }
 
-    // §homonymYear — FILMS : split intelligent par année. On a groupé par titre
-    // (fusion cross-listes maximale), puis on sépare UNIQUEMENT les groupes qui
-    // contiennent plusieurs années distinctes (vrais homonymes/remakes :
+    // §homonymYear — FILMS et SÉRIES : split intelligent par année. On a groupé
+    // par titre (fusion cross-listes maximale), puis on sépare UNIQUEMENT les
+    // groupes contenant plusieurs années distinctes (vrais homonymes/remakes :
     // "Vengeance" 1990 vs 2022). Les titres mono-année (≈99 %) restent fusionnés.
-    final groups = type == M3uContentType.movie
-        ? _splitMoviesByYear(byGroup.values)
+    // TV exclu (pas d'année pertinente).
+    final groups = type != M3uContentType.tv
+        ? _splitGroupsByYear(byGroup.values)
         : byGroup.values.toList();
 
     final byCategory = <String, List<List<M3uEntry>>>{};

@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 
 import '../models/stream_account.dart';
 import 'xtream_api_service.dart';
+import 'hidden_regions_service.dart';
+import '../../feature/search/m3u_filter.dart';
 
 /// §23 — Téléchargement du **catalogue JSON brut** (`player_api.php`).
 ///
@@ -58,17 +60,34 @@ class XtreamCatalogService {
     final liveCats = results[0];
     final live = results[1];
     final vodCats = results[2];
-    final vod = results[3];
+    var vod = results[3];
     final seriesCats = results[4];
-    final series = results[5];
+    var series = results[5];
+    var liveF = live;
 
-    debugPrint('📡 XtreamCatalog: live=${live.length} vod=${vod.length} '
+    // §langFilter — Filtre AU TÉLÉCHARGEMENT : les régions masquées ne sont même
+    // pas écrites dans le catalogue `.json` → la "liste définitive" sur disque
+    // est directement réduite. (Le filtre au PARSE reste actif pour réagir
+    // instantanément à un changement de réglage sans re-télécharger ; le disque
+    // se réduit au prochain refresh.)
+    if (HiddenRegionsService.hasAny) {
+      final hidden = HiddenRegionsService.hidden;
+      bool keep(Map<String, dynamic> it) {
+        final r = entryRegionLabel((it['name'] ?? '').toString());
+        return r == null || !hidden.contains(r);
+      }
+      liveF = liveF.where(keep).toList();
+      vod = vod.where(keep).toList();
+      series = series.where(keep).toList();
+    }
+
+    debugPrint('📡 XtreamCatalog: live=${liveF.length} vod=${vod.length} '
         'series=${series.length}');
 
-    if (live.isEmpty && vod.isEmpty && series.isEmpty) return false;
+    if (liveF.isEmpty && vod.isEmpty && series.isEmpty) return false;
 
     // Dénormalisation : injecte le nom de catégorie dans chaque item.
-    _injectCategoryNames(live, _categoryNames(liveCats));
+    _injectCategoryNames(liveF, _categoryNames(liveCats));
     _injectCategoryNames(vod, _categoryNames(vodCats));
     _injectCategoryNames(series, _categoryNames(seriesCats));
 
@@ -77,7 +96,7 @@ class XtreamCatalogService {
       'host': creds.host,
       'user': creds.username,
       'pass': creds.password,
-      'live': live,
+      'live': liveF,
       'vod': vod,
       'series': series,
     };

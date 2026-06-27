@@ -38,24 +38,57 @@ class FavoritesService {
   /// Clé canonique pour une entrée M3U (cross-comptes, indépendante de la variante).
   /// §23 — films/séries via [contentGroupKey] (minuscules) pour suivre la
   /// fusion cross-listes insensible à la casse. TV inchangé (tvGroupKey).
-  /// §favYear — Les FILMS incluent l'année (`movie|titre|année`) pour ne pas
-  /// mélanger les homonymes/remakes (cohérent avec §homonymYear des carrousels).
-  /// Séries/TV inchangés.
+  /// §favYear — FILMS **et SÉRIES** incluent l'année (`movie|titre|année`,
+  /// `series|titre|année`) pour ne pas mélanger les homonymes/remakes (cohérent
+  /// avec §homonymYear des carrousels). TV inchangé (tvGroupKey).
   static String keyFor(M3uEntry e) {
-    if (e.type == M3uContentType.movie) {
-      return 'movie|${contentGroupKey(e)}|${e.title.year ?? ''}';
+    if (e.type == M3uContentType.tv) {
+      return keyForGroup(e.type, tvGroupKey(e.displayName));
     }
-    final groupKey = e.type == M3uContentType.tv
-        ? tvGroupKey(e.displayName)
-        : contentGroupKey(e);
-    return keyForGroup(e.type, groupKey);
+    // movie | series : type|titre|année
+    final t = e.type == M3uContentType.movie ? 'movie' : 'series';
+    return '$t|${contentGroupKey(e)}|${e.title.year ?? ''}';
   }
 
-  /// §favYear — Ancienne clé film SANS année (`movie|titre`), telle que stockée
-  /// avant 2026-06-11. Conservée pour la rétro-compat : un favori legacy
-  /// continue d'allumer le cœur (cf. [isEntryFavorite]) jusqu'à ce que
+  /// §favYear — Ancienne clé SANS année (`movie|titre` / `series|titre`), telle
+  /// que stockée avant 2026-06-11. Conservée pour la rétro-compat : un favori
+  /// legacy continue d'allumer le cœur (cf. [isEntryFavorite]) jusqu'à ce que
   /// l'utilisateur le re-toggle (qui le nettoie via [toggleEntry]).
-  static String _legacyMovieKey(M3uEntry e) => 'movie|${contentGroupKey(e)}';
+  static String _legacyKey(M3uEntry e) {
+    final t = e.type == M3uContentType.movie ? 'movie' : 'series';
+    return '$t|${contentGroupKey(e)}';
+  }
+
+  /// §favPersistFix — Normalise une clé de favori **stockée** vers la forme
+  /// canonique courante `type|groupKey[|année]`.
+  ///
+  /// Migration §23b : `groupKey` repassé en minuscules + ponctuation normalisée
+  /// (`computeGroupKey`) pour les anciennes clés movie/series.
+  ///
+  /// ⚠️ Correctif persistance : l'ancienne version normalisait **tout** ce qui
+  /// suit le 1er `|`, transformant `series|titre|2008` → `series|titre 2008`
+  /// (le séparateur d'année `|` devenait une espace). La clé ne correspondait
+  /// alors plus à [keyFor] → le favori « disparaissait » à chaque redémarrage,
+  /// re-corrompu puis re-persisté. On isole désormais le **suffixe d'année** et
+  /// on ne normalise QUE le `groupKey` → opération idempotente sur une clé saine.
+  @visibleForTesting
+  static String normalizeStoredKey(String key) {
+    if (!key.startsWith('movie|') && !key.startsWith('series|')) return key;
+    final firstSep = key.indexOf('|');
+    final type = key.substring(0, firstSep);
+    var body = key.substring(firstSep + 1); // groupKey[|année]
+    String yearSuffix = '';
+    // §favYear — l'année (chiffres ou vide) est le segment après le DERNIER `|`.
+    final lastSep = body.lastIndexOf('|');
+    if (lastSep >= 0) {
+      final tail = body.substring(lastSep + 1);
+      if (RegExp(r'^\d{0,4}$').hasMatch(tail)) {
+        yearSuffix = '|$tail';
+        body = body.substring(0, lastSep);
+      }
+    }
+    return '$type|${TitleMetadata.computeGroupKey(body)}$yearSuffix';
+  }
 
   /// Clé canonique pour un groupe (type + clé de regroupement).
   static String keyForGroup(M3uContentType type, String groupKey) {
@@ -84,15 +117,9 @@ class FavoritesService {
         // On migre à la lecture pour ne perdre aucun favori existant.
         var migrated = false;
         for (final key in list) {
-          final sep = key.indexOf('|');
-          if (sep > 0 && (key.startsWith('movie|') || key.startsWith('series|'))) {
-            final normalized = key.substring(0, sep + 1) +
-                TitleMetadata.computeGroupKey(key.substring(sep + 1));
-            if (normalized != key) migrated = true;
-            _cache.add(normalized);
-          } else {
-            _cache.add(key);
-          }
+          final normalized = normalizeStoredKey(key);
+          if (normalized != key) migrated = true;
+          _cache.add(normalized);
         }
         if (migrated) {
           debugPrint('🔄 FavoritesService: clés migrées en minuscules (§23)');
@@ -128,11 +155,11 @@ class FavoritesService {
   static bool isFavorite(String key) => _cache.contains(key);
 
   /// Vrai si l'entrée M3U correspond à un favori.
-  /// §favYear — Pour un FILM, on accepte AUSSI l'ancienne clé sans année
+  /// §favYear — Pour un FILM/SÉRIE, on accepte AUSSI l'ancienne clé sans année
   /// (favori legacy) → le cœur reste allumé après mise à jour de l'app.
   static bool isEntryFavorite(M3uEntry e) {
-    if (e.type == M3uContentType.movie) {
-      return _cache.contains(keyFor(e)) || _cache.contains(_legacyMovieKey(e));
+    if (e.type != M3uContentType.tv) {
+      return _cache.contains(keyFor(e)) || _cache.contains(_legacyKey(e));
     }
     return isFavorite(keyFor(e));
   }
@@ -155,10 +182,10 @@ class FavoritesService {
 
   static Future<void> _removeEntry(M3uEntry e) async {
     await _ensureLoaded();
-    // Retire la clé courante ET la legacy (films) en une seule notification.
+    // Retire la clé courante ET la legacy (films/séries) en une notification.
     final removed = _cache.remove(keyFor(e));
-    final removedLegacy = e.type == M3uContentType.movie &&
-        _cache.remove(_legacyMovieKey(e));
+    final removedLegacy =
+        e.type != M3uContentType.tv && _cache.remove(_legacyKey(e));
     if (removed || removedLegacy) {
       version.value++;
       await _persist();

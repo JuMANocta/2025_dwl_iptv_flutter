@@ -12,6 +12,7 @@ import 'data/services/parsed_playlist_service.dart';
 import 'data/services/watch_progress_service.dart';
 import 'data/services/search_history_service.dart';
 import 'data/services/last_watched_channel_service.dart';
+import 'data/services/hidden_regions_service.dart';
 import 'core/navigation/main_navigation.dart';
 import 'core/navigation/tv_back_handler.dart';
 import 'data/services/expiration_alert_service.dart';
@@ -79,6 +80,7 @@ void main() async {
     WatchProgressService.init(),
     SearchHistoryService.init(),
     LastWatchedChannelService.init(),
+    HiddenRegionsService.init(),
     ThemeService.load(),
   ]);
 

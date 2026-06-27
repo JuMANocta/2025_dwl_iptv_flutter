@@ -61,6 +61,14 @@ class _DetailsPageState extends State<DetailsPage> {
   // ── Navigation série ────────────────────────────────────────────────────────
   late M3uEntry _currentEpisode;
   bool _episodeSelected = false;
+  /// §seriesFavCard — Vrai quand l'épisode courant a été choisi AUTOMATIQUEMENT
+  /// par défaut (1er épisode, AUCUNE reprise en cours). Dans ce cas la carte
+  /// épisode (favori + lecture) reste affichée, mais le HEADER et le SYNOPSIS
+  /// gardent le niveau SÉRIE (moins brutal que de sauter direct sur E01).
+  /// Repassé à false dès qu'on tape un épisode/saison, qu'on enchaîne l'épisode
+  /// suivant, ou quand la sélection initiale est une vraie reprise / un épisode
+  /// explicitement demandé.
+  bool _autoDefaultSelection = false;
   Map<int, List<_EpGroup>> _seasonEpisodes = {};
   int? _selectedSeason;
   /// §seriesFlow — Vrai tant que le fetch lazy des épisodes (API Xtream) tourne.
@@ -121,6 +129,7 @@ class _DetailsPageState extends State<DetailsPage> {
     setState(() {
       _selectedSeason = season;
       _episodeSelected = true;
+      _autoDefaultSelection = false; // enchaînement épisode suivant
       _currentEpisode = group.best;
       _uniqueVersions = _deduplicateVersions(group.versions);
       _selectedEntry = _uniqueVersions.isNotEmpty
@@ -142,7 +151,7 @@ class _DetailsPageState extends State<DetailsPage> {
       // Épisodes déjà présents (M3U parsé, fallback get.php) → affichage immédiat.
       if (_seasonEpisodes.isNotEmpty) {
         _applyInitialEpisodeSelection();
-        _autoRevealFirstSeason();
+        _autoSelectInitialEpisode();
       }
       // §seriesMultiList — Stubs API présents (catalogue §23) → fetch des
       // épisodes de TOUS les comptes en parallèle, mergés avec l'éventuel M3U.
@@ -185,6 +194,7 @@ class _DetailsPageState extends State<DetailsPage> {
           .firstOrNull;
       if (group != null) {
         _episodeSelected = true;
+        _autoDefaultSelection = false; // épisode explicitement demandé
         _selectedSeason  = season;
         _currentEpisode  = group.best;
         _uniqueVersions  = _deduplicateVersions(group.versions);
@@ -223,6 +233,7 @@ class _DetailsPageState extends State<DetailsPage> {
     final merged = <M3uEntry>[..._flattenSeasonEpisodes(), ...apiEpisodes];
     final regrouped = _regroupEpisodes(merged);
 
+    final wasSelected = _episodeSelected;
     setState(() {
       _seasonEpisodes = regrouped;
       _episodesLoading = false;
@@ -230,9 +241,16 @@ class _DetailsPageState extends State<DetailsPage> {
       // navigué pendant le (bref) chargement.
       if (!_episodeSelected && _selectedSeason == null) {
         _applyInitialEpisodeSelection();
-        _autoRevealFirstSeason();
+        _autoSelectInitialEpisode();
+      } else if (_episodeSelected) {
+        // §seriesMultiList — l'épisode courant gagne les versions des autres
+        // listes maintenant qu'elles sont mergées.
+        _refreshSelectedEpisodeVersions();
       }
     });
+    // Si on vient d'auto-sélectionner un épisode (TMDB pas encore chargé pour
+    // lui), on (re)charge ses métadonnées.
+    if (!wasSelected && _episodeSelected) _loadData();
   }
 
   /// Aplatit `_seasonEpisodes` en liste d'épisodes bruts (pour re-merger).
@@ -275,14 +293,86 @@ class _DetailsPageState extends State<DetailsPage> {
     setState(() => _episodesLoading = false);
   }
 
-  /// §seriesFlow — À l'ouverture d'une série (aucun épisode précis demandé), on
-  /// révèle d'emblée les épisodes de la 1re saison pour que l'utilisateur voie
-  /// la liste sans devoir choisir une saison d'abord. Ne sélectionne PAS
-  /// d'épisode → garde le synopsis/visuel au niveau série.
-  void _autoRevealFirstSeason() {
-    if (_episodeSelected || _selectedSeason != null) return;
+  /// §seriesFavCard — À l'ouverture d'une série (aucun épisode précis demandé via
+  /// `widget.entry`), on **présélectionne** un épisode pour que la carte épisode
+  /// — donc le bouton **Favori** + **Lire/Reprendre** — soit disponible d'emblée
+  /// (avant, ces boutons n'apparaissaient qu'une fois un épisode tapé). Choix :
+  ///   1. l'épisode le PLUS AVANCÉ ayant une reprise en cours (saison puis n°
+  ///      d'épisode décroissants) → on retombe pile où on en était ;
+  ///   2. sinon le tout premier épisode (S01E01) → favori dispo + lecture au début.
+  /// Le favori d'un épisode cible la SÉRIE (clé `series|groupKey|année`), donc
+  /// présélectionner E01 = favori de la série, comportement attendu.
+  void _autoSelectInitialEpisode() {
+    if (_episodeSelected) return; // déjà ciblé via widget.entry
     if (_seasonEpisodes.isEmpty) return;
-    _selectedSeason = _seasonEpisodes.keys.first;
+
+    final inProgress = _mostAdvancedInProgress();
+    final target = inProgress ?? _firstEpisodeGroup();
+    if (target == null) return;
+
+    final (season, group) = target;
+    _selectedSeason  = season;
+    _episodeSelected = true;
+    // E01 par défaut (pas de reprise) → on reste en contexte SÉRIE pour le
+    // header/synopsis ; une vraie reprise bascule en contexte épisode.
+    _autoDefaultSelection = inProgress == null;
+    _currentEpisode  = group.best;
+    _uniqueVersions  = _deduplicateVersions(group.versions);
+    _selectedEntry =
+        _uniqueVersions.isNotEmpty ? _uniqueVersions.first : group.best;
+  }
+
+  /// Premier épisode disponible (plus petite saison, plus petit n°).
+  (int, _EpGroup)? _firstEpisodeGroup() {
+    final seasons = _seasonEpisodes.keys.toList()..sort();
+    for (final s in seasons) {
+      final eps = _seasonEpisodes[s];
+      if (eps != null && eps.isNotEmpty) return (s, eps.first);
+    }
+    return null;
+  }
+
+  /// §seriesFavCard — Épisode le plus avancé (saison puis n° max) ayant une
+  /// reprise enregistrée sur l'une de ses versions (toutes qualités/listes
+  /// confondues via [WatchProgressService.getProgressForAny]). La reprise étant
+  /// auto-effacée à >95 % (épisode vu en entier), seul un épisode réellement en
+  /// cours ressort ici.
+  (int, _EpGroup)? _mostAdvancedInProgress() {
+    (int, _EpGroup)? best;
+    for (final s in _seasonEpisodes.keys) {
+      for (final g in _seasonEpisodes[s]!) {
+        final p = WatchProgressService.getProgressForAny(
+            g.versions.map((v) => v.url).toList());
+        if (p == null || p.position.inSeconds <= 5) continue;
+        if (best == null ||
+            s > best.$1 ||
+            (s == best.$1 && g.episodeNumber > best.$2.episodeNumber)) {
+          best = (s, g);
+        }
+      }
+    }
+    return best;
+  }
+
+  /// §seriesMultiList — Après le merge des épisodes API (cross-comptes), ré-résout
+  /// l'épisode courant dans les groupes regroupés pour que sa carte porte les
+  /// versions de TOUTES les listes (sinon elle reste sur le seul compte d'origine).
+  /// Conserve la version exacte choisie par l'utilisateur si elle existe encore.
+  void _refreshSelectedEpisodeVersions() {
+    final s = _currentEpisode.title.seasonNumber;
+    final e = _currentEpisode.title.episodeNumber;
+    if (s == null || e == null) return;
+    final group =
+        _seasonEpisodes[s]?.where((g) => g.episodeNumber == e).firstOrNull;
+    if (group == null) return;
+    final keepUrl = _selectedEntry.url;
+    _uniqueVersions = _deduplicateVersions(group.versions);
+    _currentEpisode = group.best;
+    _selectedEntry = _uniqueVersions.firstWhere(
+      (v) => v.url == keepUrl,
+      orElse: () =>
+          _uniqueVersions.isNotEmpty ? _uniqueVersions.first : group.best,
+    );
   }
 
   /// Extrait le `series_id` d'une URL stub `/series/{user}/{pass}/{id}`
@@ -310,9 +400,17 @@ class _DetailsPageState extends State<DetailsPage> {
     // ponctuation) pour agréger les épisodes cross-comptes, alignée sur la
     // fusion des vignettes.
     final seriesKey = contentGroupKey(widget.entry);
+    // §homonymYear — Si la série ouverte porte une année (homonyme splitté), on
+    // ne collecte QUE les stubs/épisodes de la MÊME année → on ne mélange pas
+    // deux séries de même titre mais d'époques différentes. Si pas d'année, on
+    // matche par titre seul (comportement historique).
+    final seriesYear = widget.entry.title.year;
     final all = ParsedPlaylistService.entriesWithPriority(widget.entry.accountId)
         .where((e) =>
-            e.type == M3uContentType.series && contentGroupKey(e) == seriesKey)
+            e.type == M3uContentType.series &&
+            contentGroupKey(e) == seriesKey &&
+            (seriesYear == null || e.title.year == null ||
+                e.title.year == seriesYear))
         .toList();
 
     // §seriesMultiList — On sépare : (a) épisodes M3U réels (SxxExx présents)
@@ -347,6 +445,7 @@ class _DetailsPageState extends State<DetailsPage> {
     setState(() {
       _currentEpisode  = group.best;
       _episodeSelected = true;
+      _autoDefaultSelection = false; // tap manuel → contexte épisode
       _uniqueVersions  = versions;
       _selectedEntry   = versions.isNotEmpty ? versions.first : group.best;
       _isLoading       = true;
@@ -543,9 +642,14 @@ class _DetailsPageState extends State<DetailsPage> {
     // versions provider. Supprime le double-affichage.
     final isSeries = widget.entry.type == M3uContentType.series;
 
-    // Image header : still épisode (si sélectionné) > backdrop série
+    // §seriesFavCard — Contexte ÉPISODE pour le visuel/synopsis : on n'y bascule
+    // PAS pour une sélection auto-par-défaut (E01 sans reprise) → le header et le
+    // synopsis restent au niveau SÉRIE (la carte épisode, elle, reste affichée).
+    final bool showEpisodeContext = _episodeSelected && !_autoDefaultSelection;
+
+    // Image header : still épisode (si contexte épisode) > backdrop série
     final String? stillPath    = _episodeData?['still_path'] as String?;
-    final String? headerPath   = (_episodeSelected && stillPath != null)
+    final String? headerPath   = (showEpisodeContext && stillPath != null)
         ? stillPath
         : _tmdbData?.backdropPath;
     // §quickwin — fallback affiche playlist quand pas de backdrop TMDB.
@@ -562,7 +666,7 @@ class _DetailsPageState extends State<DetailsPage> {
     ].firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
     final String? headerUrl    = headerPath != null
         ? TmdbService.getPosterUrl(headerPath,
-            size: (_episodeSelected && stillPath != null) ? 'w780' : 'original')
+            size: (showEpisodeContext && stillPath != null) ? 'w780' : 'original')
         : playlistPoster;
 
     final String? epName     = _episodeData?['name'] as String?;
@@ -592,10 +696,12 @@ class _DetailsPageState extends State<DetailsPage> {
     final String seriesTitle = (_tmdbData?.title.isNotEmpty == true)
         ? _tmdbData!.title
         : widget.entry.displayName;
-    final bool showEpTitle = _isEpisode && epName != null && epName.isNotEmpty;
+    final bool showEpTitle =
+        showEpisodeContext && epName != null && epName.isNotEmpty;
 
-    // Synopsis : épisode si sélectionné, sinon série/film (TMDB → provider §23)
-    final String? displayOverview = (_isEpisode && epOverview?.isNotEmpty == true)
+    // Synopsis : épisode si contexte épisode, sinon série/film (TMDB → provider §23)
+    final String? displayOverview =
+        (showEpisodeContext && epOverview?.isNotEmpty == true)
         ? epOverview
         : ((_tmdbData?.overview.isNotEmpty == true)
             ? _tmdbData!.overview
@@ -763,8 +869,9 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 24),
                   ],
 
-                  // BANDE-ANNONCE — série uniquement si aucun épisode sélectionné
-                  if (isSeries && !_episodeSelected && _tmdbData?.trailerKey != null) ...[
+                  // BANDE-ANNONCE — série tant qu'on est en contexte SÉRIE
+                  // (aucun épisode en contexte épisode : défaut E01 inclus).
+                  if (isSeries && !showEpisodeContext && _tmdbData?.trailerKey != null) ...[
                     SizedBox(width: double.infinity, child: _buildTrailerButton()),
                     const SizedBox(height: 24),
                   ],
@@ -1342,7 +1449,11 @@ class _DetailsPageState extends State<DetailsPage> {
           [FavoritesService.version, WatchProgressService.version]),
       builder: (ctx, _) {
         final isFav = FavoritesService.isEntryFavorite(_selectedEntry);
-        final progress = WatchProgressService.getProgress(_selectedEntry.url);
+        // §resumeUnify — La reprise est partagée entre TOUTES les versions
+        // (qualités ET listes) du contenu courant : on lit la plus récente
+        // parmi toutes les URLs, pas seulement la qualité sélectionnée.
+        final progress = WatchProgressService.getProgressForAny(
+            _resumeUrls());
         final hasResume = progress != null && progress.position.inSeconds > 5;
 
         // §detailsActions — Deux lignes au même gabarit 75/25 : action principale
@@ -1492,11 +1603,23 @@ class _DetailsPageState extends State<DetailsPage> {
         ],
       );
 
-  /// §forgetResume — Efface la reprise du film en cours + snackbar UNDO 4 s
-  /// (restauration via `saveProgress` du snapshot). Comportement identique à
-  /// l'action sheet / long-press home.
+  /// §resumeUnify — Toutes les URLs du contenu courant (versions = qualités +
+  /// listes, + épisode courant) → reprise partagée entre toutes.
+  List<String> _resumeUrls() {
+    final urls = <String>{
+      for (final v in _uniqueVersions) v.url,
+      _selectedEntry.url,
+      _currentEpisode.url,
+    };
+    return urls.toList();
+  }
+
+  /// §forgetResume — Efface la reprise du contenu en cours (TOUTES ses versions)
+  /// + snackbar UNDO 4 s (restauration via `saveProgress` du snapshot).
   Future<void> _forgetResume(WatchProgress snapshot) async {
-    await WatchProgressService.clearProgress(_selectedEntry.url);
+    for (final u in _resumeUrls()) {
+      await WatchProgressService.clearProgress(u);
+    }
     if (!mounted) return;
     AppSnackBar.showCustom(
       context,
@@ -1507,7 +1630,7 @@ class _DetailsPageState extends State<DetailsPage> {
           label: 'Annuler',
           onPressed: () {
             WatchProgressService.saveProgress(
-              _selectedEntry.url,
+              snapshot.url,
               snapshot.position,
               snapshot.duration,
             );

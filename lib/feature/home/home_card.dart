@@ -204,7 +204,10 @@ class _HomeCardState extends State<_HomeCard> {
                       title: const Text('Lire depuis le début'),
                       dense: true,
                       onTap: () {
-                        WatchProgressService.clearProgress(entry.url);
+                        // §resumeUnify — clear sur toutes les versions.
+                        for (final v in widget.versions) {
+                          WatchProgressService.clearProgress(v.url);
+                        }
                         play();
                       },
                     ),
@@ -396,7 +399,7 @@ class _HomeCardState extends State<_HomeCard> {
                         ),
                       ),
                     ),
-                    // Titre en surimpression bas (+ année pour les films →
+                    // Titre en surimpression bas (+ année pour films/séries →
                     // distingue les homonymes/remakes séparés par §homonymYear).
                     Positioned(
                       left: 8,
@@ -420,7 +423,7 @@ class _HomeCardState extends State<_HomeCard> {
                               ],
                             ),
                           ),
-                          if (widget.type == M3uContentType.movie &&
+                          if (widget.type != M3uContentType.tv &&
                               entry.title.year != null)
                             Text(
                               entry.title.year!,

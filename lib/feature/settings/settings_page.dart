@@ -7,7 +7,12 @@ import 'package:aetherStream/feature/settings/backup_page.dart';
 import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
 import 'package:aetherStream/feature/settings/xmltv_page.dart';
+import 'package:aetherStream/feature/settings/region_filter_page.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
+import 'package:aetherStream/data/services/favorites_service.dart';
+import 'package:aetherStream/data/services/watch_progress_service.dart';
+import 'package:aetherStream/data/services/search_history_service.dart';
+import 'package:aetherStream/data/services/last_watched_channel_service.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
@@ -64,6 +69,12 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _openRegionFilter() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RegionFilterPage()),
+    );
+  }
+
   Future<void> _openAbout() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AboutPage()),
@@ -84,6 +95,55 @@ class _SettingsPageState extends State<SettingsPage> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const WebConsolePage()),
     );
+  }
+
+  /// §resetUsage — Remet à zéro les **données d'usage** (favoris, reprises de
+  /// lecture films & séries, historique de recherche, dernière chaîne regardée)
+  /// SANS toucher aux comptes IPTV, à la clé TMDB, au thème ni au filtre
+  /// langues/régions. Pratique pour repartir d'une liste de favoris propre
+  /// (ex. après corruption). Action destructive → confirmation obligatoire.
+  Future<void> _resetUsageData() async {
+    final cs = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cs.surfaceContainerHigh,
+        title: const Text('Réinitialiser les données ?'),
+        content: const Text(
+          'Vide les favoris, les reprises de lecture (films & séries), '
+          "l'historique de recherche et la dernière chaîne regardée.\n\n"
+          'Conserve les comptes IPTV, la clé TMDB, le thème et les filtres '
+          'langues/régions.\n\n'
+          'Cette action est irréversible.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: kError, foregroundColor: Colors.white),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Réinitialiser'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await Future.wait([
+      FavoritesService.clear(),
+      WatchProgressService.clearAll(),
+      SearchHistoryService.clear(),
+      LastWatchedChannelService.clear(),
+    ]);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: const Text("🧹 Données d'usage réinitialisées"),
+        backgroundColor: kSuccess,
+      ));
   }
 
   @override
@@ -133,7 +193,9 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 8),
             ],
-            _SectionHeader(title: 'Configuration'),
+            // §settingsGroups — 3 groupes, chacun une couleur d'accent du thème.
+            // ── Groupe 1 : Sources & comptes (vert) ────────────────────────
+            _SectionHeader(title: 'Sources & comptes', color: kAccentPrimary),
             _SettingsTile(
               icon: Icons.account_circle_outlined,
               accentColor: kAccentPrimary,
@@ -143,17 +205,27 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             _SettingsTile(
               icon: Icons.movie_creation_outlined,
-              accentColor: kAccentTertiary,
+              accentColor: kAccentPrimary,
               title: 'Clé API TMDB',
               subtitle: 'Affiches, synopsis, casting (optionnel)',
               onTap: _openTmdbKey,
             ),
             _SettingsTile(
               icon: Icons.tv,
-              accentColor: kAccentSecondary,
+              accentColor: kAccentPrimary,
               title: 'Guide des chaînes',
               subtitle: 'EPG XMLTV — TNT France',
               onTap: _openXmltv,
+            ),
+            const SizedBox(height: 8),
+            // ── Groupe 2 : Affichage (cyan) ────────────────────────────────
+            _SectionHeader(title: 'Affichage', color: kAccentSecondary),
+            _SettingsTile(
+              icon: Icons.translate,
+              accentColor: kAccentSecondary,
+              title: 'Langues / régions',
+              subtitle: 'Masquer le contenu étranger (réduit la mémoire)',
+              onTap: _openRegionFilter,
             ),
             _SettingsTile(
               icon: Icons.palette_outlined,
@@ -163,23 +235,32 @@ class _SettingsPageState extends State<SettingsPage> {
               onTap: _openThemeSettings,
             ),
             const SizedBox(height: 8),
-            _SectionHeader(title: 'Sauvegarde'),
+            // ── Groupe 3 : Sauvegarde & application (magenta) ──────────────
+            _SectionHeader(
+                title: 'Sauvegarde & application', color: kAccentTertiary),
             _SettingsTile(
               icon: Icons.cloud_sync_outlined,
-              accentColor: kAccentSecondary,
+              accentColor: kAccentTertiary,
               title: 'Sauvegarde / Restauration',
               subtitle:
                   'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)',
               onTap: _openBackup,
             ),
-            const SizedBox(height: 8),
-            _SectionHeader(title: 'Application'),
             _SettingsTile(
               icon: Icons.info_outline,
               accentColor: kAccentTertiary,
               title: 'À propos',
               subtitle: 'Version + vérification des mises à jour',
               onTap: _openAbout,
+            ),
+            // §resetUsage — Action destructive : accent kError (rouge) en
+            // exception assumée du code couleur du groupe, pour signaler le danger.
+            _SettingsTile(
+              icon: Icons.delete_sweep_outlined,
+              accentColor: kError,
+              title: "Réinitialiser les données d'usage",
+              subtitle: 'Vide favoris, reprises & historique (garde comptes & thème)',
+              onTap: _resetUsageData,
             ),
           ],
         ),
@@ -192,21 +273,40 @@ class _SettingsPageState extends State<SettingsPage> {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  const _SectionHeader({required this.title});
+  /// §settingsGroups — Couleur du groupe : barre verticale + titre teinté.
+  /// Si null, rendu neutre (gris, comportement historique).
+  final Color? color;
+  const _SectionHeader({required this.title, this.color});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final c = color;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
-      child: Text(
-        title.toUpperCase(),
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.4,
-          color: cs.onSurfaceVariant.withAlpha(180),
-        ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 20, 6),
+      child: Row(
+        children: [
+          if (c != null) ...[
+            Container(
+              width: 4,
+              height: 14,
+              decoration: BoxDecoration(
+                color: c,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+              color: c ?? cs.onSurfaceVariant.withAlpha(180),
+            ),
+          ),
+        ],
       ),
     );
   }

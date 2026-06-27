@@ -7,6 +7,7 @@ import 'package:aetherStream/data/models/parsed_playlist.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/feature/search/m3u_parser.dart';
 import 'package:aetherStream/feature/search/xtream_catalog_parser.dart';
+import 'package:aetherStream/data/services/hidden_regions_service.dart';
 
 /// État de chargement d'un compte IPTV en mémoire (§16).
 ///
@@ -93,12 +94,16 @@ class ParsedPlaylistService {
     required String accountId,
     void Function(double)? onProgress,
   }) {
+    // §langFilter — set des régions masquées passé aux parsers (filtre au
+    // parse → entrées masquées jamais stockées). Lu sur le main thread ici puis
+    // copié dans l'isolate.
+    final hidden = HiddenRegionsService.hidden;
     if (path.toLowerCase().endsWith('.json')) {
       return XtreamCatalogParser.parseFile(path, films, series, tv,
-          accountId: accountId, onProgress: onProgress);
+          accountId: accountId, onProgress: onProgress, hidden: hidden);
     }
     return M3uParser.parseFile(path, films, series, tv,
-        accountId: accountId, onProgress: onProgress);
+        accountId: accountId, onProgress: onProgress, hidden: hidden);
   }
 
   // ── API publique ───────────────────────────────────────────────────────────
@@ -516,6 +521,14 @@ class ParsedPlaylistService {
             return null;
           }
           m3uModifiedAt = DateTime.parse(header['m3uModAt'] as String);
+          // §langFilter — Invalider si le filtre de régions a changé depuis le
+          // cache (le cache ne contient que les entrées non masquées d'alors).
+          final cachedSig = (header['filterSig'] as String?) ?? '';
+          if (cachedSig != HiddenRegionsService.signature) {
+            debugPrint('⚠️ ParsedPlaylist: filtre régions modifié → re-parse');
+            await cacheFile.delete();
+            return null;
+          }
           // Invalider si le fichier .m3u a été re-téléchargé depuis
           final m3uFile = File(m3uPath);
           if (!await m3uFile.exists()) return null;
@@ -563,6 +576,8 @@ class ParsedPlaylistService {
         'accountId': playlist.accountId,
         'm3uModAt':  playlist.m3uModifiedAt.toIso8601String(),
         'count':     playlist.entries.length,
+        // §langFilter — signature du filtre de régions au moment du parse.
+        'filterSig': HiddenRegionsService.signature,
       });
       // Une entrée par ligne
       for (final e in playlist.entries) {

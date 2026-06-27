@@ -62,6 +62,13 @@ void main() {
   // Contrôles ciblés : préfixes composés qui cassaient l'ancienne regex.
   print('\n── Cas critiques ──');
   final cases = [
+    // §scaryMovie — chiffre de fin du titre mangé ?
+    '|FR| Scary Movie 6 (2026)',
+    'Scary Movie 6 (2026)',
+    'Scary Movie 6',
+    'Vengeance 2 (2022)',
+    'Taxi 5 (2018)',
+    'Ocean\'s 8 (2018)',
     // §23b — bugs device : titre 1 char (fallback) + ponctuation préservée
     '|FR| H (1998)',
     '|FR| M.A.S.H. (1972)',

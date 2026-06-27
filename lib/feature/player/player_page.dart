@@ -91,8 +91,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   // ── §1e Continue Watching ────────────────────────────────────────────────
   /// Timer périodique 10s pour sauvegarder la progression pendant la lecture.
   Timer? _progressTimer;
-  /// Vrai si la position de reprise a déjà été appliquée (idempotent au retry).
-  bool _resumeApplied = false;
   /// Vrai pour les sources qui ne doivent PAS sauvegarder de progression
   /// (chaînes TV live = durée infinie, replay timeshift = pas de reprise utile).
   bool get _skipProgress =>
@@ -259,44 +257,19 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   Future<void> _openMedia() async {
     try {
+      // §resumeStart — Position de reprise passée NATIVEMENT à mpv via
+      // `Media(start:)` (cf. AetherPlayerController.open) → fini la lecture qui
+      // repart à 0 (le seek post-open était avalé par media_kit v2). Pas de
+      // reprise pour les sources live/replay (`_skipProgress`).
+      final start = (_skipProgress) ? null : widget.startPosition;
       if (widget.sourceType == VideoSourceType.file) {
-        await _ctrl.openFile(_currentPath);
+        await _ctrl.openFile(_currentPath, start: start);
       } else {
-        await _ctrl.open(_currentPath);
+        await _ctrl.open(_currentPath, start: start);
       }
-      await _applyResumeIfNeeded();
     } catch (e) {
       _handleError(e.toString());
     }
-  }
-
-  /// §1e — Applique le seek de reprise (`startPosition`) une fois la duration
-  /// du flux disponible. Idempotent : ne s'exécute qu'une fois par instance.
-  ///
-  /// On souscrit à `stream.duration` jusqu'à recevoir une valeur > 0, puis on
-  /// cancel immédiatement. Timeout 4s pour ne pas bloquer indéfiniment sur un
-  /// flux live mal taggué (qui n'émet jamais de duration).
-  Future<void> _applyResumeIfNeeded() async {
-    if (_resumeApplied) return;
-    final start = widget.startPosition;
-    if (start == null || start <= Duration.zero) return;
-    if (_skipProgress) return;
-
-    final completer = Completer<void>();
-    final sub = _ctrl.player.stream.duration.listen((d) {
-      if (d > Duration.zero && !completer.isCompleted) completer.complete();
-    });
-    try {
-      await completer.future.timeout(
-        const Duration(seconds: 4),
-        onTimeout: () {},
-      );
-    } finally {
-      await sub.cancel();
-    }
-    if (!mounted) return;
-    await _ctrl.player.seek(start);
-    _resumeApplied = true;
   }
 
   /// Retourne l'URL avec l'extension alternative (.m3u8 ↔ .ts), ou null si non applicable.

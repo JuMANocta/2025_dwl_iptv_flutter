@@ -145,19 +145,24 @@ class AetherPlayerController {
 
   /// Ouvre un flux réseau (live, VOD, timeshift).
   /// Bypass SSL pour les providers IPTV sans certificat valide.
-  Future<void> open(String url) async {
+  /// §resumeStart — [start] = position de reprise : passée à `Media(start:)`
+  /// (= option mpv `--start=`) → mpv démarre le décodage à cette position
+  /// NATIVEMENT. Bien plus fiable que `seek()` après l'open (qui, surtout
+  /// depuis media_kit v2, était parfois avalé pendant le buffering initial →
+  /// la lecture repartait à 0).
+  Future<void> open(String url, {Duration? start}) async {
     try {
       if (player.platform is NativePlayer) {
         await (player.platform as NativePlayer).setProperty('tls-verify', 'no');
         await (player.platform as NativePlayer).setProperty('insecure', 'yes');
       }
     } catch (_) {}
-    await player.open(Media(url), play: true);
+    await player.open(Media(url, start: start), play: true);
   }
 
-  /// Ouvre un fichier local.
-  Future<void> openFile(String path) async {
-    await player.open(Media('file://$path'), play: true);
+  /// Ouvre un fichier local. [start] = position de reprise (cf. [open]).
+  Future<void> openFile(String path, {Duration? start}) async {
+    await player.open(Media('file://$path', start: start), play: true);
   }
 
   void dispose() => player.dispose();

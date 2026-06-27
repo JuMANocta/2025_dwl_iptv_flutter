@@ -30,11 +30,12 @@ class XtreamCatalogParser {
     List<M3uEntry> tvList, {
     required String accountId,
     void Function(double)? onProgress,
+    Set<String> hidden = const {},
   }) async {
     onProgress?.call(0.05);
     final result = await compute(
       _parseCatalogIsolate,
-      (path: filePath, accountId: accountId),
+      (path: filePath, accountId: accountId, hidden: hidden),
     );
     filmsList.addAll(result.films);
     seriesList.addAll(result.series);
@@ -47,7 +48,8 @@ class XtreamCatalogParser {
 
 /// Fonction top-level exécutée dans l'isolate `compute`.
 ({List<M3uEntry> films, List<M3uEntry> series, List<M3uEntry> tv})
-    _parseCatalogIsolate(({String path, String accountId}) args) {
+    _parseCatalogIsolate(
+        ({String path, String accountId, Set<String> hidden}) args) {
   final films = <M3uEntry>[];
   final series = <M3uEntry>[];
   final tv = <M3uEntry>[];
@@ -59,12 +61,21 @@ class XtreamCatalogParser {
   final user = Uri.encodeComponent((data['user'] ?? '').toString());
   final pass = Uri.encodeComponent((data['pass'] ?? '').toString());
 
+  // §langFilter — Une entrée dont la région (préfixe `|XX|` du nom) est masquée
+  // est SAUTÉE → jamais stockée. Court-circuit si rien n'est masqué.
+  final filterOn = args.hidden.isNotEmpty;
+  bool isHidden(String name) {
+    if (!filterOn) return false;
+    final r = entryRegionLabel(name);
+    return r != null && args.hidden.contains(r);
+  }
+
   // ── Live (chaînes TV) ─────────────────────────────────────────────────────
   for (final item in (data['live'] as List? ?? const [])) {
     if (item is! Map<String, dynamic>) continue;
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
-    if (id.isEmpty || name.isEmpty) continue;
+    if (id.isEmpty || name.isEmpty || isHidden(name)) continue;
     final groupTitle = _str(item['_cat']);
     // Replay Xtream : `tv_archive` = 1 + durée en jours → alimente le même
     // champ `catchupDays` que l'attribut M3U `catchup-days` (bonus vs l'ancien
@@ -94,7 +105,7 @@ class XtreamCatalogParser {
     if (item is! Map<String, dynamic>) continue;
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
-    if (id.isEmpty || name.isEmpty) continue;
+    if (id.isEmpty || name.isEmpty || isHidden(name)) continue;
     final ext = (item['container_extension'] ?? 'mp4').toString();
     final groupTitle = _str(item['_cat']);
 
@@ -117,7 +128,7 @@ class XtreamCatalogParser {
     if (item is! Map<String, dynamic>) continue;
     final id = (item['series_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
-    if (id.isEmpty || name.isEmpty) continue;
+    if (id.isEmpty || name.isEmpty || isHidden(name)) continue;
     final groupTitle = _str(item['_cat']);
     final backdrops = item['backdrop_path'];
 

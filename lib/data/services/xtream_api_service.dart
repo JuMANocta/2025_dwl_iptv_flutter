@@ -162,10 +162,18 @@ class XtreamApiService {
     final creds = credentialsOf(account);
     if (creds == null) return const [];
 
-    final seriesName = (info['info'] is Map
-            ? (info['info'] as Map)['name']
-            : null) ??
-        '';
+    final seriesName = ((info['info'] is Map
+                ? (info['info'] as Map)['name']
+                : null) ??
+            '')
+        .toString();
+    // §favSeries — On PARSE le nom de série une fois (baseTitle + groupKey +
+    // année cohérents) au lieu de prendre le nom brut. Sinon les épisodes
+    // avaient un `groupKey` vide → recalculé sur le nom brut (avec année/
+    // préfixe) ≠ celui du stub série → la clé favori ne matchait JAMAIS la
+    // vignette (favoris séries cassés). Mêmes baseTitle/groupKey/year que le
+    // stub → favoris + regroupement cohérents.
+    final seriesMeta = TitleMetadata.parse(seriesName);
     final episodes = info['episodes'];
     if (episodes is! Map) return const [];
 
@@ -192,13 +200,14 @@ class XtreamApiService {
                     : null) ??
                 '')
             .toString();
-        final title = seriesName.toString();
         out.add(M3uEntry(
           url: url,
           type: M3uContentType.series,
           title: TitleMetadata(
-            rawTitle: title,
-            baseTitle: title,
+            rawTitle: seriesName,
+            baseTitle: seriesMeta.baseTitle,
+            groupKey: seriesMeta.groupKey,
+            year: seriesMeta.year,
             seasonNumber: seasonNum,
             episodeNumber: epNum,
           ),

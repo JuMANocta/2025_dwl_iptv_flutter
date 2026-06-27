@@ -105,9 +105,9 @@ class _SearchView extends StatelessWidget {
       }
     }
 
-    // §homonymYear — FILMS : même split par année que la home (cohérence).
-    final groups = type == M3uContentType.movie
-        ? _TypePageState._splitMoviesByYear(byGroup.values)
+    // §homonymYear — FILMS et SÉRIES : même split par année que la home.
+    final groups = type != M3uContentType.tv
+        ? _TypePageState._splitGroupsByYear(byGroup.values)
         : byGroup.values.toList();
     if (groups.length > 30) groups.length = 30;
     return groups;

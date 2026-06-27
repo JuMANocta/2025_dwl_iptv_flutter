@@ -23,13 +23,45 @@ const Set<String> kForeignRegionLabels = {
 
 const Map<String, String> _foreignRegionByCode = {
   'IT': 'Italie', 'AR': 'Arabe', 'TR': 'Turc', 'PT': 'Portugal',
-  'ES': 'Espagne', 'US': 'USA', 'UK': 'UK', 'GB': 'UK', 'EN': 'UK',
+  'ES': 'Espagne', 'ESP': 'Espagne', 'US': 'USA', 'UK': 'UK', 'GB': 'UK',
+  'EN': 'UK', 'ENG': 'UK',
   'DE': 'Allemagne', 'RU': 'Russie', 'IN': 'Indien', 'NL': 'Pays-Bas',
   'BE': 'Belgique', 'PL': 'Pologne', 'BR': 'Brésil', 'GR': 'Grèce',
   'RO': 'Roumanie', 'AL': 'Albanie', 'AM': 'Arménie', 'HR': 'Croatie',
   'CZ': 'Tchéquie', 'SE': 'Scandinavie', 'NO': 'Scandinavie',
   'DK': 'Scandinavie', 'EX-YU': 'Ex-Yougoslavie', 'DOM': 'Rép. Dominicaine',
 };
+
+/// §langFilter — Label "VO sans FR" (préfixes `|VO|` seul, `|LEG.|`,
+/// `|VO-LEG.|` = version originale / légendé non-français). Le VOSTFR
+/// (`|VO|STFR|`) est EXCLU (gardé comme FR — sous-titres français).
+const String kVoRegionLabel = 'VO (non-FR)';
+
+/// §langFilter — Régions/langues que l'utilisateur peut choisir de MASQUER
+/// (cases à cocher dans les réglages). Ordre alpha + VO en fin.
+const List<String> kHideableRegionLabels = [
+  'Allemagne', 'Arabe', 'Arménie', 'Albanie', 'Belgique', 'Brésil',
+  'Croatie', 'Espagne', 'Grèce', 'Indien', 'Italie', 'Pays-Bas', 'Pologne',
+  'Portugal', 'Roumanie', 'Russie', 'Scandinavie', 'Tchéquie', 'Turc',
+  'UK', 'USA', kVoRegionLabel,
+];
+
+/// §langFilter — Région d'une entrée À DES FINS DE FILTRAGE, déduite du préfixe
+/// `|XX|` de son NOM (rawTitle). Retourne `null` pour FR / sans préfixe /
+/// VOSTFR / Québec (jamais masqués). Sert au filtre "langues à masquer".
+String? entryRegionLabel(String rawTitle) {
+  final m = RegExp(r'^\s*\|([^|]{1,14})\|').firstMatch(rawTitle);
+  if (m == null) return null; // pas de préfixe → FR / MULTI / sans tag → gardé
+  final upper = rawTitle.toUpperCase();
+  // VOSTFR (éclaté |VO|STFR| ou compact) → gardé (sous-titres FR).
+  if (upper.contains('STFR') || upper.contains('VOSTFR')) return null;
+  final firstSeg = m.group(1)!.trim().toUpperCase();
+  // 1er token du segment → gère "FR-4K", "FR-4K DV", "IT-4K".
+  final code = firstSeg.split(RegExp(r'[-\s]')).first;
+  if (code == 'FR' || code == 'QC') return null; // FR + Québec (français) gardés
+  if (code == 'VO' || code == 'LEG.' || code == 'LEG') return kVoRegionLabel;
+  return _foreignRegionByCode[code]; // null si code inconnu → gardé
+}
 
 /// Région étrangère depuis un préfixe `|XX|` en tête de group-title.
 /// `FR` (et codes inconnus) → null : le contenu reste rangé par genre.
