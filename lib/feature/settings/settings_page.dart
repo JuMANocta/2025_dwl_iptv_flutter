@@ -8,6 +8,7 @@ import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
 import 'package:aetherStream/feature/settings/xmltv_page.dart';
 import 'package:aetherStream/feature/settings/region_filter_page.dart';
+import 'package:aetherStream/feature/settings/dpad_demo_page.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
@@ -78,6 +79,14 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _openAbout() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AboutPage()),
+    );
+  }
+
+  /// §dpadDemo — Banc d'essai de la navigation D-pad (package `dpad`). Visible en
+  /// release pour pouvoir tester sur la TV (pas de logcat côté utilisateur).
+  Future<void> _openDpadDemo() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const DpadDemoPage()),
     );
   }
 
@@ -252,6 +261,14 @@ class _SettingsPageState extends State<SettingsPage> {
               title: 'À propos',
               subtitle: 'Version + vérification des mises à jour',
               onTap: _openAbout,
+            ),
+            // §dpadDemo — Banc d'essai navigation D-pad (évaluation lib `dpad`).
+            _SettingsTile(
+              icon: Icons.gamepad_outlined,
+              accentColor: kAccentSecondary,
+              title: 'Test navigation D-pad (debug)',
+              subtitle: 'Banc d\'essai télécommande TV (rail, carrousel, grille, focus)',
+              onTap: _openDpadDemo,
             ),
             // §resetUsage — Action destructive : accent kError (rouge) en
             // exception assumée du code couleur du groupe, pour signaler le danger.
