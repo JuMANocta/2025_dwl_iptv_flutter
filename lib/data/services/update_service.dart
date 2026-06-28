@@ -58,19 +58,20 @@ class UpdateService {
       final releaseName = data['name'] as String? ?? tagName;
       final body = data['body'] as String?;
 
-      // Cherche l'asset nommé "aetherstream.apk"
+      // Cherche l'asset correspondant à la plateforme (.exe pour Windows, .apk pour Android)
       final assets = data['assets'] as List<dynamic>? ?? [];
-      final apkAsset = assets.firstWhere(
-        (a) => (a['name'] as String?)?.toLowerCase().endsWith('.apk') == true,
+      final extension = Platform.isWindows ? '.exe' : '.apk';
+      final asset = assets.firstWhere(
+        (a) => (a['name'] as String?)?.toLowerCase().endsWith(extension) == true,
         orElse: () => null,
       );
-      if (apkAsset == null) {
-        debugPrint('⚠️ UpdateService: aucun APK dans la release $tagName');
+      if (asset == null) {
+        debugPrint('⚠️ UpdateService: aucun $extension dans la release $tagName');
         return null;
       }
 
-      final downloadUrl = apkAsset['browser_download_url'] as String? ?? '';
-      final sizeBytes = apkAsset['size'] as int?;
+      final downloadUrl = asset['browser_download_url'] as String? ?? '';
+      final sizeBytes = asset['size'] as int?;
 
       // Lecture version locale
       final info = await PackageInfo.fromPlatform();
