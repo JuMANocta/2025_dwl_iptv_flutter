@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../widgets/tv/focusable_chip.dart';
 
 class ThemeSettingsPage extends StatefulWidget {
   const ThemeSettingsPage({super.key});
@@ -99,6 +100,16 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                   (c) => _apply(_config.copyWith(accentColor: c))),
               _buildColorRow('Tertiaire',   _config.tertiaryColor,
                   (c) => _apply(_config.copyWith(tertiaryColor: c))),
+              // §themePlus — couleurs d'état (favori / reprise / erreur / succès)
+              _sectionLabel('Couleurs d\'état', cs),
+              _buildColorRow('Favori ❤',     _config.favoriteColor,
+                  (c) => _apply(_config.copyWith(favoriteColor: c))),
+              _buildColorRow('Reprise / Alerte', _config.warningColor,
+                  (c) => _apply(_config.copyWith(warningColor: c))),
+              _buildColorRow('Erreur',       _config.errorColor,
+                  (c) => _apply(_config.copyWith(errorColor: c))),
+              _buildColorRow('Succès',       _config.successColor,
+                  (c) => _apply(_config.copyWith(successColor: c))),
               _sectionLabel('Effets', cs),
               _buildSlider(
                 label:     'Glow',
@@ -158,7 +169,11 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
         itemBuilder: (_, i) {
           final preset = AppThemeConfig.presets[i];
           final active = _isPresetActive(preset.config);
-          return GestureDetector(
+          // §3c Phase 1 — FocusableChip : preset sélectionnable au D-pad.
+          return FocusableChip(
+            onTap: () => _apply(preset.config),
+            borderRadius: BorderRadius.circular(10),
+            child: GestureDetector(
             onTap: () => _apply(preset.config),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
@@ -214,6 +229,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                 ],
               ),
             ),
+          ),
           );
         },
       ),
@@ -223,7 +239,12 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
   bool _isPresetActive(AppThemeConfig p) =>
       _config.primaryColor  == p.primaryColor  &&
       _config.accentColor   == p.accentColor   &&
-      _config.tertiaryColor == p.tertiaryColor;
+      _config.tertiaryColor == p.tertiaryColor &&
+      // §themePlus — les couleurs d'état font partie de l'identité du preset.
+      _config.favoriteColor == p.favoriteColor &&
+      _config.warningColor  == p.warningColor  &&
+      _config.errorColor    == p.errorColor    &&
+      _config.successColor  == p.successColor;
 
   Widget _dot(Color c) => Container(
     width: 12,
@@ -268,7 +289,11 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                 itemBuilder: (_, i) {
                   final c = _kPalette[i];
                   final selected = current == c;
-                  return GestureDetector(
+                  // §3c Phase 1 — FocusableChip : couleur sélectionnable au D-pad.
+                  return FocusableChip(
+                    onTap: () => onSelect(c),
+                    borderRadius: BorderRadius.circular(13),
+                    child: GestureDetector(
                     onTap: () => onSelect(c),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
@@ -290,6 +315,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                               color: _contrastColor(c))
                           : null,
                     ),
+                  ),
                   );
                 },
               ),
@@ -383,7 +409,11 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
           return Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: GestureDetector(
+              // §3c Phase 1 — FocusableChip : mode clair/sombre/système au D-pad.
+              child: FocusableChip(
+                onTap: () => _apply(_config.copyWith(themeMode: m.$1)),
+                borderRadius: BorderRadius.circular(8),
+                child: GestureDetector(
                 onTap: () => _apply(_config.copyWith(themeMode: m.$1)),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
@@ -414,6 +444,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
                     ],
                   ),
                 ),
+              ),
               ),
             ),
           );

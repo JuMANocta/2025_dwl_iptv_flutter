@@ -9,6 +9,13 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
   final Color primaryColor;
   final Color accentColor;
   final Color tertiaryColor;
+  // §themePlus — couleurs d'état personnalisables (favori/avertissement/
+  // erreur/succès), exposées ici pour les nouveaux widgets (les existants
+  // passent par les getters kFavorite/kWarning/kError/kSuccess de colors.dart).
+  final Color favoriteColor;
+  final Color warningColor;
+  final Color errorColor;
+  final Color successColor;
   final double glowIntensity; // 0.0 → 1.0
   final double borderRadius;  // px
   /// §3c-2 — couleur de la bordure/glow lorsqu'un widget reçoit le focus (Android TV).
@@ -20,6 +27,10 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
     required this.primaryColor,
     required this.accentColor,
     required this.tertiaryColor,
+    required this.favoriteColor,
+    required this.warningColor,
+    required this.errorColor,
+    required this.successColor,
     required this.glowIntensity,
     required this.borderRadius,
     required this.focusGlowColor,
@@ -61,6 +72,10 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
     Color? primaryColor,
     Color? accentColor,
     Color? tertiaryColor,
+    Color? favoriteColor,
+    Color? warningColor,
+    Color? errorColor,
+    Color? successColor,
     double? glowIntensity,
     double? borderRadius,
     Color? focusGlowColor,
@@ -69,6 +84,10 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
     primaryColor:     primaryColor     ?? this.primaryColor,
     accentColor:      accentColor      ?? this.accentColor,
     tertiaryColor:    tertiaryColor    ?? this.tertiaryColor,
+    favoriteColor:    favoriteColor    ?? this.favoriteColor,
+    warningColor:     warningColor     ?? this.warningColor,
+    errorColor:       errorColor       ?? this.errorColor,
+    successColor:     successColor     ?? this.successColor,
     glowIntensity:    glowIntensity    ?? this.glowIntensity,
     borderRadius:     borderRadius     ?? this.borderRadius,
     focusGlowColor:   focusGlowColor   ?? this.focusGlowColor,
@@ -82,6 +101,10 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
       primaryColor:     Color.lerp(primaryColor,    other.primaryColor,    t)!,
       accentColor:      Color.lerp(accentColor,     other.accentColor,     t)!,
       tertiaryColor:    Color.lerp(tertiaryColor,   other.tertiaryColor,   t)!,
+      favoriteColor:    Color.lerp(favoriteColor,   other.favoriteColor,   t)!,
+      warningColor:     Color.lerp(warningColor,    other.warningColor,    t)!,
+      errorColor:       Color.lerp(errorColor,      other.errorColor,      t)!,
+      successColor:     Color.lerp(successColor,    other.successColor,    t)!,
       glowIntensity:    glowIntensity    + (other.glowIntensity    - glowIntensity)    * t,
       borderRadius:     borderRadius     + (other.borderRadius     - borderRadius)     * t,
       focusGlowColor:   Color.lerp(focusGlowColor,  other.focusGlowColor,  t)!,

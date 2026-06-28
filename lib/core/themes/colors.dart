@@ -31,6 +31,11 @@ const Color kQuality4K  = Color(0xFFE53935); // Rouge vif
 const Color kQualityFHD = Color(0xFFFFC107); // Ambre
 const Color kQualityHD  = kAetherSecondaryCyan; // Cyan
 const Color kQualitySD  = kMatrixGreenDim;   // Vert Matrix dim
+/// Qualité non détectée dans le nom (fréquent : PLATINIUM `|FR| Titre (2022)`
+/// sans tag). Blanc cassé fixe (décision user 2026-06-11) — remplace l'ancien
+/// gris terne, distinct des 4 couleurs qualité ci-dessus et lisible sur fond
+/// sombre sans crier.
+const Color kQualityUnknown = Color(0xFFF0EAD6);
 
 // ── Langues ─────────────────────────────────────────────────────────────────
 Color get kLangMulti     => kAccentPrimary;       // suit le thème
@@ -47,8 +52,13 @@ const Color kBadgeFilmType = kAetherSecondaryCyan;  // Chip FILM dans filmograph
 Color get kBadgeSeriesType => kAccentPrimary;       // suit le thème
 
 // ── Statuts / alertes ────────────────────────────────────────────────────────
-const Color kWarning = Color(0xFFFF8C00); // Orange avertissement
-Color get kDispo     => kAccentPrimary;   // suit le thème
+// §themePlus (2026-06-11) — les 4 couleurs d'état suivent désormais le thème
+// (personnalisables in-app via ThemeSettingsPage, définies par les presets).
+Color get kWarning  => ThemeService.config.value.warningColor;  // reprise/alertes
+Color get kFavorite => ThemeService.config.value.favoriteColor; // favori actif
+Color get kError    => ThemeService.config.value.errorColor;    // erreur/danger
+Color get kSuccess  => ThemeService.config.value.successColor;  // succès/confirmé
+Color get kDispo    => kAccentPrimary;   // suit le thème
 
 // ── Dégradé principal (boutons, pills actives) ───────────────────────────────
 LinearGradient get kAetherGradient => LinearGradient(

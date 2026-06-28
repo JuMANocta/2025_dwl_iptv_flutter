@@ -4,9 +4,27 @@ import 'tmdb_api_service.dart';
 import 'package:aetherStream/data/models/media_model.dart';
 import 'package:aetherStream/data/models/person_model.dart';
 
+/// Titre tendance TMDB (léger) — sert à croiser avec la playlist par titre.
+/// On garde le titre localisé (fr-FR) ET le titre original (VO), car les
+/// providers IPTV utilisent souvent l'un ou l'autre.
+class TrendingTitle {
+  final String title;
+  final String? originalTitle;
+  /// §trendingYear — Année de sortie TMDB (release_date / first_air_date),
+  /// pour matcher la BONNE année quand la playlist a des homonymes/remakes.
+  final String? year;
+  const TrendingTitle({required this.title, this.originalTitle, this.year});
+}
+
 class TmdbService {
   Dio? _dio;
   String? _bearerToken;
+
+  // §trending — Cache des tendances de la semaine (TTL 24h), keyé par isTv.
+  // Vidé automatiquement au reset du singleton (changement de clé TMDB).
+  final Map<bool, List<TrendingTitle>> _trendingCache = {};
+  final Map<bool, DateTime> _trendingCacheAt = {};
+  static const Duration _trendingTtl = Duration(hours: 24);
 
   static TmdbService? _instance;
   static TmdbService get instance {
@@ -153,6 +171,29 @@ class TmdbService {
   /// [explicitYear] : année déjà extraite par TitleMetadata (prioritaire sur l'extraction depuis rawQuery).
   /// [groupTitle]   : group-title M3U → converti en hints de genre pour désambiguïser les homonymes.
   /// Permet de désambiguïser les homonymes (ex: One Piece anime 1999 vs live-action 2023).
+  /// §23c — Détails EXACTS par ID TMDB fourni par le provider (`tmdb_id` des
+  /// catalogues JSON player_api). Court-circuite la recherche floue par titre,
+  /// qui pouvait verrouiller un homonyme ("Michael" → "Michael Collins",
+  /// série "H" → "M.A.S.H"). Retourne `null` si l'ID est invalide côté TMDB
+  /// (l'appelant retombe alors sur [getFullDetails]).
+  Future<Media?> getFullDetailsById(int id, {required bool isTv}) async {
+    if (!await _init()) return null;
+    try {
+      debugPrint('🎯 TMDB byId: $id (${isTv ? 'TV' : 'Film'}) — ID provider, zéro ambiguïté');
+      final detailResponse = await _dio!.get(
+        isTv ? '/tv/$id' : '/movie/$id',
+        queryParameters: {
+          'language': 'fr-FR',
+          'append_to_response': 'credits,videos',
+        },
+      );
+      return Media.fromJson(detailResponse.data);
+    } catch (e) {
+      debugPrint('⚠️ TMDB byId($id, isTv=$isTv) échec : $e — fallback recherche titre');
+      return null;
+    }
+  }
+
   Future<Media?> getFullDetails(String rawQuery, {required bool isTv, String? explicitYear, String? groupTitle}) async {
     if (!await _init()) return null;
 
@@ -373,5 +414,86 @@ class TmdbService {
   static String? getPosterUrl(String? path, {String size = 'w500'}) {
     if (path == null || path.isEmpty) return null;
     return 'https://image.tmdb.org/t/p/$size$path';
+  }
+
+  /// 🖼️ Recherche LÉGÈRE : ne renvoie que l'URL de l'affiche (aucun appel
+  /// `append_to_response` credits/videos). Utilisée comme fallback pour les
+  /// entrées dont le M3U ne fournit pas de `tvg-logo` (cas liste Ultimate :
+  /// VOD sans poster). Réutilise la smart search (année → souple → bascule type)
+  /// mais s'arrête au premier résultat et n'en extrait que `poster_path`.
+  Future<String?> fetchPosterUrl({
+    required String query,
+    required bool isTv,
+    String? year,
+    String? groupTitle,
+    String size = 'w342',
+  }) async {
+    if (!await _init()) return null;
+    final clean = _cleanQuery(query);
+    if (clean.isEmpty) return null;
+
+    final bool appearsEnglish =
+        RegExp(r'\b(VO|VOST|VOSTFR|ENGLISH)\b', caseSensitive: false).hasMatch(query);
+    final String lang = appearsEnglish ? 'en-US' : 'fr-FR';
+    final List<int> hints = groupTitle != null ? _groupTitleToGenreHints(groupTitle) : const [];
+
+    try {
+      Map<String, dynamic>? r;
+      if (year != null) {
+        r = await _performSearch(clean, isTv: isTv, language: lang, year: year, genreHints: hints);
+      }
+      r ??= await _performSearch(clean, isTv: isTv, language: lang, genreHints: hints);
+      r ??= await _performSearch(clean, isTv: !isTv, language: lang, genreHints: hints);
+      if (r == null) return null;
+      return getPosterUrl(r['poster_path'] as String?, size: size);
+    } catch (e) {
+      debugPrint("❌ Glitch TMDB (poster fallback) : $e");
+      return null;
+    }
+  }
+
+  /// 🔥 §trending — Tendances de la semaine TMDB (`/trending/{movie|tv}/week`).
+  /// Retourne la liste des titres classés par popularité (ordre conservé pour
+  /// le carrousel). Cache mémoire 24h par type. Retourne `[]` si pas de clé
+  /// TMDB ou en cas d'erreur réseau (dégradation silencieuse).
+  Future<List<TrendingTitle>> getTrending({required bool isTv}) async {
+    if (!await _init()) return const [];
+
+    final cached = _trendingCache[isTv];
+    final at = _trendingCacheAt[isTv];
+    if (cached != null && at != null &&
+        DateTime.now().difference(at) < _trendingTtl) {
+      return cached;
+    }
+
+    try {
+      final path = isTv ? '/trending/tv/week' : '/trending/movie/week';
+      final resp = await _dio!.get(path);
+      final results = (resp.data['results'] as List?) ?? const [];
+      final list = <TrendingTitle>[];
+      for (final r in results) {
+        if (r is! Map<String, dynamic>) continue;
+        final title = (isTv ? r['name'] : r['title']) as String?;
+        final original =
+            (isTv ? r['original_name'] : r['original_title']) as String?;
+        // §trendingYear — "YYYY-MM-DD" → année (4 premiers chars). Peut être
+        // absente/vide (films à venir sans date) → year null.
+        final rawDate =
+            (isTv ? r['first_air_date'] : r['release_date']) as String?;
+        final year = (rawDate != null && rawDate.length >= 4)
+            ? rawDate.substring(0, 4)
+            : null;
+        if (title != null && title.trim().isNotEmpty) {
+          list.add(TrendingTitle(
+              title: title, originalTitle: original, year: year));
+        }
+      }
+      _trendingCache[isTv] = list;
+      _trendingCacheAt[isTv] = DateTime.now();
+      return list;
+    } catch (e) {
+      debugPrint('❌ TMDB trending (isTv=$isTv) : $e');
+      return cached ?? const [];
+    }
   }
 }

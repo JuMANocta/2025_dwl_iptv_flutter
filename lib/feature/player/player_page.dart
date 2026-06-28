@@ -7,46 +7,65 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:aetherStream/data/services/track_preferences_service.dart';
+import 'package:aetherStream/data/services/remote_control_service.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 import 'player_controller.dart';
 import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
+import 'widgets/track_selector_sheet.dart';
+import 'widgets/player_options_sheet.dart';
 import 'widgets/tv_player_shortcuts.dart';
 import '../../core/utils/platform_tv.dart';
 import '../../core/platform/brightness_service.dart';
 
 enum VideoSourceType {
-  network,       // live / VOD réseau (et timeshift simple)
+  network, // live / VOD réseau (et timeshift simple)
   networkReplay, // timeshift avec barre replay + bouton "Retour au direct"
-  file,          // fichier local
+  file, // fichier local
   // networkWithCache supprimé : media_kit gère le cache nativement
 }
 
 /// Badge affiché en haut à droite du player.
 enum PlayerBadgeType {
-  none,    // aucun badge (fichier local…)
-  live,    // ● DIRECT rouge (flux TV en direct)
-  replay,  // ↩ REPLAY violet (timeshift)
-  movie,   // FILM bleu
-  series,  // SÉRIE violet
+  none, // aucun badge (fichier local…)
+  live, // ● DIRECT rouge (flux TV en direct)
+  replay, // ↩ REPLAY violet (timeshift)
+  movie, // FILM bleu
+  series, // SÉRIE violet
 }
 
 class PlayerPage extends StatefulWidget {
+  /// §nextEpPortrait — Quand on enchaîne sur l'épisode suivant, on POP le player
+  /// courant puis on en PUSH un nouveau. Le `dispose()` du player poppé restaure
+  /// le portrait (mobile) ~300 ms plus tard (fin d'anim de pop), donc APRÈS
+  /// l'`initState` landscape du nouveau player → l'épisode suivant s'ouvrait en
+  /// portrait. Ce flag, levé par l'appelant avant le pop, fait sauter la
+  /// restauration portrait du dispose (puis se réarme tout seul).
+  static bool suppressOrientationRestore = false;
+
   final String path;
   final String title;
   final VideoSourceType sourceType;
+
   /// Badge affiché en haut à droite.
   final PlayerBadgeType badgeType;
+
   /// Heure de début du replay — alimente la barre replay (optionnel).
   final DateTime? replayStart;
+
   /// Durée totale du replay — alimente la barre replay (optionnel).
   final Duration? replayDuration;
+
   /// §1e — Position de reprise. Si non-null, seek juste après l'open du flux.
   final Duration? startPosition;
+
   /// Clé URL utilisée pour la persistance de progression. Si nulle, on utilise
   /// `path`. Permet de partager une progression entre variantes (FHD/HD du
   /// même film) en passant une clé canonique commune.
   final String? progressKey;
+
   /// §1i — Callback "épisode suivant". Si défini, un bouton ▶▶ apparaît dans
   /// les contrôles du player. À utiliser pour les séries depuis [DetailsPage].
   final VoidCallback? onNextEpisode;
@@ -83,8 +102,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   // ── §1e Continue Watching ────────────────────────────────────────────────
   /// Timer périodique 10s pour sauvegarder la progression pendant la lecture.
   Timer? _progressTimer;
-  /// Vrai si la position de reprise a déjà été appliquée (idempotent au retry).
-  bool _resumeApplied = false;
+
   /// Vrai pour les sources qui ne doivent PAS sauvegarder de progression
   /// (chaînes TV live = durée infinie, replay timeshift = pas de reprise utile).
   bool get _skipProgress =>
@@ -94,16 +112,41 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   // ── §1h Wakelock + Lifecycle ─────────────────────────────────────────────
   /// Souscription à `stream.playing` pour activer/désactiver le wakelock.
   StreamSubscription<bool>? _playingSub;
+
   /// Souscription au stream d'erreur, à canceller pour éviter une fuite.
   StreamSubscription<String>? _errorSub;
+
+  /// §5 — Souscription aux pistes : applique la préférence audio/sous-titre une
+  /// seule fois (à la première émission où les pistes réelles sont peuplées).
+  StreamSubscription? _tracksSub;
+  bool _trackPrefsApplied = false;
+
   /// Timer de reconnexion automatique en attente — annulable depuis le lifecycle
   /// observer pour ne pas continuer à retry quand l'app passe en arrière-plan.
   Timer? _pendingRetryTimer;
+
   /// Vrai si le wakelock est actuellement détenu — évite les appels redondants.
   bool _wakelockHeld = false;
+
   /// §1i — Mode lock partagé entre [PlayerControls] et [PlayerGestures].
   /// `true` → tous les gestes (sauf tap simple pour révéler le cadenas) sont ignorés.
   bool _isLocked = false;
+
+  /// §tvPlayerNav — Nœud de focus du player (TV) : permet de RE-demander le focus
+  /// après la fermeture d'un sheet/dialog (sinon le D-pad reste mort).
+  final FocusNode _tvFocusNode = FocusNode(debugLabel: 'tvPlayerRoot');
+
+  /// §tvPlayerNav — Vitesse courante, pilotée par le sous-menu Vitesse du
+  /// panneau d'options TV (reflète la coche du menu).
+  double _speed = 1.0;
+
+  // §seekAccum — Accumulation des sauts rapprochés (double-tap mobile + flèches
+  // télécommande TV). Les sauts dans une même direction et un court intervalle
+  // s'additionnent et l'overlay affiche le total cumulé (ex: 3 sauts → +30s).
+  Timer? _seekAccumTimer; // reset de l'accumulateur après inactivité
+  Timer? _seekOverlayTimer; // masquage de l'overlay
+  int _seekAccumSeconds = 0; // signé : >0 avance, <0 recul
+  bool _seekOverlayVisible = false;
 
   // Luminosité courante (0.0–1.0), initialisée à 0.5 par défaut.
   double _brightness = 0.5;
@@ -112,6 +155,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   double _volume = AetherPlayerController.initialVolume;
 
   bool _isFullScreen = false;
+
+  /// §webConsole Phase 2 — handlers exposés à la télécommande web pendant que
+  /// le player est ouvert (mêmes actions que le D-pad TV).
+  late final PlayerActionHandlers _remoteHandlers;
 
   @override
   void initState() {
@@ -123,14 +170,33 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
     _currentPath = widget.path;
-    _ctrl = AetherPlayerController();
+    // §replayBuffer — profil mpv timeshift (buffering propre aux frontières
+    // de segments HLS longs) quand on lit un replay.
+    _ctrl = AetherPlayerController(
+      timeshift: widget.sourceType == VideoSourceType.networkReplay,
+    );
     _listenErrors();
     _listenPlaybackForWakelock();
+    _listenTracksForPrefs();
     WidgetsBinding.instance.addObserver(this);
     _openMedia();
     _startHideTimer();
     _initBrightness();
     _startProgressTracking();
+
+    _remoteHandlers = PlayerActionHandlers(
+      togglePlayPause: _togglePlayPause,
+      seek: _handleSeek,
+      changeVolume: _handleVolumeChange,
+      toggleControls: _toggleControls,
+      showControls: _showControls,
+      showOptions: _showTvOptions,
+      toggleFullscreen: _toggleFullscreen,
+      exitPlayer: () {
+        if (mounted) Navigator.of(context).maybePop();
+      },
+    );
+    RemoteControlService.instance.registerPlayer(_remoteHandlers);
   }
 
   // ── §1h Wakelock — actif uniquement quand le player joue ─────────────────
@@ -227,49 +293,134 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   Future<void> _openMedia() async {
     try {
+      // §resumeStart — Position de reprise passée NATIVEMENT à mpv via
+      // `Media(start:)` (cf. AetherPlayerController.open) → fini la lecture qui
+      // repart à 0 (le seek post-open était avalé par media_kit v2). Pas de
+      // reprise pour les sources live/replay (`_skipProgress`).
+      final start = (_skipProgress) ? null : widget.startPosition;
       if (widget.sourceType == VideoSourceType.file) {
-        await _ctrl.openFile(_currentPath);
+        await _ctrl.openFile(_currentPath, start: start);
       } else {
-        await _ctrl.open(_currentPath);
+        await _ctrl.open(_currentPath, start: start);
       }
-      await _applyResumeIfNeeded();
     } catch (e) {
       _handleError(e.toString());
     }
   }
 
-  /// §1e — Applique le seek de reprise (`startPosition`) une fois la duration
-  /// du flux disponible. Idempotent : ne s'exécute qu'une fois par instance.
-  ///
-  /// On souscrit à `stream.duration` jusqu'à recevoir une valeur > 0, puis on
-  /// cancel immédiatement. Timeout 4s pour ne pas bloquer indéfiniment sur un
-  /// flux live mal taggué (qui n'émet jamais de duration).
-  Future<void> _applyResumeIfNeeded() async {
-    if (_resumeApplied) return;
-    final start = widget.startPosition;
-    if (start == null || start <= Duration.zero) return;
+  /// §5 — Applique la préférence de langue audio / sous-titre dès que les pistes
+  /// réelles sont peuplées (libmpv les remplit après le début de lecture), puis
+  /// se désabonne pour ne JAMAIS écraser un choix manuel fait ensuite.
+  void _listenTracksForPrefs() {
+    // Live/replay : flux mono-piste en général + pas de reprise → on n'applique
+    // pas de préférence (évite un re-buffer inutile au démarrage du direct).
     if (_skipProgress) return;
-
-    final completer = Completer<void>();
-    final sub = _ctrl.player.stream.duration.listen((d) {
-      if (d > Duration.zero && !completer.isCompleted) completer.complete();
-    });
-    try {
-      await completer.future.timeout(
-        const Duration(seconds: 4),
-        onTimeout: () {},
-      );
-    } finally {
-      await sub.cancel();
+    if (TrackPreferencesService.audio == null &&
+        TrackPreferencesService.subtitle == null) {
+      return;
     }
-    if (!mounted) return;
-    await _ctrl.player.seek(start);
-    _resumeApplied = true;
+    _tracksSub = _ctrl.player.stream.tracks.listen((tracks) {
+      if (_trackPrefsApplied) return;
+      // Tant qu'il n'y a que les entrées par défaut (auto/no), les vraies pistes
+      // ne sont pas encore chargées.
+      if (tracks.audio.length <= 1 && tracks.subtitle.length <= 1) return;
+      _trackPrefsApplied = true;
+      _applyTrackPrefs(tracks);
+      _tracksSub?.cancel();
+      _tracksSub = null;
+    });
+  }
+
+  void _applyTrackPrefs(Tracks tracks) {
+    final aPref = TrackPreferencesService.audio;
+    if (aPref != null) {
+      for (final t in tracks.audio) {
+        if ((t.language ?? t.id) == aPref) {
+          _ctrl.player.setAudioTrack(t);
+          break;
+        }
+      }
+    }
+    final sPref = TrackPreferencesService.subtitle;
+    if (sPref == 'no') {
+      _ctrl.player.setSubtitleTrack(SubtitleTrack.no());
+    } else if (sPref != null) {
+      for (final t in tracks.subtitle) {
+        if ((t.language ?? t.id) == sPref) {
+          _ctrl.player.setSubtitleTrack(t);
+          break;
+        }
+      }
+    }
+  }
+
+  /// §tvPlayerNav — Re-demande le focus du player après la fermeture d'un sheet
+  /// (sinon, sur TV, la télécommande ne répond plus : `autofocus` ne se
+  /// redéclenche pas au retour du dialog).
+  void _restoreTvFocus() {
+    if (PlatformTv.isTv && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _tvFocusNode.requestFocus();
+      });
+    }
+  }
+
+  /// §5 — Ouvre le sélecteur de pistes audio/sous-titres. Suspend l'auto-hide
+  /// des contrôles le temps que le sheet est ouvert (sinon il se fermerait sous
+  /// le doigt / le focus), puis le réarme + restaure le focus TV.
+  Future<void> _showTrackSelector() async {
+    _hideTimer?.cancel();
+    await showTrackSelector(context, _ctrl.player);
+    _restoreTvFocus();
+    if (mounted) _startHideTimer();
+  }
+
+  /// §tvPlayerNav — Panneau d'options (centre de contrôle TV, ouvert via ↑) :
+  /// pistes audio/sous-titres, vitesse, épisode suivant. Tout focusable au D-pad.
+  Future<void> _showTvOptions() async {
+    _hideTimer?.cancel();
+    await showPlayerOptions(
+      context,
+      hasNext: widget.onNextEpisode != null,
+      speedLabel: _speed == 1.0 ? 'Normale (1.0×)' : '$_speed×',
+      onTracks: () {
+        Navigator.of(context).pop();
+        _showTrackSelector();
+      },
+      onSpeed: () {
+        Navigator.of(context).pop();
+        _showSpeedMenu();
+      },
+      onNext: widget.onNextEpisode == null
+          ? null
+          : () {
+              Navigator.of(context).pop();
+              widget.onNextEpisode!.call();
+            },
+    );
+    _restoreTvFocus();
+    if (mounted) _startHideTimer();
+  }
+
+  /// §tvPlayerNav — Sous-menu Vitesse.
+  Future<void> _showSpeedMenu() async {
+    await showSpeedMenu(
+      context,
+      current: _speed,
+      onSelect: (s) {
+        setState(() => _speed = s);
+        _ctrl.player.setRate(s);
+        Navigator.of(context).pop();
+      },
+    );
+    _restoreTvFocus();
   }
 
   /// Retourne l'URL avec l'extension alternative (.m3u8 ↔ .ts), ou null si non applicable.
   String? _altExtUrl(String url) {
-    if (url.contains('.m3u8')) return url.replaceFirst(RegExp(r'\.m3u8$'), '.ts');
+    if (url.contains('.m3u8')) {
+      return url.replaceFirst(RegExp(r'\.m3u8$'), '.ts');
+    }
     if (url.contains('.ts')) return url.replaceFirst(RegExp(r'\.ts$'), '.m3u8');
     return null;
   }
@@ -294,7 +445,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         final alt = _altExtUrl(widget.path);
         if (alt != null) {
           _currentPath = alt;
-          debugPrint('⚠️ PlayerPage: retry $_retryCount/$_maxRetries — extension alternative: $alt');
+          debugPrint(
+              '⚠️ PlayerPage: retry $_retryCount/$_maxRetries — extension alternative: $alt');
         }
       } else {
         _currentPath = widget.path; // retour à l'URL originale
@@ -308,7 +460,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         if (mounted) _openMedia();
       });
     } else {
-      debugPrint('❌ PlayerPage: échec définitif après $_maxRetries tentatives\n$error');
+      debugPrint(
+          '❌ PlayerPage: échec définitif après $_maxRetries tentatives\n$error');
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -335,6 +488,32 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     final pos = _ctrl.player.state.position + delta;
     _ctrl.player.seek(pos.isNegative ? Duration.zero : pos);
     _showControls();
+    _accumulateSeek(delta);
+  }
+
+  /// §seekAccum — Met à jour le total cumulé affiché. Les sauts d'une même
+  /// direction réalisés à moins de ~1,1s d'intervalle s'additionnent ; un
+  /// changement de direction (ou l'expiration du délai) repart de zéro.
+  void _accumulateSeek(Duration delta) {
+    final secs = delta.inSeconds;
+    if (secs == 0) return;
+    // Changement de sens ou nouvelle salve → on réinitialise l'accumulateur.
+    if (_seekAccumTimer == null || _seekAccumSeconds.sign != secs.sign) {
+      _seekAccumSeconds = 0;
+    }
+    _seekAccumSeconds += secs;
+
+    setState(() => _seekOverlayVisible = true);
+    _seekOverlayTimer?.cancel();
+    _seekOverlayTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _seekOverlayVisible = false);
+    });
+
+    _seekAccumTimer?.cancel();
+    _seekAccumTimer = Timer(const Duration(milliseconds: 1100), () {
+      _seekAccumSeconds = 0;
+      _seekAccumTimer = null;
+    });
   }
 
   void _handleVolumeChange(double delta) {
@@ -385,9 +564,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _hideTimer?.cancel();
     _progressTimer?.cancel();
     _pendingRetryTimer?.cancel();
+    _seekAccumTimer?.cancel();
+    _seekOverlayTimer?.cancel();
+    RemoteControlService.instance.clearPlayer(_remoteHandlers);
     _saveProgress(); // dernière sauvegarde à la sortie du player
     _playingSub?.cancel();
     _errorSub?.cancel();
+    _tracksSub?.cancel();
+    _tvFocusNode.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _releaseWakelock();
     _ctrl.dispose();
@@ -396,11 +580,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // §3c-bis — Sur TV, la sortie du player NE DOIT PAS basculer en portrait
     // (la TV n'a pas de portrait, ça casserait toute l'UI). On reste en
     // landscape. Sur mobile, on restaure le comportement portrait par défaut.
-    if (PlatformTv.isTv) {
+    if (PlatformTv.isTv || PlayerPage.suppressOrientationRestore) {
+      // TV : jamais de portrait. §nextEpPortrait : enchaînement épisode suivant
+      // → on garde landscape pour ne pas écraser l'orientation du player qui suit.
       SystemChrome.setPreferredOrientations(const [
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
+      PlayerPage.suppressOrientationRestore =
+          false; // réarme pour la prochaine sortie
     } else {
       SystemChrome.setPreferredOrientations(const [
         DeviceOrientation.portraitUp,
@@ -422,19 +610,22 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: Colors.black,
       body: TvPlayerShortcuts(
-        handlers: PlayerActionHandlers(
-          togglePlayPause: _togglePlayPause,
-          seek: _handleSeek,
-          changeVolume: _handleVolumeChange,
-          toggleControls: _toggleControls,
-          toggleFullscreen: _toggleFullscreen,
-          exitPlayer: () => Navigator.of(context).pop(),
-        ),
+        handlers: _remoteHandlers,
+        focusNode: _tvFocusNode,
         child: Stack(
           fit: StackFit.expand,
           children: [
             // 1. Rendu vidéo plein écran.
-            Video(controller: _ctrl.videoController),
+            //    §doubleLoader — `controls: NoVideoControls` DÉSACTIVE l'UI
+            //    intégrée de media_kit_video (`AdaptiveVideoControls` par
+            //    défaut). Sans ça, ses contrôles natifs s'empilaient sur nos
+            //    `PlayerControls` + `_BufferingOverlay` → DEUX spinners de
+            //    chargement au démarrage + captation des taps en double (effet
+            //    de "double lancement"). On rend tout nous-mêmes.
+            Video(
+              controller: _ctrl.videoController,
+              controls: NoVideoControls,
+            ),
 
             // 2. Couche gesture (transparente, capte tout sauf les contrôles).
             //    Désactivée sur TV — toutes les interactions passent par le
@@ -467,12 +658,23 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               onToggleFullScreen: _toggleFullscreen,
               onLockChanged: (locked) => setState(() => _isLocked = locked),
               onNextEpisode: widget.onNextEpisode,
+              onShowTracks: _showTrackSelector,
             ),
 
             // §1i — Overlay buffering central : visible quand le player charge
             // un nouveau segment HLS. Désactivé en mode lock pour ne pas troubler
             // la zone cliquable du cadenas.
             _BufferingOverlay(player: _ctrl.player, hidden: _isLocked),
+
+            // §seekAccum — Badge central du saut cumulé (ex: « ⏩ +30s »).
+            if (_seekOverlayVisible && _seekAccumSeconds != 0)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Center(
+                    child: _SeekAccumBadge(seconds: _seekAccumSeconds),
+                  ),
+                ),
+              ),
 
             // 4. Barre replay (uniquement en mode networkReplay).
             if (widget.sourceType == VideoSourceType.networkReplay)
@@ -502,7 +704,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 56),
+              Icon(Icons.error_outline, color: kError, size: 56),
               const SizedBox(height: 16),
               Text(
                 _errorMessage,
@@ -614,6 +816,50 @@ class _BufferingOverlayState extends State<_BufferingOverlay> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// §seekAccum — Badge central affichant le saut cumulé (ex: « ⏩ +30s »).
+/// Le signe pilote l'icône (avance/recul) et le texte du total.
+class _SeekAccumBadge extends StatelessWidget {
+  final int seconds;
+  const _SeekAccumBadge({required this.seconds});
+
+  @override
+  Widget build(BuildContext context) {
+    final forward = seconds >= 0;
+    final abs = seconds.abs();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.black.withAlpha(150),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kAccentPrimary.withAlpha(120), width: 1),
+        boxShadow: [
+          BoxShadow(color: kAccentPrimary.withAlpha(70), blurRadius: 16),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            forward ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
+            color: kAccentPrimary,
+            size: 30,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${forward ? '+' : '-'}${abs}s',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
       ),
     );
   }

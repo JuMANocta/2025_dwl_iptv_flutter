@@ -12,7 +12,10 @@ class XmltvService {
   static const _url = 'https://xmltvfr.fr/xmltv/xmltv_tnt.xml';
   // v2 : invalide l'ancien cache (encodage corrompu possible)
   static const _cacheFile = 'xmltv_tnt_cache_v2.xml';
-  static const _cacheTtl = Duration(hours: 12);
+  // §xmltv24h — TTL aligné sur la playlist (24h). Évite un re-DL le matin alors
+  // qu'on a déjà rafraîchi la veille au soir (l'ancienne valeur 12h déclenchait
+  // un téléchargement à chaque cold start matinal).
+  static const _cacheTtl = Duration(hours: 24);
 
   /// Timeout global pour `ensureLoaded()` (téléchargement + parsing inclus).
   static const _loadTimeout = Duration(seconds: 20);
@@ -55,8 +58,8 @@ class XmltvService {
 
   static Future<void> _doLoad() async {
     try {
-      final content = await _getContent();
-      if (content != null) await _parse(content);
+      final result = await _getContent();
+      if (result != null) await _parse(result.content, result.downloadedAt);
     } catch (e) {
       debugPrint('⚠️ XmltvService: chargement échoué → $e');
     }
@@ -204,16 +207,25 @@ class XmltvService {
 
   // ---- Téléchargement / cache fichier ----
 
-  static Future<String?> _getContent() async {
-    final cacheDir = await getTemporaryDirectory();
+  static Future<({String content, DateTime downloadedAt})?> _getContent() async {
+    // ⚠️ Persistance : on stocke dans le répertoire support de l'app
+    // (getApplicationSupportDirectory) et NON dans le cache temporaire
+    // (getTemporaryDirectory). Android purge régulièrement le cache temp
+    // (kill de l'app, pression mémoire) → le guide se vidait à chaque fermeture.
+    // Le support dir survit aux kills (comme le cache playlist).
+    final cacheDir = await getApplicationSupportDirectory();
     final file = File('${cacheDir.path}/$_cacheFile');
 
     // Utilise le cache fichier s'il est récent
     if (file.existsSync()) {
-      final age = DateTime.now().difference(file.lastModifiedSync());
+      final mtime = file.lastModifiedSync();
+      final age = DateTime.now().difference(mtime);
       if (age < _cacheTtl) {
         debugPrint('📺 XmltvService: lecture cache fichier (${age.inMinutes}min)');
-        return utf8.decode(file.readAsBytesSync()); // cache toujours écrit en UTF-8
+        return (
+          content: utf8.decode(file.readAsBytesSync()),
+          downloadedAt: mtime,
+        );
       }
     }
 
@@ -232,7 +244,7 @@ class XmltvService {
         // Sauvegarde toujours en UTF-8 pour le cache (encodage normalisé)
         await file.writeAsBytes(utf8.encode(content));
         debugPrint('✅ XmltvService: fichier téléchargé (${resp.bodyBytes.length ~/ 1024} Ko)');
-        return content;
+        return (content: content, downloadedAt: DateTime.now());
       }
       debugPrint('❌ XmltvService: HTTP ${resp.statusCode}');
     } catch (e) {
@@ -240,7 +252,10 @@ class XmltvService {
       // Fallback : utilise le cache même périmé
       if (file.existsSync()) {
         debugPrint('⚠️ XmltvService: fallback cache périmé');
-        return utf8.decode(file.readAsBytesSync());
+        return (
+          content: utf8.decode(file.readAsBytesSync()),
+          downloadedAt: file.lastModifiedSync(),
+        );
       }
     }
     return null;
@@ -248,11 +263,15 @@ class XmltvService {
 
   // ---- Parsing XML ----
 
-  static Future<void> _parse(String content) async {
+  static Future<void> _parse(String content, DateTime downloadedAt) async {
     final result = await compute(_parseXml, content);
     _programs = result['programs'] as Map<String, List<XmltvProgram>>;
     _channelIcons = result['icons'] as Map<String, String>;
-    _loadedAt = DateTime.now();
+    // §xmltv24h — `_loadedAt` reflète la DATE DE TÉLÉCHARGEMENT (mtime du
+    // fichier cache), pas l'instant du parse. Sinon, la page Guide affichait
+    // "à l'instant" à chaque cold start alors que le fichier sur disque
+    // datait de la veille → utilisateur croyait à un re-DL systématique.
+    _loadedAt = downloadedAt;
     debugPrint('✅ XmltvService: ${_programs!.length} chaînes chargées, '
         '${_programs!.values.fold(0, (a, b) => a + b.length)} programmes');
   }

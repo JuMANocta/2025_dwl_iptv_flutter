@@ -1,8 +1,8 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
+import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
 
 /// Page Sauvegarde / Restauration (§10).
 ///
@@ -50,7 +50,6 @@ class _BackupPageState extends State<BackupPage> {
       _showExportSuccessDialog(fileName);
     } catch (e) {
       if (!mounted) return;
-      messenger.clearSnackBars();
       messenger.showSnackBar(
         SnackBar(content: Text('❌ Échec : $e')),
       );
@@ -208,208 +207,14 @@ class _BackupPageState extends State<BackupPage> {
 
   Future<void> _onImportTap() async {
     if (_importing) return;
-
-    // 1. Sélection du fichier.
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-      allowMultiple: false,
-    );
-    if (picked == null || picked.files.single.path == null) return;
-    final path = picked.files.single.path!;
-
-    if (!mounted) return;
-
-    // 2. Saisie du mot de passe.
-    final password = await _askImportPassword();
-    if (password == null || password.isEmpty) return;
-
-    // 3. Lecture + décrypt en mémoire (sans appliquer).
-    if (!mounted) return;
     setState(() => _importing = true);
-    final messenger = ScaffoldMessenger.of(context);
-    BackupContent? content;
     try {
-      content = await BackupService.readBackup(path, password);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _importing = false);
-      messenger.clearSnackBars();
-      messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
-      return;
-    }
-
-    // 4. Confirmation avec résumé.
-    if (!mounted) return;
-    final ok = await _confirmApply(content);
-    if (ok != true) {
-      if (mounted) setState(() => _importing = false);
-      return;
-    }
-
-    // 5. Application effective.
-    try {
-      await BackupService.applyBackup(content);
-      if (!mounted) return;
-      _showImportSuccessDialog(content);
-    } catch (e) {
-      if (!mounted) return;
-      messenger.clearSnackBars();
-      messenger.showSnackBar(SnackBar(content: Text('❌ Échec : $e')));
+      // §10 — Flux de restauration partagé (cf. backup_restore_flow.dart),
+      // réutilisé aussi par l'onboarding 1re ouverture.
+      await runBackupImportFlow(context);
     } finally {
       if (mounted) setState(() => _importing = false);
     }
-  }
-
-  Future<String?> _askImportPassword() async {
-    final ctrl = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        bool visible = false;
-        return StatefulBuilder(
-          builder: (ctx, setLocal) => AlertDialog(
-            title: const Text('Mot de passe de la sauvegarde'),
-            content: TextField(
-              controller: ctrl,
-              obscureText: !visible,
-              autofocus: true,
-              textInputAction: TextInputAction.done,
-              decoration: InputDecoration(
-                labelText: 'Mot de passe',
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                      visible ? Icons.visibility_off : Icons.visibility),
-                  onPressed: () => setLocal(() => visible = !visible),
-                ),
-              ),
-              onSubmitted: (v) => Navigator.pop(ctx, v),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, null),
-                child: const Text('Annuler'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, ctrl.text),
-                style: FilledButton.styleFrom(
-                  backgroundColor: kAccentPrimary,
-                  foregroundColor: Colors.black,
-                ),
-                child: const Text('Déchiffrer'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<bool?> _confirmApply(BackupContent content) async {
-    return showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.warning_amber, color: kWarning, size: 22),
-            const SizedBox(width: 8),
-            const Text('Confirmer la restauration'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Sauvegarde du ${_fmtDate(content.exportedAt)} '
-              '(v${content.appVersion}) :',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: kAccentPrimary.withAlpha(20),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                    color: kAccentPrimary.withAlpha(80), width: 1),
-              ),
-              child: Text(
-                content.summary(),
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: kAccentPrimary),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Tout l\'état actuel (comptes, clé TMDB, thème, favoris, '
-              'progression de lecture) sera ÉCRASÉ par cette sauvegarde.\n\n'
-              'Action irréversible. Continuer ?',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: kWarning,
-              foregroundColor: Colors.black,
-            ),
-            child: const Text('Restaurer'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showImportSuccessDialog(BackupContent content) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.check_circle, color: kAccentPrimary, size: 22),
-            const SizedBox(width: 8),
-            const Text('Restauration réussie'),
-          ],
-        ),
-        content: Text(
-          '${content.summary()}\n\n'
-          'Les playlists IPTV seront re-téléchargées au prochain démarrage.',
-          style: TextStyle(
-            fontSize: 13,
-            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-            height: 1.5,
-          ),
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: FilledButton.styleFrom(
-              backgroundColor: kAccentPrimary,
-              foregroundColor: Colors.black,
-            ),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _fmtDate(DateTime d) {
-    String pad(int n) => n.toString().padLeft(2, '0');
-    return '${pad(d.day)}/${pad(d.month)}/${d.year} ${pad(d.hour)}h${pad(d.minute)}';
   }
 
   // ── BUILD ─────────────────────────────────────────────────────────────────

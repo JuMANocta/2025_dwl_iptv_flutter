@@ -2,7 +2,7 @@ name: aetherStream
 description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
-version: 1.8.2+50
+version: 1.11.2+81
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -29,7 +29,7 @@ dependencies:
   # open_file_plus supprimé : utilisait l'API v1 Flutter supprimée en CI
   # Remplacement : FileProvider + MethodChannel dans MainActivity.kt
   media_kit: ^1.1.11                 # player vidéo (libmpv)
-  media_kit_video: ^1.2.4            # widget Video
+  media_kit_video: ^2.0.1            # widget Video (MAJ majeure 2.x)
   media_kit_libs_android_video: ^1.3.2 # libs natives Android
   media_kit_libs_windows_video: ^1.0.11 # libs natives Windows
   screen_brightness: ^0.2.2         # contrôle luminosité (gestures player)
@@ -63,30 +63,24 @@ flutter_launcher_icons:
   image_path: "assets/icon/AetherStreamIcon.png"
   min_sdk_android: 24
 
-flutter_native_splash:
-  android: true
-  ios: false
-  web: false
-
-  # Logo centré
-  image: assets/splash/AetherStreamIconSplash.png
-
-  # ----------------------------------------------------
-  # ✅ CORRECTION APPLIQUÉE ICI
-  # ----------------------------------------------------
-
-  # Pour Android 11 et inférieur (le background_image sera prioritaire)
-  color: "#F5F5F5"          # Fond blanc pour le mode clair
-  color_dark: "#000000"     # Fond noir pour le mode sombre
-
-  # Image de fond pour un effet stylisé sur les anciennes versions
-  background_image: assets/splash/AetherStreamSplash.png
-  background_image_dark: assets/splash/AetherStreamDarkSplash.png
-
-  # Spécifique pour Android 12+ (qui ne supporte pas background_image)
-  # On utilise des couleurs unies qui correspondent au thème de l'app.
-  android_12:
-    image: assets/splash/AetherStreamSplash.png
-    image_dark: assets/splash/AetherStreamDarkSplash.png
-    color: "#F5F5F5"          # Fond blanc pour le mode clair
-    color_dark: "#000000"     # Fond noir pour le mode sombre
+# §splashOff — Splash custom DÉSACTIVÉ. Les drawables `launch_background.xml`
+# (Android ≤11) et styles `windowSplashScreenAnimatedIcon` (Android 12+) ont été
+# édités à la main pour ne montrer qu'un fond uni (plus de logo). Ne PAS relancer
+# `dart run flutter_native_splash:create` sans réactiver cette config — ça
+# remplacerait nos drawables. Pour réactiver : décommenter le bloc ci-dessous +
+# regénérer.
+#
+# flutter_native_splash:
+#   android: true
+#   ios: false
+#   web: false
+#   image: assets/splash/AetherStreamIconSplash.png
+#   color: "#F5F5F5"
+#   color_dark: "#000000"
+#   background_image: assets/splash/AetherStreamSplash.png
+#   background_image_dark: assets/splash/AetherStreamDarkSplash.png
+#   android_12:
+#     image: assets/splash/AetherStreamIconSplash.png
+#     image_dark: assets/splash/AetherStreamIconSplash.png
+#     color: "#F5F5F5"
+#     color_dark: "#000000"

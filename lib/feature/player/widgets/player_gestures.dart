@@ -82,12 +82,10 @@ class _PlayerGesturesState extends State<PlayerGestures> {
     // Sur Mobile : le double tap seek de ±10s.
     final sw = MediaQuery.of(context).size.width;
     final isLeft = _doubleTapPos!.dx < sw / 2;
-    final delta = Duration(seconds: isLeft ? -10 : 10);
-    widget.onSeek(delta);
-    _showOverlay(
-      isLeft ? SeekOverlayType.seekLeft : SeekOverlayType.seekRight,
-      isLeft ? '-10s' : '+10s',
-    );
+    // §seekAccum — Le saut + l'overlay cumulé (« +30s ») sont gérés en amont
+    // par PlayerPage._handleSeek (commun mobile/TV). On ne montre donc plus
+    // d'overlay local ici pour éviter un doublon.
+    widget.onSeek(Duration(seconds: isLeft ? -10 : 10));
   }
 
   void _onHorizontalDragStart(DragStartDetails d) {

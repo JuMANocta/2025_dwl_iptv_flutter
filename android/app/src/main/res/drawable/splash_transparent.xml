@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §splashOff — Icône invisible pour le SplashScreen Android 12+.
+     Sans cette indirection, le système retombe sur l'icône launcher (= logo
+     AetherStream) → le splash réapparait. Ici on lui donne un drawable
+     transparent : la fenêtre splash s'affiche brièvement mais sans logo visible
+     (juste le fond uni). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+</shape>

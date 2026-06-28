@@ -14,6 +14,7 @@ class M3uParser {
     List<M3uEntry> tvList, {
     required String accountId,
     void Function(double progress)? onProgress,
+    Set<String> hidden = const {},
   }) async {
     final file = File(filePath);
     if (!await file.exists()) {
@@ -97,7 +98,14 @@ class M3uParser {
           title = parts.length > 1 ? parts[1].trim() : null;
         }
 
-        if (title != null && title.isNotEmpty) {
+        // §langFilter — saute les entrées d'une région masquée (court-circuit
+        // si rien n'est masqué).
+        final hiddenEntry = hidden.isNotEmpty &&
+            () {
+              final r = entryRegionLabel(title ?? '');
+              return r != null && hidden.contains(r);
+            }();
+        if (title != null && title.isNotEmpty && !hiddenEntry) {
           _addEntry(
             rawTitle: title,
             url: url,
@@ -157,7 +165,13 @@ class M3uParser {
       type = M3uContentType.movie;
     } else if (lowerUrl.contains('/series/')) {
       type = M3uContentType.series;
-    } else if (metadata.isSeriesEpisode || regExpSerie.firstMatch(rawTitle) != null) {
+    } else if (regExpSerie.firstMatch(rawTitle) != null) {
+      // Classification série basée UNIQUEMENT sur le format strict SxxExx
+      // (regExpSerie). On n'utilise PAS `metadata.isSeriesEpisode` car celui-ci
+      // inclut désormais le format NNxNN (§Ultimate) — or une chaîne TV comme
+      // "ARENA SPORT 1x2" (URL nue, sans /series/) ne doit JAMAIS devenir une
+      // série. Comportement strictement identique à l'ancien code pour les
+      // listes existantes (l'ancien isSeriesEpisode == match SxxExx).
       type = M3uContentType.series;
     } else {
       type = M3uContentType.tv;

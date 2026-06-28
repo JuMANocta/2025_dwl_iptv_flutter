@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 import '../../core/utils/log_sanitizer.dart';
 import '../../data/services/replay_service.dart';
 import '../../widgets/empty_state.dart';
@@ -28,7 +29,7 @@ class ReplaySheet extends StatelessWidget {
             debugPrint('ReplaySheet FutureBuilder: Erreur: ${snap.error}');
             return Padding(
               padding: const EdgeInsets.all(24.0),
-              child: Text('Erreur EPG: ${snap.error}', style: const TextStyle(color: Colors.red)),
+              child: Text('Erreur EPG: ${snap.error}', style: TextStyle(color: kError)),
             );
           }
           final programs = snap.data ?? [];

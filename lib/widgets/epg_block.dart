@@ -141,11 +141,16 @@ class EpgProgramRow extends StatelessWidget {
                     width: 54,
                     height: 38,
                     fit: BoxFit.cover,
+                    // §imgPerf — vignette EPG 54×38 → cap décodage (2× densité).
+                    cacheWidth: 108,
+                    gaplessPlayback: true,
                     errorBuilder: (_, __, ___) {
                       if (program.iconUrl != null && channelIconUrl != null) {
                         return Image.network(
                           channelIconUrl!,
                           width: 54, height: 38, fit: BoxFit.cover,
+                          cacheWidth: 108,
+                          gaplessPlayback: true,
                           errorBuilder: (_, __, ___) => const SizedBox(width: 54, height: 38),
                         );
                       }

@@ -6,6 +6,8 @@ import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/feature/search/m3u_parser.dart';
+import 'package:aetherStream/feature/search/xtream_catalog_parser.dart';
+import 'package:aetherStream/data/services/hidden_regions_service.dart';
 
 /// État de chargement d'un compte IPTV en mémoire (§16).
 ///
@@ -45,6 +47,26 @@ class ParsedPlaylistService {
   static final ValueNotifier<Map<String, AccountLoadState>> loadStates =
       ValueNotifier<Map<String, AccountLoadState>>({});
 
+  /// §lazyUnload — Timestamp du dernier accès en lecture par compte. Utilisé
+  /// par [unloadIdleSecondaries] pour décharger de mémoire les comptes
+  /// secondaires qui n'ont pas été consultés depuis longtemps (M3U + cache
+  /// JSON.gz restent sur disque → rechargement ~50 ms si re-demandés).
+  static final Map<String, DateTime> _lastAccess = {};
+
+  /// Marque un compte comme "accédé récemment" → reset son délai d'idle.
+  /// Appelé automatiquement par tous les accesseurs ([entries],
+  /// [entriesWithPriority], [byTypeWithPriority], [getAccount]).
+  static void markAccessed(String accountId) {
+    _lastAccess[accountId] = DateTime.now();
+  }
+
+  static void _touchAllLoaded() {
+    final now = DateTime.now();
+    for (final id in _memory.keys) {
+      _lastAccess[id] = now;
+    }
+  }
+
   /// Marque l'état d'un compte et notifie les listeners (immutable copy).
   static void setLoadState(String accountId, AccountLoadState state) {
     final next = Map<String, AccountLoadState>.from(loadStates.value);
@@ -59,6 +81,30 @@ class ParsedPlaylistService {
   /// Lecture sync d'un état (utile pour les checks rapides sans rebuild).
   static AccountLoadState stateOf(String accountId) =>
       loadStates.value[accountId] ?? AccountLoadState.notLoaded;
+
+  /// §23 — Route vers le bon parser selon le type de fichier source :
+  ///   - `.json` → [XtreamCatalogParser] (catalogue JSON direct player_api,
+  ///     isolate, métadonnées riches)
+  ///   - `.m3u` (ou autre) → [M3uParser] (texte M3U, regex — fallback get.php)
+  static Future<void> _parsePlaylistFile(
+    String path,
+    List<M3uEntry> films,
+    List<M3uEntry> series,
+    List<M3uEntry> tv, {
+    required String accountId,
+    void Function(double)? onProgress,
+  }) {
+    // §langFilter — set des régions masquées passé aux parsers (filtre au
+    // parse → entrées masquées jamais stockées). Lu sur le main thread ici puis
+    // copié dans l'isolate.
+    final hidden = HiddenRegionsService.hidden;
+    if (path.toLowerCase().endsWith('.json')) {
+      return XtreamCatalogParser.parseFile(path, films, series, tv,
+          accountId: accountId, onProgress: onProgress, hidden: hidden);
+    }
+    return M3uParser.parseFile(path, films, series, tv,
+        accountId: accountId, onProgress: onProgress, hidden: hidden);
+  }
 
   // ── API publique ───────────────────────────────────────────────────────────
 
@@ -100,7 +146,7 @@ class ParsedPlaylistService {
     final series  = <M3uEntry>[];
     final tv      = <M3uEntry>[];
     try {
-      await M3uParser.parseFile(
+      await _parsePlaylistFile(
         m3uPath, films, series, tv,
         accountId: accountId,
         onProgress: onProgress,
@@ -137,9 +183,14 @@ class ParsedPlaylistService {
   static Future<void> preloadOthersFromDisk(List<StreamAccount> accounts) async {
     for (final acc in accounts) {
       if (_memory.containsKey(acc.id)) continue;
-      // Construire le chemin M3U attendu (même convention que PlaylistService)
+      // §23 — Résolution du fichier source (même convention que
+      // PlaylistService.pathForAccountId, dupliquée ici pour éviter un import
+      // circulaire) : catalogue .json prioritaire, sinon .m3u legacy.
       final dir = await getApplicationDocumentsDirectory();
-      final m3uPath = '${dir.path}/playlist_${acc.id}.m3u';
+      var m3uPath = '${dir.path}/playlist_${acc.id}.json';
+      if (!File(m3uPath).existsSync()) {
+        m3uPath = '${dir.path}/playlist_${acc.id}.m3u';
+      }
       if (!File(m3uPath).existsSync()) continue;
 
       final disk = await _loadFromDisk(acc.id, m3uPath);
@@ -183,7 +234,7 @@ class ParsedPlaylistService {
     final series = <M3uEntry>[];
     final tv     = <M3uEntry>[];
     try {
-      await M3uParser.parseFile(m3uPath, films, series, tv, accountId: accountId);
+      await _parsePlaylistFile(m3uPath, films, series, tv, accountId: accountId);
     } catch (e) {
       debugPrint('❌ ParsedPlaylist secondaire — parse échoué pour $accountName: $e');
       setLoadState(accountId, AccountLoadState.error);
@@ -209,13 +260,16 @@ class ParsedPlaylistService {
 
   /// Toutes les entrées de tous les comptes actuellement chargés en mémoire.
   /// Utilisé par ActorDetailsPage, FavoritesService, etc.
-  static List<M3uEntry> get entries =>
-      _memory.values.expand((p) => p.entries).toList();
+  static List<M3uEntry> get entries {
+    _touchAllLoaded();
+    return _memory.values.expand((p) => p.entries).toList();
+  }
 
   /// Entrées avec le compte prioritaire en PREMIER.
   /// À utiliser dans RechercheM3U pour que putIfAbsent donne la priorité
   /// aux URLs/qualités du compte actif sur les autres comptes chargés.
   static List<M3uEntry> entriesWithPriority(String priorityAccountId) {
+    _touchAllLoaded();
     final priority = _memory[priorityAccountId]?.entries ?? [];
     final others   = _memory.entries
         .where((e) => e.key != priorityAccountId)
@@ -224,8 +278,80 @@ class ParsedPlaylistService {
     return [...priority, ...others];
   }
 
+  /// §perfBigList — Entrées DÉJÀ splittées par type, compte prioritaire d'abord.
+  /// Réutilise les listes pré-splittées `films/series/tv` de chaque
+  /// [ParsedPlaylist] (calculées une seule fois via `late final`) au lieu de
+  /// re-parcourir TOUTES les entrées à chaque build de la home (crucial avec une
+  /// playlist ~600k entrées). En mono-compte, renvoie directement les listes
+  /// cachées (zéro copie). La TV n'est PAS filtrée des séparateurs déco ici : le
+  /// filtre `isHiddenTvVariant` reste à la charge de l'appelant (couche feature).
+  static Map<M3uContentType, List<M3uEntry>> byTypeWithPriority(
+      String priorityAccountId) {
+    _touchAllLoaded();
+    final accounts = <ParsedPlaylist>[];
+    final prio = _memory[priorityAccountId];
+    if (prio != null) accounts.add(prio);
+    for (final e in _memory.entries) {
+      if (e.key != priorityAccountId) accounts.add(e.value);
+    }
+    if (accounts.length == 1) {
+      final p = accounts.first;
+      return {
+        M3uContentType.movie: p.films,
+        M3uContentType.series: p.series,
+        M3uContentType.tv: p.tv,
+      };
+    }
+    return {
+      M3uContentType.movie: [for (final p in accounts) ...p.films],
+      M3uContentType.series: [for (final p in accounts) ...p.series],
+      M3uContentType.tv: [for (final p in accounts) ...p.tv],
+    };
+  }
+
   /// Playlist d'un compte spécifique (null si pas encore chargée).
-  static ParsedPlaylist? getAccount(String accountId) => _memory[accountId];
+  static ParsedPlaylist? getAccount(String accountId) {
+    final p = _memory[accountId];
+    if (p != null) _lastAccess[accountId] = DateTime.now();
+    return p;
+  }
+
+  /// Nombre d'entrées en mémoire pour un compte (0 si non chargé).
+  /// Lecture de stats : ne touche PAS `_lastAccess` (§lazyUnload).
+  static int entriesCountOf(String accountId) =>
+      _memory[accountId]?.entries.length ?? 0;
+
+  /// §23 — Politique image « plus grosse liste » : pour un groupe
+  /// multi-versions, l'image affichée vient de la version portée par le
+  /// compte totalisant le PLUS d'entrées en mémoire (= la liste la plus
+  /// riche, donc les visuels les plus soignés), avec fallback sur les
+  /// suivantes par taille décroissante si elle n'a pas d'image. Décision
+  /// utilisateur 2026-06-10 : « on prendra toujours celle de la plus grosse
+  /// liste ». S'applique films + séries + chaînes.
+  static String? bestLogoUrl(List<M3uEntry> versions) =>
+      _bestImage(versions, (e) => e.logoUrl);
+
+  /// §23 — Même politique pour les backdrops séries (champ v5).
+  static String? bestBackdropUrl(List<M3uEntry> versions) =>
+      _bestImage(versions, (e) => e.backdropUrl);
+
+  static String? _bestImage(
+    List<M3uEntry> versions,
+    String? Function(M3uEntry) pick,
+  ) {
+    if (versions.isEmpty) return null;
+    if (versions.length == 1) {
+      final v = pick(versions.first);
+      return (v == null || v.isEmpty) ? null : v;
+    }
+    final sorted = [...versions]..sort((a, b) =>
+        entriesCountOf(b.accountId).compareTo(entriesCountOf(a.accountId)));
+    for (final v in sorted) {
+      final img = pick(v);
+      if (img != null && img.isNotEmpty) return img;
+    }
+    return null;
+  }
 
   /// Vrai si plusieurs comptes sont chargés en mémoire → afficher les badges provider.
   static bool get isMultiAccount => _memory.length > 1;
@@ -259,7 +385,7 @@ class ParsedPlaylistService {
     final series = <M3uEntry>[];
     final tv     = <M3uEntry>[];
     try {
-      await M3uParser.parseFile(m3uPath, films, series, tv, accountId: accountId);
+      await _parsePlaylistFile(m3uPath, films, series, tv, accountId: accountId);
     } catch (e) {
       debugPrint('❌ ParsedPlaylist.reloadFromDisk — parse échoué : $e');
       return null;
@@ -308,8 +434,53 @@ class ParsedPlaylistService {
   static void clear() {
     _memory.clear();
     _accountNames.clear();
+    _lastAccess.clear();
     loadStates.value = {};
     version.value++;
+  }
+
+  /// §lazyUnload — Décharge UN compte secondaire de la mémoire (le cache disque
+  /// JSON.gz reste intact → rechargement ~50 ms quand re-demandé via
+  /// [loadSecondary] ou [preloadOthersFromDisk]). Le compte actif ne doit
+  /// JAMAIS être passé ici (vérif côté appelant). Bumpe `version` pour
+  /// invalider les caches mémoire de la home (regroupements multi-comptes).
+  /// L'état de chargement repasse à `notLoaded` → l'UI sait que la playlist
+  /// est sur disque uniquement.
+  static void unloadSecondary(String accountId) {
+    if (!_memory.containsKey(accountId)) return;
+    _memory.remove(accountId);
+    _lastAccess.remove(accountId);
+    setLoadState(accountId, AccountLoadState.notLoaded);
+    version.value++;
+    debugPrint('💤 ParsedPlaylist: déchargé mémoire (cache disque conservé) — $accountId');
+  }
+
+  /// §lazyUnload — Décharge tous les comptes secondaires inactifs depuis plus
+  /// de [idle]. Le compte [activeAccountId] est protégé (jamais déchargé).
+  /// À appeler périodiquement depuis l'UI (timer ~2 min) ou sur événement
+  /// (passage au player, bascule d'écran). Retourne le nombre de comptes
+  /// effectivement déchargés.
+  static int unloadIdleSecondaries({
+    required String activeAccountId,
+    Duration idle = const Duration(minutes: 5),
+  }) {
+    final now = DateTime.now();
+    final toUnload = <String>[];
+    for (final id in _memory.keys) {
+      if (id == activeAccountId) continue;
+      final last = _lastAccess[id];
+      // Si pas d'accès enregistré → marquer maintenant (grâce d'un cycle) puis
+      // décharger au prochain passage.
+      if (last == null) {
+        _lastAccess[id] = now;
+        continue;
+      }
+      if (now.difference(last) >= idle) toUnload.add(id);
+    }
+    for (final id in toUnload) {
+      unloadSecondary(id);
+    }
+    return toUnload.length;
   }
 
   // ── Disque — JSON gzippé ──────────────────────────────────────────────────
@@ -319,51 +490,106 @@ class ParsedPlaylistService {
     return '${dir.path}/parsed_playlist_$accountId.json.gz';
   }
 
+  /// Lecture STREAMÉE du cache (NDJSON gzippé) : 1ʳᵉ ligne = en-tête
+  /// (schema/accountId/m3uModAt), lignes suivantes = une entrée JSON chacune.
+  /// On ne charge jamais toute la chaîne JSON en mémoire (anti-OOM grosse liste).
   static Future<ParsedPlaylist?> _loadFromDisk(String accountId, String m3uPath) async {
+    final path = await _diskCachePath(accountId);
+    final cacheFile = File(path);
+    if (!await cacheFile.exists()) return null;
+
     try {
-      final path = await _diskCachePath(accountId);
-      final cacheFile = File(path);
-      if (!await cacheFile.exists()) return null;
+      final lines = cacheFile
+          .openRead()
+          .transform(gzip.decoder)
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
 
-      // Décompresser + désérialiser
-      final compressed = await cacheFile.readAsBytes();
-      final jsonBytes  = GZipCodec().decode(compressed);
-      final json       = jsonDecode(utf8.decode(jsonBytes)) as Map<String, dynamic>;
-      final playlist   = ParsedPlaylist.fromJson(json);
+      Map<String, dynamic>? header;
+      DateTime? m3uModifiedAt;
+      final entries = <M3uEntry>[];
 
-      // Invalider si schéma obsolète
-      if (playlist.schema != ParsedPlaylist.schemaVersion) {
-        debugPrint('⚠️ ParsedPlaylist: schéma v${playlist.schema} obsolète (v${ParsedPlaylist.schemaVersion} attendu) → invalidation');
-        await cacheFile.delete();
-        return null;
+      await for (final line in lines) {
+        if (line.isEmpty) continue;
+        if (header == null) {
+          header = jsonDecode(line) as Map<String, dynamic>;
+          final schema = header['schema'] as int;
+          // Invalider si schéma obsolète
+          if (schema != ParsedPlaylist.schemaVersion) {
+            debugPrint('⚠️ ParsedPlaylist: schéma v$schema obsolète (v${ParsedPlaylist.schemaVersion} attendu) → invalidation');
+            await cacheFile.delete();
+            return null;
+          }
+          m3uModifiedAt = DateTime.parse(header['m3uModAt'] as String);
+          // §langFilter — Invalider si le filtre de régions a changé depuis le
+          // cache (le cache ne contient que les entrées non masquées d'alors).
+          final cachedSig = (header['filterSig'] as String?) ?? '';
+          if (cachedSig != HiddenRegionsService.signature) {
+            debugPrint('⚠️ ParsedPlaylist: filtre régions modifié → re-parse');
+            await cacheFile.delete();
+            return null;
+          }
+          // Invalider si le fichier .m3u a été re-téléchargé depuis
+          final m3uFile = File(m3uPath);
+          if (!await m3uFile.exists()) return null;
+          final m3uModified = await m3uFile.lastModified();
+          if (m3uModifiedAt.isBefore(m3uModified.subtract(const Duration(seconds: 5)))) {
+            debugPrint('⚠️ ParsedPlaylist: fichier M3U modifié → re-parse nécessaire');
+            await cacheFile.delete();
+            return null;
+          }
+        } else {
+          entries.add(M3uEntry.fromJson(jsonDecode(line) as Map<String, dynamic>));
+        }
       }
 
-      // Invalider si le fichier .m3u a été re-téléchargé depuis
-      final m3uFile = File(m3uPath);
-      if (!await m3uFile.exists()) return null;
-      final m3uModified = await m3uFile.lastModified();
-      if (playlist.m3uModifiedAt.isBefore(m3uModified.subtract(const Duration(seconds: 5)))) {
-        debugPrint('⚠️ ParsedPlaylist: fichier M3U modifié → re-parse nécessaire');
-        await cacheFile.delete();
-        return null;
-      }
-
-      return playlist;
+      if (header == null || m3uModifiedAt == null) return null;
+      return ParsedPlaylist(
+        accountId:     header['accountId'] as String,
+        schema:        header['schema'] as int,
+        m3uModifiedAt: m3uModifiedAt,
+        entries:       entries,
+      );
     } catch (e) {
       debugPrint('❌ ParsedPlaylist: erreur chargement disque — $e');
+      // Cache potentiellement corrompu → on le supprime pour repartir propre.
+      try { if (await cacheFile.exists()) await cacheFile.delete(); } catch (_) {}
       return null;
     }
   }
 
+  /// Écriture STREAMÉE du cache (NDJSON gzippé). On encode une entrée à la fois
+  /// et on pousse les octets gzippés dans l'IOSink → empreinte mémoire minime
+  /// même pour ~600k entrées (l'ancienne version `jsonEncode(toJson())` faisait
+  /// une chaîne géante de 150-300 Mo d'un coup → OOM silencieux sur Fire Stick →
+  /// aucun cache écrit → re-parse à chaque démarrage).
   static Future<void> _saveToDisk(String accountId, ParsedPlaylist playlist) async {
+    final path = await _diskCachePath(accountId);
+    final raw = File(path).openWrite();
     try {
-      final path      = await _diskCachePath(accountId);
-      final jsonStr   = jsonEncode(playlist.toJson());
-      final compressed = GZipCodec().encode(utf8.encode(jsonStr));
-      await File(path).writeAsBytes(compressed);
-      debugPrint('💾 ParsedPlaylist: sauvegardé — ${(compressed.length / 1024).toStringAsFixed(0)} Ko');
+      final gzipSink = gzip.encoder.startChunkedConversion(_IOSinkAdapter(raw));
+      void writeLine(Object o) => gzipSink.add(utf8.encode('${jsonEncode(o)}\n'));
+
+      // En-tête
+      writeLine({
+        'schema':    playlist.schema,
+        'accountId': playlist.accountId,
+        'm3uModAt':  playlist.m3uModifiedAt.toIso8601String(),
+        'count':     playlist.entries.length,
+        // §langFilter — signature du filtre de régions au moment du parse.
+        'filterSig': HiddenRegionsService.signature,
+      });
+      // Une entrée par ligne
+      for (final e in playlist.entries) {
+        writeLine(e.toJson());
+      }
+      gzipSink.close(); // flush du trailer gzip dans l'IOSink
+      await raw.flush();
+      debugPrint('💾 ParsedPlaylist: sauvegardé (streamé) — ${playlist.entries.length} entrées');
     } catch (e) {
       debugPrint('❌ ParsedPlaylist: erreur sauvegarde disque — $e');
+    } finally {
+      await raw.close();
     }
   }
 
@@ -374,4 +600,19 @@ class ParsedPlaylistService {
       if (await file.exists()) await file.delete();
     } catch (_) {}
   }
+}
+
+/// Adaptateur : expose un [IOSink] (fichier) comme un `Sink<List<int>>` pour le
+/// brancher en sortie de `gzip.encoder.startChunkedConversion`. Le `close()` est
+/// volontairement no-op : l'`IOSink` est fermé explicitement par l'appelant
+/// (`_saveToDisk`) après le flush du trailer gzip.
+class _IOSinkAdapter implements Sink<List<int>> {
+  final IOSink _out;
+  _IOSinkAdapter(this._out);
+
+  @override
+  void add(List<int> data) => _out.add(data);
+
+  @override
+  void close() {}
 }

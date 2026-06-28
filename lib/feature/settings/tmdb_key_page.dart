@@ -6,6 +6,7 @@ import 'package:aetherStream/data/services/pairing_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/feature/pairing/pairing_page.dart';
+import 'package:aetherStream/widgets/tv/focusable_card.dart';
 
 /// Sous-page Settings (§1g) : gestion de la clé API TMDB.
 ///
@@ -65,9 +66,9 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
       });
       messenger.clearSnackBars();
       messenger.showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text('✅ TMDb connecté'),
-          backgroundColor: Colors.green,
+          backgroundColor: kSuccess,
         ),
       );
     }
@@ -94,9 +95,9 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
     FocusScope.of(context).unfocus();
     messenger.clearSnackBars();
     messenger.showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text('✅ TMDb connecté'),
-        backgroundColor: Colors.green,
+        backgroundColor: kSuccess,
       ),
     );
   }
@@ -112,9 +113,9 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
     });
     messenger.clearSnackBars();
     messenger.showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text('🗑️ Clé TMDB supprimée'),
-        backgroundColor: Colors.red,
+        backgroundColor: kError,
       ),
     );
   }
@@ -232,13 +233,15 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
                         children: [
                           if (_hasSavedKey)
                             Expanded(
-                              child: OutlinedButton.icon(
+                              child: FilledButton.icon(
                                 onPressed: _delete,
                                 icon: const Icon(Icons.delete_outline),
                                 label: const Text('Supprimer'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  side: const BorderSide(color: Colors.red),
+                                // §detailsActions — bouton plein (cohérence : plus
+                                // de mélange plein/contour). Rouge = destructif.
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: kError,
+                                  foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                       vertical: 14),
                                 ),
@@ -293,10 +296,19 @@ class _TvPairingCta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Material(
+    // §tvErgo — Wrap FocusableCard pour le glow Matrix au focus D-pad (cohérence
+    // avec les autres CTA TV). scaleOnFocus:false (CTA pleine largeur) +
+    // InkWell non focusable (évite le doublon d'arrêt D-pad).
+    return FocusableCard(
+      decorateOnly: true,
+      scaleOnFocus: false,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        canRequestFocus: false,
         borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.all(16),
@@ -356,6 +368,7 @@ class _TvPairingCta extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -445,14 +458,16 @@ class _InfoBlock extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          OutlinedButton.icon(
+          FilledButton.icon(
             onPressed: onOpenTmdb,
             icon: const Icon(Icons.open_in_new, size: 16),
-            label: const Text('Ouvrir themoviedb.org'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: kAccentSecondary,
-              side: BorderSide(color: kAccentSecondary.withAlpha(120)),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            label: const Text('Ouvrir themoviedb.org',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            // §detailsActions — plein (cohérence page : plus de bouton contour).
+            style: FilledButton.styleFrom(
+              backgroundColor: kAccentSecondary,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
           ),
         ],

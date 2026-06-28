@@ -1,8 +1,14 @@
 import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../data/services/update_service.dart';
+
+/// §updateGreen — Vert vif du dialog de MAJ (style « Matrix terminal », figé,
+/// indépendant du thème). Remplace `kSuccess` (#4CAF50, trop terne sur fond
+/// sombre) pour rendre les boutons/séparateurs bien visibles.
+const Color _kTermGreen = Color(0xFF00FF41);
 
 /// Dialogue de mise à jour in-app — style terminal Matrix.
 /// Cohérent avec [TerminalDownloadDialog].
@@ -123,10 +129,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.black.withAlpha((255 * 0.93).round()),
-          border: Border.all(color: Colors.green.withAlpha(60)),
+          border: Border.all(color: _kTermGreen.withAlpha(60)),
           borderRadius: BorderRadius.circular(8),
           boxShadow: [
-            BoxShadow(color: Colors.green.withAlpha(25), blurRadius: 12, spreadRadius: 2),
+            BoxShadow(color: _kTermGreen.withAlpha(25), blurRadius: 12, spreadRadius: 2),
           ],
         ),
         child: Column(
@@ -137,9 +143,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
             // ── Titre ──────────────────────────────────────────────────────
             Text(
               '> SYSTEM UPDATE',
-              style: GoogleFonts.vt323(color: Colors.green, fontSize: 22),
+              style: GoogleFonts.vt323(color: _kTermGreen, fontSize: 22),
             ),
-            const Divider(color: Colors.green, height: 12),
+            Divider(color: _kTermGreen, height: 12),
 
             // ── Corps terminal ─────────────────────────────────────────────
             ConstrainedBox(
@@ -180,7 +186,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       Text(
                         '> CHANGELOG:',
                         style: GoogleFonts.sourceCodePro(
-                          color: Colors.green, fontSize: 12,
+                          color: _kTermGreen, fontSize: 12,
                           fontWeight: FontWeight.bold),
                       ),
                       Text(
@@ -237,7 +243,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
               ),
             ),
 
-            const Divider(color: Colors.green, height: 16),
+            Divider(color: _kTermGreen, height: 16),
 
             // ── Actions terminal ──────────────────────────────────────────
             Row(
@@ -250,7 +256,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     _state == _DownloadState.downloading
                         ? '[ ABORT ]'
                         : '[ LATER ]',
-                    style: GoogleFonts.vt323(color: Colors.green, fontSize: 18),
+                    style: GoogleFonts.vt323(color: _kTermGreen, fontSize: 18),
                   ),
                 ),
 
@@ -260,8 +266,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
                   TextButton(
                     onPressed: _startDownload,
                     style: TextButton.styleFrom(
-                      backgroundColor: Colors.green.withAlpha(25),
-                      side: const BorderSide(color: Colors.green, width: 1),
+                      backgroundColor: _kTermGreen.withAlpha(25),
+                      side: const BorderSide(color: _kTermGreen, width: 1),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                     ),
                     child: Text(
@@ -269,7 +275,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                           ? '[ RETRY ]'
                           : '[ INSTALL UPDATE ]',
                       style: GoogleFonts.vt323(
-                        color: Colors.green, fontSize: 18,
+                        color: _kTermGreen, fontSize: 18,
                         fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -344,7 +350,7 @@ class _MiniRainPainter extends CustomPainter {
         text: TextSpan(
           text: _chars[charIndex],
           style: TextStyle(
-            color: Colors.greenAccent.withAlpha(80),
+            color: kSuccess.withAlpha(80),
             fontSize: 9, fontWeight: FontWeight.bold,
           ),
         ),

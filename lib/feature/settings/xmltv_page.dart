@@ -6,7 +6,7 @@ import 'package:aetherStream/data/services/xmltv_service.dart';
 /// Sous-page Settings (§1g) : guide des chaînes XMLTV.
 ///
 /// Source unique : `https://xmltvfr.fr/xmltv/xmltv_tnt.xml` (TNT France).
-/// Le cache est rafraîchi automatiquement toutes les 12h ; cette page permet
+/// Le cache est rafraîchi automatiquement toutes les 24h ; cette page permet
 /// un refresh manuel + affiche l'état du cache (date du dernier chargement,
 /// nombre de chaînes indexées).
 class XmltvPage extends StatefulWidget {
@@ -40,9 +40,9 @@ class _XmltvPageState extends State<XmltvPage> {
       if (!mounted) return;
       messenger.clearSnackBars();
       messenger.showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text('✅ Guide des chaînes mis à jour'),
-          backgroundColor: Colors.green,
+          backgroundColor: kSuccess,
         ),
       );
     } catch (e) {
@@ -51,7 +51,7 @@ class _XmltvPageState extends State<XmltvPage> {
       messenger.showSnackBar(
         SnackBar(
           content: Text('❌ Échec mise à jour : $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: kError,
         ),
       );
     } finally {
@@ -221,7 +221,7 @@ class _XmltvPageState extends State<XmltvPage> {
                     const SizedBox(height: 8),
                     Text(
                       '• Source publique : xmltvfr.fr (TNT France)\n'
-                      '• Cache local 12 h — mise à jour silencieuse au démarrage si périmé\n'
+                      '• Cache local 24 h — mise à jour silencieuse au démarrage si périmé\n'
                       '• Couvre les principales chaînes françaises (TF1, France 2, M6, ARTE…)\n'
                       '• Utilisé pour le bloc "En cours / Ensuite" + la grille replay',
                       style: TextStyle(

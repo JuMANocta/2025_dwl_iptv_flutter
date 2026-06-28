@@ -1,9 +1,89 @@
 import 'package:aetherStream/data/models/m3u_entry.dart';
 
+/// §Ultimate — Labels de catégorie correspondant à une **région étrangère**
+/// (préfixe `|XX|` non-FR : `|IT|`, `|AR|`, `|TR|`…). La home les relègue sous
+/// les genres FR (voir `_categoryPriority`). Le contenu `|FR|` / sans préfixe
+/// reste rangé par genre.
+/// ⚠️ Vocabulaire UNIFIÉ : ces labels doivent être EXACTEMENT ceux émis par le
+/// mapper par mots-clés ci-dessous (ITALIEN→'Italie', TURQU→'Turc', INDIA→
+/// 'Indien', ANGLAIS/UK→'UK', SCANDINAV→'Scandinavie'…) pour qu'une même région
+/// détectée via préfixe `|XX|` (§Ultimate) OU via pays nommé (Premium/VOD) tombe
+/// dans LA MÊME catégorie. Vaut donc pour toutes les listes.
+// NB : 'USA' et 'UK' sont VOLONTAIREMENT absents → contenu anglophone NON
+// relégué (choix user) : il reste au niveau genre (priorité 100). Leurs labels
+// existent toujours (via mots-clés / `_foreignRegionByCode`) mais ne sont pas
+// poussés en bas.
+const Set<String> kForeignRegionLabels = {
+  'Coréen', 'Turc', 'Maghrébin', 'Arabe', 'Indien', 'Ramadan',
+  'Allemagne', 'Espagne', 'Italie', 'Russie', 'Brésil', 'Belgique',
+  'Pologne', 'Portugal', 'Suisse', 'Scandinavie', 'Tchéquie', 'Croatie',
+  'Grèce', 'Albanie', 'Arménie', 'Roumanie', 'Bosnie', 'Canada',
+  'Pays-Bas', 'Ex-Yougoslavie', 'Rép. Dominicaine',
+};
+
+const Map<String, String> _foreignRegionByCode = {
+  'IT': 'Italie', 'AR': 'Arabe', 'TR': 'Turc', 'PT': 'Portugal',
+  'ES': 'Espagne', 'ESP': 'Espagne', 'US': 'USA', 'UK': 'UK', 'GB': 'UK',
+  'EN': 'UK', 'ENG': 'UK',
+  'DE': 'Allemagne', 'RU': 'Russie', 'IN': 'Indien', 'NL': 'Pays-Bas',
+  'BE': 'Belgique', 'PL': 'Pologne', 'BR': 'Brésil', 'GR': 'Grèce',
+  'RO': 'Roumanie', 'AL': 'Albanie', 'AM': 'Arménie', 'HR': 'Croatie',
+  'CZ': 'Tchéquie', 'SE': 'Scandinavie', 'NO': 'Scandinavie',
+  'DK': 'Scandinavie', 'EX-YU': 'Ex-Yougoslavie', 'DOM': 'Rép. Dominicaine',
+};
+
+/// §langFilter — Label "VO sans FR" (préfixes `|VO|` seul, `|LEG.|`,
+/// `|VO-LEG.|` = version originale / légendé non-français). Le VOSTFR
+/// (`|VO|STFR|`) est EXCLU (gardé comme FR — sous-titres français).
+const String kVoRegionLabel = 'VO (non-FR)';
+
+/// §langFilter — Régions/langues que l'utilisateur peut choisir de MASQUER
+/// (cases à cocher dans les réglages). Ordre alpha + VO en fin.
+const List<String> kHideableRegionLabels = [
+  'Allemagne', 'Arabe', 'Arménie', 'Albanie', 'Belgique', 'Brésil',
+  'Croatie', 'Espagne', 'Grèce', 'Indien', 'Italie', 'Pays-Bas', 'Pologne',
+  'Portugal', 'Roumanie', 'Russie', 'Scandinavie', 'Tchéquie', 'Turc',
+  'UK', 'USA', kVoRegionLabel,
+];
+
+/// §langFilter — Région d'une entrée À DES FINS DE FILTRAGE, déduite du préfixe
+/// `|XX|` de son NOM (rawTitle). Retourne `null` pour FR / sans préfixe /
+/// VOSTFR / Québec (jamais masqués). Sert au filtre "langues à masquer".
+String? entryRegionLabel(String rawTitle) {
+  final m = RegExp(r'^\s*\|([^|]{1,14})\|').firstMatch(rawTitle);
+  if (m == null) return null; // pas de préfixe → FR / MULTI / sans tag → gardé
+  final upper = rawTitle.toUpperCase();
+  // VOSTFR (éclaté |VO|STFR| ou compact) → gardé (sous-titres FR).
+  if (upper.contains('STFR') || upper.contains('VOSTFR')) return null;
+  final firstSeg = m.group(1)!.trim().toUpperCase();
+  // 1er token du segment → gère "FR-4K", "FR-4K DV", "IT-4K".
+  final code = firstSeg.split(RegExp(r'[-\s]')).first;
+  if (code == 'FR' || code == 'QC') return null; // FR + Québec (français) gardés
+  if (code == 'VO' || code == 'LEG.' || code == 'LEG') return kVoRegionLabel;
+  return _foreignRegionByCode[code]; // null si code inconnu → gardé
+}
+
+/// Région étrangère depuis un préfixe `|XX|` en tête de group-title.
+/// `FR` (et codes inconnus) → null : le contenu reste rangé par genre.
+String? _foreignRegionLabel(String groupTitle) {
+  final m = RegExp(r'^\s*\|([^|]{1,8})\|').firstMatch(groupTitle);
+  if (m == null) return null;
+  final code = m.group(1)!.trim().toUpperCase();
+  if (code == 'FR') return null; // natif → genres
+  return _foreignRegionByCode[code]; // null si code non mappé → genres/fallback
+}
+
 /// Retourne un label d'affichage depuis le group-title M3U.
-/// Priorité : mappings sémantiques connus → fallback nettoyage automatique.
+/// Priorité : région étrangère (|XX|) → mappings sémantiques → fallback nettoyage.
 String? contentCategoryLabel(String? groupTitle) {
   if (groupTitle == null || groupTitle.isEmpty) return null;
+
+  // §Ultimate — contenu d'une région étrangère → catégorie = la région
+  // (regroupé hors des rangées de genre FR). Le |FR| / sans préfixe poursuit
+  // vers le classement par genre ci-dessous.
+  final foreign = _foreignRegionLabel(groupTitle);
+  if (foreign != null) return foreign;
+
   final g = groupTitle.toUpperCase();
 
   if (g.contains('MANGA') || g.contains('ANIMÉ') || g.contains('ANIME')) return 'Manga';
@@ -91,10 +171,14 @@ String? contentCategoryLabel(String? groupTitle) {
   if (g.contains('USA') || g.contains('ETATS-UNIS') || g.contains('ÉTATS-UNIS')) return 'USA';
   if (g.contains('PAYS-BAS') || g.contains('NETHERLANDS')) return 'Pays-Bas';
 
-  String clean = groupTitle
-      .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
-      .split('|').first
-      .trim();
+  String clean = groupTitle.replaceAll(RegExp(r'\s*\([^)]*\)'), '');
+  // §Ultimate — retire un préfixe langue "|XX|" en TÊTE (group-titles type
+  // "|FR| SERIES ANCIENNES", "|IT| ITALIAN SERIES", "|TR| YERLI DIZILER") AVANT
+  // le découpage sur "|" : sinon split('|').first == "" → catégorie nulle → des
+  // dizaines de milliers d'entrées Ultimate tombaient dans "Autres".
+  // No-op sur Premium/VOD (leurs group-titles ne commencent pas par "|XX|").
+  clean = clean.replaceFirst(RegExp(r'^\s*\|[^|]{1,8}\|\s*'), '');
+  clean = clean.split('|').first.trim();
   if (clean.length > 20) clean = '${clean.substring(0, 18)}…';
   return clean.isNotEmpty ? clean : null;
 }
@@ -103,7 +187,16 @@ String? contentCategoryLabel(String? groupTitle) {
 /// N'inclut PAS la catégorie : deux entrées du même titre provenant de
 /// providers différents (avec des groupTitle différents) doivent toujours
 /// tomber dans le même groupe, notamment pour partager logos et versions.
-String contentGroupKey(M3uEntry e) => e.displayName;
+/// §23b — Clé PRÉ-CALCULÉE à parse-time (`TitleMetadata.groupKey`) :
+/// minuscules + ponctuation réduite en espace. Insensible à la casse ET à la
+/// ponctuation ("M.A.S.H" / "M.A.S.H." / "m a s h" → même groupe ; mesuré
+/// ~470 films + ~70 séries perdus rien que sur la casse). L'affichage garde
+/// la forme d'origine (`group.first.displayName`), seule la CLÉ est
+/// normalisée. Fallback calcul à la volée pour les entrées construites sans
+/// `parse()` (épisodes API…).
+String contentGroupKey(M3uEntry e) => e.title.groupKey.isNotEmpty
+    ? e.title.groupKey
+    : TitleMetadata.computeGroupKey(e.displayName);
 
 /// Clé de regroupement pour les chaînes TV.
 String tvGroupKey(String name) {
@@ -143,9 +236,23 @@ List<M3uEntry> dedupeTvVersions(List<M3uEntry> versions) {
 }
 
 /// Retourne true si l'entrée TV doit être masquée.
+///
+/// Cible les **séparateurs de catégorie décoratifs** insérés par les providers
+/// dans leur liste à plat (ce ne sont pas de vraies chaînes). Motifs observés :
+///   • Premium  : `▀▄ FR ▀▄▀▄  CINEMA ▄▀▄`, `------▼|FR|-SPORTS-|FR|▼------`
+///   • Ultimate : `♣♦♣-----|FR| FRANCE FHD |FR|----♣♦♣`,
+///                `•●★-----|FR| CINEMA FHD |FR|-----★●•` (nb de tirets variable
+///                1→5, donc le test `------` seul ne suffisait pas)
+///
+/// ⚠️ Anti-faux-positif (vérifié sur les 3 listes) : on masque sur des
+/// SÉQUENCES qui n'apparaissent jamais dans un vrai titre — box-drawing
+/// `▀ ▄ ▼`, suits `♣ ♦`, combos `•●★`/`★●•`. On NE masque PAS sur `•`, `●`, `★`
+/// ou `❤` isolés, présents dans de vrais titres VOD (ex: `無限大☆WORLD`, `❤️`).
 bool isHiddenTvVariant(String name) {
   if (name.contains('▀') || name.contains('▄') ||
-      name.contains('▼') || name.contains('------')) {
+      name.contains('▼') || name.contains('------') ||
+      name.contains('♣') || name.contains('♦') ||
+      name.contains('•●★') || name.contains('★●•')) {
     return true;
   }
   return RegExp(r'\bR[eé]solutions?\b|\bExclu[a-z]*\b', caseSensitive: false).hasMatch(name);

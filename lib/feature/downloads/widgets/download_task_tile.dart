@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/main.dart';
 import 'package:aetherStream/data/models/download_task.dart';
@@ -69,7 +70,7 @@ class DownloadTaskTile extends StatelessWidget {
         // 1. Un titre avec une icône d'avertissement claire
         title: Row(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            Icon(Icons.warning_amber_rounded, color: kWarning),
             const SizedBox(width: 12),
             Text(l10n.deleteDialogTitle),
           ],
@@ -109,7 +110,7 @@ class DownloadTaskTile extends StatelessWidget {
           FilledButton.icon(
             // On donne au bouton un style "destructif"
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
+              backgroundColor: kError,
               foregroundColor: Colors.white, // Pour que le texte et l'icône soient blancs
             ),
             icon: const Icon(Icons.delete_forever),
@@ -177,24 +178,24 @@ class DownloadTaskTile extends StatelessWidget {
               CircularProgressIndicator(
                 value: task.progress, // Mode déterministe (remplissage)
                 strokeWidth: 3, // Un peu plus épais pour être au premier plan
-                color: Colors.greenAccent,
+                color: kSuccess,
                 backgroundColor: Colors.transparent, // Fond transparent pour voir celui du dessous
               ),
             ],
           ),
         );
       case DownloadStatus.completed:
-        return const Icon(Icons.check_circle, color: Colors.green);
+        return Icon(Icons.check_circle, color: kSuccess);
       case DownloadStatus.failed:
-        return const Icon(Icons.error, color: Colors.red);
+        return Icon(Icons.error, color: kError);
       case DownloadStatus.canceled:
-        return const Icon(Icons.cancel, color: Colors.amber);
+        return Icon(Icons.cancel, color: kWarning);
       case DownloadStatus.paused:
         return const Icon(Icons.pause_circle, color: Colors.blueGrey);
       case DownloadStatus.queued:
         return Icon(Icons.hourglass_top, color: cs.onSurfaceVariant);
       case DownloadStatus.finalizing:
-        return const Icon(Icons.check_circle, color: Colors.green);
+        return Icon(Icons.check_circle, color: kSuccess);
     }
   }
 
@@ -214,7 +215,7 @@ class DownloadTaskTile extends StatelessWidget {
               style: const TextStyle(fontSize: 12)
           ),
           const SizedBox(height: 4),
-          LinearProgressIndicator(value: task.progress, backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest, color: Colors.greenAccent),
+          LinearProgressIndicator(value: task.progress, backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest, color: kSuccess),
         ]);
       case DownloadStatus.completed:
         return Text(
@@ -262,7 +263,7 @@ class DownloadTaskTile extends StatelessWidget {
         }
         return Text(
             l10n.taskStatusCanceled(progressInfo),
-            style: const TextStyle(fontSize: 12, color: Colors.amber)
+            style: TextStyle(fontSize: 12, color: kWarning)
         );
       case DownloadStatus.finalizing:
         return Text(
@@ -290,6 +291,8 @@ class DownloadTaskTile extends StatelessWidget {
     // _handleTap).
     return FocusableCard(
       decorateOnly: true,
+      // §tvErgo — tuile pleine largeur : pas de scale (sinon débordement écran).
+      scaleOnFocus: false,
       onTap: () => _handleTap(context),
       borderRadius: BorderRadius.circular(8),
       child: ListTile(

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.2+50-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.11.2+81-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -62,7 +62,7 @@
 - Support des formats catchup : Xtream Codes path-based et Flussonic (`{utc}/{lutc}`)
 
 ### 🎬 TMDB
-- Enrichissement automatique : affiches, synopsis, casting, bande-annonce YouTube
+- Enrichissement automatique : affiches, synopsis, **casting avec photos**, bande-annonce YouTube (ouverture dans l'app YouTube)
 - Recherche intelligente en 4 passes (type, année, langue...)
 - Désambiguïsation par année et genre `group-title` (évite les confusions films/séries homonymes)
 - Fiche épisode : still TMDB, titre épisode, note ★, date de diffusion, synopsis
@@ -70,7 +70,7 @@
 - Squelettes (skeleton placeholders) pendant le chargement TMDB pour éviter les sauts d'UI
 
 ### 🏠 Accueil streaming-style
-- **Hero "jeu de cartes"** (films/séries) : pile de 10 cartes empilées en éventail avec effet 3D (padding blanc "papier" 3px + box-shadow stack simulant l'épaisseur). 5 cartes "Reprendre" triées par dernière lecture + 5 cartes "New" prioritaires
+- **Hero "jeu de cartes"** (films/séries) : pile de 10 cartes empilées en éventail avec effet 3D (padding blanc "papier" 3px + box-shadow stack simulant l'épaisseur). 5 cartes "Reprendre" triées par dernière lecture + **tendances TMDB de la semaine présentes dans la playlist** (matching exact, cache 24h ; repli sur les nouveautés si pas de clé TMDB)
 - **Swipe horizontal** sur le hero pour naviguer manuellement entre les cartes (pause auto-rotation pendant le drag, snap avec biais de vélocité au relâché)
 - Auto-rotation 6 s entre les cartes (continue après un swipe manuel)
 - Hero 16/9 classique conservé sur la page Chaînes (live)
@@ -234,13 +234,18 @@ lib/
 - [x] **Refonte complète du player** — `media_kit`, contrôles custom, gestures, reconnexion auto *(PiP reporté)*
 - [x] **Mise à jour in-app** — vérification + téléchargement APK depuis GitHub Releases
 - [x] **Grille EPG XMLTV** — sélection programme dans la grille pour le replay
-- [x] **Refactoring** — découpage `recherche_page.dart` en modules séparés (parser, filter, widgets)
+- [x] **Refactoring recherche** — modules séparés (parser, filter, widgets) puis suppression du code mort `recherche_page`/`recherche_m3u` (lot A, 2026-06-11)
 - [x] **Système de thème sémantique** — variables `kAccentPrimary/Secondary/Tertiary`, constantes qualité/langue/badges centralisées
-- [x] **Thème personnalisable in-app** — `AppThemeConfig` runtime + 5 presets + page Personnalisation
+- [x] **Thème personnalisable in-app** — `AppThemeConfig` runtime + page Personnalisation : **9 presets** (Matrix, Blade Runner, Tron, Cyberpunk, Synthwave, Phosphore, Nordique, Minimaliste, Classic) et **7 couleurs réglables** dont les couleurs d'état favori ❤ / reprise-alerte / erreur / succès appliquées sur tout le front (§themePlus, 2026-06-11)
+- [x] **Téléchargement playlist via JSON API Xtream** (§xtreamApi, 2026-06-04) — Au lieu de tirer `get.php` (qui retourne souvent HTTP 500 silencieux sur les gros panels à cause du timeout PHP), AetherStream construit la playlist en interne via les endpoints `player_api.php?action=…` (live + VOD + séries, 6 actions en parallèle). C'est ce que font tous les clients IPTV modernes (TiviMate, IPTV Smarters Pro, ZenIPTV…). Marche sur des panels où `get.php` ne marche pas. Fallback automatique sur `get.php` pour les providers non-Xtream. Profil de requête `User-Agent: IPTVSmartersPro` (whitelisté par les panels). **Séries** : 1 entrée par série au boot, épisodes chargés à l'ouverture de la fiche (lazy load)
+- [x] **Catalogue unifié JSON direct** (§23, 2026-06-10) — les réponses `player_api.php` sont sauvegardées brutes (`playlist_<id>.json`) et parsées **directement** en entrées (plus de round-trip M3U texte) : zéro perte de métadonnées (tmdb_id, synopsis, note, genres, casting, backdrops, replay `tv_archive`). Regex de titre réécrites sur les formats réels des 3 providers (préfixes composés `|FR-4K DV|`, `|VO|STFR|`, suffixes `(MULTI) FHD 2025`, `[MULTi]`, `_sub`) → un même film présent sur plusieurs listes fusionne en **une seule vignette** (8 600+ films communs validés). Image affichée = celle de la **plus grosse liste** (fallback automatique). Fiche film/série complète (synopsis, note, genres) **même sans clé TMDB**. Fallback `get.php` conservé pour les comptes non-Xtream
 - [x] **Catégories M3U** — chips de filtre par catégorie dans la recherche (films + séries)
 - [x] **Filmographie acteur DISPO** — badge sur les films présents dans la playlist + navigation `DetailsPage`
 - [x] **Android TV / Fire Stick** (v1.6.0+) — Détection plateforme native, NavigationRail latéral, focus visible Matrix glow sur toutes les cards, action sheets en Dialog focusable, player entièrement contrôlable à la télécommande (OK / ← → / ↑ ↓ / MediaPlayPause / Menu), textScaler ×1.3 pour lisibilité 3 m+
 - [x] **Pairing QR mobile→TV** (v1.7.0) — Pour ajouter une playlist ou coller le Bearer Token TMDB sur Android TV, scanner le QR avec son téléphone : la TV ouvre un mini-serveur HTTP local, le mobile remplit le formulaire au clavier confortable, le résultat arrive sur la TV. Page web thémée selon le preset (Matrix, Blade Runner, Tron…). Aucune saisie texte au D-pad nécessaire
+- [x] **Paramètres TV via mobile** (§18 Phase A) — Sur Android TV, le hub Paramètres propose **en premier** « Configurer depuis le téléphone » : un QR ouvre une webapp où le mobile sert de **télécommande de configuration** pour le **thème** (preset + sélecteurs de couleur natifs + sliders glow/arrondi + mode), la **clé TMDB** et le **rafraîchissement du guide EPG**. Lancé à la demande uniquement ; le reste des paramètres reste pilotable à la télécommande
+- [x] **Navigation TV affinée** — Déplacement ↑/↓ « façon Netflix » (change de rangée et se cale à gauche, ne saute plus les rangées courtes comme les favoris), filmographie acteur parcourable ligne par ligne, et **double-appui sur Retour** pour quitter depuis l'accueil (évite les sorties accidentelles à la télécommande)
+- [x] **Console web** (v1.8.8) — Settings → Console web affiche un QR + une URL : depuis un PC/téléphone du même réseau, gérer les **comptes IPTV** (CRUD + recharger), la **clé TMDB**, le **guide XMLTV**, le **thème**, et **importer/exporter une sauvegarde `.aether`** (mot de passe dans le navigateur). Bonus **télécommande** : pavé directionnel + transport player pour piloter la TV depuis le téléphone. Serveur LAN-only sécurisé par token, actif uniquement pendant l'écran Console
 - [x] **Page d'accueil streaming-style** — carousels par catégorie + recherche in-place + navigation bottom bar
 - [x] **Favoris** — films, séries et chaînes (auto-ajout au play, long-press menu contextuel)
 - [x] **Reprise de lecture** — barre cyan sur les vignettes + bouton "Reprendre depuis X:XX"
@@ -267,8 +272,11 @@ lib/
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
+- [ ] **Reprise « prochain épisode non vu »** — présélectionner E+1 à l'ouverture d'une série quand le précédent est terminé (tracker le dernier épisode complété, §nextUnwatched)
+- [ ] **Découpage `home_page.dart`** (3 696 lignes) — extraction hero/cards/rows/search vers `home/widgets/` (après les tests unitaires)
 - [ ] **Grille EPG XMLTV pour replay** — sélection programme dans la grille (en complément du picker manuel)
-- [ ] **Pistes audio + sous-titres** — sélection in-player (embarqués + sous-titres externes)
+- [x] **Pistes audio + sous-titres (embarqués)** — sélecteur in-player (bouton CC) + préférence de langue mémorisée
+- [ ] **Sous-titres externes** — fichier/URL `.srt` + recherche en ligne auto par TMDB
 - [ ] **File d'attente DL + WiFi-only** — sémaphore, reprise auto au retour réseau
 - [ ] **Notifications téléchargement** — progression, fin, erreurs (foreground service)
 - [ ] **Background audio** — décision produit : continuer l'audio en arrière-plan via foreground service

@@ -12,11 +12,16 @@ import 'data/services/parsed_playlist_service.dart';
 import 'data/services/watch_progress_service.dart';
 import 'data/services/search_history_service.dart';
 import 'data/services/last_watched_channel_service.dart';
+import 'data/services/hidden_regions_service.dart';
+import 'data/services/track_preferences_service.dart';
 import 'core/navigation/main_navigation.dart';
+import 'core/navigation/tv_back_handler.dart';
 import 'data/services/expiration_alert_service.dart';
 import 'feature/accounts/accounts_page.dart';
 import 'feature/accounts/expiration_alert_dialog.dart';
 import 'feature/onboarding/onboarding_page.dart';
+import 'feature/settings/backup_restore_flow.dart';
+import 'feature/settings/web_console/web_console_page.dart';
 import 'feature/pairing/pairing_page.dart';
 import 'data/services/pairing_service.dart';
 import 'data/services/playlist_service.dart';
@@ -27,11 +32,13 @@ import 'core/themes/colors.dart';
 import 'core/themes/theme_service.dart';
 import 'core/themes/app_theme_config.dart';
 import 'data/services/update_service.dart';
+import 'data/services/xmltv_service.dart';
 import 'feature/update/update_dialog.dart';
 import 'core/utils/platform_tv.dart';
 import 'core/platform/storage_service.dart';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:window_manager/window_manager.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Clé globale pour le Navigator, permettant une navigation programmatique sans `BuildContext`.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -45,6 +52,13 @@ class AppScrollBehavior extends MaterialScrollBehavior {
         PointerDeviceKind.trackpad,
       };
 }
+
+/// §perfBg — Observateur de routes global. Utilisé par les écrans qui doivent
+/// **mettre en pause leur travail en arrière-plan** quand une route les couvre
+/// (ex. lecture du player) : auto-rotation du hero, etc. Indispensable sur TV
+/// (CPU/GPU limités → repaints invisibles = saccades).
+final RouteObserver<PageRoute<dynamic>> appRouteObserver =
+    RouteObserver<PageRoute<dynamic>>();
 
 /// Point d'entrée de l'application.
 void main() async {
@@ -74,25 +88,38 @@ void main() async {
       DeviceOrientation.landscapeRight,
     ]);
   }
-
+  // Migration legacy d'abord (touche le secure storage des comptes).
   await StreamAccountService.migrateFromLegacyIfNeeded();
-  await DownloadManagerService().init();
-  await FavoritesService.init();
-  await WatchProgressService.init();
-  await SearchHistoryService.init();
-  await LastWatchedChannelService.init();
-  await ThemeService.load();
+  // §startupParallel — Ces 6 init() sont des lectures de cache INDÉPENDANTES
+  // (SharedPreferences / secure storage propres à chaque service). Avant elles
+  // s'enchaînaient en série (temps additif au cold start) ; en parallèle, le
+  // démarrage attend juste la plus lente. Toutes terminées avant runApp (MyApp
+  // lit ThemeService.config).
+  await Future.wait([
+    DownloadManagerService().init(),
+    FavoritesService.init(),
+    WatchProgressService.init(),
+    SearchHistoryService.init(),
+    LastWatchedChannelService.init(),
+    HiddenRegionsService.init(),
+    TrackPreferencesService.init(),
+    ThemeService.load(),
+  ]);
 
   runApp(const MyApp());
 
-  // Vérification silencieuse des mises à jour après le démarrage (non-bloquant).
-  // Désactivé pour la branche Windows-port.
-  // Future.delayed(const Duration(seconds: 3), _checkForUpdate);
+  // Préchargement du guide des chaînes (EPG XMLTV) en arrière-plan, non-bloquant.
+  // Sans ça, le guide était vide au 1er lancement tant qu'on n'ouvrait pas une
+  // fiche chaîne. `ensureLoaded()` est gardé par le TTL 12h + cache fichier
+  // persistant → coût quasi nul aux lancements suivants.
+  Future.delayed(const Duration(seconds: 4), () => XmltvService.ensureLoaded());
 }
 
 /// Vérifie silencieusement si une mise à jour est disponible.
 /// Affiche le dialogue uniquement si une nouvelle version existe.
-Future<void> _checkForUpdate() async {
+/// Public car appelé depuis `MainNavigation.initState` après que la home est
+/// stable (cf. §updateDelay).
+Future<void> checkForUpdate() async {
   final info = await UpdateService.checkForUpdate();
   if (info == null) return;
   final context = navigatorKey.currentContext;
@@ -116,6 +143,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       scrollBehavior: AppScrollBehavior(),
       navigatorKey: navigatorKey,
+      navigatorObservers: [appRouteObserver],
       title: 'AetherStream',
       themeMode: config.themeMode,
       theme: lightTheme(config),
@@ -151,6 +179,13 @@ class MyApp extends StatelessWidget {
           final scaled = mq.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.0);
           wrapped = MediaQuery(
             data: mq.copyWith(textScaler: scaled),
+            child: wrapped,
+          );
+          // §bug Back TV — handler global de la touche Retour (le bouton Back
+          // des télécommandes Android TV / Fire TV arrive en key event `goBack`
+          // que rien d'autre ne mappe). Dernier recours : maybePop().
+          wrapped = TvBackHandler(
+            navigatorKey: navigatorKey,
             child: wrapped,
           );
         }
@@ -197,7 +232,13 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   }
 
   void _finishOnboarding() {
-    setState(() => _showOnboarding = false);
+    setState(() {
+      _showOnboarding = false;
+      // §restore — Une restauration `.aether` a pu créer des comptes pendant
+      // l'onboarding. On relance l'init pour les charger (sinon l'écran
+      // "aucun compte configuré" s'afficherait malgré la restauration).
+      _initFuture = _initializeApp();
+    });
   }
 
   /// Valide la configuration initiale et retourne les données du compte actif (null = pas de compte).
@@ -209,14 +250,26 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     final path = await PlaylistService.getOrDownloadPlaylist();
     final acc  = await StreamAccountService.getCurrentAccount();
 
+    // §initBoot — Parsing du M3U actif AWAITED ici (au lieu de le faire dans
+    // `HomePage._ensureLoaded` plus tard) : la home se montait avec
+    // `_loading = true` → spinner hors-écran AetherStream visible une fraction
+    // de seconde. Maintenant l'écran AetherStream tient jusqu'à ce que la
+    // playlist active soit en mémoire → MainNavigation apparait directement.
+    if (acc != null) {
+      await ParsedPlaylistService.loadActive(acc.id, acc.label, path);
+    }
+
     // Multi-comptes : charger les autres playlists pour que la recherche et la
     // home agrègent tous les contenus disponibles.
-    //   1. Préchargement disque immédiat (rapide)
-    //   2. Téléchargement + parsing en arrière-plan des comptes manquants
+    //   1. Préchargement disque AWAITED (rapide, ~quelques ms par compte) →
+    //      le menu n'apparait que quand tout est prêt à afficher (plus de
+    //      "carrousels qui se remplissent en différé" derrière le menu).
+    //   2. Téléchargement + parsing réseau des manquants RESTE en arrière-plan
+    //      (peut prendre plusieurs secondes, on ne bloque pas le boot dessus).
     if (accounts.length > 1) {
       final others = accounts.where((a) => a.id != acc?.id).toList();
-      ParsedPlaylistService.preloadOthersFromDisk(others);  // fire & forget
-      _hydrateSecondaryAccounts(others);                    // fire & forget
+      await ParsedPlaylistService.preloadOthersFromDisk(others);
+      _hydrateSecondaryAccounts(others); // fire & forget
     }
 
     // §17b — Fetch background des AccountInfo pour TOUS les comptes
@@ -289,10 +342,28 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     });
   }
 
+  /// §restore — Restaure une sauvegarde `.aether` depuis l'écran "aucun compte"
+  /// (cas : onboarding passé sans config). Recharge l'app au succès.
+  Future<void> _restoreFromBackup() async {
+    final restored = await runBackupImportFlow(context);
+    if (restored && mounted) _retryInitialization();
+  }
+
   /// Navigue vers les paramètres et force une réinitialisation au retour.
   Future<void> _recheckAfterSettings() async {
     await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const AccountsPage()));
     _retryInitialization();
+  }
+
+  /// §webConsoleFirstLaunch — Ouvre la Console web (même flux que
+  /// Settings → Console web) depuis l'écran "aucun compte". Au retour, on
+  /// relance l'init : si l'utilisateur a créé un compte côté navigateur,
+  /// l'app bascule directement sur la home.
+  Future<void> _openWebConsole() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WebConsolePage()),
+    );
+    if (mounted) _retryInitialization();
   }
 
   /// §3c-8 — Sur TV : ouvre directement le pairing QR (saisie au D-pad
@@ -335,22 +406,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       future: _initFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          final cs = Theme.of(context).colorScheme;
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'AetherStream',
-                    style: TextStyle(color: cs.onSurface, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-                  ),
-                  const SizedBox(height: 32),
-                  CircularProgressIndicator(color: cs.primary),
-                ],
-              ),
-            ),
-          );
+          return const _LoadingScreen();
         }
         if (snapshot.hasError) {
           return Scaffold(body: Center(child: Padding(padding: const EdgeInsets.all(24.0), child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -400,6 +456,24 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
                         ? 'Configurer depuis mon téléphone'
                         : 'Configurer les comptes'),
                   ),
+                  // §webConsoleFirstLaunch — Console web : même flux que
+                  // Settings → Console web. Accessible TV + mobile pour
+                  // gérer la 1ʳᵉ config depuis un navigateur (clavier
+                  // complet, plus simple que la saisie au D-pad ou que
+                  // l'app native sur petit écran).
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _openWebConsole,
+                    icon: const Icon(Icons.language, size: 18),
+                    label: const Text('Configurer via Console web'),
+                  ),
+                  // §restore — Récupérer une sauvegarde .aether existante.
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _restoreFromBackup,
+                    icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                    label: const Text('Restaurer une sauvegarde'),
+                  ),
                   if (isTv) ...[
                     const SizedBox(height: 8),
                     TextButton(
@@ -413,6 +487,86 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
           ),
         );
       },
+    );
+  }
+}
+
+
+/// §loadingScreen — Écran d'accueil affiché pendant l'initialisation de l'app
+/// (chargement playlist active, parsing, cache TMDB, etc.). Remplace un
+/// `CircularProgressIndicator` mono-thread qui saccadait pendant le parsing M3U.
+///
+/// Design "terminal cyberpunk" cohérent avec l'identité de l'app :
+///   - Fond sombre + radial gradient sur la couleur primaire (comme la home).
+///   - Wordmark **AETHERSTREAM** en VT323 (police monospace pixel-art) avec glow.
+///   - Sous-titre style terminal "// initialisation…".
+///   - Barre de progression indéterminée linéaire (moins sensible aux jank du
+///     thread UI qu'un spinner circulaire), thémée à la couleur primaire.
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final primary = cs.primary;
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: cs.surface,
+          gradient: RadialGradient(
+            center: const Alignment(0, -0.2),
+            radius: 1.2,
+            colors: [primary.withAlpha(32), cs.surface],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Wordmark glow VT323 (Matrix terminal).
+                Text(
+                  'AetherStream',
+                  style: GoogleFonts.vt323(
+                    color: primary,
+                    fontSize: 56,
+                    letterSpacing: 4,
+                    shadows: [
+                      Shadow(color: primary.withAlpha(180), blurRadius: 18),
+                      Shadow(color: primary.withAlpha(120), blurRadius: 32),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Sous-titre terminal.
+                Text(
+                  '// initialisation…',
+                  style: GoogleFonts.sourceCodePro(
+                    color: cs.onSurfaceVariant.withAlpha(180),
+                    fontSize: 13,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 40),
+                // Barre de progression thémée (indéterminée).
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      minHeight: 5,
+                      backgroundColor: cs.surfaceContainerHighest,
+                      valueColor: AlwaysStoppedAnimation<Color>(primary),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

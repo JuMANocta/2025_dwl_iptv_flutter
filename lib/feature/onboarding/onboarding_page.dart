@@ -8,6 +8,7 @@ import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/feature/pairing/pairing_page.dart';
+import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
 
 /// Onboarding 3 écrans affichés une seule fois (§1i + §3c-8 TV).
 ///
@@ -73,6 +74,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
     await OnboardingService.markDone();
     if (!mounted) return;
     widget.onFinish();
+  }
+
+  /// §restore — Récupération directe d'une sauvegarde `.aether` au 1er
+  /// lancement (cas fréquent : réinstallation après uninstall, le fichier
+  /// survit dans Download/AetherStream/). Si la restauration réussit, on
+  /// termine l'onboarding et le parent recharge la config restaurée.
+  Future<void> _onRestoreTap() async {
+    final restored = await runBackupImportFlow(context);
+    if (restored && mounted) {
+      await _finish();
+    }
   }
 
   void _next() {
@@ -195,7 +207,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
               ),
               if (!hideNext)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+                  padding: EdgeInsets.fromLTRB(24, 0, 24, _index == 0 ? 8 : 28),
                   child: SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -216,6 +228,19 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 )
               else
                 const SizedBox(height: 16),
+              // §restore — Slide d'accueil uniquement : récupérer une sauvegarde.
+              if (_index == 0)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: TextButton.icon(
+                    onPressed: _onRestoreTap,
+                    icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                    label: const Text('J\'ai déjà une sauvegarde (.aether)'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: kAccentSecondary,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

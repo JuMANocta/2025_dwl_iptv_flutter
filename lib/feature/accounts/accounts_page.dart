@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:aetherStream/core/themes/colors.dart';
-import 'package:aetherStream/core/themes/aether_theme_extension.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
@@ -16,12 +14,10 @@ import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
 import 'package:aetherStream/feature/pairing/pairing_page.dart';
-import 'package:aetherStream/feature/search/details_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
-import 'package:aetherStream/widgets/media_action_sheet.dart';
 
 /// Page de gestion des comptes IPTV (§1g — refonte).
 ///
@@ -94,10 +90,12 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Future<void> _openEditor({StreamAccount? initial}) async {
-    final result = await showModalBottomSheet<StreamAccount>(
+    // §3c Phase 3 — Modal adaptatif : bottom sheet sur mobile, Dialog centré +
+    // focus trap sur TV. `scrollable: false` car EditAccountSheet a déjà son
+    // propre SingleChildScrollView (évite le double scroll non borné).
+    final result = await showAdaptiveActionSheet<StreamAccount>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
+      scrollable: false,
       builder: (_) => EditAccountSheet(initial: initial),
     );
     if (result != null) {
@@ -218,8 +216,7 @@ class _AccountsPageState extends State<AccountsPage> {
         await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
       } catch (e) {
         if (!mounted) return;
-        messenger.clearSnackBars();
-        messenger.showSnackBar(
+        messenger..hideCurrentSnackBar()..showSnackBar(
           SnackBar(content: Text('Échec : $e')),
         );
         return;
@@ -232,8 +229,7 @@ class _AccountsPageState extends State<AccountsPage> {
       ParsedPlaylistService.invalidate(acc.id);
     }
     if (!mounted) return;
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
+    messenger..hideCurrentSnackBar()..showSnackBar(
       SnackBar(content: Text('✅ Cache vidé pour ${acc.label}')),
     );
   }
@@ -252,7 +248,7 @@ class _AccountsPageState extends State<AccountsPage> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(l10n.deleteAccountConfirm,
-                style: const TextStyle(color: Colors.red)),
+                style: TextStyle(color: kError)),
           ),
         ],
       ),
@@ -304,9 +300,9 @@ class _AccountsPageState extends State<AccountsPage> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                leading: Icon(Icons.delete_outline, color: kError),
                 title: Text(l10n.accountActionDelete,
-                    style: const TextStyle(color: Colors.red)),
+                    style: TextStyle(color: kError)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _delete(acc);
@@ -555,7 +551,7 @@ class _AccountCard extends StatefulWidget {
 class _AccountCardState extends State<_AccountCard> {
   Future<AccountInfo?>? _accountInfoFuture;
   bool _reloading = false;
-  bool _focused = false;
+
 
   @override
   void initState() {
@@ -614,8 +610,7 @@ class _AccountCardState extends State<_AccountCard> {
         newPath,
       );
       if (!mounted) return;
-      messenger.clearSnackBars();
-      messenger.showSnackBar(
+      messenger..hideCurrentSnackBar()..showSnackBar(
         SnackBar(
           content: Text('✅ Playlist rechargée pour ${widget.account.label}'),
           backgroundColor: kAccentPrimary.withAlpha(180),
@@ -624,8 +619,7 @@ class _AccountCardState extends State<_AccountCard> {
       widget.onReloaded();
     } catch (e) {
       if (!mounted) return;
-      messenger.clearSnackBars();
-      messenger.showSnackBar(SnackBar(content: Text('❌ Échec : $e')));
+      messenger..hideCurrentSnackBar()..showSnackBar(SnackBar(content: Text('❌ Échec : $e')));
     } finally {
       if (mounted) setState(() => _reloading = false);
     }
@@ -662,7 +656,6 @@ class _AccountCardState extends State<_AccountCard> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isPriority = widget.isPriority;
-    final themeExt = Theme.of(context).extension<AetherThemeExtension>()!;
 
     // §3c-3 — Wrap focus TV en decorateOnly : on garde la bordure isPriority
     // (signale le compte principal) ET on ajoute la bordure de focus glow
@@ -671,38 +664,33 @@ class _AccountCardState extends State<_AccountCard> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: FocusableCard(
         decorateOnly: true,
+        // §tvErgo — tuile pleine largeur : pas de scale (sinon débordement écran).
+        scaleOnFocus: false,
         onTap: widget.onTap,
         borderRadius: BorderRadius.circular(16),
-        child: Focus(
-          onFocusChange: (v) => setState(() => _focused = v),
-          child: Material(
-            color: cs.surfaceContainer,
+        child: Material(
+          color: cs.surfaceContainer,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: widget.onTap,
+            canRequestFocus: false,
             borderRadius: BorderRadius.circular(16),
-            child: InkWell(
-              onTap: widget.onTap,
-              borderRadius: BorderRadius.circular(16),
-              splashColor: kAccentPrimary.withAlpha(30),
-              highlightColor: kAccentPrimary.withAlpha(15),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: _focused
-                        ? kAccentPrimary
-                        : isPriority
-                            ? kAccentPrimary.withAlpha(150)
-                            : cs.outline.withAlpha(60),
-                    width: (isPriority || _focused) ? 2.0 : 1.0,
-                  ),
-                  boxShadow: ((isPriority || _focused) && themeExt.glowIntensity > 0)
-                      ? [
-                          BoxShadow(
-                              color: kAccentPrimary.withAlpha((255 * (_focused ? 0.3 : 0.15) * themeExt.glowIntensity).round()),
-                              blurRadius: (_focused ? 18 : 10) * themeExt.glowIntensity),
-                        ]
-                      : null,
+            splashColor: kAccentPrimary.withAlpha(30),
+            highlightColor: kAccentPrimary.withAlpha(15),
+            child: Ink(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isPriority ? kAccentPrimary : cs.outline.withAlpha(60),
+                  width: isPriority ? 1.5 : 1,
                 ),
+                boxShadow: isPriority
+                    ? [
+                        BoxShadow(
+                            color: kAccentPrimary.withAlpha(40), blurRadius: 14),
+                      ]
+                    : null,
+              ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
                   child: Column(
@@ -852,8 +840,7 @@ class _AccountCardState extends State<_AccountCard> {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -920,7 +907,7 @@ class _AccountStateChips extends StatelessWidget {
       case AccountLoadState.parsing:
         return _Chip(text: 'CHARGEMENT…', color: kAccentSecondary);
       case AccountLoadState.error:
-        return _Chip(text: 'ERREUR', color: Colors.red);
+        return _Chip(text: 'ERREUR', color: kError);
       case AccountLoadState.notLoaded:
         return _Chip(text: 'NON CHARGÉ', color: Colors.grey);
     }
@@ -930,7 +917,7 @@ class _AccountStateChips extends StatelessWidget {
     if (days < 0) {
       return _Chip(
         text: 'EXPIRÉE',
-        color: Colors.red,
+        color: kError,
         filled: true,
         icon: Icons.warning_amber_rounded,
       );
@@ -938,7 +925,7 @@ class _AccountStateChips extends StatelessWidget {
     if (days == 0) {
       return _Chip(
         text: 'EXPIRE AUJOURD\'HUI',
-        color: Colors.red,
+        color: kError,
         filled: true,
         icon: Icons.warning_amber_rounded,
       );
@@ -946,7 +933,7 @@ class _AccountStateChips extends StatelessWidget {
     final critical = days <= 7;
     return _Chip(
       text: 'EXPIRE DANS $days J',
-      color: critical ? Colors.red : kWarning,
+      color: critical ? kError : kWarning,
       filled: critical,
       icon: Icons.warning_amber_rounded,
     );
@@ -1258,8 +1245,8 @@ class _XtreamInfoBlock extends StatelessWidget {
     final today = DateTime(now.year, now.month, now.day);
     final expDay = DateTime(exp.year, exp.month, exp.day);
     final days = expDay.difference(today).inDays;
-    if (days < 0) return Colors.red;
-    if (days <= 7) return Colors.red;
+    if (days < 0) return kError;
+    if (days <= 7) return kError;
     if (days < ExpirationAlertService.kAlertThresholdDays) return kWarning;
     return kAccentPrimary;
   }

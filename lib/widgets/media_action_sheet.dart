@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
@@ -164,6 +165,9 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                           height: stillPath != null ? 160 : 140,
                           width: double.infinity,
                           fit: stillPath != null ? BoxFit.cover : BoxFit.contain,
+                          // §imgPerf — bandeau ~full-width × 160 → cap décodage.
+                          cacheWidth: 720,
+                          gaplessPlayback: true,
                           errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                         ),
                       ),
@@ -200,7 +204,7 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                       padding: const EdgeInsets.only(top: 6.0),
                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                         if (voteAvg != null && voteAvg > 0) ...[
-                          const Icon(Icons.star_rounded, size: 15, color: Colors.amber),
+                          Icon(Icons.star_rounded, size: 15, color: kWarning),
                           const SizedBox(width: 3),
                           Text(voteAvg.toStringAsFixed(1), style: Theme.of(context).textTheme.bodySmall),
                           if (airDate != null) const SizedBox(width: 12),
@@ -237,7 +241,7 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(entry.logoUrl!, height: 150, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                  child: Image.network(entry.logoUrl!, height: 150, cacheWidth: 320, gaplessPlayback: true, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
                 ),
               ),
             Padding(
@@ -379,7 +383,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
 
   void playVersion(M3uEntry v) {
     // Auto-ajout aux favoris au lancement de la lecture (§1d)
-    FavoritesService.add(FavoritesService.keyFor(v));
+    FavoritesService.addEntry(v);
     // §1i — Mémoriser la dernière chaîne pour la tuile "Reprendre la chaîne".
     LastWatchedChannelService.save(
       url: v.url,
@@ -458,8 +462,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                           )),
                         );
                       } else {
-                        ScaffoldMessenger.of(navigatorKey.currentContext!).clearSnackBars();
-                        ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
+                        ScaffoldMessenger.of(navigatorKey.currentContext!)..hideCurrentSnackBar()..showSnackBar(
                           const SnackBar(content: Text("Replay indisponible pour ce flux")),
                         );
                       }
@@ -494,7 +497,7 @@ String _formatResumeLabel(Duration d) {
 }
 
 void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPosition}) {
-  FavoritesService.add(FavoritesService.keyFor(entry));
+  FavoritesService.addEntry(entry);
   Navigator.pop(context);
   Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
     path: entry.url,
@@ -574,10 +577,9 @@ class _PlayResumeTiles extends StatelessWidget {
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(context);
                 await WatchProgressService.clearProgress(entry.url);
-                messenger.clearSnackBars();
-                messenger.showSnackBar(SnackBar(
+                AppSnackBar.showVia(messenger, SnackBar(
                   content: const Text('Reprise oubliée'),
-                  duration: const Duration(seconds: 4),
+                  duration: const Duration(seconds: 5),
                   action: SnackBarAction(
                     label: 'Annuler',
                     onPressed: () {
@@ -604,29 +606,29 @@ class _FavoriteToggleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final favKey = FavoritesService.keyFor(entry);
     return ValueListenableBuilder<int>(
       valueListenable: FavoritesService.version,
       builder: (ctx, _, __) {
-        final isFav = FavoritesService.isFavorite(favKey);
+        final isFav = FavoritesService.isEntryFavorite(entry);
         return ListTile(
+          // §themePlus — couleur favori unifiée (avant : kAccentTertiary ici
+          // mais kFavorite sur la fiche → deux couleurs pour le même concept).
           leading: Icon(
             isFav ? Icons.favorite : Icons.favorite_border,
-            color: isFav ? kAccentTertiary : null,
+            color: isFav ? kFavorite : null,
           ),
           title: Text(
             isFav ? 'Retirer des favoris' : 'Ajouter aux favoris',
             style: TextStyle(
-              color: isFav ? kAccentTertiary : null,
+              color: isFav ? kFavorite : null,
               fontWeight: isFav ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
           onTap: () async {
             final messenger = ScaffoldMessenger.of(context);
-            final added = await FavoritesService.toggle(favKey);
+            final added = await FavoritesService.toggleEntry(entry);
             if (!context.mounted) return;
-            messenger.clearSnackBars();
-            messenger.showSnackBar(SnackBar(
+            messenger..hideCurrentSnackBar()..showSnackBar(SnackBar(
               content: Text(added
                   ? '⭐ "${entry.displayName}" ajouté aux favoris'
                   : '🗑️ "${entry.displayName}" retiré des favoris'),

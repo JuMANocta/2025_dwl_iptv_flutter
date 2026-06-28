@@ -1,7 +1,9 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/themes/aether_theme_extension.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../data/services/remote_control_service.dart';
 
 /// Wrapper de focus pour la navigation D-pad / clavier (§3c-2).
 ///
@@ -44,6 +46,13 @@ class FocusableCard extends StatefulWidget {
   /// `surfaceContainerHighest.withAlpha(80)`. Si `null`, fond transparent.
   final Color? backgroundColor;
 
+  /// Applique le `scale(1.05)` au focus. À laisser `true` pour les vignettes
+  /// carrées (posters/logos). À passer **`false`** pour les éléments **pleine
+  /// largeur** (tuiles de liste, lignes de paramètres) : sinon l'agrandissement
+  /// horizontal fait déborder le rectangle hors de l'écran. Le focus reste
+  /// visible via la bordure + le glow (aucun coût layout).
+  final bool scaleOnFocus;
+
   const FocusableCard({
     super.key,
     required this.child,
@@ -54,6 +63,7 @@ class FocusableCard extends StatefulWidget {
     this.autofocus = false,
     this.decorateOnly = false,
     this.backgroundColor,
+    this.scaleOnFocus = true,
   });
 
   @override
@@ -62,6 +72,13 @@ class FocusableCard extends StatefulWidget {
 
 class _FocusableCardState extends State<FocusableCard> {
   bool _focused = false;
+
+  @override
+  void dispose() {
+    // Libère l'enregistrement télécommande si cette card était la cible active.
+    RemoteControlService.instance.clearActivate(this);
+    super.dispose();
+  }
 
   // Mapping des touches "OK" télécommande vers onTap.
   static final _activationKeys = <LogicalKeyboardKey>{
@@ -100,18 +117,21 @@ class _FocusableCardState extends State<FocusableCard> {
     final radius = widget.borderRadius ??
         BorderRadius.circular(ext?.borderRadius ?? 12.0);
 
-    final isTv = widget.forceTvLook || PlatformTv.isTv;
+    final isTv = widget.forceTvLook || PlatformTv.isTv || Platform.isWindows;
     final showFocusEffect = isTv && _focused;
 
     final focusColor = ext?.focusGlowColor ?? cs.primary;
     final glow = ext?.glowIntensity ?? 0.4;
     final borderW = ext?.focusBorderWidth ?? 2.0;
 
-    final decorated = AnimatedScale(
-      scale: showFocusEffect ? 1.05 : 1.0,
-      duration: const Duration(milliseconds: 140),
-      curve: Curves.easeOutCubic,
-      child: AnimatedContainer(
+    // §focusVisibility — Halo de focus RENFORCÉ pour être lisible à distance sur
+    // TV (l'ancien `0.55 * glow` tombait à alpha ~56, voire 0 sur un thème à
+    // glowIntensity nulle → focus quasi invisible). On garde un PLANCHER d'alpha
+    // et un glow plus large/dense, indépendant de l'intensité du thème.
+    final glowAlpha = (255 * (0.4 + 0.5 * glow)).round().clamp(110, 235);
+    final effBorderW = (borderW + 0.6).clamp(2.4, 4.0);
+
+    Widget decorated = AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         // §ergo — Le glow reste en `decoration` (boxShadow = zéro coût layout).
         decoration: BoxDecoration(
@@ -119,9 +139,9 @@ class _FocusableCardState extends State<FocusableCard> {
           boxShadow: showFocusEffect
               ? [
                   BoxShadow(
-                    color: focusColor.withAlpha((255 * 0.55 * glow).round()),
-                    blurRadius: 18 * (0.5 + glow),
-                    spreadRadius: 1,
+                    color: focusColor.withAlpha(glowAlpha),
+                    blurRadius: 24 * (0.7 + glow),
+                    spreadRadius: 2.5,
                   ),
                 ]
               : null,
@@ -131,10 +151,16 @@ class _FocusableCardState extends State<FocusableCard> {
         // `Border.all(width: 2)` (même transparent) ajoutait 4px à chaque carte
         // → dans un Wrap calé au pixel, la 3e vignette passait à la ligne
         // (chaînes affichées 2 par ligne au lieu de 3). Plus de coût layout ici.
+        // §focusVisibility — En plus de la bordure épaisse, un VOILE teinté sur
+        // les tuiles pleine largeur (`!scaleOnFocus`, ex. lignes de paramètres,
+        // boutons) → focus évident même quand l'enfant est opaque et ne grossit
+        // pas. Les vignettes (posters, scaleOnFocus) gardent juste scale+bordure
+        // +glow pour ne pas teinter l'image.
         foregroundDecoration: showFocusEffect
             ? BoxDecoration(
                 borderRadius: radius,
-                border: Border.all(color: focusColor, width: borderW),
+                border: Border.all(color: focusColor, width: effBorderW),
+                color: widget.scaleOnFocus ? null : focusColor.withAlpha(32),
               )
             : null,
         child: widget.decorateOnly
@@ -154,29 +180,41 @@ class _FocusableCardState extends State<FocusableCard> {
                   ),
                 ),
               ),
-      ),
-    );
+      );
+
+    // §tvErgo — scale(1.05) seulement pour les vignettes (scaleOnFocus true).
+    // Désactivé pour les tuiles pleine largeur (sinon le rectangle déborde).
+    if (widget.scaleOnFocus) {
+      decorated = AnimatedScale(
+        scale: showFocusEffect ? 1.05 : 1.0,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        child: decorated,
+      );
+    }
 
     return Focus(
       autofocus: widget.autofocus,
       onFocusChange: (f) {
         if (mounted) setState(() => _focused = f);
-        // §3c-bis #7 — Si la card vient de prendre le focus sur TV, l'amener
-        // dans le viewport du ScrollView ancêtre (carrousel horizontal /
-        // ListView vertical). Sans ça, le focus peut se déplacer sur une card
-        // hors-écran → utilisateur perdu, scroll figé.
-        if (f && isTv) {
-          // post-frame pour laisser le layout se stabiliser avant le scroll.
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            Scrollable.ensureVisible(
-              context,
-              alignment: 0.5,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-            );
-          });
+        // §webConsole Phase 2 — la télécommande web cible l'élément focusé :
+        // on s'enregistre (OK → onTap, Menu → onLongPress) au gain de focus,
+        // on se désenregistre à la perte.
+        if (f) {
+          RemoteControlService.instance
+              .registerActivate(this, widget.onTap, widget.onLongPress);
+        } else {
+          RemoteControlService.instance.clearActivate(this);
         }
+        // §focusScroll — Volontairement PAS de `Scrollable.ensureVisible` manuel
+        // ici : le framework Flutter (`DirectionalFocusTraversalPolicyMixin`)
+        // appelle déjà `ensureVisible` avec la BONNE alignmentPolicy selon la
+        // direction (`keepVisibleAtEnd` pour droite/bas, `keepVisibleAtStart`
+        // pour gauche/haut). L'ancien appel manuel `alignment: 0.5` recentrait
+        // la carte à chaque focus → la géométrie changeait → le focus suivant
+        // sautait 2-3 vignettes ("voir tout" devenait inaccessible). En se
+        // reposant sur le framework, on a un scroll minimal et un focus
+        // prévisible 1 par 1.
       },
       onKeyEvent: _onKey,
       child: decorated,

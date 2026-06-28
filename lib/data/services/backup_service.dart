@@ -167,7 +167,29 @@ class BackupService {
     return fileName;
   }
 
+  /// Variante de [exportAll] qui retourne directement les octets chiffrés
+  /// `.aether` SANS écrire de fichier (utilisée par la console web pour
+  /// proposer le téléchargement au navigateur). Retourne aussi le nom suggéré.
+  static Future<({String fileName, Uint8List bytes})> exportToBytes(
+      String password) async {
+    if (password.isEmpty) {
+      throw ArgumentError('Le mot de passe ne peut pas être vide.');
+    }
+    final content = await _collectAll();
+    final jsonStr = jsonEncode(content.toJson());
+    final encrypted = await _encrypt(utf8.encode(jsonStr), password);
+    return (fileName: _buildBackupFileName(), bytes: encrypted);
+  }
+
   // ── IMPORT ────────────────────────────────────────────────────────────────
+
+  /// Comme [readBackup] mais à partir d'octets en mémoire (upload console web).
+  static Future<BackupContent> readBackupBytes(
+      Uint8List bytes, String password) async {
+    final plain = await _decrypt(bytes, password);
+    final json = jsonDecode(utf8.decode(plain)) as Map<String, dynamic>;
+    return BackupContent.fromJson(json);
+  }
 
   /// Lit + décrypte un fichier `.aether`. Retourne le contenu sans l'appliquer
   /// (utile pour afficher un résumé à l'utilisateur avant confirmation).

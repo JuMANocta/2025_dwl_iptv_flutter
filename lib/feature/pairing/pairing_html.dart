@@ -541,6 +541,7 @@ String buildTmdbForm({required AppThemeConfig theme, required String token}) {
 ''';
 }
 
+
 /// Page de confirmation affichée sur le mobile après submit OK.
 String buildSuccessPage({required AppThemeConfig theme}) {
   return '''

@@ -1,12 +1,20 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
-import 'package:aetherStream/core/themes/aether_theme_extension.dart';
+import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/settings/about_page.dart';
 import 'package:aetherStream/feature/settings/backup_page.dart';
 import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
 import 'package:aetherStream/feature/settings/xmltv_page.dart';
+import 'package:aetherStream/feature/settings/region_filter_page.dart';
+import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
+import 'package:aetherStream/data/services/favorites_service.dart';
+import 'package:aetherStream/data/services/watch_progress_service.dart';
+import 'package:aetherStream/data/services/search_history_service.dart';
+import 'package:aetherStream/data/services/last_watched_channel_service.dart';
+import 'package:aetherStream/widgets/tv/focusable_card.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
 ///
@@ -15,7 +23,7 @@ import 'package:aetherStream/feature/settings/xmltv_page.dart';
 /// d'action courte.
 ///
 /// Sections :
-///   - 👤 Comptes IPTV  → [AccountsPage]
+///   - 👤 Comptes IPTV  → [AccountsPage] (stats + recharger par compte intégrés)
 ///   - 🎨 Personnalisation → [ThemeSettingsPage]
 ///   - ℹ️ À propos (version + check MAJ in-app)
 class SettingsPage extends StatefulWidget {
@@ -26,6 +34,18 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  @override
+  void initState() {
+    super.initState();
+    // §19 — Sur TV, force le focus sur le 1er tile au mount pour qu'on voie
+    // immédiatement l'indicateur de focus au D-pad.
+    if (PlatformTv.isTv) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).nextFocus();
+      });
+    }
+  }
+
   Future<void> _openAccounts() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AccountsPage()),
@@ -50,6 +70,12 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _openRegionFilter() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RegionFilterPage()),
+    );
+  }
+
   Future<void> _openAbout() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AboutPage()),
@@ -62,16 +88,74 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// §18 — Ouvre la **Console web** depuis la TV. Couvre comptes IPTV, TMDB,
+  /// EPG, thème, sauvegarde, télécommande et à propos en une seule webapp
+  /// servie sur le LAN. Remplace la pairing webapp §18 Phase A (devenue
+  /// orpheline et retirée — la Console web est le canal officiel).
+  Future<void> _openPhoneConfig() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WebConsolePage()),
+    );
+  }
+
+  /// §resetUsage — Remet à zéro les **données d'usage** (favoris, reprises de
+  /// lecture films & séries, historique de recherche, dernière chaîne regardée)
+  /// SANS toucher aux comptes IPTV, à la clé TMDB, au thème ni au filtre
+  /// langues/régions. Pratique pour repartir d'une liste de favoris propre
+  /// (ex. après corruption). Action destructive → confirmation obligatoire.
+  Future<void> _resetUsageData() async {
+    final cs = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cs.surfaceContainerHigh,
+        title: const Text('Réinitialiser les données ?'),
+        content: const Text(
+          'Vide les favoris, les reprises de lecture (films & séries), '
+          "l'historique de recherche et la dernière chaîne regardée.\n\n"
+          'Conserve les comptes IPTV, la clé TMDB, le thème et les filtres '
+          'langues/régions.\n\n'
+          'Cette action est irréversible.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: kError, foregroundColor: Colors.white),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Réinitialiser'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await Future.wait([
+      FavoritesService.clear(),
+      WatchProgressService.clearAll(),
+      SearchHistoryService.clear(),
+      LastWatchedChannelService.clear(),
+    ]);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text("✅ Données d'usage réinitialisées"),
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Paramètres'),
-        backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
@@ -91,60 +175,92 @@ class _SettingsPageState extends State<SettingsPage> {
                 )
               : null,
         ),
-        child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            children: [
-              _SectionHeader(title: 'Configuration'),
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          children: [
+            // §18 — Sur TV et Windows desktop, on propose l'accès à la Console web
+            if (PlatformTv.isTv || Platform.isWindows) ...[
+              _SectionHeader(title: 'Piloter depuis le téléphone'),
               _SettingsTile(
-                icon: Icons.account_circle_outlined,
+                icon: Icons.smartphone,
                 accentColor: kAccentPrimary,
-                title: 'Comptes IPTV',
-                subtitle: 'Providers, stats playlist & recharger',
-                onTap: _openAccounts,
-              ),
-              _SettingsTile(
-                icon: Icons.movie_creation_outlined,
-                accentColor: kAccentTertiary,
-                title: 'Clé API TMDB',
-                subtitle: 'Affiches, synopsis, casting (optionnel)',
-                onTap: _openTmdbKey,
-              ),
-              _SettingsTile(
-                icon: Icons.tv,
-                accentColor: kAccentSecondary,
-                title: 'Guide des chaînes',
-                subtitle: 'EPG XMLTV — TNT France',
-                onTap: _openXmltv,
-              ),
-              _SettingsTile(
-                icon: Icons.palette_outlined,
-                accentColor: kAccentSecondary,
-                title: 'Personnalisation',
-                subtitle: 'Thème, couleurs, effets cyberpunk',
-                onTap: _openThemeSettings,
-              ),
-              const SizedBox(height: 8),
-              _SectionHeader(title: 'Sauvegarde'),
-              _SettingsTile(
-                icon: Icons.cloud_sync_outlined,
-                accentColor: kAccentSecondary,
-                title: 'Sauvegarde / Restauration',
+                title: 'Console web',
                 subtitle:
-                    'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)',
-                onTap: _openBackup,
+                    'Comptes, sauvegarde, thème, EPG, TMDB + télécommande (QR)',
+                onTap: _openPhoneConfig,
               ),
               const SizedBox(height: 8),
-              _SectionHeader(title: 'Application'),
-              _SettingsTile(
-                icon: Icons.info_outline,
-                accentColor: kAccentTertiary,
-                title: 'À propos',
-                subtitle: 'Version + vérification des mises à jour',
-                onTap: _openAbout,
-              ),
             ],
-          ),
+            // §settingsGroups — 3 groupes, chacun une couleur d'accent du thème.
+            // ── Groupe 1 : Sources & comptes (vert) ────────────────────────
+            _SectionHeader(title: 'Sources & comptes', color: kAccentPrimary),
+            _SettingsTile(
+              icon: Icons.account_circle_outlined,
+              accentColor: kAccentPrimary,
+              title: 'Comptes IPTV',
+              subtitle: 'Providers, stats playlist & recharger',
+              onTap: _openAccounts,
+            ),
+            _SettingsTile(
+              icon: Icons.movie_creation_outlined,
+              accentColor: kAccentPrimary,
+              title: 'Clé API TMDB',
+              subtitle: 'Affiches, synopsis, casting (optionnel)',
+              onTap: _openTmdbKey,
+            ),
+            _SettingsTile(
+              icon: Icons.tv,
+              accentColor: kAccentPrimary,
+              title: 'Guide des chaînes',
+              subtitle: 'EPG XMLTV — TNT France',
+              onTap: _openXmltv,
+            ),
+            const SizedBox(height: 8),
+            // ── Groupe 2 : Affichage (cyan) ────────────────────────────────
+            _SectionHeader(title: 'Affichage', color: kAccentSecondary),
+            _SettingsTile(
+              icon: Icons.translate,
+              accentColor: kAccentSecondary,
+              title: 'Langues / régions',
+              subtitle: 'Masquer le contenu étranger (réduit la mémoire)',
+              onTap: _openRegionFilter,
+            ),
+            _SettingsTile(
+              icon: Icons.palette_outlined,
+              accentColor: kAccentSecondary,
+              title: 'Personnalisation',
+              subtitle: 'Thème, couleurs, effets cyberpunk',
+              onTap: _openThemeSettings,
+            ),
+            const SizedBox(height: 8),
+            // ── Groupe 3 : Sauvegarde & application (magenta) ──────────────
+            _SectionHeader(
+                title: 'Sauvegarde & application', color: kAccentTertiary),
+            _SettingsTile(
+              icon: Icons.cloud_sync_outlined,
+              accentColor: kAccentTertiary,
+              title: 'Sauvegarde / Restauration',
+              subtitle:
+                  'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)',
+              onTap: _openBackup,
+            ),
+            _SettingsTile(
+              icon: Icons.info_outline,
+              accentColor: kAccentTertiary,
+              title: 'À propos',
+              subtitle: 'Version + vérification des mises à jour',
+              onTap: _openAbout,
+            ),
+            // §resetUsage — Action destructive : accent kError (rouge) en
+            // exception assumée du code couleur du groupe, pour signaler le danger.
+            _SettingsTile(
+              icon: Icons.delete_sweep_outlined,
+              accentColor: kError,
+              title: "Réinitialiser les données d'usage",
+              subtitle: 'Vide favoris, reprises & historique (garde comptes & thème)',
+              onTap: _resetUsageData,
+            ),
+          ],
         ),
       ),
     );
@@ -155,27 +271,46 @@ class _SettingsPageState extends State<SettingsPage> {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  const _SectionHeader({required this.title});
+  /// §settingsGroups — Couleur du groupe : barre verticale + titre teinté.
+  /// Si null, rendu neutre (gris, comportement historique).
+  final Color? color;
+  const _SectionHeader({required this.title, this.color});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final c = color;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
-      child: Text(
-        title.toUpperCase(),
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.4,
-          color: cs.onSurfaceVariant.withAlpha(180),
-        ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 20, 6),
+      child: Row(
+        children: [
+          if (c != null) ...[
+            Container(
+              width: 4,
+              height: 14,
+              decoration: BoxDecoration(
+                color: c,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+              color: c ?? cs.onSurfaceVariant.withAlpha(180),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _SettingsTile extends StatefulWidget {
+class _SettingsTile extends StatelessWidget {
   final IconData icon;
   final Color accentColor;
   final String title;
@@ -191,84 +326,77 @@ class _SettingsTile extends StatefulWidget {
   });
 
   @override
-  State<_SettingsTile> createState() => _SettingsTileState();
-}
-
-class _SettingsTileState extends State<_SettingsTile> {
-  bool _focused = false;
-
-  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final ext = Theme.of(context).extension<AetherThemeExtension>()!;
-    final isFocused = _focused;
-    final radius = BorderRadius.circular(ext.borderRadius);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-      child: Material(
-        color:
-            isFocused ? widget.accentColor.withAlpha(40) : cs.surfaceContainer,
-        borderRadius: radius,
-        child: InkWell(
-          onTap: widget.onTap,
-          onFocusChange: (v) => setState(() => _focused = v),
-          borderRadius: radius,
-          splashColor: widget.accentColor.withAlpha(30),
-          highlightColor: widget.accentColor.withAlpha(15),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              border: Border.all(
-                color: isFocused ? widget.accentColor : Colors.transparent,
-                width: 1.5,
+      // §3c-bis — Wrap FocusableCard (decorateOnly) pour afficher le focus
+      // Matrix glow au D-pad sur TV. Sans ce wrap, le user naviguait dans la
+      // liste sans aucun feedback visuel et avait l'impression d'être bloqué.
+      // Le tap mobile reste géré par l'InkWell interne (decorateOnly).
+      child: FocusableCard(
+        decorateOnly: true,
+        // §tvErgo — pas de scale (tuile pleine largeur → débordait à l'écran).
+        scaleOnFocus: false,
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        // §tvErgo — ExcludeFocus : l'InkWell interne est focusable par défaut et
+        // créait un 2e arrêt D-pad par tuile (doublon de sélection, sans glow).
+        // On le retire de la traversée ; seul le Focus du FocusableCard reste.
+        // Le tap tactile mobile fonctionne toujours (ExcludeFocus n'affecte que
+        // le focus, pas les événements pointeur).
+        child: ExcludeFocus(
+          child: Material(
+            color: cs.surfaceContainer,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(14),
+              splashColor: accentColor.withAlpha(30),
+              highlightColor: accentColor.withAlpha(15),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: accentColor.withAlpha(30),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: accentColor.withAlpha(80), width: 1),
+                      ),
+                      child: Icon(icon, color: accentColor, size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                              color: cs.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: cs.onSurfaceVariant.withAlpha(160)),
+                  ],
+                ),
               ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: widget.accentColor.withAlpha(30),
-                    borderRadius: BorderRadius.circular(
-                        ext.borderRadius > 10 ? 10 : ext.borderRadius),
-                    border: Border.all(
-                        color: widget.accentColor.withAlpha(80), width: 1),
-                  ),
-                  child: Icon(widget.icon, color: widget.accentColor, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        widget.subtitle,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right,
-                    color: isFocused
-                        ? widget.accentColor
-                        : cs.onSurfaceVariant.withAlpha(160)),
-              ],
             ),
           ),
         ),
