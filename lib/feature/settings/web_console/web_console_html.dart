@@ -81,8 +81,11 @@ String _css(AppThemeConfig t) {
     .card:hover, .card:focus {
       border-color: var(--p); box-shadow: var(--glow); outline: none;
     }
-    .card .ic { font-size: 28px; line-height: 1; }
-    .card .t { font-weight: 700; color: var(--text); margin-top: 10px;
+    .card .ic { font-size: 24px; line-height: 1; width: 44px; height: 44px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: calc(var(--radius) - 4px);
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); }
+    .card .t { font-weight: 700; color: var(--text); margin-top: 12px;
       letter-spacing: .5px; }
     .card .s { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
 
@@ -157,6 +160,27 @@ String _css(AppThemeConfig t) {
     .key.empty { background: transparent; border: none; pointer-events: none; }
     .bar { display: flex; gap: 10px; max-width: 320px; margin: 0 auto 12px; }
     .bar .key { flex: 1; height: 60px; font-size: 18px; }
+
+    /* Groupes de dashboard (calqués sur les 3 sections de l'app) */
+    .group { margin-bottom: 26px; }
+    .ghead { display: flex; align-items: center; gap: 10px; margin: 0 2px 12px; }
+    .ghead .gbar { width: 4px; height: 16px; border-radius: 2px; }
+    .ghead .glbl { font-size: 11px; font-weight: 800; letter-spacing: 1.6px;
+      text-transform: uppercase; }
+    .group.g1 .gbar { background: var(--p); }   .group.g1 .glbl { color: var(--p); }
+    .group.g2 .gbar { background: var(--a); }   .group.g2 .glbl { color: var(--a); }
+    .group.g3 .gbar { background: var(--ter); } .group.g3 .glbl { color: var(--ter); }
+    .group.g2 .card:hover, .group.g2 .card:focus { border-color: var(--a); }
+    .group.g3 .card:hover, .group.g3 .card:focus { border-color: var(--ter); }
+
+    /* Liste de cases à cocher (langues/régions) */
+    .checks { margin-top: 8px; }
+    .check { display: flex; align-items: center; gap: 12px; padding: 13px 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 15px;
+      color: var(--text); text-transform: none; letter-spacing: 0;
+      margin: 0; font-weight: 400; cursor: pointer; }
+    .check:last-child { border-bottom: none; }
+    .check input { width: 20px; height: 20px; accent-color: var(--p); flex: 0 0 auto; }
   ''';
 }
 
@@ -202,16 +226,44 @@ String buildDashboard(AppThemeConfig t, String token) {
   // §webConsoleFix — Les href sont rendus côté serveur avec le token déjà
   // inclus (plus de réécriture JS fragile qui échouait car le `<script>` de
   // rewrite s'exécutait AVANT la définition de `T` placée en bas du shell).
+  // §webConsoleDesign — Dashboard organisé comme les Paramètres de l'app : la
+  // télécommande en tête (usage principal du téléphone), puis 3 groupes colorés
+  // identiques à SettingsPage (vert Sources & comptes / cyan Affichage / magenta
+  // Sauvegarde & application).
   final body = '''
   <p class="muted">Gère ta configuration AetherStream depuis ce navigateur. La TV reste synchronisée en direct.</p>
-  <div class="grid" id="grid">
-    ${_navCard(token, 'accounts', '📺', 'Comptes IPTV', 'Ajouter / modifier / recharger')}
-    ${_navCard(token, 'tmdb', '🎬', 'Clé TMDB', 'Affiches & métadonnées')}
-    ${_navCard(token, 'xmltv', '📡', 'Guide chaînes', 'EPG XMLTV — TNT France')}
-    ${_navCard(token, 'theme', '🎨', 'Thème', 'Presets cyberpunk')}
-    ${_navCard(token, 'backup', '💾', 'Sauvegarde', 'Importer / exporter .aether')}
-    ${_navCard(token, 'remote', '🎮', 'Télécommande', 'Piloter la TV depuis ce tél.')}
-    ${_navCard(token, 'about', 'ℹ️', 'À propos', 'Version & liens GitHub')}
+
+  <div class="group g1">
+    <div class="ghead"><span class="gbar"></span><span class="glbl">Télécommande</span></div>
+    <div class="grid">
+      ${_navCard(token, 'remote', '🎮', 'Télécommande', 'Piloter la TV depuis ce téléphone')}
+    </div>
+  </div>
+
+  <div class="group g1">
+    <div class="ghead"><span class="gbar"></span><span class="glbl">Sources &amp; comptes</span></div>
+    <div class="grid">
+      ${_navCard(token, 'accounts', '📺', 'Comptes IPTV', 'Ajouter / modifier / recharger')}
+      ${_navCard(token, 'tmdb', '🎬', 'Clé TMDB', 'Affiches & métadonnées')}
+      ${_navCard(token, 'xmltv', '📡', 'Guide chaînes', 'EPG XMLTV — TNT France')}
+    </div>
+  </div>
+
+  <div class="group g2">
+    <div class="ghead"><span class="gbar"></span><span class="glbl">Affichage</span></div>
+    <div class="grid">
+      ${_navCard(token, 'langregion', '🌐', 'Langues / régions', 'Masquer le contenu étranger')}
+      ${_navCard(token, 'theme', '🎨', 'Thème', 'Presets cyberpunk')}
+    </div>
+  </div>
+
+  <div class="group g3">
+    <div class="ghead"><span class="gbar"></span><span class="glbl">Sauvegarde &amp; application</span></div>
+    <div class="grid">
+      ${_navCard(token, 'backup', '💾', 'Sauvegarde', 'Importer / exporter .aether')}
+      ${_navCard(token, 'about', 'ℹ️', 'À propos', 'Version & liens GitHub')}
+      ${_navCard(token, 'reset', '🧹', 'Réinitialiser', 'Vider favoris, reprises, historique')}
+    </div>
   </div>
   ''';
   return _shell(t, 'Console web', body);
@@ -445,6 +497,46 @@ String buildTheme(AppThemeConfig t, String token, List<String> presetNames, Stri
   return _shell(t, 'Thème', body);
 }
 
+// ─── Langues / régions ─────────────────────────────────────────────────────────
+
+/// §webConsoleLangFilter — Vue de masquage des langues/régions (miroir de
+/// `RegionFilterPage`). [hidden] = régions actuellement masquées (cochées).
+String buildRegions(
+    AppThemeConfig t, String token, List<String> labels, Set<String> hidden) {
+  final rows = labels.map((r) {
+    final checked = hidden.contains(r) ? ' checked' : '';
+    return '<label class="check">'
+        '<input type="checkbox" class="rg" value="${esc(r)}"$checked>'
+        '<span>${esc(r)}</span></label>';
+  }).join();
+  final body = '''
+  ${_backLink(token)}
+  <div class="sec">
+    <h2>Langues / régions</h2>
+    <p class="muted">Coche les langues/régions à <b>masquer</b> du catalogue. Le
+      contenu français (|FR|), québécois et VOSTFR est toujours conservé.<br>
+      La mémoire est allégée dès « Appliquer » ; la taille sur disque diminue au
+      prochain rechargement de la playlist.</p>
+    <div class="row" style="gap:8px; margin-top:6px">
+      <button class="ghost" onclick="setAll(true)">Tout masquer</button>
+      <button class="ghost" onclick="setAll(false)">Tout afficher</button>
+    </div>
+    <div class="checks">$rows</div>
+    <button onclick="saveRegions()">Appliquer</button>
+  </div>
+  <script>
+    function setAll(v){ document.querySelectorAll('.rg').forEach(c=>c.checked=v); }
+    async function saveRegions(){
+      const hidden = Array.from(document.querySelectorAll('.rg:checked')).map(c=>c.value);
+      toast('⏳ Application…');
+      const r = await api('/api/regions/save', {hidden});
+      toast(r.ok ? '✅ Filtre appliqué — catalogue rechargé' : (r.data.error||'Erreur'), r.ok);
+    }
+  </script>
+  ''';
+  return _shell(t, 'Langues / régions', body);
+}
+
 // ─── Sauvegarde ────────────────────────────────────────────────────────────────
 
 String buildBackup(AppThemeConfig t, String token) {
@@ -542,6 +634,36 @@ String buildRemote(AppThemeConfig t, String token) {
   </script>
   ''';
   return _shell(t, 'Télécommande', body);
+}
+
+// ─── Réinitialiser les données d'usage ──────────────────────────────────────────
+
+/// §webConsoleReset — Vue de remise à zéro des données d'usage (miroir de la
+/// tuile « Réinitialiser les données d'usage » de SettingsPage). Action
+/// destructive → bouton danger + `confirm()` JS côté navigateur.
+String buildReset(AppThemeConfig t, String token) {
+  final body = '''
+  ${_backLink(token)}
+  <div class="sec">
+    <h2>Réinitialiser les données d'usage</h2>
+    <p class="muted">Vide les <b>favoris</b>, les <b>reprises</b> de lecture
+      (films &amp; séries), l'<b>historique de recherche</b> et la
+      <b>dernière chaîne</b> regardée.<br>
+      Conserve les comptes IPTV, la clé TMDB, le thème et les filtres
+      langues/régions.<br>
+      <b>Cette action est irréversible.</b></p>
+    <button class="danger" onclick="doReset()">Tout réinitialiser</button>
+  </div>
+  <script>
+    async function doReset(){
+      if(!confirm("Vider favoris, reprises et historique ? Action irréversible.")) return;
+      toast('⏳ Réinitialisation…');
+      const r = await api('/api/reset', {});
+      toast(r.ok ? '🧹 Données réinitialisées' : (r.data.error||'Erreur'), r.ok);
+    }
+  </script>
+  ''';
+  return _shell(t, 'Réinitialiser', body);
 }
 
 String buildErrorPage(AppThemeConfig t, String message) =>

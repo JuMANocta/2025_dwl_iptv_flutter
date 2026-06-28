@@ -454,7 +454,16 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           fit: StackFit.expand,
           children: [
             // 1. Rendu vidéo plein écran.
-            Video(controller: _ctrl.videoController),
+            //    §doubleLoader — `controls: NoVideoControls` DÉSACTIVE l'UI
+            //    intégrée de media_kit_video (`AdaptiveVideoControls` par
+            //    défaut). Sans ça, ses contrôles natifs s'empilaient sur nos
+            //    `PlayerControls` + `_BufferingOverlay` → DEUX spinners de
+            //    chargement au démarrage + captation des taps en double (effet
+            //    de "double lancement"). On rend tout nous-mêmes.
+            Video(
+              controller: _ctrl.videoController,
+              controls: NoVideoControls,
+            ),
 
             // 2. Couche gesture (transparente, capte tout sauf les contrôles).
             //    Désactivée sur TV — toutes les interactions passent par le

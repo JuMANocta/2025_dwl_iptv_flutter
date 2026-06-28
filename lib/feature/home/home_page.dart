@@ -1446,6 +1446,30 @@ class _TypePageState extends State<_TypePage> {
         ? _splitGroupsByYear(byGroup.values)
         : byGroup.values.toList();
 
+    // §newByAdded — Quand le catalogue porte des timestamps `addedAt` (pipeline
+    // Xtream JSON), la catégorie « New » devient VIRTUELLE (calculée par récence
+    // d'ajout, plus bas). On ne colle alors plus l'étiquette provider
+    // "Récemment ajouté" comme catégorie PRIMAIRE (sinon un film récent serait
+    // sorti de son genre). En fallback M3U/get.php (pas de timestamp), on
+    // conserve le comportement historique (label provider 'New').
+    final hasAddedData = type != M3uContentType.tv &&
+        groups.any((g) => g.any((e) => e.addedAt != null));
+
+    String pickCategory(List<M3uEntry> group) {
+      String? newLabel;
+      for (final e in group) {
+        final c = e.category;
+        if (c == null || c.isEmpty) continue;
+        if (c == 'New') {
+          newLabel = c;
+          continue;
+        }
+        return c; // vrai genre / région → prioritaire
+      }
+      if (newLabel != null && !hasAddedData) return newLabel;
+      return 'Autres';
+    }
+
     final byCategory = <String, List<List<M3uEntry>>>{};
     for (final group in groups) {
       // Cas spécial chaînes TV : les chaînes françaises remontent dans une
@@ -1455,14 +1479,7 @@ class _TypePageState extends State<_TypePage> {
         byCategory.putIfAbsent('France', () => []).add(group);
         continue;
       }
-      final cat = group
-              .firstWhere(
-                (e) => e.category != null && e.category!.isNotEmpty,
-                orElse: () => group.first,
-              )
-              .category ??
-          'Autres';
-      byCategory.putIfAbsent(cat, () => []).add(group);
+      byCategory.putIfAbsent(pickCategory(group), () => []).add(group);
     }
 
     // Tri : alpha pour les catégories de genre, ordre M3U (= "récents en haut",
@@ -1473,6 +1490,34 @@ class _TypePageState extends State<_TypePage> {
         entry.value.sort((a, b) => a.first.displayName
             .toLowerCase()
             .compareTo(b.first.displayName.toLowerCase()));
+      }
+    }
+
+    // 🔥 §newByAdded — Rangée « New » VIRTUELLE par récence d'ajout (`addedAt`),
+    // toutes listes fusionnées (bien meilleur que le match texte du group-title
+    // provider, qui ne profitait pas de la fusion multi-listes). Hybride :
+    // fenêtre 30 jours, bornée [20, 60] → jamais vide ni surchargée. addedAt du
+    // groupe = MAX parmi ses versions (un film ré-ajouté sur N'IMPORTE quelle
+    // liste compte comme récent). Duplique les groupes (ils restent dans leur
+    // genre). Seulement si le catalogue porte des timestamps (Xtream JSON).
+    if (hasAddedData) {
+      final dated = <(int, List<M3uEntry>)>[];
+      for (final group in groups) {
+        int? ts;
+        for (final e in group) {
+          final a = e.addedAt;
+          if (a != null && (ts == null || a > ts)) ts = a;
+        }
+        if (ts != null) dated.add((ts, group));
+      }
+      if (dated.isNotEmpty) {
+        dated.sort((a, b) => b.$1.compareTo(a.$1)); // plus récent en tête
+        final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        const windowS = 30 * 24 * 3600; // 30 jours
+        var recent = dated.where((e) => nowS - e.$1 <= windowS).toList();
+        if (recent.length < 20) recent = dated.take(20).toList(); // plancher
+        if (recent.length > 60) recent = recent.take(60).toList(); // plafond
+        byCategory['New'] = recent.map((e) => e.$2).toList();
       }
     }
 

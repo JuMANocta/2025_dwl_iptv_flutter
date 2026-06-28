@@ -120,6 +120,7 @@ class XtreamCatalogParser {
       category: contentCategoryLabel(groupTitle),
       tmdbId: _str(item['tmdb_id']),
       rating: _rating(item['rating']),
+      addedAt: _unixSeconds(item['added']),
     ));
   }
 
@@ -153,6 +154,9 @@ class XtreamCatalogParser {
       backdropUrl: (backdrops is List && backdrops.isNotEmpty)
           ? _str(backdrops.first)
           : null,
+      // Séries : `last_modified` (dernière MAJ d'épisodes) fait office de date
+      // d'ajout/récence ; fallback `added` si présent.
+      addedAt: _unixSeconds(item['last_modified'] ?? item['added']),
     ));
   }
 
@@ -164,6 +168,16 @@ String? _str(Object? v) {
   if (v == null) return null;
   final s = v.toString().trim();
   return s.isEmpty || s == 'null' ? null : s;
+}
+
+/// §newByAdded — Timestamp Unix EN SECONDES depuis un champ provider
+/// (`added` / `last_modified`), string "1781108002" ou num. Null si absent ou
+/// invalide. Tolère un timestamp en millisecondes (>1e12) en le ramenant en s.
+int? _unixSeconds(Object? v) {
+  if (v == null) return null;
+  final n = v is num ? v.toInt() : int.tryParse(v.toString().trim());
+  if (n == null || n <= 0) return null;
+  return n > 1000000000000 ? n ~/ 1000 : n;
 }
 
 /// Rating provider : num (7.357) ou string ("8") → double, null si invalide/0.

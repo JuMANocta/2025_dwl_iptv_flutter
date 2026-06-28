@@ -10,13 +10,19 @@ import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
 import '../models/stream_account.dart';
 import 'backup_service.dart';
+import 'favorites_service.dart';
+import 'hidden_regions_service.dart';
+import 'last_watched_channel_service.dart';
 import 'parsed_playlist_service.dart';
 import 'playlist_service.dart';
 import 'remote_control_service.dart';
+import 'search_history_service.dart';
 import 'stream_account_service.dart';
 import 'tmdb_api_service.dart';
 import 'tmdb_service.dart';
+import 'watch_progress_service.dart';
 import 'xmltv_service.dart';
+import '../../feature/search/m3u_filter.dart';
 import '../../feature/settings/web_console/web_console_html.dart' as html;
 
 /// §webConsole (Phase 1) — Console web embarquée pour gérer la configuration
@@ -150,6 +156,10 @@ class WebConsoleService {
       case 'xmltv':
         page = html.buildXmltv(_theme, tk, XmltvService.loadedAt, XmltvService.channelCount);
         break;
+      case 'langregion':
+        page = html.buildRegions(
+            _theme, tk, kHideableRegionLabels, HiddenRegionsService.hidden);
+        break;
       case 'theme':
         final names = AppThemeConfig.presets.map((p) => p.name).toList();
         final current = _currentPresetName();
@@ -157,6 +167,9 @@ class WebConsoleService {
         break;
       case 'backup':
         page = html.buildBackup(_theme, tk);
+        break;
+      case 'reset':
+        page = html.buildReset(_theme, tk);
         break;
       case 'remote':
         page = html.buildRemote(_theme, tk);
@@ -224,6 +237,10 @@ class WebConsoleService {
           await XmltvService.ensureLoaded();
           _json(req, 200, {'ok': true});
           break;
+        case '/api/regions/save':
+          await _saveRegions(payload);
+          _json(req, 200, {'ok': true});
+          break;
         case '/api/theme/save':
           _saveTheme(payload['preset'] as String?);
           _json(req, 200, {'ok': true});
@@ -235,6 +252,10 @@ class WebConsoleService {
         case '/api/backup/export':
           final out = await _exportBackup((payload['password'] as String?) ?? '');
           _json(req, 200, {'ok': true, 'filename': out.fileName, 'data': out.b64});
+          break;
+        case '/api/reset':
+          await _resetUsage();
+          _json(req, 200, {'ok': true});
           break;
         case '/api/remote':
           final key = (payload['key'] as String?) ?? '';
@@ -331,6 +352,39 @@ class WebConsoleService {
       await TmdbApiService.saveApiKey(t);
     }
     TmdbService.resetInstance();
+  }
+
+  /// §webConsoleLangFilter — Applique le set de régions masquées (miroir de
+  /// `RegionFilterPage._apply`) : `setHidden` puis, si ça a changé, re-parse du
+  /// compte actif (filtre appliqué immédiatement) + invalidation des secondaires.
+  Future<void> _saveRegions(Map<String, dynamic> p) async {
+    final list = (p['hidden'] as List?)?.cast<String>() ?? const <String>[];
+    // Anti-injection : on ne retient que des labels connus.
+    final set = list.where(kHideableRegionLabels.contains).toSet();
+    final changed = await HiddenRegionsService.setHidden(set);
+    if (!changed) return;
+    final accounts = await StreamAccountService.listAccounts();
+    final active = await StreamAccountService.getCurrentAccount();
+    if (active != null) {
+      final path = await PlaylistService.pathForAccountId(active.id);
+      await ParsedPlaylistService.reloadFromDisk(active.id, active.label, path);
+    }
+    for (final a in accounts) {
+      if (a.id != active?.id) ParsedPlaylistService.invalidate(a.id);
+    }
+  }
+
+  /// §webConsoleReset — Remet à zéro les données d'usage (miroir de
+  /// `SettingsPage._resetUsageData`) : favoris + reprises + historique de
+  /// recherche + dernière chaîne. Conserve comptes/TMDB/thème/filtres. Chaque
+  /// service bumpe son ValueNotifier → la TV se rafraîchit en direct.
+  Future<void> _resetUsage() async {
+    await Future.wait([
+      FavoritesService.clear(),
+      WatchProgressService.clearAll(),
+      SearchHistoryService.clear(),
+      LastWatchedChannelService.clear(),
+    ]);
   }
 
   void _saveTheme(String? presetName) {

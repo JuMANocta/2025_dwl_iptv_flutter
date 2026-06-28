@@ -317,6 +317,12 @@ class M3uEntry {
   final String? releaseDate;
   /// Première image backdrop (séries — `backdrop_path[0]`).
   final String? backdropUrl;
+  /// §newByAdded (schema v8) — Timestamp Unix (secondes) d'ajout au panel Xtream
+  /// (champ `added` de l'action VOD). Présent sur TOUTES les listes Xtream →
+  /// signal fiable et cross-listes pour la catégorie « New » (récemment ajouté),
+  /// bien meilleur que le match texte `group-title` « Récemment ajouté ». Null
+  /// sur le fallback get.php / M3U (le format M3U ne transporte pas ce champ).
+  final int? addedAt;
 
   const M3uEntry({
     required this.url,
@@ -337,6 +343,7 @@ class M3uEntry {
     this.rating,
     this.releaseDate,
     this.backdropUrl,
+    this.addedAt,
   });
 
   bool get supportsCatchup => catchupDays != null && catchupDays! > 0;
@@ -366,6 +373,7 @@ class M3uEntry {
     rating:        (j['ra'] as num?)?.toDouble(),
     releaseDate:   j['rd']  as String?,
     backdropUrl:   j['bd']  as String?,
+    addedAt:       j['ad']  as int?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -387,5 +395,6 @@ class M3uEntry {
     if (rating        != null) 'ra':  rating,
     if (releaseDate   != null) 'rd':  releaseDate,
     if (backdropUrl   != null) 'bd':  backdropUrl,
+    if (addedAt       != null) 'ad':  addedAt,
   };
 }
