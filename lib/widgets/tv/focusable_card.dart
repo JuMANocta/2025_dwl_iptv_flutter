@@ -123,6 +123,13 @@ class _FocusableCardState extends State<FocusableCard> {
     final glow = ext?.glowIntensity ?? 0.4;
     final borderW = ext?.focusBorderWidth ?? 2.0;
 
+    // §focusVisibility — Halo de focus RENFORCÉ pour être lisible à distance sur
+    // TV (l'ancien `0.55 * glow` tombait à alpha ~56, voire 0 sur un thème à
+    // glowIntensity nulle → focus quasi invisible). On garde un PLANCHER d'alpha
+    // et un glow plus large/dense, indépendant de l'intensité du thème.
+    final glowAlpha = (255 * (0.4 + 0.5 * glow)).round().clamp(110, 235);
+    final effBorderW = (borderW + 0.6).clamp(2.4, 4.0);
+
     Widget decorated = AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         // §ergo — Le glow reste en `decoration` (boxShadow = zéro coût layout).
@@ -131,9 +138,9 @@ class _FocusableCardState extends State<FocusableCard> {
           boxShadow: showFocusEffect
               ? [
                   BoxShadow(
-                    color: focusColor.withAlpha((255 * 0.55 * glow).round()),
-                    blurRadius: 18 * (0.5 + glow),
-                    spreadRadius: 1,
+                    color: focusColor.withAlpha(glowAlpha),
+                    blurRadius: 24 * (0.7 + glow),
+                    spreadRadius: 2.5,
                   ),
                 ]
               : null,
@@ -143,10 +150,16 @@ class _FocusableCardState extends State<FocusableCard> {
         // `Border.all(width: 2)` (même transparent) ajoutait 4px à chaque carte
         // → dans un Wrap calé au pixel, la 3e vignette passait à la ligne
         // (chaînes affichées 2 par ligne au lieu de 3). Plus de coût layout ici.
+        // §focusVisibility — En plus de la bordure épaisse, un VOILE teinté sur
+        // les tuiles pleine largeur (`!scaleOnFocus`, ex. lignes de paramètres,
+        // boutons) → focus évident même quand l'enfant est opaque et ne grossit
+        // pas. Les vignettes (posters, scaleOnFocus) gardent juste scale+bordure
+        // +glow pour ne pas teinter l'image.
         foregroundDecoration: showFocusEffect
             ? BoxDecoration(
                 borderRadius: radius,
-                border: Border.all(color: focusColor, width: borderW),
+                border: Border.all(color: focusColor, width: effBorderW),
+                color: widget.scaleOnFocus ? null : focusColor.withAlpha(32),
               )
             : null,
         child: widget.decorateOnly

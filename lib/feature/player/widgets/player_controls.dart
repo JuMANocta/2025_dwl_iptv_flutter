@@ -23,6 +23,9 @@ class PlayerControls extends StatefulWidget {
   /// §1i — Si non-null, affiche un bouton "épisode suivant" qui appelle ce
   /// callback (utilisé pour les séries depuis [DetailsPage]).
   final VoidCallback? onNextEpisode;
+  /// §5 — Si non-null, affiche un bouton CC qui ouvre le sélecteur de pistes
+  /// audio / sous-titres (géré par [PlayerPage] pour suspendre l'auto-hide).
+  final VoidCallback? onShowTracks;
 
   const PlayerControls({
     super.key,
@@ -34,6 +37,7 @@ class PlayerControls extends StatefulWidget {
     required this.onInteraction,
     this.onLockChanged,
     this.onNextEpisode,
+    this.onShowTracks,
   });
 
   @override
@@ -321,6 +325,22 @@ class _PlayerControlsState extends State<PlayerControls> {
                         ),
                       ),
                       const Spacer(),
+                      // §5 — Bouton CC : ouvre le sélecteur de pistes audio /
+                      // sous-titres (PlayerPage suspend l'auto-hide pendant).
+                      if (widget.onShowTracks != null) ...[
+                        GestureDetector(
+                          onTap: () {
+                            widget.onShowTracks?.call();
+                            widget.onInteraction();
+                          },
+                          child: const Icon(
+                            Icons.closed_caption_rounded,
+                            color: Colors.white,
+                            size: 26,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                      ],
                       // Sélecteur de vitesse.
                       GestureDetector(
                         onTap: _cycleSpeed,

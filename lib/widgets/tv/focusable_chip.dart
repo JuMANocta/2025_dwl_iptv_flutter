@@ -97,6 +97,11 @@ class _FocusableChipState extends State<FocusableChip> {
     final focusColor = ext?.focusGlowColor ?? cs.primary;
     final glow = ext?.glowIntensity ?? 0.4;
     final borderW = ext?.focusBorderWidth ?? 2.0;
+    // §focusVisibility — Halo renforcé (plancher d'alpha + glow plus large) pour
+    // un focus lisible à distance, indépendant de l'intensité du thème. Pas de
+    // voile teinté ici : les chips sont parfois des pastilles de couleur.
+    final glowAlpha = (255 * (0.4 + 0.5 * glow)).round().clamp(110, 235);
+    final effBorderW = (borderW + 0.6).clamp(2.4, 4.0);
 
     return Focus(
       autofocus: widget.autofocus,
@@ -125,9 +130,9 @@ class _FocusableChipState extends State<FocusableChip> {
           boxShadow: show
               ? [
                   BoxShadow(
-                    color: focusColor.withAlpha((255 * 0.55 * glow).round()),
-                    blurRadius: 16 * (0.5 + glow),
-                    spreadRadius: 1,
+                    color: focusColor.withAlpha(glowAlpha),
+                    blurRadius: 20 * (0.7 + glow),
+                    spreadRadius: 2,
                   ),
                 ]
               : null,
@@ -135,7 +140,7 @@ class _FocusableChipState extends State<FocusableChip> {
         foregroundDecoration: show
             ? BoxDecoration(
                 borderRadius: radius,
-                border: Border.all(color: focusColor, width: borderW),
+                border: Border.all(color: focusColor, width: effBorderW),
               )
             : null,
         child: widget.child,

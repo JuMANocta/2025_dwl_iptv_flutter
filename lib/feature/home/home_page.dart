@@ -447,40 +447,32 @@ class _HomePageState extends State<HomePage> with RouteAware {
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        scrolledUnderElevation: 0,
-        elevation: 0,
-        // §navUX — Plus de nom de compte dans le title (il est déjà visible
-        // dans SettingsPage → Comptes IPTV → bandeau "COMPTE ACTIF"). Ça libère
-        // la barre du haut et laisse le hero respirer.
-        // §1L-a — En mode recherche : arrow_back à gauche (retour intuitif),
-        // pas de title (le grand champ dans le body fait office de header).
-        leading: widget.searchMode
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: 'Quitter la recherche',
-                onPressed: () => widget.onExitSearch?.call(),
-              )
-            : null,
-        title: null,
-        // §3c-bis — Sur TV, l'icône ⚙️ est redondante avec la 4e destination
-        // "Paramètres" du NavigationRail latéral (et inaccessible au D-pad de
-        // toute façon, le focus traversal ne remonte pas dans l'AppBar).
-        actions: widget.searchMode
-            ? const []
-            : [
+      // §searchTopGap — En mode recherche, PAS d'AppBar : elle ne portait qu'un
+      // petit arrow_back et réservait toute une rangée `kToolbarHeight` au-dessus
+      // du champ (espace vide gênant). L'arrow_back est désormais intégré DANS la
+      // rangée du champ (cf. `searchBody`), et le champ remonte juste sous la
+      // status bar. En mode navigation, l'AppBar transparente habituelle (hero
+      // derrière + refresh/⚙️).
+      appBar: widget.searchMode
+          ? null
+          : AppBar(
+              backgroundColor: Colors.transparent,
+              scrolledUnderElevation: 0,
+              elevation: 0,
+              // §navUX — Plus de nom de compte dans le title (déjà visible dans
+              // SettingsPage → Comptes IPTV). Ça libère la barre du haut.
+              title: null,
+              // §3c-bis — Sur TV, l'icône ⚙️ est redondante avec la destination
+              // "Paramètres" du NavigationRail latéral.
+              actions: [
                 // §refreshHome — Rafraîchissement du compte actif sans passer
-                // par Paramètres → Comptes IPTV. Pratique pour valider qu'une
-                // playlist côté provider a bien été mise à jour.
+                // par Paramètres → Comptes IPTV.
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Recharger la playlist',
                   onPressed: _refreshActivePlaylist,
                 ),
                 if (!PlatformTv.isTv)
-                  // §3c-bis — Sur TV, l'icône ⚙️ est redondante avec la
-                  // destination "Paramètres" du rail. On la masque.
                   IconButton(
                     icon: const Icon(Icons.settings_outlined),
                     tooltip: 'Paramètres',
@@ -488,7 +480,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
                   ),
                 const SizedBox(width: 4),
               ],
-      ),
+            ),
       body: Container(
         // width/height infinity → force le Container à occuper toute la zone du
         // body. Sans ça, si l'enfant (ex: empty state du _SearchView qui retourne
@@ -530,13 +522,22 @@ class _HomePageState extends State<HomePage> with RouteAware {
                   // transparente) au lieu d'un mini-champ dans le title.
                   final Widget searchBody = Column(
                       children: [
-                        SizedBox(
-                          height: MediaQuery.of(context).padding.top +
-                              kToolbarHeight,
-                        ),
+                        // §searchTopGap — juste la status bar + petite marge
+                        // (avant : + kToolbarHeight, qui poussait le champ très
+                        // bas pour rien). L'arrow_back est inline avec le champ.
+                        SizedBox(height: MediaQuery.of(context).padding.top + 6),
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                          child: _buildSearchField(cs),
+                          padding: const EdgeInsets.fromLTRB(4, 4, 16, 12),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.arrow_back),
+                                tooltip: 'Quitter la recherche',
+                                onPressed: () => widget.onExitSearch?.call(),
+                              ),
+                              Expanded(child: _buildSearchField(cs)),
+                            ],
+                          ),
                         ),
                         Expanded(
                           child: _SearchView(

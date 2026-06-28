@@ -27,6 +27,30 @@ SnackBarThemeData _snackBarTheme(AppThemeConfig config) => SnackBarThemeData(
       ),
     );
 
+// §focusVisibility — Anneau + voile de focus pour les boutons Material standards
+// (sous-pages Paramètres, dialogs, FAB…) : focus très visible au D-pad TV, tout
+// en restant neutre au touch mobile (n'agit que sur l'état `focused`, + léger
+// feedback hover/pressed). Couvre ce que `FocusableCard` ne wrappe pas.
+WidgetStateProperty<Color?> _focusOverlay(Color c) =>
+    WidgetStateProperty.resolveWith((s) {
+      if (s.contains(WidgetState.focused)) return c.withAlpha(72);
+      if (s.contains(WidgetState.pressed)) return c.withAlpha(40);
+      if (s.contains(WidgetState.hovered)) return c.withAlpha(22);
+      return null;
+    });
+
+WidgetStateProperty<BorderSide?> _focusSide(Color c) =>
+    WidgetStateProperty.resolveWith((s) =>
+        s.contains(WidgetState.focused) ? BorderSide(color: c, width: 2.6) : null);
+
+FilledButtonThemeData _filledFocusTheme(Color ring) => FilledButtonThemeData(
+      style: ButtonStyle(overlayColor: _focusOverlay(ring), side: _focusSide(ring)),
+    );
+
+IconButtonThemeData _iconFocusTheme(Color ring) => IconButtonThemeData(
+      style: ButtonStyle(overlayColor: _focusOverlay(ring), side: _focusSide(ring)),
+    );
+
 // Thème Clair AetherStream
 ThemeData lightTheme(AppThemeConfig config) {
   return ThemeData(
@@ -85,10 +109,19 @@ ThemeData lightTheme(AppThemeConfig config) {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontWeight: FontWeight.bold),
+      ).copyWith(
+        overlayColor: _focusOverlay(config.primaryColor),
+        side: _focusSide(config.primaryColor),
       ),
     ),
+    // §focusVisibility — boutons pleins + boutons-icônes des sous-pages.
+    filledButtonTheme: _filledFocusTheme(config.primaryColor),
+    iconButtonTheme: _iconFocusTheme(config.primaryColor),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: config.primaryColor),
+      style: TextButton.styleFrom(foregroundColor: config.primaryColor).copyWith(
+        overlayColor: _focusOverlay(config.primaryColor),
+        side: _focusSide(config.primaryColor),
+      ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -172,10 +205,20 @@ ThemeData darkTheme(AppThemeConfig config) {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontWeight: FontWeight.bold),
+      ).copyWith(
+        // §focusVisibility — anneau de focus TV.
+        overlayColor: _focusOverlay(config.primaryColor),
+        side: _focusSide(config.primaryColor),
       ),
     ),
+    // §focusVisibility — boutons pleins + boutons-icônes des sous-pages.
+    filledButtonTheme: _filledFocusTheme(config.primaryColor),
+    iconButtonTheme: _iconFocusTheme(config.primaryColor),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: config.accentColor),
+      style: TextButton.styleFrom(foregroundColor: config.accentColor).copyWith(
+        overlayColor: _focusOverlay(config.accentColor),
+        side: _focusSide(config.accentColor),
+      ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
