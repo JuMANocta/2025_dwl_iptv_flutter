@@ -327,22 +327,31 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   void _applyTrackPrefs(Tracks tracks) {
+    // §trackNoRebuffer — NE PAS ré-appliquer une piste DÉJÀ active : appeler
+    // setAudioTrack/setSubtitleTrack force libmpv à re-demuxer → re-buffer juste
+    // après le démarrage (effet « le film se relance »). On ne switch que si la
+    // piste préférée DIFFÈRE de la piste courante (cas fréquent : la préférence
+    // correspond déjà au flux par défaut → on ne touche à rien).
+    final cur = _ctrl.player.state.track;
+
     final aPref = TrackPreferencesService.audio;
     if (aPref != null) {
       for (final t in tracks.audio) {
         if ((t.language ?? t.id) == aPref) {
-          _ctrl.player.setAudioTrack(t);
+          if (t.id != cur.audio.id) _ctrl.player.setAudioTrack(t);
           break;
         }
       }
     }
     final sPref = TrackPreferencesService.subtitle;
     if (sPref == 'no') {
-      _ctrl.player.setSubtitleTrack(SubtitleTrack.no());
+      if (cur.subtitle.id != 'no') {
+        _ctrl.player.setSubtitleTrack(SubtitleTrack.no());
+      }
     } else if (sPref != null) {
       for (final t in tracks.subtitle) {
         if ((t.language ?? t.id) == sPref) {
-          _ctrl.player.setSubtitleTrack(t);
+          if (t.id != cur.subtitle.id) _ctrl.player.setSubtitleTrack(t);
           break;
         }
       }

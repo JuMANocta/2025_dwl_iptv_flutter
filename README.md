@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.11.2+81-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.11.3+82-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -290,7 +290,7 @@ lib/
 - [ ] **Cleanup perfs** — Image.network avec cacheWidth/cacheHeight, memoization _HomeCard.build, helper launchPlayer factorisé
 - [ ] **Tests unitaires** — services purs (parser, filter, replay URL builder, etc.)
 - [ ] **Mise à jour des dépendances** — `media_kit_video` v2, `flutter_secure_storage` v10, `google_fonts` v8, migration "Built-in Kotlin" (Flutter ≥ 3.44)
-- [ ] **Port Windows** — branche dédiée `windows-port` en cours (worktree parallèle)
+- [ ] **Port Windows** — branche `windows-port` synchronisée à v1.11.2 ; cible : fusion mono-branche + exe Windows attaché aux releases GitHub (voir `.claude/windows_ci_release_plan.md`)
 
 ---
 
