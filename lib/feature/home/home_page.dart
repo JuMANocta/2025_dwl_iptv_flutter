@@ -25,6 +25,7 @@ import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import 'package:dpad/dpad.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/main.dart' show appRouteObserver;
@@ -36,85 +37,6 @@ part 'home_card.dart';
 part 'home_hero_fan.dart';
 part 'home_category.dart';
 part 'home_search.dart';
-
-/// §tvRails — Politique de traversée focus "façon Netflix" pour la home TV.
-///
-/// Problème corrigé : la traversée directionnelle par défaut (géométrique)
-/// conserve la position horizontale en montant/descendant. Depuis le MILIEU
-/// d'un carrousel, ↓ atterrissait au milieu de la rangée suivante — et si cette
-/// rangée n'a qu'1-2 éléments (ex: ⭐ Favoris), aucun n'était sous le curseur →
-/// la rangée était carrément **sautée**.
-///
-/// Comportement voulu : ↑/↓ = changement de RANGÉE, et on se cale toujours sur
-/// l'élément le **plus à gauche** de la rangée cible (point d'entrée stable).
-/// ←/→ gardent le comportement géométrique par défaut (déplacement intra-rangée
-/// + sortie vers le NavigationRail à gauche).
-///
-/// Le NavigationRail (menu latéral) est exclu des candidats ↑/↓ : il s'étend sur
-/// toute la hauteur et serait sinon vu comme "l'élément le plus à gauche" de
-/// chaque bande.
-class _TvRailsTraversalPolicy extends ReadingOrderTraversalPolicy {
-  /// Tolérance verticale (px) pour considérer deux éléments comme sur la même
-  /// rangée (centres Y proches malgré le scale focus / paddings).
-  static const double _rowTolerance = 30.0;
-
-  bool _isInNavigationRail(FocusNode node) {
-    final ctx = node.context;
-    if (ctx == null) return false;
-    return ctx.findAncestorWidgetOfExactType<NavigationRail>() != null;
-  }
-
-  @override
-  bool inDirection(FocusNode currentNode, TraversalDirection direction) {
-    // ←/→ et navigation dans le rail : comportement par défaut.
-    if (direction == TraversalDirection.left ||
-        direction == TraversalDirection.right ||
-        _isInNavigationRail(currentNode)) {
-      return super.inDirection(currentNode, direction);
-    }
-
-    final scope = currentNode.nearestScope;
-    if (scope == null) return super.inDirection(currentNode, direction);
-
-    final candidates = scope.traversalDescendants
-        .where((n) =>
-            n.canRequestFocus &&
-            !n.skipTraversal &&
-            !_isInNavigationRail(n))
-        .toList();
-    if (candidates.isEmpty) return super.inDirection(currentNode, direction);
-
-    final curCenterY = currentNode.rect.center.dy;
-
-    // Cherche le centre Y de la rangée immédiatement au-dessus/en-dessous.
-    double? targetRowY;
-    for (final n in candidates) {
-      final cy = n.rect.center.dy;
-      if ((cy - curCenterY).abs() <= _rowTolerance) continue; // même rangée
-      if (direction == TraversalDirection.down && cy > curCenterY) {
-        if (targetRowY == null || cy < targetRowY) targetRowY = cy;
-      } else if (direction == TraversalDirection.up && cy < curCenterY) {
-        if (targetRowY == null || cy > targetRowY) targetRowY = cy;
-      }
-    }
-    if (targetRowY == null) {
-      // Pas de rangée dans cette direction → laisser le défaut (peut sortir du
-      // groupe, ex: remonter vers le hero/onglets).
-      return super.inDirection(currentNode, direction);
-    }
-
-    // Parmi la rangée cible, prendre l'élément le plus à gauche.
-    FocusNode? target;
-    for (final n in candidates) {
-      if ((n.rect.center.dy - targetRowY).abs() > _rowTolerance) continue;
-      if (target == null || n.rect.left < target.rect.left) target = n;
-    }
-    if (target == null) return super.inDirection(currentNode, direction);
-
-    requestFocusCallback(target);
-    return true;
-  }
-}
 
 /// Page d'accueil — design streaming premium (§1b phases 2 + 3, §navUX).
 ///
@@ -195,6 +117,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _initialPageIndex);
+    // §dpadNav — Sur TV, on épingle la PageView (cf. _pinPageOnTv) : l'auto-scroll
+    // de dpad ne doit pas la faire glisser vers Séries/Chaînes.
+    if (PlatformTv.isTv) _pageController.addListener(_pinPageOnTv);
     _searchCtrl.addListener(_onSearchTextChanged);
     _searchFocus.addListener(_onSearchFocusChanged);
     _activeAccountId = widget.initialData.accountId;
@@ -371,11 +296,31 @@ class _HomePageState extends State<HomePage> with RouteAware {
   }
 
   void _goToPage(int i) {
+    if (PlatformTv.isTv) {
+      // §dpadNav — Changement de section INSTANTANÉ sur TV (pas de glissement
+      // horizontal de la PageView, donc plus de « secousse »). On fixe l'index
+      // AVANT le jump pour que le pin (_pinPageOnTv) ne l'annule pas.
+      if (_currentIndex != i) setState(() => _currentIndex = i);
+      _pageController.jumpToPage(i);
+      return;
+    }
     _pageController.animateToPage(
       i,
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeInOut,
     );
+  }
+
+  /// §dpadNav — TV : repince la PageView sur la page courante dès qu'un
+  /// auto-scroll dpad (`ensureVisible`) la pousse de quelques pixels (ce qui
+  /// donnait l'effet de saut ←/→ vers Séries/Chaînes quand on navigue dans une
+  /// rangée). Corrigé dans la même frame → aucun flicker visible. Le changement
+  /// d'onglet volontaire passe `_currentIndex` d'abord (cf. _goToPage) → non annulé.
+  void _pinPageOnTv() {
+    if (!_pageController.hasClients) return;
+    final page = _pageController.page;
+    if (page == null || page == _currentIndex.toDouble()) return;
+    _pageController.jumpToPage(_currentIndex);
   }
 
   /// §3c Phase 2 — Wrappe une page du PageView pour la navigation TV :
@@ -387,13 +332,13 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // moins coûteux = moins de saccades sur les pages lourdes carrousels+hero).
     final wrapped = RepaintBoundary(child: child);
     if (!PlatformTv.isTv) return wrapped;
+    // §dpadNav — Chaque page = une `DpadRegion` (nav par régions + mémoire,
+    // remplace l'ancienne FocusTraversalGroup/_TvRailsTraversalPolicy qui
+    // entrait en conflit avec le moteur dpad). ExcludeFocus garde les pages
+    // offstage (PageView adjacentes) hors du focus.
     return ExcludeFocus(
       excluding: _currentIndex != index,
-      // §tvRails — ↑/↓ change de rangée et se cale à gauche (cf. politique).
-      child: FocusTraversalGroup(
-        policy: _TvRailsTraversalPolicy(),
-        child: wrapped,
-      ),
+      child: DpadRegion(debugLabel: 'homePage$index', child: wrapped),
     );
   }
 
@@ -1059,8 +1004,8 @@ class _TypePage extends StatefulWidget {
 class _TypePageState extends State<_TypePage> {
   /// Limite d'items affichés dans un carrousel/grille de catégorie sur la home.
   /// Au-delà, un tile "Voir tout" est ajouté qui ouvre [CategoryListPage].
-  /// Réduit de 25 → 15 (§ergo) : carrousels plus courts = scroll horizontal
-  /// allégé (surtout au D-pad TV) et moins d'affiches TMDB à résoudre/charger.
+  /// §carousel25 — Remonté à 25 (carrousels plus fournis ; le ListView reste
+  /// lazy donc sans surcoût, et « Voir tout » prend le relais au-delà).
   static const int _maxItemsPerCategory = 15;
 
   // ── Caches (memoization) — §perfBigList ─────────────────────────────────
@@ -1148,11 +1093,11 @@ class _TypePageState extends State<_TypePage> {
     final categories = _cachedCategories!;
 
     // §heroFan — Composition du hero :
-    //   - films/séries : 5 reprise (triées lastWatched desc) + 5 nouveautés
-    //     prioritaires non-déjà-incluses → max 10 cartes empilées
-    //   - TV : pas de notion "en cours" (live) → max 5 cartes catégorie prio
-    const maxFeatured = 10;
-    const maxResume = 5;
+    //   - films/séries : reprise (triées lastWatched desc) + tendances TMDB
+    //     prioritaires non-déjà-incluses → max 15 cartes empilées (hero étoffé)
+    //   - TV : pas de notion "en cours" (live) → favoris / catégorie prio
+    const maxFeatured = 15;
+    const maxResume = 8;
     final featured = <List<M3uEntry>>[];
 
     if (widget.type != M3uContentType.tv) {

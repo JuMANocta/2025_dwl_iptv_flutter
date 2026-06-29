@@ -2,7 +2,7 @@ name: aetherStream
 description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
-version: 1.11.2+81
+version: 1.11.5+84
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -42,6 +42,7 @@ dependencies:
   file_picker: ^8.1.7               # sélection fichier .aether (import §10)
   qr_flutter: ^4.1.0                # génération QR code (§3c-8 pairing mobile→TV)
   window_manager: ^0.5.1
+  dpad: ^3.0.0
 
 dev_dependencies:
   flutter_test:

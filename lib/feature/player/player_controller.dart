@@ -161,19 +161,46 @@ class AetherPlayerController {
   /// NATIVEMENT. Bien plus fiable que `seek()` après l'open (qui, surtout
   /// depuis media_kit v2, était parfois avalé pendant le buffering initial →
   /// la lecture repartait à 0).
-  Future<void> open(String url, {Duration? start}) async {
+  Future<void> open(String url,
+      {Duration? start, String? audioLang, String? subLang}) async {
     try {
       if (player.platform is NativePlayer) {
-        await (player.platform as NativePlayer).setProperty('tls-verify', 'no');
-        await (player.platform as NativePlayer).setProperty('insecure', 'yes');
+        final np = player.platform as NativePlayer;
+        await np.setProperty('tls-verify', 'no');
+        await np.setProperty('insecure', 'yes');
+        await _applyLangPrefs(np, audioLang, subLang);
       }
     } catch (_) {}
     await player.open(Media(url, start: start), play: true);
   }
 
   /// Ouvre un fichier local. [start] = position de reprise (cf. [open]).
-  Future<void> openFile(String path, {Duration? start}) async {
+  Future<void> openFile(String path,
+      {Duration? start, String? audioLang, String? subLang}) async {
+    try {
+      if (player.platform is NativePlayer) {
+        await _applyLangPrefs(player.platform as NativePlayer, audioLang, subLang);
+      }
+    } catch (_) {}
     await player.open(Media('file://$path', start: start), play: true);
+  }
+
+  /// §trackLangPref — Préférence de langue audio/sous-titre posée AVANT l'open
+  /// via les options mpv `alang`/`slang`/`sid` : mpv sélectionne la bonne piste
+  /// **au chargement**, donc **aucun switch mid-stream** (qui re-demuxait le flux
+  /// ~3 s après le démarrage = l'effet « le film se relance »). [audioLang] /
+  /// [subLang] = code langue (ex. `fre`) ou null = laisser mpv choisir ;
+  /// `subLang == 'no'` = sous-titres désactivés.
+  Future<void> _applyLangPrefs(
+      NativePlayer np, String? audioLang, String? subLang) async {
+    if (audioLang != null && audioLang.isNotEmpty) {
+      await np.setProperty('alang', audioLang);
+    }
+    if (subLang == 'no') {
+      await np.setProperty('sid', 'no');
+    } else if (subLang != null && subLang.isNotEmpty) {
+      await np.setProperty('slang', subLang);
+    }
   }
 
   void dispose() => player.dispose();

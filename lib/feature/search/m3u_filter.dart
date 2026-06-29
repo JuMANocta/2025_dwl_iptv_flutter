@@ -14,15 +14,15 @@ import 'package:aetherStream/data/models/m3u_entry.dart';
 // existent toujours (via mots-clés / `_foreignRegionByCode`) mais ne sont pas
 // poussés en bas.
 const Set<String> kForeignRegionLabels = {
-  'Coréen', 'Turc', 'Maghrébin', 'Arabe', 'Indien', 'Ramadan',
+  'Coréen', 'Turc', 'Maghrébin', 'Algérie', 'Arabe', 'Indien', 'Ramadan',
   'Allemagne', 'Espagne', 'Italie', 'Russie', 'Brésil', 'Belgique',
   'Pologne', 'Portugal', 'Suisse', 'Scandinavie', 'Tchéquie', 'Croatie',
   'Grèce', 'Albanie', 'Arménie', 'Roumanie', 'Bosnie', 'Canada',
-  'Pays-Bas', 'Ex-Yougoslavie', 'Rép. Dominicaine',
+  'Pays-Bas', 'Ex-Yougoslavie', 'Rép. Dominicaine', 'Novidades',
 };
 
 const Map<String, String> _foreignRegionByCode = {
-  'IT': 'Italie', 'AR': 'Arabe', 'TR': 'Turc', 'PT': 'Portugal',
+  'IT': 'Italie', 'AR': 'Arabe', 'TR': 'Turc', 'DZ': 'Algérie', 'PT': 'Portugal',
   'ES': 'Espagne', 'ESP': 'Espagne', 'US': 'USA', 'UK': 'UK', 'GB': 'UK',
   'EN': 'UK', 'ENG': 'UK',
   'DE': 'Allemagne', 'RU': 'Russie', 'IN': 'Indien', 'NL': 'Pays-Bas',
@@ -40,10 +40,10 @@ const String kVoRegionLabel = 'VO (non-FR)';
 /// §langFilter — Régions/langues que l'utilisateur peut choisir de MASQUER
 /// (cases à cocher dans les réglages). Ordre alpha + VO en fin.
 const List<String> kHideableRegionLabels = [
-  'Allemagne', 'Arabe', 'Arménie', 'Albanie', 'Belgique', 'Brésil',
-  'Croatie', 'Espagne', 'Grèce', 'Indien', 'Italie', 'Pays-Bas', 'Pologne',
-  'Portugal', 'Roumanie', 'Russie', 'Scandinavie', 'Tchéquie', 'Turc',
-  'UK', 'USA', kVoRegionLabel,
+  'Algérie', 'Allemagne', 'Arabe', 'Arménie', 'Albanie', 'Belgique', 'Brésil',
+  'Croatie', 'Espagne', 'Grèce', 'Indien', 'Italie', 'Maghrébin', 'Novidades',
+  'Pays-Bas', 'Pologne', 'Portugal', 'Roumanie', 'Russie', 'Scandinavie',
+  'Tchéquie', 'Turc', 'UK', 'USA', kVoRegionLabel,
 ];
 
 /// §langFilter — Région d'une entrée À DES FINS DE FILTRAGE, déduite du préfixe
@@ -93,8 +93,13 @@ String? contentCategoryLabel(String? groupTitle) {
   if (g.contains('ENFANT') || g.contains('KIDS') || g.contains('JEUNESSE') ||
       g.contains('FAMILIALE') || g.contains('FAMILLE')) { return 'Jeunesse'; }
   if (g.contains('CORÉEN') || g.contains('KOREAN') || g.contains('KOREA')) return 'Coréen';
-  if (g.contains('TURC') || g.contains('TURQU') || g.contains('TÜRK')) return 'Turc';
+  if (g.contains('TURC') || g.contains('TURQU') || g.contains('TÜRK') || g.contains('TURK')) return 'Turc';
+  // Algérie AVANT Maghrébin : « Films Algériens » → catégorie dédiée (l'user
+  // veut un filtre distinct) ; le reste du Maghreb tombe dans 'Maghrébin'.
+  if (g.contains('ALGÉRI') || g.contains('ALGERI') || g.contains('ALGERIAN')) return 'Algérie';
   if (g.contains('MAGHRÉB') || g.contains('MAGHRÈB') || g.contains('MAGHREB')) return 'Maghrébin';
+  // « NOVIDADES LEG. » / « NOVIDADES DUB. » (catalogues lusophones) → label dédié.
+  if (g.contains('NOVIDADES')) return 'Novidades';
   if (g.contains('RAMADAN')) return 'Ramadan';
   if (g.contains('ARAB') || g.contains('العربية') || g.contains('عربية')) return 'Arabe';
   if (g.contains('INDIA') || g.contains('INDE') || g.contains('भारतीय')) return 'Indien';
@@ -135,7 +140,19 @@ String? contentCategoryLabel(String? groupTitle) {
   if (g.contains('CLASSIQUE') || g.contains('CLASSIC') || g.contains("70'S") || g.contains("80'S")) return 'Classiques';
   if (g.contains('OSCAR')) return 'Oscar';
   if (g.contains('BOX OFFICE')) return 'Box Office';
-  if (g.contains('RECEM') || g.contains('RÉCEMM')) return 'New';
+  // §newCatMerge — Toutes les formulations « récemment ajouté » tombent dans le
+  // même bucket « New » (sinon « Nouveauté(s) », « NEW », « Derniers ajouts »…
+  // créaient des rangées séparées en doublon de la rangée New par récence).
+  if (g.contains('RECEM') ||
+      g.contains('RÉCEMM') ||
+      g.contains('NOUVEAUT') ||
+      g.contains('NOUVEAU') ||
+      g.contains('DERNIERS AJOUT') ||
+      g.contains('AJOUTS RÉCENT') ||
+      g.contains('AJOUTS RECENT') ||
+      RegExp(r'\bNEW\b').hasMatch(g)) {
+    return 'New';
+  }
   if (g.contains('SÉLECTION') || g.contains('SELECTION')) return 'Sélection';
   if (g.contains('COUP DE COEUR')) return 'Coup de cœur';
   if (g.contains('FIN D\'AN') || g.contains('FIN D\'ANN')) return 'Fêtes';

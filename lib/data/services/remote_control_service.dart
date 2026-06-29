@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:dpad/dpad.dart';
 
 import '../../main.dart' show navigatorKey;
-import '../../feature/player/widgets/tv_player_shortcuts.dart';
+import '../../feature/player/player_action_handlers.dart';
 
 /// §webConsole Phase 2 — Pont "téléphone = télécommande".
 ///
@@ -50,6 +51,18 @@ class RemoteControlService {
   void registerPlayer(PlayerActionHandlers handlers) => _player = handlers;
   void clearPlayer(PlayerActionHandlers handlers) {
     if (identical(_player, handlers)) _player = null;
+  }
+
+  /// §dpadNav — Bouton MENU de la télécommande (physique ou web) : pendant la
+  /// lecture → bascule les contrôles ; sinon → ouvre le menu contextuel de
+  /// l'élément focusé (favoris/reprise), s'il en a un.
+  void invokeMenu() {
+    final player = _player;
+    if (player != null) {
+      player.toggleControls();
+      return;
+    }
+    _longPress?.call();
   }
 
   // ── Dispatch ─────────────────────────────────────────────────────────────
@@ -129,19 +142,18 @@ class RemoteControlService {
   }
 
   void _move(TraversalDirection dir) {
-    // §tvMove3by3 — On résout le scope depuis l'ÉLÉMENT FOCUSÉ, pas depuis la
-    // racine du Navigator. `FocusScope.of(navigatorContext)` renvoyait le scope
-    // racine → `focusInDirection` y traversait à travers les `FocusTraversalGroup`
-    // imbriqués et pouvait sauter plusieurs cartes ("3 par 3"). En partant du
-    // `primaryFocus`, on reproduit exactement le comportement du D-pad natif :
-    // un déplacement = une carte.
-    final focused = FocusManager.instance.primaryFocus;
-    if (focused != null) {
-      focused.focusInDirection(dir);
+    // §dpadNav — On délègue le déplacement au moteur `dpad` (nav par régions),
+    // exactement comme une vraie touche télécommande → un déplacement = un item,
+    // mémoire de région, auto-scroll. Fallback géométrique si Dpad absent.
+    final ctx = FocusManager.instance.primaryFocus?.context ??
+        navigatorKey.currentContext;
+    if (ctx == null) return;
+    final dpad = Dpad.maybeOf(ctx);
+    if (dpad != null) {
+      dpad.move(dir);
       return;
     }
-    final ctx = navigatorKey.currentContext;
-    if (ctx != null) FocusScope.of(ctx).focusInDirection(dir);
+    FocusManager.instance.primaryFocus?.focusInDirection(dir);
   }
 
   void _activateFocused() {

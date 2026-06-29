@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:dpad/dpad.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
@@ -54,17 +55,6 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
   /// §backExit — Horodatage du dernier Back sur l'onglet Accueil (double-back).
   DateTime? _lastBackPress;
 
-  /// §railExit — Scope dédié au contenu (la page active). Permet au rail TV
-  /// d'envoyer explicitement le focus dans le contenu sur flèche droite, même
-  /// si la traversée géométrique par défaut ne trouve pas de cible visible.
-  final FocusScopeNode _contentScopeNode = FocusScopeNode(debugLabel: 'content');
-
-  /// §railExit (bidir) — Scope dédié au rail. Permet de renvoyer
-  /// explicitement le focus dans le rail quand on quitte le contenu par la
-  /// gauche (sinon le FocusScope du contenu piège le focus → impossible de
-  /// revenir au menu sur Android TV).
-  final FocusScopeNode _railScopeNode = FocusScopeNode(debugLabel: 'rail');
-
   /// §lazyUnload — Timer périodique qui décharge de la mémoire les comptes
   /// secondaires non consultés depuis [_idleThreshold]. Le cache disque
   /// JSON.gz est conservé → rechargement ~50 ms quand un compte secondaire
@@ -113,8 +103,6 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
       windowManager.removeListener(this);
     }
     _idleUnloadTimer?.cancel();
-    _contentScopeNode.dispose();
-    _railScopeNode.dispose();
     super.dispose();
   }
 
@@ -143,25 +131,7 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
     }
   }
 
-  /// §railExit — Appelé quand l'utilisateur appuie ←→ sur le rail TV : on
-  /// focus le 1er focusable du contenu (en ordre de traversée). Fallback
-  /// implicite si le scope n'a rien (la home se reconstruit) → no-op.
-  void _focusContentArea() {
-    final first = _contentScopeNode.traversalDescendants
-        .where((n) => n.canRequestFocus && !n.skipTraversal)
-        .firstOrNull;
-    first?.requestFocus();
-  }
 
-  /// §railExit (bidir) — Symétrique de [_focusContentArea]. Appelé quand
-  /// le focus est dans le contenu et qu'on appuie ← au bord gauche : on
-  /// renvoie le focus sur la destination sélectionnée du rail.
-  void _focusRailArea() {
-    final first = _railScopeNode.traversalDescendants
-        .where((n) => n.canRequestFocus && !n.skipTraversal)
-        .firstOrNull;
-    first?.requestFocus();
-  }
 
   Future<void> _maybeShowBackExitHint() async {
     try {
@@ -215,38 +185,25 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
     );
 
     if (useRail) {
-      // §3c-6 — Layout TV / Wide : NavigationRail latéral, focusable au D-pad.
+      // §3c-6 + §dpadNav — Layout TV / Wide : NavigationRail latéral. Le
+      // franchissement rail ↔ contenu est géré nativement par `dpad` (régions
+      // + `edge: leave`).
       return _wrapBack(Scaffold(
         body: Row(
           children: [
-            FocusScope(
-              node: _railScopeNode,
+            DpadRegion(
+              debugLabel: 'rail',
+              verticalEdge: DpadEdgeBehavior.stop,
               child: _AppNavigationRail(
                 selectedIndex: _navIndex,
                 onDestinationSelected: _onTap,
                 onOpenSettings: _openSettingsTv,
-                onExitRight: _focusContentArea,
                 isFullScreen: _isFullScreen,
                 onToggleFullScreen: _toggleFullScreen,
               ),
             ),
             Expanded(
-              // §railExit (bidir) — Catch arrowLeft au niveau du contenu
-              child: Focus(
-                onKeyEvent: (node, event) {
-                  if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                  if (event.logicalKey != LogicalKeyboardKey.arrowLeft) {
-                    return KeyEventResult.ignored;
-                  }
-                  final moved = _contentScopeNode
-                      .focusInDirection(TraversalDirection.left);
-                  if (!moved) {
-                    _focusRailArea();
-                  }
-                  return KeyEventResult.handled;
-                },
-                child: FocusScope(node: _contentScopeNode, child: stack),
-              ),
+              child: DpadRegion(debugLabel: 'content', child: stack),
             ),
           ],
         ),
@@ -325,7 +282,6 @@ class _AppNavigationRail extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
   final VoidCallback onOpenSettings;
-  final VoidCallback? onExitRight;
   final bool isFullScreen;
   final VoidCallback onToggleFullScreen;
 
@@ -333,7 +289,6 @@ class _AppNavigationRail extends StatelessWidget {
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.onOpenSettings,
-    this.onExitRight,
     required this.isFullScreen,
     required this.onToggleFullScreen,
   });
@@ -342,17 +297,9 @@ class _AppNavigationRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isTv = PlatformTv.isTv;
-    return Focus(
-      onKeyEvent: (node, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
-            onExitRight != null) {
-          onExitRight!();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: NavigationRail(
+    // §dpadNav — Le franchissement vers le contenu (→) est géré par la
+    // `DpadRegion` parente (edge: leave). Plus de `Focus` custom ici.
+    return NavigationRail(
         selectedIndex: selectedIndex,
         minWidth: 64,
         groupAlignment: isTv ? 0.0 : -1.0,
@@ -404,7 +351,6 @@ class _AppNavigationRail extends StatelessWidget {
             label: Text('Paramètres'),
           ),
         ],
-      ),
-    );
+      );
   }
 }

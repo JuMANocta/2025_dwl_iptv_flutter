@@ -522,6 +522,7 @@ class _DetailsPageState extends State<DetailsPage> {
           _tmdbData    = results[1] as Media?;
           _isLoading   = false;
         });
+        _computeRelated();
       }
     } else {
       final data = await fetchFull(isTv: isSeries || _currentEpisode.isSerie);
@@ -530,8 +531,167 @@ class _DetailsPageState extends State<DetailsPage> {
           _tmdbData  = data;
           _isLoading = false;
         });
+        _computeRelated();
       }
     }
+  }
+
+  // ── §tmdbReco — Saga + titres similaires disponibles dans la playlist ──────
+  /// Groupes de la saga (collection) présents chez l'utilisateur, ordre TMDB.
+  List<List<M3uEntry>> _collection = const [];
+  String? _collectionName;
+  /// Recommandations TMDB présentes dans la playlist.
+  List<List<M3uEntry>> _similar = const [];
+
+  /// Calcule les rangées « Saga » et « Similaires » à partir de `_tmdbData`
+  /// (recommandations incluses dans la réponse, saga via un appel caché) en les
+  /// croisant avec la playlist du compte. Tolère l'absence de clé/données.
+  Future<void> _computeRelated() async {
+    final data = _tmdbData;
+    if (data == null) return;
+    final similar = _matchRefs(data.recommendations);
+    List<List<M3uEntry>> collection = const [];
+    String? collName;
+    if (data.collectionId != null) {
+      final parts =
+          await TmdbService.instance.getCollectionTitles(data.collectionId!);
+      final matched = _matchRefs(parts, max: 30);
+      if (matched.isNotEmpty) {
+        collection = matched;
+        collName = data.collectionName;
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _similar = similar;
+        _collection = collection;
+        _collectionName = collName;
+      });
+    }
+  }
+
+  /// Croise une liste de refs TMDB (titre + année) avec les groupes de la
+  /// playlist (même type), via `computeGroupKey` (la clé de regroupement de
+  /// l'app) + proximité d'année (anti-homonyme). Exclut le titre courant.
+  List<List<M3uEntry>> _matchRefs(List<MediaRef> refs, {int max = 18}) {
+    if (refs.isEmpty) return const [];
+    final type = widget.entry.type;
+    final entries =
+        ParsedPlaylistService.byTypeWithPriority(widget.entry.accountId)[type] ??
+            const <M3uEntry>[];
+    final byKey = <String, List<M3uEntry>>{};
+    for (final e in entries) {
+      byKey.putIfAbsent(contentGroupKey(e), () => []).add(e);
+    }
+    final out = <List<M3uEntry>>[];
+    final seen = <String>{contentGroupKey(widget.entry)};
+    for (final ref in refs) {
+      final key = TitleMetadata.computeGroupKey(ref.title);
+      if (seen.contains(key)) continue;
+      final g = byKey[key];
+      if (g == null || g.isEmpty) continue;
+      // Proximité d'année (±1) si les deux années sont connues.
+      final ry = int.tryParse(ref.year ?? '');
+      final gy = int.tryParse(g.first.title.year ?? '');
+      if (ry != null && gy != null && (ry - gy).abs() > 1) continue;
+      out.add(g);
+      seen.add(key);
+      if (out.length >= max) break;
+    }
+    return out;
+  }
+
+  /// §tmdbBadges — Badges des LANGUES dispo (MULTI/VF/VOSTFR) uniquement.
+  /// La certification d'âge est inline dans la rangée métadonnées ; la qualité
+  /// est déjà listée dans les chips de version → on ne la reduplique pas ici.
+  /// Vide → `SizedBox.shrink` (aucun espace réservé).
+  Widget _buildBadges(ColorScheme cs) {
+    final vers = _uniqueVersions.isNotEmpty ? _uniqueVersions : widget.versions;
+    final langs = <String>{};
+    for (final e in vers) {
+      langs.addAll(e.title.languages);
+    }
+    final badges = <Widget>[
+      for (final l in const ['MULTI', 'VF', 'VOSTFR'])
+        if (langs.contains(l)) _badge(l, _langColor(l)),
+    ];
+    if (badges.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(spacing: 8, runSpacing: 8, children: badges),
+    );
+  }
+
+  /// Pastille de badge : contour teinté (défaut) ou plein (certification).
+  Widget _badge(String text, Color color,
+      {bool filled = false, IconData? icon}) {
+    final fg = filled ? Colors.black : color;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withAlpha(filled ? 235 : 36),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withAlpha(filled ? 235 : 120)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: fg),
+            const SizedBox(width: 4),
+          ],
+          Text(text,
+              style: TextStyle(
+                  color: fg,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.2)),
+        ],
+      ),
+    );
+  }
+
+  Color _langColor(String l) {
+    switch (l) {
+      case 'MULTI':
+        return kLangMulti;
+      case 'VOSTFR':
+        return kLangVOSTFR;
+      case 'VF':
+        return kLangVF;
+      default:
+        return kAccentSecondary;
+    }
+  }
+
+  /// §tmdbReco — Rangée horizontale de titres liés (saga / similaires).
+  Widget _relatedRow(
+      String title, List<List<M3uEntry>> groups, ColorScheme cs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title,
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(color: cs.onSurfaceVariant)),
+        Divider(color: cs.outlineVariant),
+        SizedBox(
+          // poster 104×156 + gap + titre 2 lignes + marge textScaler TV ×1.3.
+          height: 230,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            // ignore: deprecated_member_use
+            cacheExtent: 600,
+            itemCount: groups.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (_, i) => _RelatedCard(group: groups[i]),
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
   }
 
   Future<void> _searchActor(String actorName) async {
@@ -811,6 +971,13 @@ class _DetailsPageState extends State<DetailsPage> {
                         const SizedBox(width: 8),
                         _buildMetaTag(_tmdbData!.runtimeOrEpisodeLength!, cs.onSurfaceVariant),
                       ],
+                      // §tmdbBadges — Certification d'âge (PEGI/CSA) au même
+                      // niveau que la date / durée / note.
+                      if (_tmdbData?.certification?.trim().isNotEmpty == true) ...[
+                        const SizedBox(width: 10),
+                        _badge(_tmdbData!.certification!.trim(), kWarning,
+                            filled: true, icon: Icons.shield_outlined),
+                      ],
                       const Spacer(),
                       if (rating > 0) ...[
                         Icon(Icons.star_rounded, color: kWarning, size: 18),
@@ -823,7 +990,10 @@ class _DetailsPageState extends State<DetailsPage> {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
+
+                  // §tmdbBadges — Badges des langues dispo (MULTI/VF/VOSTFR).
+                  _buildBadges(cs),
 
                   // §quickwin — CTA discret si aucune clé TMDB configurée.
                   if (!_hasTmdbKey) ...[
@@ -834,7 +1004,7 @@ class _DetailsPageState extends State<DetailsPage> {
                   // ── SÉRIES : navigation immédiate ──────────────────────────
                   if (isSeries) ...[
                     _buildSeriesNavigator(cs, l10n),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                   ],
 
                   // ── FILMS : qualités + actions ──────────────────────────────
@@ -850,7 +1020,7 @@ class _DetailsPageState extends State<DetailsPage> {
                         child: SizedBox(
                             width: double.infinity, child: _buildTrailerButton()),
                       ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                   ],
 
                   // SYNOPSIS : épisode si sélectionné, série sinon
@@ -866,14 +1036,14 @@ class _DetailsPageState extends State<DetailsPage> {
                       style: TextStyle(
                           color: cs.onSurfaceVariant, height: 1.55, fontSize: 14),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                   ],
 
                   // BANDE-ANNONCE — série tant qu'on est en contexte SÉRIE
                   // (aucun épisode en contexte épisode : défaut E01 inclus).
                   if (isSeries && !showEpisodeContext && _tmdbData?.trailerKey != null) ...[
                     SizedBox(width: double.infinity, child: _buildTrailerButton()),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                   ],
 
                   // CASTING — vignettes acteurs avec photo (carrousel horizontal)
@@ -901,7 +1071,7 @@ class _DetailsPageState extends State<DetailsPage> {
                             _CastCard(member: _tmdbData!.castMembers[i]),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                   ]
                   // Fallback : anciens noms seuls si pas de casting enrichi.
                   else if (hasTmdb && _tmdbData!.cast.isNotEmpty) ...[
@@ -928,7 +1098,7 @@ class _DetailsPageState extends State<DetailsPage> {
                               ))
                           .toList(),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                   ],
 
                   // GENRES (toujours — TMDB ou provider §23)
@@ -947,7 +1117,7 @@ class _DetailsPageState extends State<DetailsPage> {
                               ))
                           .toList(),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                   ],
 
                   // PLATEFORMES (toujours)
@@ -980,7 +1150,7 @@ class _DetailsPageState extends State<DetailsPage> {
                             );
                           }).toList(),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
                       ],
                     );
                   }),
@@ -993,8 +1163,23 @@ class _DetailsPageState extends State<DetailsPage> {
                       'Production: ${_tmdbData!.productionCompanies}',
                       style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
                     ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 16),
                   ],
+
+                  // ── À DÉCOUVRIR (en fin de fiche) ──────────────────────────
+                  // §tmdbReco — Saga (collection) puis titres similaires dispo :
+                  // placés APRÈS toutes les infos du film pour ne pas couper le
+                  // bloc d'identité (synopsis/casting/genres/prod).
+                  if (_collection.isNotEmpty)
+                    _relatedRow(
+                      _collectionName != null
+                          ? 'Saga : $_collectionName'
+                          : 'Même saga',
+                      _collection,
+                      cs,
+                    ),
+                  if (_similar.isNotEmpty)
+                    _relatedRow('Titres similaires disponibles', _similar, cs),
 
                   // LOADING
                   if (_isLoading && !isSeries)
@@ -1819,6 +2004,75 @@ class _CastCard extends StatelessWidget {
                       style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
                     ),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// §tmdbReco — Vignette d'un titre lié (saga / similaire) : affiche 2:3 + titre,
+/// tap → ouvre la fiche du titre. Focusable au D-pad.
+class _RelatedCard extends StatelessWidget {
+  final List<M3uEntry> group;
+  const _RelatedCard({required this.group});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final entry = group.first;
+    final poster = ParsedPlaylistService.bestLogoUrl(group) ??
+        ParsedPlaylistService.bestBackdropUrl(group);
+    // Poster à TAILLE FIXE (pas d'AspectRatio dépendant de la largeur) : évite
+    // l'overflow vertical de la Column quand le titre prend 2 lignes (TV ×1.3).
+    const double w = 104, h = 156;
+    Widget placeholder() => Container(
+          width: w,
+          height: h,
+          color: cs.surfaceContainerHighest,
+          alignment: Alignment.center,
+          child: Icon(Icons.movie_outlined, color: cs.onSurfaceVariant),
+        );
+    return SizedBox(
+      width: w,
+      child: FocusableCard(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DetailsPage(entry: entry, versions: group),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: (poster != null && poster.isNotEmpty)
+                  ? Image.network(
+                      poster,
+                      width: w,
+                      height: h,
+                      fit: BoxFit.cover,
+                      cacheWidth: 240,
+                      gaplessPlayback: true,
+                      errorBuilder: (_, __, ___) => placeholder(),
+                    )
+                  : placeholder(),
+            ),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+              child: Text(
+                entry.displayName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: cs.onSurface,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500),
               ),
             ),
           ],

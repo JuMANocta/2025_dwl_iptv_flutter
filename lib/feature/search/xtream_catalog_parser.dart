@@ -61,13 +61,18 @@ class XtreamCatalogParser {
   final user = Uri.encodeComponent((data['user'] ?? '').toString());
   final pass = Uri.encodeComponent((data['pass'] ?? '').toString());
 
-  // §langFilter — Une entrée dont la région (préfixe `|XX|` du nom) est masquée
-  // est SAUTÉE → jamais stockée. Court-circuit si rien n'est masqué.
+  // §langFilter + §langFilterCat — Une entrée dont la région est masquée est
+  // SAUTÉE → jamais stockée. La région est détectée par le **préfixe `|XX|` du
+  // titre** (`entryRegionLabel`) OU par sa **catégorie** ([cat] =
+  // `contentCategoryLabel(groupTitle)`) : certains providers encodent la région
+  // dans la CATÉGORIE (ex. « Films Italiens ») et pas dans le titre → sans ce
+  // 2e test, la rangée région réapparaissait. Court-circuit si rien n'est masqué.
   final filterOn = args.hidden.isNotEmpty;
-  bool isHidden(String name) {
+  bool isHidden(String name, String? cat) {
     if (!filterOn) return false;
     final r = entryRegionLabel(name);
-    return r != null && args.hidden.contains(r);
+    if (r != null && args.hidden.contains(r)) return true;
+    return cat != null && args.hidden.contains(cat);
   }
 
   // ── Live (chaînes TV) ─────────────────────────────────────────────────────
@@ -75,8 +80,9 @@ class XtreamCatalogParser {
     if (item is! Map<String, dynamic>) continue;
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
-    if (id.isEmpty || name.isEmpty || isHidden(name)) continue;
     final groupTitle = _str(item['_cat']);
+    final cat = contentCategoryLabel(groupTitle);
+    if (id.isEmpty || name.isEmpty || isHidden(name, cat)) continue;
     // Replay Xtream : `tv_archive` = 1 + durée en jours → alimente le même
     // champ `catchupDays` que l'attribut M3U `catchup-days` (bonus vs l'ancien
     // builder M3U qui perdait cette info).
@@ -96,7 +102,7 @@ class XtreamCatalogParser {
       tvgId: _str(item['epg_channel_id']),
       catchupDays: catchupDays,
       groupTitle: groupTitle,
-      category: contentCategoryLabel(groupTitle),
+      category: cat,
     ));
   }
 
@@ -105,9 +111,10 @@ class XtreamCatalogParser {
     if (item is! Map<String, dynamic>) continue;
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
-    if (id.isEmpty || name.isEmpty || isHidden(name)) continue;
-    final ext = (item['container_extension'] ?? 'mp4').toString();
     final groupTitle = _str(item['_cat']);
+    final cat = contentCategoryLabel(groupTitle);
+    if (id.isEmpty || name.isEmpty || isHidden(name, cat)) continue;
+    final ext = (item['container_extension'] ?? 'mp4').toString();
 
     films.add(M3uEntry(
       url: '$host/movie/$user/$pass/$id.$ext',
@@ -117,7 +124,7 @@ class XtreamCatalogParser {
       logoUrl: _str(item['stream_icon']),
       streamId: int.tryParse(id),
       groupTitle: groupTitle,
-      category: contentCategoryLabel(groupTitle),
+      category: cat,
       tmdbId: _str(item['tmdb_id']),
       rating: _rating(item['rating']),
       addedAt: _unixSeconds(item['added']),
@@ -129,8 +136,9 @@ class XtreamCatalogParser {
     if (item is! Map<String, dynamic>) continue;
     final id = (item['series_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
-    if (id.isEmpty || name.isEmpty || isHidden(name)) continue;
     final groupTitle = _str(item['_cat']);
+    final cat = contentCategoryLabel(groupTitle);
+    if (id.isEmpty || name.isEmpty || isHidden(name, cat)) continue;
     final backdrops = item['backdrop_path'];
 
     series.add(M3uEntry(
@@ -144,7 +152,7 @@ class XtreamCatalogParser {
       logoUrl: _str(item['cover']),
       streamId: int.tryParse(id),
       groupTitle: groupTitle,
-      category: contentCategoryLabel(groupTitle),
+      category: cat,
       tmdbId: _str(item['tmdb_id']),
       plot: _str(item['plot']),
       genre: _htmlDecode(_str(item['genre'])),
