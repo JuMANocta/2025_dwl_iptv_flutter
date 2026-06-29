@@ -115,11 +115,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// Souscription au stream d'erreur, à canceller pour éviter une fuite.
   StreamSubscription<String>? _errorSub;
 
-  /// §5 — Souscription aux pistes : applique la préférence audio/sous-titre une
-  /// seule fois (à la première émission où les pistes réelles sont peuplées).
-  StreamSubscription? _tracksSub;
-  bool _trackPrefsApplied = false;
-
   /// Timer de reconnexion automatique en attente — annulable depuis le lifecycle
   /// observer pour ne pas continuer à retry quand l'app passe en arrière-plan.
   Timer? _pendingRetryTimer;
@@ -170,7 +165,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     );
     _listenErrors();
     _listenPlaybackForWakelock();
-    _listenTracksForPrefs();
     WidgetsBinding.instance.addObserver(this);
     _openMedia();
     _startHideTimer();
@@ -290,10 +284,17 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       // repart à 0 (le seek post-open était avalé par media_kit v2). Pas de
       // reprise pour les sources live/replay (`_skipProgress`).
       final start = (_skipProgress) ? null : widget.startPosition;
+      // §trackLangPref — Préférence de langue posée AVANT l'open (mpv choisit la
+      // piste au chargement → plus de switch/re-demux ~3 s = « le film se
+      // relance »). Pas pour live/replay.
+      final audioLang = _skipProgress ? null : TrackPreferencesService.audio;
+      final subLang = _skipProgress ? null : TrackPreferencesService.subtitle;
       if (widget.sourceType == VideoSourceType.file) {
-        await _ctrl.openFile(_currentPath, start: start);
+        await _ctrl.openFile(_currentPath,
+            start: start, audioLang: audioLang, subLang: subLang);
       } else {
-        await _ctrl.open(_currentPath, start: start);
+        await _ctrl.open(_currentPath,
+            start: start, audioLang: audioLang, subLang: subLang);
       }
     } catch (e) {
       _handleError(e.toString());
@@ -303,58 +304,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// §5 — Applique la préférence de langue audio / sous-titre dès que les pistes
   /// réelles sont peuplées (libmpv les remplit après le début de lecture), puis
   /// se désabonne pour ne JAMAIS écraser un choix manuel fait ensuite.
-  void _listenTracksForPrefs() {
-    // Live/replay : flux mono-piste en général + pas de reprise → on n'applique
-    // pas de préférence (évite un re-buffer inutile au démarrage du direct).
-    if (_skipProgress) return;
-    if (TrackPreferencesService.audio == null &&
-        TrackPreferencesService.subtitle == null) {
-      return;
-    }
-    _tracksSub = _ctrl.player.stream.tracks.listen((tracks) {
-      if (_trackPrefsApplied) return;
-      // Tant qu'il n'y a que les entrées par défaut (auto/no), les vraies pistes
-      // ne sont pas encore chargées.
-      if (tracks.audio.length <= 1 && tracks.subtitle.length <= 1) return;
-      _trackPrefsApplied = true;
-      _applyTrackPrefs(tracks);
-      _tracksSub?.cancel();
-      _tracksSub = null;
-    });
-  }
-
-  void _applyTrackPrefs(Tracks tracks) {
-    // §trackNoRebuffer — NE PAS ré-appliquer une piste DÉJÀ active : appeler
-    // setAudioTrack/setSubtitleTrack force libmpv à re-demuxer → re-buffer juste
-    // après le démarrage (effet « le film se relance »). On ne switch que si la
-    // piste préférée DIFFÈRE de la piste courante (cas fréquent : la préférence
-    // correspond déjà au flux par défaut → on ne touche à rien).
-    final cur = _ctrl.player.state.track;
-
-    final aPref = TrackPreferencesService.audio;
-    if (aPref != null) {
-      for (final t in tracks.audio) {
-        if ((t.language ?? t.id) == aPref) {
-          if (t.id != cur.audio.id) _ctrl.player.setAudioTrack(t);
-          break;
-        }
-      }
-    }
-    final sPref = TrackPreferencesService.subtitle;
-    if (sPref == 'no') {
-      if (cur.subtitle.id != 'no') {
-        _ctrl.player.setSubtitleTrack(SubtitleTrack.no());
-      }
-    } else if (sPref != null) {
-      for (final t in tracks.subtitle) {
-        if ((t.language ?? t.id) == sPref) {
-          if (t.id != cur.subtitle.id) _ctrl.player.setSubtitleTrack(t);
-          break;
-        }
-      }
-    }
-  }
-
   /// §5 — Ouvre le sélecteur de pistes audio/sous-titres. Suspend l'auto-hide
   /// le temps du sheet, puis le réarme. §dpadNav : le retour de focus sur la
   /// vidéo est géré nativement par `dpad` (`restoreFocus`).
@@ -549,7 +498,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _saveProgress(); // dernière sauvegarde à la sortie du player
     _playingSub?.cancel();
     _errorSub?.cancel();
-    _tracksSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _releaseWakelock();
     _ctrl.dispose();

@@ -10,7 +10,15 @@ class _HomeCard extends StatefulWidget {
   /// (130 pour films/séries en carousel, 120 pour TV en carousel).
   final double? width;
 
-  const _HomeCard({required this.versions, required this.type, this.width});
+  /// §dpadRowEntry — `true` pour la 1re carte (gauche) d'un carrousel : point
+  /// d'entrée dpad de la rangée → ↓ depuis une rangée du dessus se cale à gauche.
+  final bool isEntry;
+
+  const _HomeCard(
+      {required this.versions,
+      required this.type,
+      this.width,
+      this.isEntry = false});
 
   @override
   State<_HomeCard> createState() => _HomeCardState();
@@ -327,6 +335,7 @@ class _HomeCardState extends State<_HomeCard> {
     // par FocusableCard ; sur mobile, FocusableCard est neutre.
     return FocusableCard(
       decorateOnly: true,
+      entry: widget.isEntry,
       onTap: _onTap,
       onLongPress: _onLongPress,
       borderRadius: BorderRadius.circular(12),

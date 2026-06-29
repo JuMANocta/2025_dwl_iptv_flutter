@@ -117,6 +117,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _initialPageIndex);
+    // §dpadNav — Sur TV, on épingle la PageView (cf. _pinPageOnTv) : l'auto-scroll
+    // de dpad ne doit pas la faire glisser vers Séries/Chaînes.
+    if (PlatformTv.isTv) _pageController.addListener(_pinPageOnTv);
     _searchCtrl.addListener(_onSearchTextChanged);
     _searchFocus.addListener(_onSearchFocusChanged);
     _activeAccountId = widget.initialData.accountId;
@@ -293,11 +296,31 @@ class _HomePageState extends State<HomePage> with RouteAware {
   }
 
   void _goToPage(int i) {
+    if (PlatformTv.isTv) {
+      // §dpadNav — Changement de section INSTANTANÉ sur TV (pas de glissement
+      // horizontal de la PageView, donc plus de « secousse »). On fixe l'index
+      // AVANT le jump pour que le pin (_pinPageOnTv) ne l'annule pas.
+      if (_currentIndex != i) setState(() => _currentIndex = i);
+      _pageController.jumpToPage(i);
+      return;
+    }
     _pageController.animateToPage(
       i,
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeInOut,
     );
+  }
+
+  /// §dpadNav — TV : repince la PageView sur la page courante dès qu'un
+  /// auto-scroll dpad (`ensureVisible`) la pousse de quelques pixels (ce qui
+  /// donnait l'effet de saut ←/→ vers Séries/Chaînes quand on navigue dans une
+  /// rangée). Corrigé dans la même frame → aucun flicker visible. Le changement
+  /// d'onglet volontaire passe `_currentIndex` d'abord (cf. _goToPage) → non annulé.
+  void _pinPageOnTv() {
+    if (!_pageController.hasClients) return;
+    final page = _pageController.page;
+    if (page == null || page == _currentIndex.toDouble()) return;
+    _pageController.jumpToPage(_currentIndex);
   }
 
   /// §3c Phase 2 — Wrappe une page du PageView pour la navigation TV :
@@ -981,8 +1004,8 @@ class _TypePage extends StatefulWidget {
 class _TypePageState extends State<_TypePage> {
   /// Limite d'items affichés dans un carrousel/grille de catégorie sur la home.
   /// Au-delà, un tile "Voir tout" est ajouté qui ouvre [CategoryListPage].
-  /// Réduit de 25 → 15 (§ergo) : carrousels plus courts = scroll horizontal
-  /// allégé (surtout au D-pad TV) et moins d'affiches TMDB à résoudre/charger.
+  /// §carousel25 — Remonté à 25 (carrousels plus fournis ; le ListView reste
+  /// lazy donc sans surcoût, et « Voir tout » prend le relais au-delà).
   static const int _maxItemsPerCategory = 15;
 
   // ── Caches (memoization) — §perfBigList ─────────────────────────────────
@@ -1070,11 +1093,11 @@ class _TypePageState extends State<_TypePage> {
     final categories = _cachedCategories!;
 
     // §heroFan — Composition du hero :
-    //   - films/séries : 5 reprise (triées lastWatched desc) + 5 nouveautés
-    //     prioritaires non-déjà-incluses → max 10 cartes empilées
-    //   - TV : pas de notion "en cours" (live) → max 5 cartes catégorie prio
-    const maxFeatured = 10;
-    const maxResume = 5;
+    //   - films/séries : reprise (triées lastWatched desc) + tendances TMDB
+    //     prioritaires non-déjà-incluses → max 15 cartes empilées (hero étoffé)
+    //   - TV : pas de notion "en cours" (live) → favoris / catégorie prio
+    const maxFeatured = 15;
+    const maxResume = 8;
     final featured = <List<M3uEntry>>[];
 
     if (widget.type != M3uContentType.tv) {

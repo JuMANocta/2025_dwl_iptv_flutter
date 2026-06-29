@@ -44,6 +44,12 @@ class FocusableCard extends StatefulWidget {
   /// alors un voile teinté à la place (focus visible sans débordement).
   final bool scaleOnFocus;
 
+  /// §dpadRowEntry — Marque cette carte comme **point d'entrée** de sa
+  /// `DpadRegion` : quand le focus entre dans la rangée sans mémoire (1re visite),
+  /// dpad se cale ici (ex. la carte la plus à gauche d'un carrousel) au lieu de
+  /// l'item géométriquement le plus proche (qui restait « à fond à droite »).
+  final bool entry;
+
   const FocusableCard({
     super.key,
     required this.child,
@@ -55,6 +61,7 @@ class FocusableCard extends StatefulWidget {
     this.decorateOnly = false,
     this.backgroundColor,
     this.scaleOnFocus = true,
+    this.entry = false,
   });
 
   @override
@@ -104,6 +111,7 @@ class _FocusableCardState extends State<FocusableCard> {
 
     return DpadFocusable(
       autofocus: widget.autofocus,
+      entry: widget.entry,
       onSelect: widget.onTap,
       onLongSelect: widget.onLongPress,
       // Tap tactile déjà géré (InkWell ou enfant) → on évite le double-fire.

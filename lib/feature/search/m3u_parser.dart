@@ -98,12 +98,16 @@ class M3uParser {
           title = parts.length > 1 ? parts[1].trim() : null;
         }
 
-        // §langFilter — saute les entrées d'une région masquée (court-circuit
-        // si rien n'est masqué).
+        // §langFilter + §langFilterCat — saute les entrées d'une région masquée :
+        // région détectée par le préfixe `|XX|` du TITRE OU par la CATÉGORIE
+        // (`contentCategoryLabel(groupTitle)` ; certains providers encodent la
+        // région dans le group-title). Court-circuit si rien n'est masqué.
         final hiddenEntry = hidden.isNotEmpty &&
             () {
               final r = entryRegionLabel(title ?? '');
-              return r != null && hidden.contains(r);
+              if (r != null && hidden.contains(r)) return true;
+              final cat = contentCategoryLabel(groupTitle);
+              return cat != null && hidden.contains(cat);
             }();
         if (title != null && title.isNotEmpty && !hiddenEntry) {
           _addEntry(

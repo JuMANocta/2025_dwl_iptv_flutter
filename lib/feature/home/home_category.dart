@@ -125,10 +125,12 @@ class _CategoryRow extends StatelessWidget {
                   final tileWidth =
                       (constraints.maxWidth - spacing * (cols - 1)) / cols;
                   final tiles = <Widget>[
-                    ...groups.map((g) => _HomeCard(
-                          versions: g,
+                    ...groups.asMap().entries.map((e) => _HomeCard(
+                          versions: e.value,
                           type: type,
                           width: tileWidth,
+                          // §dpadRowEntry — 1re tuile = point d'entrée de la grille.
+                          isEntry: e.key == 0,
                         )),
                     if (hasMore)
                       _SeeAllTile(
@@ -200,6 +202,9 @@ class _CategoryRow extends StatelessWidget {
                           versions: groups[i],
                           type: type,
                           width: cardW,
+                          // §dpadRowEntry — 1re carte = point d'entrée de la
+                          // rangée (↓ se cale à gauche, pas à droite).
+                          isEntry: i == 0,
                         );
                       },
                     ),

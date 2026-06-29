@@ -26,6 +26,10 @@ class TmdbService {
   final Map<bool, DateTime> _trendingCacheAt = {};
   static const Duration _trendingTtl = Duration(hours: 24);
 
+  /// §tmdbReco — Cache des films d'une saga (collection), keyé par collectionId.
+  /// Les collections ne changent quasi jamais → cache pour la session.
+  final Map<int, List<MediaRef>> _collectionCache = {};
+
   static TmdbService? _instance;
   static TmdbService get instance {
     _instance ??= TmdbService._internal();
@@ -184,13 +188,53 @@ class TmdbService {
         isTv ? '/tv/$id' : '/movie/$id',
         queryParameters: {
           'language': 'fr-FR',
-          'append_to_response': 'credits,videos',
+          // §tmdbReco — recommandations + (films) belongs_to_collection dans la
+          // MÊME réponse (zéro appel réseau en plus pour les « similaires »).
+          // §tmdbBadges — release_dates (films) / content_ratings (séries) pour
+          // la certification d'âge (badge « 12 », « 16 », « TP »…).
+          'append_to_response':
+              'credits,videos,recommendations,release_dates,content_ratings',
         },
       );
       return Media.fromJson(detailResponse.data);
     } catch (e) {
       debugPrint('⚠️ TMDB byId($id, isTv=$isTv) échec : $e — fallback recherche titre');
       return null;
+    }
+  }
+
+  /// §tmdbReco — Films d'une saga/collection TMDB (`/collection/{id}` → `parts`),
+  /// triés par date de sortie. Cachés pour la session. Liste vide si pas de clé
+  /// ou échec.
+  Future<List<MediaRef>> getCollectionTitles(int collectionId) async {
+    final cached = _collectionCache[collectionId];
+    if (cached != null) return cached;
+    if (!await _init()) return const [];
+    try {
+      final resp = await _dio!.get('/collection/$collectionId',
+          queryParameters: {'language': 'fr-FR'});
+      final parts = (resp.data['parts'] as List<dynamic>?) ?? const [];
+      final list = <MediaRef>[];
+      for (final p in parts) {
+        if (p is! Map<String, dynamic>) continue;
+        final pid = p['id'] as int?;
+        final ptitle = (p['title'] ?? p['name']) as String?;
+        if (pid == null || ptitle == null || ptitle.isEmpty) continue;
+        final pdate = (p['release_date'] ?? p['first_air_date']) as String?;
+        list.add(MediaRef(
+          id: pid,
+          title: ptitle,
+          year:
+              (pdate != null && pdate.length >= 4) ? pdate.substring(0, 4) : null,
+        ));
+      }
+      // Tri par année croissante (ordre chronologique de la saga).
+      list.sort((a, b) => (a.year ?? '9999').compareTo(b.year ?? '9999'));
+      _collectionCache[collectionId] = list;
+      return list;
+    } catch (e) {
+      debugPrint('⚠️ TMDB collection($collectionId) échec : $e');
+      return const [];
     }
   }
 
