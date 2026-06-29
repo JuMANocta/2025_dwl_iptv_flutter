@@ -15,7 +15,6 @@ import 'data/services/last_watched_channel_service.dart';
 import 'data/services/hidden_regions_service.dart';
 import 'data/services/track_preferences_service.dart';
 import 'core/navigation/main_navigation.dart';
-import 'core/navigation/tv_back_handler.dart';
 import 'data/services/expiration_alert_service.dart';
 import 'feature/accounts/accounts_page.dart';
 import 'feature/accounts/expiration_alert_dialog.dart';
@@ -27,6 +26,7 @@ import 'data/services/pairing_service.dart';
 import 'data/services/playlist_service.dart';
 import 'data/services/tmdb_api_service.dart';
 import 'data/services/tmdb_service.dart';
+import 'data/services/remote_control_service.dart';
 import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
 import 'core/themes/theme_service.dart';
@@ -35,6 +35,7 @@ import 'data/services/update_service.dart';
 import 'data/services/xmltv_service.dart';
 import 'feature/update/update_dialog.dart';
 import 'core/utils/platform_tv.dart';
+import 'package:dpad/dpad.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// Clé globale pour le Navigator, permettant une navigation programmatique sans `BuildContext`.
@@ -124,6 +125,39 @@ class MyApp extends StatelessWidget {
     );
   }
 
+  /// §dpadNav — Dernier appui Back (debounce anti double-pop, repris de l'ancien
+  /// TvBackHandler). Static car [MyApp] est un widget immuable (const).
+  static DateTime _lastBack = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// §dpadNav — Thème de focus global (reproduit §focusVisibility avec la couleur
+  /// du thème actif) : effet par défaut des `DpadFocusable` sans `effects` propres.
+  DpadThemeData _dpadTheme(AppThemeConfig config) {
+    final r = BorderRadius.circular(config.borderRadius);
+    return DpadThemeData(
+      scrollPadding: 56,
+      effects: [
+        const DpadScaleEffect(scale: 1.05),
+        DpadBorderEffect(color: config.primaryColor, width: 2.6, borderRadius: r),
+        DpadGlowEffect(color: config.primaryColor, opacity: 0.5, borderRadius: r),
+      ],
+    );
+  }
+
+  /// §dpadNav — Touche Retour : pop la route courante si possible (debounce
+  /// 350 ms). Retourne `true` si consommé. Si rien à pop → `false` (le système
+  /// gère, ex. quitter l'app).
+  bool _handleDpadBack() {
+    final nav = navigatorKey.currentState;
+    if (nav == null || !nav.canPop()) return false;
+    final now = DateTime.now();
+    if (now.difference(_lastBack) < const Duration(milliseconds: 350)) {
+      return true; // ignore les répétitions trop rapprochées
+    }
+    _lastBack = now;
+    nav.maybePop();
+    return true;
+  }
+
   Widget _buildApp(AppThemeConfig config) {
     return MaterialApp(
       navigatorKey: navigatorKey,
@@ -165,14 +199,31 @@ class MyApp extends StatelessWidget {
             data: mq.copyWith(textScaler: scaled),
             child: wrapped,
           );
-          // §bug Back TV — handler global de la touche Retour (le bouton Back
-          // des télécommandes Android TV / Fire TV arrive en key event `goBack`
-          // que rien d'autre ne mappe). Dernier recours : maybePop().
-          wrapped = TvBackHandler(
-            navigatorKey: navigatorKey,
-            child: wrapped,
-          );
         }
+
+        // §dpadNav — Racine de la navigation D-pad (package `dpad`). Installée
+        // sur TOUTES les plateformes (requise par FocusableCard/FocusableChip et
+        // bénéfique au clavier desktop ; inerte au tactile mobile). Remplace
+        // l'ancien TvBackHandler : la touche Retour est gérée par `onBack`.
+        wrapped = Dpad(
+          theme: _dpadTheme(config),
+          keySet: const DpadKeySet().copyWith(
+            back: const [
+              LogicalKeyboardKey.escape,
+              LogicalKeyboardKey.goBack,
+              LogicalKeyboardKey.gameButtonB,
+              LogicalKeyboardKey.browserBack,
+            ],
+            menu: const [
+              LogicalKeyboardKey.contextMenu,
+              LogicalKeyboardKey.info,
+              LogicalKeyboardKey.gameButtonY,
+            ],
+          ),
+          onBack: _handleDpadBack,
+          onMenu: () => RemoteControlService.instance.invokeMenu(),
+          child: wrapped,
+        );
 
         if (isDebug) {
           wrapped = Banner(

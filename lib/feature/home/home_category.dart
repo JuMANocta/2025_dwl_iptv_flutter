@@ -4,8 +4,10 @@ part of 'home_page.dart';
 
 class _CategoryRow extends StatelessWidget {
   final String category;
+
   /// Groupes effectivement affichés dans le carrousel/grille (max 25).
   final List<List<M3uEntry>> groups;
+
   /// Liste complète, transmise à [CategoryListPage] quand l'utilisateur
   /// tape sur "Voir tout".
   final List<List<M3uEntry>> allGroups;
@@ -77,9 +79,11 @@ class _CategoryRow extends StatelessWidget {
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: kAccentPrimary)),
-                      label: Icon(Icons.chevron_right, size: 18, color: kAccentPrimary),
+                      label: Icon(Icons.chevron_right,
+                          size: 18, color: kAccentPrimary),
                       style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 0),
                         minimumSize: const Size(0, 28),
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
@@ -87,7 +91,8 @@ class _CategoryRow extends StatelessWidget {
                   )
                 else
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: cs.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(10),
@@ -115,8 +120,10 @@ class _CategoryRow extends StatelessWidget {
                   // (3 sur smartphone, 6-8 sur TV/large) → plus de chaînes
                   // visibles au lieu de gros logos zoomés.
                   const spacing = 8.0;
-                  final cols = _responsiveColumns(constraints.maxWidth, channel: true);
-                  final tileWidth = (constraints.maxWidth - spacing * (cols - 1)) / cols;
+                  final cols =
+                      _responsiveColumns(constraints.maxWidth, channel: true);
+                  final tileWidth =
+                      (constraints.maxWidth - spacing * (cols - 1)) / cols;
                   final tiles = <Widget>[
                     ...groups.map((g) => _HomeCard(
                           versions: g,
@@ -154,42 +161,48 @@ class _CategoryRow extends StatelessWidget {
                 // marge via le padding du ListView ; `Clip.none` évite que le
                 // ListView rogne le contour aux bords de la rangée.
                 final vSlack = PlatformTv.isTv ? 48.0 : 20.0;
-                return SizedBox(
-                  height: cardW * 1.5 + vSlack,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    clipBehavior: PlatformTv.isTv ? Clip.none : Clip.hardEdge,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: PlatformTv.isTv ? 24 : 0,
-                    ),
-                    // §focusScroll — Cache plus large que la valeur par défaut
-                    // (250 px) : sur TV, la dernière tuile "Voir tout" (en bout
-                    // de carrousel) n'était pas encore buildée quand le focus
-                    // arrivait → focus directionnel sautait dessus une fois,
-                    // sans effet. ~2 cartes en avance suffit pour la rendre
-                    // toujours dans l'arbre de focus.
-                    // ignore: deprecated_member_use
-                    cacheExtent: 600,
-                    itemCount: groups.length + (hasMore ? 1 : 0),
-                    // §ergo — écartement un peu plus large entre les cartes
-                    // (10 → 16) pour aérer le carrousel sans toucher au style.
-                    separatorBuilder: (_, __) => const SizedBox(width: 16),
-                    itemBuilder: (ctx, i) {
-                      if (hasMore && i == groups.length) {
-                        return _SeeAllTile(
+                return DpadRegion(
+                  // §dpadNav — mémoire de colonne par rangée (façon Netflix) :
+                  // ↑/↓ revient sur la colonne mémorisée ; ← au bord part vers
+                  // le rail (edge: leave par défaut).
+                  memoryKey: 'row_${type.name}_$category',
+                  child: SizedBox(
+                    height: cardW * 1.5 + vSlack,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      clipBehavior: PlatformTv.isTv ? Clip.none : Clip.hardEdge,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: PlatformTv.isTv ? 24 : 0,
+                      ),
+                      // §focusScroll — Cache plus large que la valeur par défaut
+                      // (250 px) : sur TV, la dernière tuile "Voir tout" (en bout
+                      // de carrousel) n'était pas encore buildée quand le focus
+                      // arrivait → focus directionnel sautait dessus une fois,
+                      // sans effet. ~2 cartes en avance suffit pour la rendre
+                      // toujours dans l'arbre de focus.
+                      // ignore: deprecated_member_use
+                      cacheExtent: 600,
+                      itemCount: groups.length + (hasMore ? 1 : 0),
+                      // §ergo — écartement un peu plus large entre les cartes
+                      // (10 → 16) pour aérer le carrousel sans toucher au style.
+                      separatorBuilder: (_, __) => const SizedBox(width: 16),
+                      itemBuilder: (ctx, i) {
+                        if (hasMore && i == groups.length) {
+                          return _SeeAllTile(
+                            type: type,
+                            remaining: totalCount - groups.length,
+                            width: cardW,
+                            onTap: () => _openCategoryListPage(context),
+                          );
+                        }
+                        return _HomeCard(
+                          versions: groups[i],
                           type: type,
-                          remaining: totalCount - groups.length,
                           width: cardW,
-                          onTap: () => _openCategoryListPage(context),
                         );
-                      }
-                      return _HomeCard(
-                        versions: groups[i],
-                        type: type,
-                        width: cardW,
-                      );
-                    },
+                      },
+                    ),
                   ),
                 );
               },
@@ -253,7 +266,8 @@ class _SeeAllTile extends StatelessWidget {
                   kAccentSecondary.withAlpha(40),
                 ],
               ),
-              border: Border.all(color: kAccentPrimary.withAlpha(120), width: 1),
+              border:
+                  Border.all(color: kAccentPrimary.withAlpha(120), width: 1),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -271,7 +285,8 @@ class _SeeAllTile extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.arrow_forward, color: Colors.black, size: 22),
+                  child: const Icon(Icons.arrow_forward,
+                      color: Colors.black, size: 22),
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -333,7 +348,8 @@ class _CategoryListPageState extends State<CategoryListPage> {
 
   void _onScroll() {
     // FAB visible après ~2 écrans de scroll.
-    final show = _scrollController.hasClients && _scrollController.offset > 1200;
+    final show =
+        _scrollController.hasClients && _scrollController.offset > 1200;
     if (show != _showScrollTop) setState(() => _showScrollTop = show);
   }
 
@@ -414,7 +430,8 @@ class _CategoryListPageState extends State<CategoryListPage> {
               // smartphone, 6-9 sur TV/large) au lieu de plafonner à 5 → la
               // page « Voir tout » n'affiche plus de vignettes géantes sur TV.
               final width = constraints.maxWidth - 24;
-              final cols = _responsiveColumns(constraints.maxWidth, channel: isTv);
+              final cols =
+                  _responsiveColumns(constraints.maxWidth, channel: isTv);
               final tileWidth = (width - spacing * (cols - 1)) / cols;
 
               // §20 — Rendu lazy : GridView.builder ne construit que les
@@ -447,4 +464,3 @@ class _CategoryListPageState extends State<CategoryListPage> {
     );
   }
 }
-

@@ -15,7 +15,8 @@ import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
 import 'widgets/track_selector_sheet.dart';
 import 'widgets/player_options_sheet.dart';
-import 'widgets/tv_player_shortcuts.dart';
+import 'player_action_handlers.dart';
+import 'package:dpad/dpad.dart';
 import '../../core/utils/platform_tv.dart';
 
 enum VideoSourceType {
@@ -129,10 +130,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// §1i — Mode lock partagé entre [PlayerControls] et [PlayerGestures].
   /// `true` → tous les gestes (sauf tap pour révéler le cadenas) sont ignorés.
   bool _isLocked = false;
-
-  /// §tvPlayerNav — Nœud de focus du player (TV) : permet de RE-demander le focus
-  /// après la fermeture d'un sheet/dialog (sinon le D-pad reste mort).
-  final FocusNode _tvFocusNode = FocusNode(debugLabel: 'tvPlayerRoot');
 
   /// §tvPlayerNav — Vitesse courante, pilotée par le sous-menu Vitesse du
   /// panneau d'options TV (reflète la coche du menu).
@@ -358,24 +355,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     }
   }
 
-  /// §tvPlayerNav — Re-demande le focus du player après la fermeture d'un sheet
-  /// (sinon, sur TV, la télécommande ne répond plus : `autofocus` ne se
-  /// redéclenche pas au retour du dialog).
-  void _restoreTvFocus() {
-    if (PlatformTv.isTv && mounted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _tvFocusNode.requestFocus();
-      });
-    }
-  }
-
   /// §5 — Ouvre le sélecteur de pistes audio/sous-titres. Suspend l'auto-hide
-  /// des contrôles le temps que le sheet est ouvert (sinon il se fermerait sous
-  /// le doigt / le focus), puis le réarme + restaure le focus TV.
+  /// le temps du sheet, puis le réarme. §dpadNav : le retour de focus sur la
+  /// vidéo est géré nativement par `dpad` (`restoreFocus`).
   Future<void> _showTrackSelector() async {
     _hideTimer?.cancel();
     await showTrackSelector(context, _ctrl.player);
-    _restoreTvFocus();
     if (mounted) _startHideTimer();
   }
 
@@ -402,7 +387,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               widget.onNextEpisode!.call();
             },
     );
-    _restoreTvFocus();
     if (mounted) _startHideTimer();
   }
 
@@ -417,7 +401,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         Navigator.of(context).pop();
       },
     );
-    _restoreTvFocus();
   }
 
   /// Retourne l'URL avec l'extension alternative (.m3u8 ↔ .ts), ou null si non applicable.
@@ -567,7 +550,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _playingSub?.cancel();
     _errorSub?.cancel();
     _tracksSub?.cancel();
-    _tvFocusNode.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _releaseWakelock();
     _ctrl.dispose();
@@ -603,9 +585,36 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     final isTv = PlatformTv.isTv;
     return Scaffold(
       backgroundColor: Colors.black,
-      body: TvPlayerShortcuts(
-        handlers: _remoteHandlers,
-        focusNode: _tvFocusNode,
+      // §dpadNav — La zone vidéo est un `DpadFocusable` (autofocus) qui capte la
+      // télécommande pendant la lecture : OK=play/pause, long-OK=options,
+      // ←/→=seek ±10 s, ↑=options, ↓=affiche la barre. `effects: []` → aucun
+      // halo autour de la vidéo. Le retour de focus après un sheet est géré par
+      // `dpad` (restoreFocus). Remplace l'ancien `TvPlayerShortcuts`.
+      body: DpadFocusable(
+        autofocus: true,
+        tapToSelect: false,
+        effects: const [],
+        onSelect: _togglePlayPause,
+        onLongSelect: _showTvOptions,
+        onDirection: (dir) {
+          if (dir == TraversalDirection.left) {
+            _handleSeek(const Duration(seconds: -10));
+            return true;
+          }
+          if (dir == TraversalDirection.right) {
+            _handleSeek(const Duration(seconds: 10));
+            return true;
+          }
+          if (dir == TraversalDirection.up) {
+            _showTvOptions();
+            return true;
+          }
+          if (dir == TraversalDirection.down) {
+            _showControls();
+            return true;
+          }
+          return false;
+        },
         child: Stack(
           fit: StackFit.expand,
           children: [

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:dpad/dpad.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
@@ -47,17 +48,6 @@ class _MainNavigationState extends State<MainNavigation> {
   /// §backExit — Horodatage du dernier Back sur l'onglet Accueil (double-back).
   DateTime? _lastBackPress;
 
-  /// §railExit — Scope dédié au contenu (la page active). Permet au rail TV
-  /// d'envoyer explicitement le focus dans le contenu sur flèche droite, même
-  /// si la traversée géométrique par défaut ne trouve pas de cible visible.
-  final FocusScopeNode _contentScopeNode = FocusScopeNode(debugLabel: 'content');
-
-  /// §railExit (bidir) — Scope dédié au rail. Permet de renvoyer
-  /// explicitement le focus dans le rail quand on quitte le contenu par la
-  /// gauche (sinon le FocusScope du contenu piège le focus → impossible de
-  /// revenir au menu sur Android TV).
-  final FocusScopeNode _railScopeNode = FocusScopeNode(debugLabel: 'rail');
-
   /// §lazyUnload — Timer périodique qui décharge de la mémoire les comptes
   /// secondaires non consultés depuis [_idleThreshold]. Le cache disque
   /// JSON.gz est conservé → rechargement ~50 ms quand un compte secondaire
@@ -69,29 +59,7 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   void dispose() {
     _idleUnloadTimer?.cancel();
-    _contentScopeNode.dispose();
-    _railScopeNode.dispose();
     super.dispose();
-  }
-
-  /// §railExit — Appelé quand l'utilisateur appuie ←→ sur le rail TV : on
-  /// focus le 1er focusable du contenu (en ordre de traversée). Fallback
-  /// implicite si le scope n'a rien (la home se reconstruit) → no-op.
-  void _focusContentArea() {
-    final first = _contentScopeNode.traversalDescendants
-        .where((n) => n.canRequestFocus && !n.skipTraversal)
-        .firstOrNull;
-    first?.requestFocus();
-  }
-
-  /// §railExit (bidir) — Symétrique de [_focusContentArea]. Appelé quand
-  /// le focus est dans le contenu et qu'on appuie ← au bord gauche : on
-  /// renvoie le focus sur la destination sélectionnée du rail.
-  void _focusRailArea() {
-    final first = _railScopeNode.traversalDescendants
-        .where((n) => n.canRequestFocus && !n.skipTraversal)
-        .firstOrNull;
-    first?.requestFocus();
   }
 
   @override
@@ -172,43 +140,26 @@ class _MainNavigationState extends State<MainNavigation> {
     );
 
     if (isTv) {
-      // §3c-6 — Layout TV : NavigationRail latéral, focusable au D-pad.
-      // Pas de bottom bar (impossible à reach avec une télécommande).
-      // §railExit — Le contenu vit dans un `FocusScope` dédié pour que le rail
-      // puisse y envoyer explicitement le focus sur flèche droite.
+      // §3c-6 + §dpadNav — Layout TV : NavigationRail latéral, focusable au
+      // D-pad. Le franchissement rail ↔ contenu est géré nativement par `dpad`
+      // (régions + `edge: leave`) → plus besoin de l'ancienne machinerie
+      // §railExit (FocusScopeNode + focusInDirection). Le rail = région à bord
+      // vertical `stop` (on n'en sort pas par le haut/bas) ; → (droite) part vers
+      // le contenu, ← (gauche) au bord du contenu revient au rail.
       return _wrapBack(Scaffold(
         body: Row(
           children: [
-            FocusScope(
-              node: _railScopeNode,
+            DpadRegion(
+              debugLabel: 'rail',
+              verticalEdge: DpadEdgeBehavior.stop,
               child: _TvNavigationRail(
                 selectedIndex: _navIndex,
                 onDestinationSelected: _onTap,
                 onOpenSettings: _openSettingsTv,
-                onExitRight: _focusContentArea,
               ),
             ),
             Expanded(
-              // §railExit (bidir) — Catch arrowLeft au niveau du contenu :
-              //   1. Essaie la traversée naturelle dans le scope contenu
-              //      (carrousels horizontaux, carte précédente).
-              //   2. Si rien à gauche dans le scope → on est au bord, on
-              //      renvoie le focus au rail (`_focusRailArea`).
-              child: Focus(
-                onKeyEvent: (node, event) {
-                  if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                  if (event.logicalKey != LogicalKeyboardKey.arrowLeft) {
-                    return KeyEventResult.ignored;
-                  }
-                  final moved = _contentScopeNode
-                      .focusInDirection(TraversalDirection.left);
-                  if (!moved) {
-                    _focusRailArea();
-                  }
-                  return KeyEventResult.handled;
-                },
-                child: FocusScope(node: _contentScopeNode, child: stack),
-              ),
+              child: DpadRegion(debugLabel: 'content', child: stack),
             ),
           ],
         ),
@@ -312,35 +263,18 @@ class _TvNavigationRail extends StatelessWidget {
   final ValueChanged<int> onDestinationSelected;
   final VoidCallback onOpenSettings;
 
-  /// §railExit — Appelé quand le focus est dans le rail et que l'utilisateur
-  /// appuie sur la flèche droite : la `MainNavigation` répond en focusant le
-  /// 1er focusable du contenu (sinon la traversée géométrique de Flutter peut
-  /// échouer si rien n'est aligné à droite des destinations).
-  final VoidCallback? onExitRight;
-
   const _TvNavigationRail({
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.onOpenSettings,
-    this.onExitRight,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // §railExit — Focus parent qui capture ← → quand un descendant (les
-    // destinations) a le focus. arrow right → on délègue à `onExitRight`.
-    return Focus(
-      onKeyEvent: (node, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
-            onExitRight != null) {
-          onExitRight!();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: NavigationRail(
+    // §dpadNav — Le franchissement vers le contenu (→) est géré par la
+    // `DpadRegion` parente (edge: leave). Plus de `Focus` custom ici.
+    return NavigationRail(
         selectedIndex: selectedIndex,
         minWidth: 64,
         // §railCenter — Centrage vertical des destinations dans la hauteur
@@ -384,7 +318,6 @@ class _TvNavigationRail extends StatelessWidget {
             label: Text('Paramètres'),
           ),
         ],
-      ),
-    );
+      );
   }
 }
