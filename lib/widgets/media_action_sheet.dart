@@ -395,6 +395,9 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
     Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
       path: v.url,
       title: v.displayName,
+      // §watchContext a/c — qualité du flux choisi affichée dans le player
+      // (lève l'ambiguïté « sur quel produit/qualité suis-je ? »).
+      qualityTag: v.title.qualityOrDefault,
       sourceType: VideoSourceType.network,
       badgeType: PlayerBadgeType.live,
     )));
@@ -502,6 +505,9 @@ void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPositio
   Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
     path: entry.url,
     title: entry.displayName,
+    // §watchContext a/b — badges qualité + saison/épisode.
+    qualityTag: entry.title.qualityOrDefault,
+    episodeTag: entry.title.seasonEpisodeLabel,
     sourceType: VideoSourceType.network,
     badgeType: entry.type == M3uContentType.series
         ? PlayerBadgeType.series

@@ -19,6 +19,17 @@ class TitleMetadata {
 
   bool get isSeriesEpisode => seasonNumber != null && episodeNumber != null;
 
+  /// §watchContext — Libellé court « S01 E04 » si saison + épisode connus,
+  /// sinon null. Sert au badge contextuel du player (et autres affichages).
+  String? get seasonEpisodeLabel => isSeriesEpisode
+      ? 'S${seasonNumber!.toString().padLeft(2, '0')} '
+          'E${episodeNumber!.toString().padLeft(2, '0')}'
+      : null;
+
+  /// §watchContext — Qualité affichable avec défaut « FHD » quand aucun tag
+  /// n'a été détecté dans le nom (plus parlant que « Standard » / aucun badge).
+  String get qualityOrDefault => quality ?? 'FHD';
+
   const TitleMetadata({
     required this.rawTitle,
     required this.baseTitle,

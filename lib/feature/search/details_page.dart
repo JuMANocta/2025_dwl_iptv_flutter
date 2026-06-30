@@ -1594,6 +1594,41 @@ class _DetailsPageState extends State<DetailsPage> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
+  // §watchContext — Infos contextuelles passées à l'overlay du player.
+  bool get _isSeriesPlayback => _selectedEntry.type == M3uContentType.series;
+
+  /// Nom de la série (breadcrumb au-dessus du titre) — séries uniquement.
+  String? get _playerSeriesName {
+    if (!_isSeriesPlayback) return null;
+    final t = _tmdbData?.title;
+    return (t != null && t.isNotEmpty) ? t : widget.entry.displayName;
+  }
+
+  /// Titre principal du player : nom de l'épisode (TMDB) pour une série, sinon
+  /// le nom de l'entrée (film, ou série sans données épisode).
+  String get _playerTitle {
+    if (_isSeriesPlayback) {
+      final ep = _episodeData?['name'] as String?;
+      if (ep != null && ep.isNotEmpty) return ep;
+    }
+    return _selectedEntry.displayName;
+  }
+
+  /// Synopsis affiché dans l'overlay : épisode (TMDB) > œuvre (TMDB) > provider.
+  String? get _playerSynopsis {
+    if (_isSeriesPlayback) {
+      final epo = _episodeData?['overview'] as String?;
+      if (epo != null && epo.isNotEmpty) return epo;
+    }
+    final ov = _tmdbData?.overview;
+    if (ov != null && ov.isNotEmpty) return ov;
+    for (final e in [widget.entry, ..._uniqueVersions]) {
+      final p = e.plot;
+      if (p != null && p.isNotEmpty) return p;
+    }
+    return null;
+  }
+
   void _launchSelected({Duration? from}) {
     // Auto-ajout favoris au play, cohérent avec le reste de l'app (§1d)
     FavoritesService.addEntry(_selectedEntry);
@@ -1603,7 +1638,13 @@ class _DetailsPageState extends State<DetailsPage> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => PlayerPage(
         path: _selectedEntry.url,
-        title: _selectedEntry.displayName,
+        title: _playerTitle,
+        // §watchContext a/b — badges qualité + saison/épisode dans le player.
+        qualityTag: _selectedEntry.title.qualityOrDefault,
+        episodeTag: _selectedEntry.title.seasonEpisodeLabel,
+        // §watchContext — nom série + synopsis (si dispo) dans l'overlay.
+        seriesName: _playerSeriesName,
+        synopsis: _playerSynopsis,
         sourceType: VideoSourceType.network,
         badgeType: _selectedEntry.type == M3uContentType.series
             ? PlayerBadgeType.series
@@ -1866,7 +1907,8 @@ class _DetailsPageState extends State<DetailsPage> {
     if (q != null && vl != null) return '$q · $vl';
     if (q != null) return q;
     if (vl != null) return vl;
-    return 'Standard';
+    // §watchContext — défaut « FHD » (au lieu de « Standard ») : plus parlant.
+    return 'FHD';
   }
 
   static List<String> _parsePlatforms(String? groupTitle) {

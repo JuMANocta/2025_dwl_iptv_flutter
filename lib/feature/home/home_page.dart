@@ -1219,21 +1219,25 @@ class _TypePageState extends State<_TypePage> {
         }
       }
     } else {
-      // §favHeroTv — Chaînes : le hero met en avant les chaînes FAVORITES de
-      // l'utilisateur (équivalent des "reprises" pour le live). Fallback sur la
-      // 1re catégorie prioritaire (France/New) s'il n'a aucun favori → le hero
-      // n'est jamais vide.
-      final favs = byCategory['Favoris'];
-      if (favs != null && favs.isNotEmpty) {
-        featured.addAll(favs.take(maxFeatured));
-      } else {
-        for (final cat in categories) {
-          if (cat == 'Favoris') continue;
-          if (_TypePage._categoryPriority(cat) < 100) {
-            featured.addAll(byCategory[cat]!.take(5));
-            break;
-          }
+      // §favHeroTv + §heroTvFill — Chaînes : le hero met d'abord en avant les
+      // chaînes FAVORITES, PUIS complète avec les chaînes des catégories
+      // prioritaires (France/New/…) jusqu'à `maxFeatured` → hero toujours
+      // étoffé même avec peu (ou pas) de favoris. Dédup par displayName.
+      final seen = <String>{};
+      void addUpTo(Iterable<List<M3uEntry>> groups) {
+        for (final g in groups) {
+          if (featured.length >= maxFeatured) break;
+          if (seen.add(g.first.displayName)) featured.add(g);
         }
+      }
+
+      addUpTo(byCategory['Favoris'] ?? const []);
+      // `categories` est déjà trié par priorité (Favoris → France → New →
+      // genres → Autres) : on parcourt dans l'ordre pour remplir le hero.
+      for (final cat in categories) {
+        if (cat == 'Favoris') continue;
+        if (featured.length >= maxFeatured) break;
+        addUpTo(byCategory[cat]!);
       }
     }
 
