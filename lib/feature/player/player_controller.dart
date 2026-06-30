@@ -1,6 +1,3 @@
-import 'dart:math' as math;
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -96,60 +93,18 @@ class AetherPlayerController {
         // bidons des panels).
         await np.setProperty('video-latency-hacks', 'yes');
       }
-      // §tvDownscaleReload — NE PAS poser `vf=scale` ici : `_applyAudioTuning`
-      // tourne en fire-and-forget au constructeur, donc le filtre atterrissait
-      // APRÈS `player.open()` → mpv reconstruisait sa chaîne vidéo en pleine
-      // lecture (« le film s'arrête, recharge et se relance »). Le downscale est
-      // désormais appliqué AVANT l'open dans [open]/[openFile].
     } catch (e) {
       debugPrint('⚠️ AetherPlayerController: audio tuning échoué — $e');
     }
   }
 
-  /// §tv4kScale (2026-06-11, EXPÉRIMENTAL) — Sur Android TV / Fire Stick, si
-  /// l'écran sort en < 4K (cas ultra-fréquent : tous les Fire Stick non-4K et
-  /// beaucoup de box rendent l'UI en 1080p), on demande à mpv de **downscaler
-  /// la vidéo décodée à la largeur de l'écran** via `vf=scale`.
-  ///
-  /// **Pourquoi pas `VideoControllerConfiguration(width/height)`** : VÉRIFIÉ
-  /// inopérant sur Android dans media_kit_video 1.2.5 — la surface est toujours
-  /// allouée à la résolution SOURCE du flux (`android-surface-size = dw×dh`),
-  /// la config width/height n'est jamais lue (`setSize` lève UnsupportedError).
-  /// Une SurfaceTexture 4K sur un GPU de box faible peut être clampée → crop
-  /// (= "image zoomée") + surcoût de rendu. En forçant mpv à sortir des frames
-  /// à la taille écran, `dw×dh` (et donc la surface) tombe à 1080p.
-  ///
-  /// **Risque assumé** : `vf=scale` est un filtre logiciel → mpv peut basculer
-  /// le décodage 4K HEVC en copie-mémoire voire en soft decode sur certains
-  /// contenus. Si le stutter EMPIRE sur device → retirer cet appel.
-  /// Tout échec est avalé (le `vf` invalide ne casse pas la lecture : le bloc
-  /// est sous le try/catch de [open]/[openFile]).
-  ///
-  /// §tvDownscaleReload — DOIT être appelé AVANT `player.open()` : posé après,
-  /// le filtre force mpv à reconstruire sa chaîne vidéo en pleine lecture (la
-  /// vidéo s'arrête, recharge, repart). Posé avant, le filtre est en place dès
-  /// le chargement de la 1ʳᵉ frame → aucune reconstruction.
-  Future<void> _applyTvDownscale(NativePlayer np) async {
-    if (!PlatformTv.isTv) return;
-    final view = ui.PlatformDispatcher.instance.implicitView;
-    final size = view?.physicalSize;
-    if (size == null) return;
-    // Panneau TV = paysage fixe → largeur = grand côté (robuste à l'ordre de
-    // lecture vs. orientation).
-    final screenW = math.max(size.width, size.height).round();
-    // On NE cappe QUE les écrans franchement sous-4K (1080p/1440p). Un vrai
-    // écran 4K (≥2560) garde la vidéo native.
-    if (screenW <= 0 || screenW >= 2560) {
-      debugPrint('📺 tv4kScale: écran ${screenW}px → pas de downscale');
-      return;
-    }
-    // `scale=$screenW:-2` : largeur fixée, hauteur auto (aspect conservé, -2 =
-    // multiple de 2 requis par les codecs). Pas de virgule → zéro risque
-    // d'échappement mpv. Source 4K → 1080p ; source ≤ écran → upscale léger
-    // sans perte (coût marginal, rare sur ces box).
-    await np.setProperty('vf', 'scale=$screenW:-2');
-    debugPrint('📺 tv4kScale: downscale vidéo → ${screenW}px de large (vf=scale)');
-  }
+  // §tv4kScale RETIRÉ (2026-06-30) — l'ancien downscale `vf=scale=<W>:-2` était
+  // un FIX FANTÔME : le build libmpv embarqué par media_kit sur Android n'inclut
+  // PAS le filtre libavfilter `scale` → mpv rejette l'option (« Option vf: scale
+  // doesn't exist »). Pire, ce `vf` invalide forçait une reconfiguration de la
+  // chaîne vidéo en pleine lecture = l'effet « le film se relance » sur TV. Le
+  // cap résolution n'a donc jamais marché. La vraie piste 4K/zoom reste hwdec /
+  // upgrade media_kit_video v2 (roadmap §tv4kTexture).
 
   /// Ouvre un flux réseau (live, VOD, timeshift).
   /// Bypass SSL pour les providers IPTV sans certificat valide.
@@ -166,8 +121,6 @@ class AetherPlayerController {
         await np.setProperty('tls-verify', 'no');
         await np.setProperty('insecure', 'yes');
         await _applyLangPrefs(np, audioLang, subLang);
-        // §tvDownscaleReload — filtre TV AVANT l'open (sinon reload mid-stream).
-        await _applyTvDownscale(np);
       }
     } catch (_) {}
     await player.open(Media(url, start: start), play: true);
@@ -180,8 +133,6 @@ class AetherPlayerController {
       if (player.platform is NativePlayer) {
         final np = player.platform as NativePlayer;
         await _applyLangPrefs(np, audioLang, subLang);
-        // §tvDownscaleReload — filtre TV AVANT l'open (sinon reload mid-stream).
-        await _applyTvDownscale(np);
       }
     } catch (_) {}
     await player.open(Media('file://$path', start: start), play: true);
