@@ -161,17 +161,25 @@ class _SettingsPageState extends State<SettingsPage> {
         width: double.infinity,
         height: double.infinity,
         decoration: BoxDecoration(
-          color: isDark ? null : cs.surface,
-          gradient: isDark
-              ? RadialGradient(
-                  center: const Alignment(0, -1.5),
-                  radius: 1.4,
-                  colors: [
-                    kAccentPrimary.withAlpha(20),
+          // §settingsBg — Dégradé diagonal BI-COULEUR (vert primaire → surface →
+          // magenta tertiaire), plus présent que l'ancien radial mono-teinte
+          // quasi effacé. Alphas bas → le texte reste parfaitement lisible.
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? [
+                    kAccentPrimary.withAlpha(36),
                     cs.surface,
+                    kAccentTertiary.withAlpha(32),
+                  ]
+                : [
+                    kAccentPrimary.withAlpha(16),
+                    cs.surface,
+                    kAccentTertiary.withAlpha(14),
                   ],
-                )
-              : null,
+            stops: const [0.0, 0.5, 1.0],
+          ),
         ),
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -351,7 +359,12 @@ class _SettingsTile extends StatelessWidget {
         child: ExcludeFocus(
           child: Material(
           color: cs.surfaceContainer,
-          borderRadius: BorderRadius.circular(14),
+          // §settingsBorder — Bordure de la tuile dans la couleur de l'icône
+          // (= couleur du groupe) → renforce le code couleur, tuiles moins plates.
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: accentColor.withAlpha(70), width: 1),
+          ),
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(14),

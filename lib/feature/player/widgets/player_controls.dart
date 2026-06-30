@@ -12,6 +12,16 @@ import 'package:aetherStream/feature/player/player_page.dart';
 class PlayerControls extends StatefulWidget {
   final Player player;
   final String title;
+  /// §watchContext a — Qualité du flux en cours (4K/FHD/HD/SD), affichée en
+  /// badge sous le titre. Null = pas de badge qualité.
+  final String? qualityTag;
+  /// §watchContext b — Numéro saison/épisode (« S01 E04 ») affiché sous le
+  /// titre quand on lit une série. Null = pas de badge épisode.
+  final String? episodeTag;
+  /// §watchContext — Nom de la série (breadcrumb au-dessus du titre). Null = rien.
+  final String? seriesName;
+  /// §watchContext — Synopsis (épisode/film) affiché sous les badges, tronqué.
+  final String? synopsis;
   final bool visible;
   final PlayerBadgeType badgeType;
   final VoidCallback onBack;
@@ -31,6 +41,10 @@ class PlayerControls extends StatefulWidget {
     super.key,
     required this.player,
     required this.title,
+    this.qualityTag,
+    this.episodeTag,
+    this.seriesName,
+    this.synopsis,
     required this.visible,
     this.badgeType = PlayerBadgeType.none,
     required this.onBack,
@@ -177,7 +191,9 @@ class _PlayerControlsState extends State<PlayerControls> {
           left: 0,
           right: 0,
           child: Container(
-            height: 100,
+            // §watchContext — scrim haut allongé : couvre le bloc d'infos
+            // enrichi (série + titre + badges + synopsis) → texte lisible.
+            height: 160,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
@@ -211,20 +227,82 @@ class _PlayerControlsState extends State<PlayerControls> {
           right: 0,
           child: SafeArea(
             child: Row(
+              // §watchContext — bloc d'infos potentiellement multi-lignes
+              // (série + titre + badges + synopsis) → on aligne en haut pour
+              // que la flèche retour et le badge droite restent en tête.
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 IconButton(
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
                   onPressed: widget.onBack,
                 ),
                 Expanded(
-                  child: Text(
-                    widget.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // §watchContext — Nom de la série au-dessus du titre.
+                      if (widget.seriesName != null &&
+                          widget.seriesName != widget.title)
+                        Text(
+                          widget.seriesName!,
+                          style: TextStyle(
+                            color: Colors.white.withAlpha(180),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      // Titre (nom d'épisode pour une série, sinon film/chaîne).
+                      Text(
+                        widget.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      // §watchContext a/b — Badges contextuels : saison/épisode
+                      // puis qualité du flux en cours.
+                      if (widget.episodeTag != null || widget.qualityTag != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Wrap(
+                            spacing: 6,
+                            children: [
+                              if (widget.episodeTag != null)
+                                _PlayerTag(
+                                    text: widget.episodeTag!,
+                                    color: kAccentSecondary),
+                              if (widget.qualityTag != null)
+                                _PlayerTag(
+                                    text: widget.qualityTag!,
+                                    color: _qualityTagColor(widget.qualityTag!)),
+                            ],
+                          ),
+                        ),
+                      // §watchContext — Synopsis tronqué (si TMDB/provider dispo).
+                      // Largeur bornée à l'Expanded + 2 lignes max → ne déborde
+                      // jamais sur les badges droite ni sur les contrôles bas.
+                      if (widget.synopsis != null &&
+                          widget.synopsis!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5, right: 8),
+                          child: Text(
+                            widget.synopsis!,
+                            style: TextStyle(
+                              color: Colors.white.withAlpha(190),
+                              fontSize: 11,
+                              height: 1.35,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 // Badge contextuel (live / film / série).
@@ -405,6 +483,52 @@ class _PlayerControlsState extends State<PlayerControls> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// §watchContext — Couleur du badge qualité (réutilise le code couleur
+/// sémantique). Insensible à la casse.
+Color _qualityTagColor(String q) {
+  switch (q.toUpperCase()) {
+    case '4K':
+      return kQuality4K;
+    case 'FHD':
+      return kQualityFHD;
+    case 'HD':
+      return kQualityHD;
+    case 'SD':
+      return kQualitySD;
+    default:
+      return kQualityUnknown;
+  }
+}
+
+/// §watchContext a/b — Petite pastille contextuelle (qualité / saison-épisode)
+/// affichée sous le titre du player. Contour teinté, lisible sur la vidéo.
+class _PlayerTag extends StatelessWidget {
+  final String text;
+  final Color color;
+  const _PlayerTag({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withAlpha(38),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withAlpha(140)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.3,
+        ),
+      ),
     );
   }
 }

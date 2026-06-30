@@ -46,6 +46,15 @@ class PlayerPage extends StatefulWidget {
 
   final String path;
   final String title;
+  /// §watchContext a — Qualité du flux (4K/FHD/HD/SD) → badge sous le titre.
+  final String? qualityTag;
+  /// §watchContext b — Numéro saison/épisode (« S01 E04 ») → badge sous le titre.
+  final String? episodeTag;
+  /// §watchContext — Nom de la série (breadcrumb au-dessus du titre, séries).
+  final String? seriesName;
+  /// §watchContext — Synopsis (épisode ou film, si TMDB/provider dispo) affiché
+  /// dans l'overlay sous les badges.
+  final String? synopsis;
   final VideoSourceType sourceType;
 
   /// Badge affiché en haut à droite.
@@ -72,6 +81,10 @@ class PlayerPage extends StatefulWidget {
     super.key,
     required this.path,
     required this.title,
+    this.qualityTag,
+    this.episodeTag,
+    this.seriesName,
+    this.synopsis,
     this.sourceType = VideoSourceType.network,
     this.badgeType = PlayerBadgeType.none,
     this.replayStart,
@@ -596,6 +609,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             PlayerControls(
               player: _ctrl.player,
               title: widget.title,
+              qualityTag: widget.qualityTag,
+              episodeTag: widget.episodeTag,
+              seriesName: widget.seriesName,
+              synopsis: widget.synopsis,
               visible: _controlsVisible,
               badgeType: widget.badgeType,
               onBack: () => Navigator.of(context).pop(),

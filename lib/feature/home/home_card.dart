@@ -167,6 +167,9 @@ class _HomeCardState extends State<_HomeCard> {
                   Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerPage(
                     path: entry.url,
                     title: entry.displayName,
+                    // §watchContext a/b — badges qualité + saison/épisode.
+                    qualityTag: entry.title.qualityOrDefault,
+                    episodeTag: entry.title.seasonEpisodeLabel,
                     sourceType: VideoSourceType.network,
                     badgeType: badge,
                     startPosition: from,

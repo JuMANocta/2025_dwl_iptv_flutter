@@ -96,8 +96,11 @@ class AetherPlayerController {
         // bidons des panels).
         await np.setProperty('video-latency-hacks', 'yes');
       }
-
-      await _applyTvDownscale(np);
+      // §tvDownscaleReload — NE PAS poser `vf=scale` ici : `_applyAudioTuning`
+      // tourne en fire-and-forget au constructeur, donc le filtre atterrissait
+      // APRÈS `player.open()` → mpv reconstruisait sa chaîne vidéo en pleine
+      // lecture (« le film s'arrête, recharge et se relance »). Le downscale est
+      // désormais appliqué AVANT l'open dans [open]/[openFile].
     } catch (e) {
       debugPrint('⚠️ AetherPlayerController: audio tuning échoué — $e');
     }
@@ -120,7 +123,12 @@ class AetherPlayerController {
   /// le décodage 4K HEVC en copie-mémoire voire en soft decode sur certains
   /// contenus. Si le stutter EMPIRE sur device → retirer cet appel.
   /// Tout échec est avalé (le `vf` invalide ne casse pas la lecture : le bloc
-  /// est sous le try/catch de [_applyAudioTuning]).
+  /// est sous le try/catch de [open]/[openFile]).
+  ///
+  /// §tvDownscaleReload — DOIT être appelé AVANT `player.open()` : posé après,
+  /// le filtre force mpv à reconstruire sa chaîne vidéo en pleine lecture (la
+  /// vidéo s'arrête, recharge, repart). Posé avant, le filtre est en place dès
+  /// le chargement de la 1ʳᵉ frame → aucune reconstruction.
   Future<void> _applyTvDownscale(NativePlayer np) async {
     if (!PlatformTv.isTv) return;
     final view = ui.PlatformDispatcher.instance.implicitView;
@@ -158,6 +166,8 @@ class AetherPlayerController {
         await np.setProperty('tls-verify', 'no');
         await np.setProperty('insecure', 'yes');
         await _applyLangPrefs(np, audioLang, subLang);
+        // §tvDownscaleReload — filtre TV AVANT l'open (sinon reload mid-stream).
+        await _applyTvDownscale(np);
       }
     } catch (_) {}
     await player.open(Media(url, start: start), play: true);
@@ -168,7 +178,10 @@ class AetherPlayerController {
       {Duration? start, String? audioLang, String? subLang}) async {
     try {
       if (player.platform is NativePlayer) {
-        await _applyLangPrefs(player.platform as NativePlayer, audioLang, subLang);
+        final np = player.platform as NativePlayer;
+        await _applyLangPrefs(np, audioLang, subLang);
+        // §tvDownscaleReload — filtre TV AVANT l'open (sinon reload mid-stream).
+        await _applyTvDownscale(np);
       }
     } catch (_) {}
     await player.open(Media('file://$path', start: start), play: true);
