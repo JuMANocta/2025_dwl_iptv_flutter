@@ -1046,14 +1046,14 @@ class _TypePageState extends State<_TypePage> {
     });
   }
 
-  /// Normalisation titre (identique à ActorDetailsPage) pour le matching exact
-  /// TMDB ↔ playlist : minuscules, sans ponctuation/apostrophes, espaces réduits.
-  static String _normTitle(String s) => s
-      .toLowerCase()
-      .replaceAll(RegExp(r"['’`´]"), '')
-      .replaceAll(RegExp(r'[^\w\s]'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+  /// §parseAudit2026-06-30 — Délègue à `TitleMetadata.computeGroupKey`
+  /// (unicode-aware : conserve les accents) au lieu d'une regex ASCII-only
+  /// dupliquée qui strippait les accents ("Café" → "caf" au lieu de "café") →
+  /// pouvait faire échouer silencieusement le matching tendances TMDB sur les
+  /// titres accentués alors que la fusion cross-listes M3U (qui utilise déjà
+  /// computeGroupKey) fonctionnait pour les mêmes titres. Un seul endroit fait
+  /// désormais autorité pour "qu'est-ce qu'un titre normalisé" dans l'app.
+  static String _normTitle(String s) => TitleMetadata.computeGroupKey(s);
 
   /// Clé du GROUPEMENT (coûteux) : entrées + playlist + favoris. **PAS**
   /// WatchProgress (sinon re-groupement complet toutes les 10 s en lecture).
