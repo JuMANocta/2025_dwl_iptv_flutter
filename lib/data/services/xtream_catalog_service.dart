@@ -87,9 +87,19 @@ class XtreamCatalogService {
     if (liveF.isEmpty && vod.isEmpty && series.isEmpty) return false;
 
     // Dénormalisation : injecte le nom de catégorie dans chaque item.
-    _injectCategoryNames(liveF, _categoryNames(liveCats));
-    _injectCategoryNames(vod, _categoryNames(vodCats));
-    _injectCategoryNames(series, _categoryNames(seriesCats));
+    // §parseAudit2026-06-30 — Constat n°3 : un `category_id` sans correspondance
+    // dans la liste catégories (provider désynchronisé/tronqué) ne reçoit
+    // aucun `_cat` → l'entrée tombe silencieusement dans "Autres" côté parse.
+    // Log récapitulatif (observabilité seulement, comportement inchangé).
+    final unresolvedLive = _injectCategoryNames(liveF, _categoryNames(liveCats));
+    final unresolvedVod = _injectCategoryNames(vod, _categoryNames(vodCats));
+    final unresolvedSeries = _injectCategoryNames(series, _categoryNames(seriesCats));
+    final unresolvedTotal = unresolvedLive + unresolvedVod + unresolvedSeries;
+    if (unresolvedTotal > 0) {
+      debugPrint('⚠️ XtreamCatalog: $unresolvedTotal item(s) sans catégorie '
+          'résolue (category_id inconnu) — live=$unresolvedLive vod=$unresolvedVod '
+          'series=$unresolvedSeries → tombent dans "Autres"');
+    }
 
     final payload = <String, dynamic>{
       'v': fileVersion,
@@ -119,14 +129,22 @@ class XtreamCatalogService {
     return out;
   }
 
-  static void _injectCategoryNames(
+  /// Retourne le nombre d'items dont le `category_id` n'a pas de correspondance
+  /// dans [catNames] (observabilité — Constat n°3, §parseAudit2026-06-30).
+  static int _injectCategoryNames(
     List<Map<String, dynamic>> items,
     Map<String, String> catNames,
   ) {
+    var unresolved = 0;
     for (final it in items) {
       final catId = (it['category_id'] ?? '').toString();
       final name = catNames[catId];
-      if (name != null) it['_cat'] = name;
+      if (name != null) {
+        it['_cat'] = name;
+      } else {
+        unresolved++;
+      }
     }
+    return unresolved;
   }
 }

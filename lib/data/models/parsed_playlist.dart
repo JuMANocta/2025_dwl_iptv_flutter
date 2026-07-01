@@ -7,7 +7,7 @@ class ParsedPlaylist {
   /// Version du schéma de sérialisation.
   /// Incrémenter quand la structure de [M3uEntry] ou [TitleMetadata] change
   /// → invalide automatiquement tous les caches disque existants.
-  static const int schemaVersion = 11; // v11 : §filterCats2 — filtres Algérie / Turkish / Novidades / Maghrébin (détection group-title) | v10 : §langFilterCat — filtre langues/régions aussi par CATÉGORIE (group-title), pas seulement le préfixe titre | v9 : §newCatMerge — Nouveauté/NEW/Derniers ajouts → label « New » | v8 : §newByAdded — M3uEntry.addedAt | v7 : §23 — champs riches JSON API
+  static const int schemaVersion = 12; // v12 : §parseAudit2026-06-30 — TitleMetadata.parse corrigé (préfixe casse mixte, pipes résiduels, exposants H265/H264, tag FPS) | v11 : §filterCats2 — filtres Algérie / Turkish / Novidades / Maghrébin (détection group-title) | v10 : §langFilterCat — filtre langues/régions aussi par CATÉGORIE (group-title), pas seulement le préfixe titre | v9 : §newCatMerge — Nouveauté/NEW/Derniers ajouts → label « New » | v8 : §newByAdded — M3uEntry.addedAt | v7 : §23 — champs riches JSON API
 
   final String accountId;
   /// Version du schéma au moment de la sauvegarde — comparé à [schemaVersion] à la relecture.

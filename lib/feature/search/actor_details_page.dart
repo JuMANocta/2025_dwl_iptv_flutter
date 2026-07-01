@@ -42,12 +42,10 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
     return map;
   }
 
-  static String _norm(String s) => s
-      .toLowerCase()
-      .replaceAll(RegExp(r"[''`´]"), '')
-      .replaceAll(RegExp(r'[^\w\s]'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+  /// §parseAudit2026-06-30 — Délègue à `TitleMetadata.computeGroupKey` (voir
+  /// justification identique dans `HomePage._normTitle`) au lieu d'une regex
+  /// ASCII-only dupliquée qui strippait les accents.
+  static String _norm(String s) => TitleMetadata.computeGroupKey(s);
 
   /// Retourne les entrées M3U correspondant au crédit.
   /// Passe 1 : égalité exacte normalisée sur le titre localisé.

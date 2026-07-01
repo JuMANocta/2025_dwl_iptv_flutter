@@ -93,6 +93,24 @@ void main() {
     '|FR| CANAL+ LIVE 15 HD',
     'Le voyage de Chihiro (FR) FHD 2001',
     '|FR| Le Voyage de Chihiro (2001)',
+    // §parseAudit2026-06-30 — Bug A : préfixe |XX| en casse mixte (11 occ. réelles)
+    "|FR-4k| L'amour dans l'objectif (2025)",
+    '|Fr-4K DV| Sens unique (1987)',
+    '|it| Il sentiero azzurro (2025)',
+    // §parseAudit2026-06-30 — Bug B : pipes résiduels (~6 900 occ. réelles)
+    '|US| ABC 3 (KIII) CORP|US| CHRISTI (H)',
+    '|US| CBS 4 (WCBI) COLUMB|US| (F)',
+    '|US| FOX SPORTS OHIO PL|US| (H)',
+    '|DE| |DE| SKY SPORT GOLF ᶠᴴᴰ',
+    '|FR-4K| All My Life || MULTI',
+    // §vigilance — série arabe Titre|Année|Titre arabe : "Midterm" doit rester
+    // visible (pas avalé comme faux segment de préfixe).
+    '|AR-4k| Midterm | 2025 | ميد تيرم',
+    // §parseAudit2026-06-30 — Bug C : exposant H265 (568 occ. réelles)
+    '|IT| RAI 1 UHD ᴴ²⁶⁵',
+    // §parseAudit2026-06-30 — Bug D : tag "(NN FPS)" (35 occ. réelles)
+    '|AR| BEIN SPORTS MAX 1 SD (50 FPS)  (World Cup 2026™)',
+    "Avatar (60FPS) ᴴ²⁶⁵ (2009) VFF",
   ];
   for (final c in cases) {
     final m = TitleMetadata.parse(c);

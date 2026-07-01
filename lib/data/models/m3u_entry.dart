@@ -79,8 +79,37 @@ class TitleMetadata {
   // Forme générale : une suite de segments `XXX|` (charset MAJ/chiffres/
   // espace/./+/-, 1-12 chars) ouverte par un pipe. Le charset exclut les
   // minuscules pour ne pas mordre un vrai titre contenant un pipe.
-  static final _rePrefix       = RegExp(r'^\s*\|(?:[A-Z0-9 .+\-]{1,12}\|)+\s*');
-  static final _reLabelPrefix  = RegExp(r'^\s*\|(?:[A-Z0-9 .+\-]{1,12}\|)+');
+  // §parseAudit2026-06-30 — caseSensitive: false ajouté : des providers réels
+  // encodent le préfixe en casse mixte (`|FR-4k|`, `|Fr-4K DV|`, `|AR-4k|`,
+  // `|it|`) — avant ce fix, la MOINDRE minuscule dans le préfixe faisait
+  // échouer TOUT le bloc (pas juste la lettre fautive), laissant le préfixe
+  // brut visible dans le titre affiché et empêchant la fusion cross-listes
+  // avec la variante correctement casée d'un autre provider.
+  // ⚠️ Le 2e segment (optionnel) doit couvrir DEUX formes réelles distinctes
+  // sans avaler un vrai mot du titre :
+  //   (a) collé, SANS espace  → `|VO|STFR|` (segments partageant le pipe
+  //       médian, contenu ne commençant PAS par un espace)
+  //   (b) séparé par un espace suivi d'un NOUVEAU `|` → `|DE| |DE|` (code
+  //       région dupliqué, le 2e bloc rouvre son propre pipe)
+  // Un texte-avant-pipe non contraint avalait "Midterm" dans le cas réel
+  // `|AR-4k| Midterm | 2025 | ميد تيرم` (espace + mot de 7+ caractères suivi
+  // d'un pipe, syntaxiquement indiscernable d'un (a)/(b) mal bornés). En
+  // interdisant à (a) de commencer par un espace ET en exigeant que (b) rouvre
+  // un `|` immédiatement après l'espace, aucune des deux formes ne matche
+  // "Midterm" (espace suivi directement d'une lettre, pas d'un pipe) →
+  // préservé. Plafond 6 sur le contenu du 2e segment (couvre "STFR"/"DE"/
+  // "US"), 12 sur le 1er (couvre `|LIGUE 1+|`/`|FR-4K DV|`).
+  static final _rePrefix       = RegExp(
+    r'^\s*\|[A-Za-z0-9 .+\-]{1,12}\|'
+    r'(?:[A-Za-z0-9.+\-][A-Za-z0-9 .+\-]{0,5}\||\s+\|[A-Za-z0-9 .+\-]{1,6}\|)?'
+    r'\s*',
+    caseSensitive: false,
+  );
+  static final _reLabelPrefix  = RegExp(
+    r'^\s*\|[A-Za-z0-9 .+\-]{1,12}\|'
+    r'(?:[A-Za-z0-9.+\-][A-Za-z0-9 .+\-]{0,5}\||\s+\|[A-Za-z0-9 .+\-]{1,6}\|)?',
+    caseSensitive: false,
+  );
 
   // §23 — Suffixe "_sub" (liste VOD : "Incredibles 2_sub", "Nancy_sub") :
   // marqueur sous-titres du provider, à retirer du titre de base.
@@ -88,8 +117,14 @@ class TitleMetadata {
 
   // §23 — Tags qualité en exposants Unicode (live : "NATIONAL GEO ᶠᴴᴰ").
   // Normalisés vers leur équivalent ASCII AVANT toute détection.
+  // §parseAudit2026-06-30 — ᴴ²⁶⁵/ᴴ²⁶⁴ (codec HEVC/H264 en exposant) ajoutés :
+  // 568 occurrences réelles mesurées (chaînes italiennes RAI/Sky), non
+  // couvertes par les 5 combos précédents → restaient en garbage visible
+  // dans baseTitle (les caractères exposants sont \p{L}/\p{N} valides, donc
+  // JAMAIS nettoyés par computeGroupKey).
   static const _superscripts = {
     'ᶠᴴᴰ': ' FHD', 'ᴴᴰ': ' HD', 'ˢᴰ': ' SD', '⁴ᴷ': ' 4K', 'ᵁᴴᴰ': ' UHD',
+    'ᴴ²⁶⁵': ' H265', 'ᴴ²⁶⁴': ' H264',
   };
 
   // §23 — VOSTFR éclaté dans le préfixe : `|VO|STFR|` → langue VOSTFR.
@@ -122,6 +157,11 @@ class TitleMetadata {
   // Codes langue/version dans parenthèses : (FR), (EN), (AR), (MULTI), (VOST FR), (MUET)…
   // Placé après _reQualityTags pour ne pas interférer avec (4K), (3D) etc. déjà retirés.
   static final _reLangParens   = RegExp(r'[\(\[]\s*[A-Z]{2,6}(?:\s+[A-Z]{2,6})?\s*[\)\]]', caseSensitive: false);
+
+  // §parseAudit2026-06-30 — Tag "(50 FPS)"/"(60FPS)" (chaînes sport type BEIN
+  // SPORTS, quelques VOD) : 35 occurrences réelles mesurées. `_reLangParens`
+  // exige un contenu 100% alphabétique donc ne matche jamais un chiffre en tête.
+  static final _reFpsParens    = RegExp(r'[\(\[]\s*\d{2,3}\s*fps\s*[\)\]]', caseSensitive: false);
 
   static final _reYearClean    = RegExp(r'\(?(19|20)\d{2}\)?');
   // §23b — Paires de parenthèses/crochets vidées par le strip des tags
@@ -212,6 +252,7 @@ class TitleMetadata {
     base = base.replaceAll(_reQualityTags, '');
     base = base.replaceAll(_reLangTags, '');
     base = base.replaceAll(_reLangParens, ' '); // (FR), (AR), (VOST FR), (MUET)…
+    base = base.replaceAll(_reFpsParens, ' ');  // §parseAudit2026-06-30 — (50 FPS), (60FPS)
     base = base.replaceAll(_reYearClean, '');
     // §23b — La PONCTUATION INTERNE est CONSERVÉE pour l'affichage
     // ("M.A.S.H", "Cape Fear - Les Nerfs à vif", "Narcos: Mexico").
@@ -222,6 +263,14 @@ class TitleMetadata {
     // crochets VIDES ("Michael [ ]" après retrait de "[4K DV HDR MULTi]").
     base = base.replaceAll(_reEmptyBrackets, ' ');
     base = base.replaceAll(_reSeasonClean, ' ');
+    // §parseAudit2026-06-30 — Tout `|` restant à ce stade n'est JAMAIS un vrai
+    // caractère de titre (le seul usage légitime, le préfixe région en tête,
+    // est déjà retiré par `_rePrefix`) : SUPPRIMÉ (pas remplacé par un espace)
+    // pour reconstituer les mots coupés par une corruption provider amont
+    // ("CORP|US| CHRISTI" → "CORPUS CHRISTI", "COLUMB|US|" → "COLUMBUS") et
+    // nettoyer les séparateurs pipe résiduels ("All My Life || MULTI" →
+    // "All My Life" une fois MULTI retiré). ~6 900 titres réels concernés.
+    base = base.replaceAll('|', '');
     base = base.replaceAll(_reSpaces, ' ').trim();
     base = base.replaceAll(_reTrimBaseStart, '').replaceAll(_reTrimBaseEnd, '');
     if (base.isEmpty) {
@@ -233,6 +282,7 @@ class TitleMetadata {
       var fb = work
           .replaceAll(_rePrefix, '')
           .replaceAll(_reYearClean, '')
+          .replaceAll('|', '')
           .replaceAll(_reSpaces, ' ')
           .trim();
       fb = fb.replaceAll(_reTrimBaseStart, '').replaceAll(_reTrimBaseEnd, '');
@@ -249,6 +299,8 @@ class TitleMetadata {
       label = label.replaceAll(_reDolby, '');    // multi-mots en premier
       label = label.replaceAll(_reAllTags, '');
       label = label.replaceAll(_reLangParens, ' ');
+      label = label.replaceAll(_reFpsParens, ' '); // §parseAudit2026-06-30
+      label = label.replaceAll('|', '');            // §parseAudit2026-06-30
       label = label.replaceAll(_reTrimStart, '');
       label = label.replaceAll(_reTrimEnd, '');
       label = label.trim().replaceAll(_reSpaces, ' ');
