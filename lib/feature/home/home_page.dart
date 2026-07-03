@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
@@ -136,10 +137,13 @@ class _HomePageState extends State<HomePage> with RouteAware {
         .addListener(_onCurrentAccountChanged);
 
     // §perfBg — Écoute manuelle gated par _inBackground (cf. doc du champ).
+    // §perfSettings — les réglages d'optimisation (hero, vignettes/rangée)
+    // rebuildent la home en live comme le reste.
     _homeListenable = Listenable.merge([
       ParsedPlaylistService.version,
       FavoritesService.version,
       WatchProgressService.version,
+      PerformanceSettingsService.config,
     ]);
     _homeListenable.addListener(_onHomeNotifier);
 
@@ -1002,11 +1006,11 @@ class _TypePage extends StatefulWidget {
 }
 
 class _TypePageState extends State<_TypePage> {
-  /// Limite d'items affichés dans un carrousel/grille de catégorie sur la home.
-  /// Au-delà, un tile "Voir tout" est ajouté qui ouvre [CategoryListPage].
-  /// §carousel25 — Remonté à 25 (carrousels plus fournis ; le ListView reste
-  /// lazy donc sans surcoût, et « Voir tout » prend le relais au-delà).
-  static const int _maxItemsPerCategory = 15;
+  // §perfSettings — La limite d'items par carrousel (« Voir tout » au-delà)
+  // n'est plus une constante : elle vient de `PerfConfig.maxItemsPerRow`
+  // (réglable dans Paramètres → Optimisation). Appliquée au RENDU (take(N)
+  // dans l'itemBuilder) → un changement à chaud = simple rebuild, aucune
+  // invalidation des caches de groupement.
 
   // ── Caches (memoization) — §perfBigList ─────────────────────────────────
   // CRUCIAL avec une grosse playlist (Ultimate ~600k entrées) : le GROUPEMENT
@@ -1086,7 +1090,10 @@ class _TypePageState extends State<_TypePage> {
   /// déjà calculé. Dépend de WatchProgress → cache SÉPARÉ (léger) pour ne pas
   /// re-grouper à chaque tick de progression.
   void _ensureFeatured() {
-    final key = WatchProgressService.version.value;
+    // §perfSettings — le nombre de cartes du hero est réglable : il fait
+    // partie de la clé de cache pour recomposer le hero quand il change.
+    final maxFeatured = PerformanceSettingsService.config.value.heroCardCount;
+    final key = WatchProgressService.version.value * 1000003 + maxFeatured;
     if (_cachedFeatured != null && _cachedFeaturedKey == key) return;
 
     final byCategory = _cachedByCategory!;
@@ -1094,10 +1101,9 @@ class _TypePageState extends State<_TypePage> {
 
     // §heroFan — Composition du hero :
     //   - films/séries : reprise (triées lastWatched desc) + tendances TMDB
-    //     prioritaires non-déjà-incluses → max 15 cartes empilées (hero étoffé)
+    //     prioritaires non-déjà-incluses → max `maxFeatured` cartes empilées
     //   - TV : pas de notion "en cours" (live) → favoris / catégorie prio
-    const maxFeatured = 15;
-    const maxResume = 8;
+    final maxResume = math.min(8, maxFeatured);
     final featured = <List<M3uEntry>>[];
 
     if (widget.type != M3uContentType.tv) {
@@ -1269,7 +1275,10 @@ class _TypePageState extends State<_TypePage> {
     //   2. Tabs Séries · Films · Chaînes (injectées par le parent)
     //   3. _LastWatchedTvTile (uniquement page TV)
     //   4. Catégories : Favoris d'abord (priorité -2), puis France/New/etc.
-    final hasHero = featured.isNotEmpty;
+    // §perfSettings — le hero peut être coupé par l'utilisateur (Fire Stick) :
+    // tout le calcul d'offsets/itemCount ci-dessous suit automatiquement.
+    final perf = PerformanceSettingsService.config.value;
+    final hasHero = perf.heroEnabled && featured.isNotEmpty;
     final hasTabs = widget.tabsBuilder != null;
     final showLastWatchedSlot = widget.type == M3uContentType.tv;
 
@@ -1308,9 +1317,9 @@ class _TypePageState extends State<_TypePage> {
         // lui-même, on ne les tronque pas à 25). Les autres catégories gardent
         // le plafond + la tuile "Voir tout".
         final isFav = cat == 'Favoris';
-        final hasMore = !isFav && allGroups.length > _maxItemsPerCategory;
+        final hasMore = !isFav && allGroups.length > perf.maxItemsPerRow;
         final visibleGroups = hasMore
-            ? allGroups.take(_maxItemsPerCategory).toList()
+            ? allGroups.take(perf.maxItemsPerRow).toList()
             : allGroups;
         return _CategoryRow(
           category: cat,

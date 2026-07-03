@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.13.0+87-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.13.1+88-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -272,6 +272,7 @@ lib/
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
+- [x] **Section « Optimisation » dans Paramètres** (§perfSettings) — profils Confort/Équilibré/Performance, toggle hero banner + rotation auto, nombre de cartes hero et de vignettes par rangée, diagnostic mémoire (RAM + entrées/disque par compte) + bouton « Libérer la mémoire » (Fire Stick / box faibles). Réglages inclus dans la sauvegarde `.aether`
 - [x] **Tag de qualité dans le player** (§watchContext a) — badge 4K/FHD/HD/SD dans l'overlay du player
 - [x] **Saison/épisode dans le player** (§watchContext b) — `S01 E04` affiché pendant la lecture d'une série
 - [x] **Quel « produit »/qualité sur les chaînes** (§watchContext c) — qualité affichée dans le player + labels de boutons suffixés par le compte pour départager les qualités identiques

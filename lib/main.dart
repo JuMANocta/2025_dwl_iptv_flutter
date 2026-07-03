@@ -31,6 +31,7 @@ import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
 import 'core/themes/theme_service.dart';
 import 'core/themes/app_theme_config.dart';
+import 'core/settings/performance_settings_service.dart';
 import 'data/services/update_service.dart';
 import 'data/services/xmltv_service.dart';
 import 'feature/update/update_dialog.dart';
@@ -85,6 +86,7 @@ void main() async {
     HiddenRegionsService.init(),
     TrackPreferencesService.init(),
     ThemeService.load(),
+    PerformanceSettingsService.load(), // §perfSettings
   ]);
 
   runApp(const MyApp());
@@ -304,7 +306,15 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     if (accounts.length > 1) {
       final others = accounts.where((a) => a.id != acc?.id).toList();
       await ParsedPlaylistService.preloadOthersFromDisk(others);
+      // §favReconcile — 1re passe sur ce qui est déjà en mémoire (compte actif
+      // + préchargés disque). La passe FINALE (qui pose le flag one-shot) est
+      // déclenchée en fin d'hydratation, quand TOUS les comptes sont chargés.
+      FavoritesService.reconcileWithPlaylist(); // fire & forget
       _hydrateSecondaryAccounts(others); // fire & forget
+    } else {
+      // §favReconcile — Mono-compte : tout est en mémoire → passe unique qui
+      // pose le flag directement.
+      FavoritesService.reconcileWithPlaylist(finalPass: true); // fire & forget
     }
 
     // §17b — Fetch background des AccountInfo pour TOUS les comptes
@@ -368,6 +378,10 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         // Ne pas planter le démarrage à cause d'un compte cassé (network, IO…).
       }
     }
+    // §favReconcile — Passe FINALE : tous les comptes secondaires ont été
+    // tentés (chargés ou en erreur) → ré-appariement des favoris orphelins
+    // avec la vue la plus complète possible, puis pose du flag one-shot.
+    await FavoritesService.reconcileWithPlaylist(finalPass: true);
   }
 
   /// Permet de relancer la validation, typiquement après une action de l'utilisateur.

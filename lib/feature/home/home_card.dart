@@ -336,9 +336,14 @@ class _HomeCardState extends State<_HomeCard> {
     // §3c-3 — Wrap focus TV (decorateOnly = la card garde son GestureDetector
     // et son anim _pressed). Sur TV, la bordure glow + scale 1.05 sont gérés
     // par FocusableCard ; sur mobile, FocusableCard est neutre.
+    // §rowAnchor — dans un carrousel horizontal, la carte focusée se cale à
+    // GAUCHE du viewport (la suite de la rangée défile devant, façon Netflix)
+    // au lieu de rester collée au bord droit. Sans effet dans les grilles
+    // (pas de scrollable horizontal ancêtre).
     return FocusableCard(
       decorateOnly: true,
       entry: widget.isEntry,
+      anchorRowStart: true,
       onTap: _onTap,
       onLongPress: _onLongPress,
       borderRadius: BorderRadius.circular(12),
