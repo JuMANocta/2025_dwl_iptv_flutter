@@ -361,19 +361,49 @@ class TmdbService {
     }
   }
 
-  /// Détails d'un épisode précis : recherche la série, puis récupère l'épisode.
+  /// Détails d'un épisode précis : identifie la série, puis récupère l'épisode.
+  /// [tmdbId] : ID TMDB exact fourni par le provider (§23c) — PRIORITAIRE, la
+  /// recherche floue par nom ne sert plus que de fallback (elle verrouillait
+  /// des homonymes / renvoyait null sur année fausse → synopsis d'épisode vide
+  /// alors que film/série utilisaient déjà l'id exact via getFullDetailsById).
   /// [groupTitle] : group-title M3U transmis pour désambiguïser la série (ex: "MANGAS" → genre Animation).
   Future<Map<String, dynamic>?> getEpisodeDetails(
     String showQuery,
     int seasonNumber,
     int episodeNumber, {
+    int? tmdbId,
     String? yearFilter,
     String? groupTitle,
   }) async {
     if (!await _init()) return null;
 
-    final List<int> genreHints = groupTitle != null ? _groupTitleToGenreHints(groupTitle) : [];
+    Future<Map<String, dynamic>?> fetchEpisode(int id) async {
+      final resp = await _dio!.get(
+        '/tv/$id/season/$seasonNumber/episode/$episodeNumber',
+        queryParameters: {
+          'language': 'fr-FR',
+          'append_to_response': 'credits,images,videos',
+        },
+      );
+      if (resp.statusCode == 200) {
+        return resp.data as Map<String, dynamic>?;
+      }
+      return null;
+    }
 
+    // 1. ID provider exact — zéro recherche floue.
+    if (tmdbId != null && tmdbId > 0) {
+      try {
+        final data = await fetchEpisode(tmdbId);
+        if (data != null) return data;
+        // ID invalide côté TMDB (404…) → on retombe sur la recherche par nom.
+      } catch (e) {
+        debugPrint('⚠️ Épisode TMDB par id $tmdbId KO — fallback recherche : $e');
+      }
+    }
+
+    // 2. Fallback : recherche floue par nom (comportement historique).
+    final List<int> genreHints = groupTitle != null ? _groupTitleToGenreHints(groupTitle) : [];
     try {
       final searchResult = await _performSearch(
         showQuery,
@@ -384,18 +414,7 @@ class TmdbService {
       );
       if (searchResult == null) return null;
       final id = searchResult['id'] as int;
-
-      final resp = await _dio!.get(
-        '/tv/$id/season/$seasonNumber/episode/$episodeNumber',
-        queryParameters: {
-          'language': 'fr-FR',
-          'append_to_response': 'credits,images,videos',
-        },
-      );
-
-      if (resp.statusCode == 200) {
-        return resp.data as Map<String, dynamic>?;
-      }
+      return await fetchEpisode(id);
     } catch (e) {
       debugPrint("❌ Erreur récupération épisode TMDB : $e");
     }

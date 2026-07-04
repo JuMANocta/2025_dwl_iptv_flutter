@@ -91,26 +91,43 @@ class _DetailsPageState extends State<DetailsPage> {
       _currentEpisode.title.episodeNumber != null;
 
   /// §1i — Calcule l'épisode suivant pour la série en cours :
-  /// - épisode N+1 dans la même saison si présent
-  /// - sinon premier épisode de la saison suivante si présent
+  /// - prochain épisode de la même saison si présent
+  /// - sinon premier épisode de la saison suivante si présente
   /// - sinon null (fin de série).
+  /// §nextEpRollover — Robuste aux TROUS de numérotation provider : l'ancien
+  /// test strict `episodeNumber == epNum + 1` échouait sur 1,2,4… (le ⏭
+  /// sautait alors à la saison suivante, ou rendait null en fin de saison si
+  /// la clé de saison suivante n'était pas contiguë). On prend désormais le
+  /// PLUS PETIT numéro strictement supérieur (épisodes ET saisons).
   M3uEntry? get _nextEpisode {
     if (!_isEpisode || _seasonEpisodes.isEmpty) return null;
     final season = _currentEpisode.title.seasonNumber!;
     final epNum  = _currentEpisode.title.episodeNumber!;
-    // Suivant dans la même saison
-    final eps = _seasonEpisodes[season];
-    if (eps != null) {
-      final next = eps.where((g) => g.episodeNumber == epNum + 1).firstOrNull;
-      if (next != null) return next.best;
+    // Prochain épisode (numéro > courant, le plus petit) dans la même saison.
+    final eps = _seasonEpisodes[season] ?? const [];
+    _EpGroup? nextInSeason;
+    for (final g in eps) {
+      if (g.episodeNumber <= epNum) continue;
+      if (nextInSeason == null || g.episodeNumber < nextInSeason.episodeNumber) {
+        nextInSeason = g;
+      }
     }
-    // Premier de la saison suivante
-    final seasons = _seasonEpisodes.keys.toList()..sort();
-    final idx = seasons.indexOf(season);
-    if (idx >= 0 && idx + 1 < seasons.length) {
-      final nextSeasonEps = _seasonEpisodes[seasons[idx + 1]] ?? [];
+    if (nextInSeason != null) return nextInSeason.best;
+    // Première saison de numéro > courant (les clés ne sont pas forcément
+    // contiguës : specials en 0, saisons manquantes chez le provider).
+    int? nextSeason;
+    for (final s in _seasonEpisodes.keys) {
+      if (s <= season) continue;
+      if (nextSeason == null || s < nextSeason) nextSeason = s;
+    }
+    if (nextSeason != null) {
+      final nextSeasonEps = _seasonEpisodes[nextSeason] ?? const [];
       if (nextSeasonEps.isNotEmpty) return nextSeasonEps.first.best;
     }
+    // §nextEpRollover — diagnostic device : si un provider éclate les saisons
+    // en séries distinctes, la map ne contient qu'UNE saison → visible ici.
+    debugPrint('📺 _nextEpisode: fin atteinte après S$season E$epNum — '
+        'saisons chargées: ${_seasonEpisodes.keys.toList()..sort()}');
     return null;
   }
 
@@ -511,6 +528,10 @@ class _DetailsPageState extends State<DetailsPage> {
           widget.entry.displayName,
           _currentEpisode.title.seasonNumber!,
           _currentEpisode.title.episodeNumber!,
+          // §epSynopsis — id TMDB exact du provider (comme fetchFull/§23c) :
+          // la recherche floue par nom rendait null sur homonyme/année fausse
+          // → synopsis d'épisode vide.
+          tmdbId: _providerTmdbId(),
           yearFilter: widget.entry.title.year,
           groupTitle: widget.entry.groupTitle,
         ),
@@ -829,7 +850,12 @@ class _DetailsPageState extends State<DetailsPage> {
             size: (showEpisodeContext && stillPath != null) ? 'w780' : 'original')
         : playlistPoster;
 
-    final String? epName     = _episodeData?['name'] as String?;
+    // §epTitleProvider — nom d'épisode : TMDB prioritaire, sinon le titre
+    // fourni par le panel (mappé par fetchEpisodes).
+    final String? tmdbEpName = _episodeData?['name'] as String?;
+    final String? epName     = (tmdbEpName?.isNotEmpty == true)
+        ? tmdbEpName
+        : _currentEpisode.episodeTitle;
     final String? epOverview = _episodeData?['overview'] as String?;
     final String? epAirDate  = _episodeData?['air_date'] as String?;
     final double? epRating   = (_episodeData?['vote_average'] as num?)?.toDouble();
@@ -860,9 +886,16 @@ class _DetailsPageState extends State<DetailsPage> {
         showEpisodeContext && epName != null && epName.isNotEmpty;
 
     // Synopsis : épisode si contexte épisode, sinon série/film (TMDB → provider §23)
-    final String? displayOverview =
-        (showEpisodeContext && epOverview?.isNotEmpty == true)
-        ? epOverview
+    // §epSynopsis — en contexte épisode, fallback sur le plot PROVIDER de
+    // l'épisode courant (mappé par fetchEpisodes) quand TMDB n'a rien rendu,
+    // AVANT de retomber sur le synopsis de la série.
+    final String? providerEpPlot =
+        (_currentEpisode.plot?.trim().isNotEmpty == true)
+            ? _currentEpisode.plot
+            : null;
+    final String? displayOverview = showEpisodeContext &&
+            (epOverview?.isNotEmpty == true || providerEpPlot != null)
+        ? (epOverview?.isNotEmpty == true ? epOverview : providerEpPlot)
         : ((_tmdbData?.overview.isNotEmpty == true)
             ? _tmdbData!.overview
             : fromVersions((e) => e.plot));
@@ -1312,8 +1345,10 @@ class _DetailsPageState extends State<DetailsPage> {
                 final accent = isSelected ? kAccentPrimary : cs.onSurfaceVariant;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
+                  // §rowAnchorDetails — utile sur les séries à 10+ saisons.
                   child: FocusableChip(
                     onTap: () => _selectSeason(sNum),
+                    anchorRowStart: true,
                     borderRadius: BorderRadius.circular(14),
                     child: GestureDetector(
                       onTap: isSelected ? null : () => _selectSeason(sNum),
@@ -1401,8 +1436,10 @@ class _DetailsPageState extends State<DetailsPage> {
                   // §3c Phase 1 — FocusableChip : l'épisode devient sélectionnable
                   // au D-pad (avant : GestureDetector tap-only). onTap toujours
                   // défini → l'épisode courant garde le focus.
+                  // §rowAnchorDetails — chip focusé calé à gauche de la rangée.
                   child: FocusableChip(
                     onTap: () => _selectEpisode(group),
+                    anchorRowStart: true,
                     borderRadius: BorderRadius.circular(8),
                     child: GestureDetector(
                     onTap: isCurrent ? null : () => _selectEpisode(group),
@@ -1610,6 +1647,9 @@ class _DetailsPageState extends State<DetailsPage> {
     if (_isSeriesPlayback) {
       final ep = _episodeData?['name'] as String?;
       if (ep != null && ep.isNotEmpty) return ep;
+      // §epTitleProvider — fallback titre panel quand TMDB n'a rien rendu.
+      final provider = _currentEpisode.episodeTitle;
+      if (provider != null && provider.isNotEmpty) return provider;
     }
     return _selectedEntry.displayName;
   }
@@ -1992,8 +2032,10 @@ class _CastCard extends StatelessWidget {
           child: Icon(Icons.person, color: cs.onSurfaceVariant, size: 36),
         );
 
+    // §rowAnchorDetails — carte focusée calée à gauche de la rangée casting.
     return FocusableCard(
       scaleOnFocus: false,
+      anchorRowStart: true,
       borderRadius: BorderRadius.circular(10),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: member.id)),
@@ -2079,7 +2121,9 @@ class _RelatedCard extends StatelessWidget {
         );
     return SizedBox(
       width: w,
+      // §rowAnchorDetails — carte focusée calée à gauche (saga/similaires).
       child: FocusableCard(
+        anchorRowStart: true,
         borderRadius: BorderRadius.circular(12),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(

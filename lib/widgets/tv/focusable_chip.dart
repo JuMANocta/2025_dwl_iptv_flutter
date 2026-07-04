@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dpad/dpad.dart';
 import '../../core/themes/aether_theme_extension.dart';
 import '../../data/services/remote_control_service.dart';
+import 'dpad_row_anchor.dart';
 
 /// Wrapper de focus léger pour petits contrôles inline (§3c Phase 1 → §dpadNav) :
 /// onglets Séries/Films/Chaînes, sélecteurs saison / épisode / qualité, presets
@@ -29,6 +30,12 @@ class FocusableChip extends StatefulWidget {
   final VoidCallback? onArrowLeft;
   final VoidCallback? onArrowRight;
 
+  /// §rowAnchorDetails — Ancrage « façon Netflix » : au focus D-pad, le chip
+  /// se cale au DÉBUT (gauche) du scrollable horizontal ancêtre (rangées
+  /// épisodes/saisons de DetailsPage). Cf. [DpadRowAnchor]. Sans effet hors
+  /// carrousel horizontal.
+  final bool anchorRowStart;
+
   const FocusableChip({
     super.key,
     required this.child,
@@ -39,6 +46,7 @@ class FocusableChip extends StatefulWidget {
     this.onFocusChange,
     this.onArrowLeft,
     this.onArrowRight,
+    this.anchorRowStart = false,
   });
 
   @override
@@ -82,6 +90,9 @@ class _FocusableChipState extends State<FocusableChip> {
       enabled: widget.enabled,
       onSelect: widget.onTap,
       tapToSelect: false,
+      // §rowAnchorDetails — l'auto-scroll dpad (reveal au bord le plus proche)
+      // est remplacé par l'ancrage début-de-rangée quand demandé.
+      autoScroll: !widget.anchorRowStart,
       effects: effects,
       onDirection:
           (widget.onArrowLeft == null && widget.onArrowRight == null)
@@ -92,6 +103,11 @@ class _FocusableChipState extends State<FocusableChip> {
         if (focused) {
           RemoteControlService.instance
               .registerActivate(this, widget.onTap, null);
+          if (widget.anchorRowStart) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) DpadRowAnchor.anchor(context);
+            });
+          }
         } else {
           RemoteControlService.instance.clearActivate(this);
         }

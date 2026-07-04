@@ -20,6 +20,7 @@ import 'feature/accounts/accounts_page.dart';
 import 'feature/accounts/expiration_alert_dialog.dart';
 import 'feature/onboarding/onboarding_page.dart';
 import 'feature/settings/backup_restore_flow.dart';
+import 'feature/settings/perf_suggest_dialog.dart';
 import 'feature/settings/web_console/web_console_page.dart';
 import 'feature/pairing/pairing_page.dart';
 import 'data/services/pairing_service.dart';
@@ -322,6 +323,10 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // la popup d'alerte si au moins un compte expire <30 jours.
     _checkExpirationAlerts(accounts);
 
+    // §perfAutoSuggest — Sur box TV, propose une fois le profil Performance
+    // (fire & forget, one-shot, seulement si la config perf est aux défauts).
+    _suggestTvPerfProfile();
+
     return (
       path:        path,
       accountId:   acc?.id   ?? '',
@@ -348,6 +353,20 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       if (ctx == null || !ctx.mounted) return;
       await ExpirationAlertDialog.show(ctx, alerts);
     } catch (e) {
+      // Échec silencieux — pas critique au boot.
+    }
+  }
+
+  /// §perfAutoSuggest — Propose le profil Performance sur box TV (one-shot).
+  /// Délai 2,5 s pour laisser la home se monter (le dialog d'expiration §17b,
+  /// plus critique, arrive à 4 s et passerait par-dessus — cas rare accepté).
+  Future<void> _suggestTvPerfProfile() async {
+    try {
+      await Future.delayed(const Duration(milliseconds: 2500));
+      final ctx = navigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      await PerfSuggestDialog.maybeShow(ctx);
+    } catch (_) {
       // Échec silencieux — pas critique au boot.
     }
   }

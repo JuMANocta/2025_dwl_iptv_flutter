@@ -370,6 +370,11 @@ class M3uEntry {
   final String? tmdbId;
   /// Synopsis (séries uniquement — la liste VOD ne le transporte pas).
   final String? plot;
+  /// §epTitleProvider — Titre d'ÉPISODE fourni par le panel (champ `title` de
+  /// `get_series_info`, nettoyé du nom de série/SxxExx). Fallback du nom TMDB
+  /// dans la fiche/action sheet/player. Rempli uniquement par `fetchEpisodes`
+  /// (épisodes lazy — jamais présent sur les stubs/films).
+  final String? episodeTitle;
   /// Genres bruts provider (ex: "Science-Fiction / Action / Drame").
   final String? genre;
   /// Casting brut provider (noms séparés par des virgules).
@@ -401,6 +406,7 @@ class M3uEntry {
     this.category,
     this.tmdbId,
     this.plot,
+    this.episodeTitle,
     this.genre,
     this.castNames,
     this.rating,
@@ -431,6 +437,7 @@ class M3uEntry {
     category:      j['cat'] as String?,
     tmdbId:        j['tm']  as String?,
     plot:          j['p']   as String?,
+    episodeTitle:  j['et']  as String?,
     genre:         j['ge']  as String?,
     castNames:     j['ca']  as String?,
     rating:        (j['ra'] as num?)?.toDouble(),
@@ -453,6 +460,7 @@ class M3uEntry {
     if (category      != null) 'cat': category,
     if (tmdbId        != null) 'tm':  tmdbId,
     if (plot          != null) 'p':   plot,
+    if (episodeTitle  != null) 'et':  episodeTitle,
     if (genre         != null) 'ge':  genre,
     if (castNames     != null) 'ca':  castNames,
     if (rating        != null) 'ra':  rating,

@@ -1,9 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:dpad/dpad.dart';
 import '../../core/themes/aether_theme_extension.dart';
 import '../../data/services/remote_control_service.dart';
+import 'dpad_row_anchor.dart';
 
 /// Wrapper de focus pour la navigation D-pad / clavier (§3c-2 → §dpadNav).
 ///
@@ -88,74 +87,12 @@ class _FocusableCardState extends State<FocusableCard> {
     super.dispose();
   }
 
-  /// §rowAnchor — Marge gauche d'ancrage : alignée sur le padding horizontal
-  /// des ListView de rangées (16) → la carte focusée se pose exactement là où
-  /// se trouve la 1re carte au repos (continuité visuelle).
-  static const double _kAnchorPad = 16.0;
-
   /// §rowAnchor — Scroll custom remplaçant l'auto-scroll dpad quand
-  /// [FocusableCard.anchorRowStart] est actif : parcourt les scrollables
-  /// ancêtres — axe HORIZONTAL → carte ancrée au début du viewport ;
-  /// axe VERTICAL → reveal minimal avec marge (même maths que
-  /// `DpadScroll.ensureVisible`, pour que la page continue de suivre le focus).
+  /// [FocusableCard.anchorRowStart] est actif. Logique partagée avec
+  /// [FocusableChip] (§rowAnchorDetails) dans [DpadRowAnchor].
   void _anchorScroll() {
     if (!mounted) return;
-    final render = context.findRenderObject();
-    if (render is! RenderBox || !render.attached || !render.hasSize) return;
-
-    final scrollables = <ScrollableState>[];
-    context.visitAncestorElements((el) {
-      if (el is StatefulElement && el.state is ScrollableState) {
-        scrollables.add(el.state as ScrollableState);
-      }
-      return true;
-    });
-
-    for (final s in scrollables) {
-      final viewport = s.context.findRenderObject();
-      if (viewport is! RenderBox || !viewport.hasSize) continue;
-      final position = s.position;
-      if (!position.hasPixels || !position.hasContentDimensions) continue;
-
-      final horizontal =
-          axisDirectionToAxis(s.axisDirection) == Axis.horizontal;
-      final bounds = MatrixUtils.transformRect(
-        render.getTransformTo(viewport),
-        Offset.zero & render.size,
-      );
-
-      double delta;
-      if (horizontal) {
-        // Ancrage début de rangée (le clamp gère les bords : premières cartes
-        // → pas de sur-scroll, dernières → butée fin de liste).
-        delta = bounds.left - _kAnchorPad;
-      } else {
-        // Reveal minimal vertical (comportement dpad standard conservé).
-        final extent = viewport.size.height;
-        final pad =
-            math.max(0.0, math.min(56.0, (extent - bounds.height) / 2));
-        if (bounds.height + pad * 2 > extent) {
-          delta = bounds.center.dy - extent / 2;
-        } else if (bounds.top < pad) {
-          delta = bounds.top - pad;
-        } else if (bounds.bottom > extent - pad) {
-          delta = bounds.bottom - (extent - pad);
-        } else {
-          continue; // déjà visible avec marge
-        }
-      }
-
-      final reversed = s.axisDirection == AxisDirection.up ||
-          s.axisDirection == AxisDirection.left;
-      final offset = (position.pixels + (reversed ? -delta : delta))
-          .clamp(position.minScrollExtent, position.maxScrollExtent);
-      if ((offset - position.pixels).abs() < 0.5) continue;
-      position.animateTo(
-        offset,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-      );
-    }
+    DpadRowAnchor.anchor(context);
   }
 
   @override

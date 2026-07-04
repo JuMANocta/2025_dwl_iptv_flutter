@@ -1289,6 +1289,14 @@ class _TypePageState extends State<_TypePage> {
 
     return ListView.builder(
       padding: EdgeInsets.only(top: widget.topInset, bottom: 24),
+      // §dpadHeroDown — cache vertical élargi (défaut 250 px) : la 1re rangée
+      // sous le pli doit être CONSTRUITE pour exister comme candidat de focus
+      // D-pad (dpad ignore les nodes non buildés) — sinon un ⬇ « perdu »
+      // retombe sur le rail (seule cible toujours construite).
+      // (même précédent que home_category §focusScroll : ScrollCacheExtent
+      // n'est pas exporté par material dans cette version → ancien param.)
+      // ignore: deprecated_member_use
+      cacheExtent: 800,
       itemCount: headerCount + categories.length,
       itemBuilder: (ctx, i) {
         var cursor = 0;
@@ -1298,16 +1306,38 @@ class _TypePageState extends State<_TypePage> {
             // hero "fan" → même hauteur/position au swipe entre Séries/Films/
             // Chaînes. Avant : TV avait un banner 16/9 plus court + un topInset
             // différent → l'ensemble "sautait" verticalement en passant dessus.
-            return _HeroFanBanner(featured: featured, type: widget.type);
+            // §dpadHeroDown — DpadRegion PROPRE : sans elle, le hero est membre
+            // de la grande région homePageN dont les cartes de carrousel sont
+            // exclues (sous-régions row_) → ⬇ ne trouvait aucun candidat
+            // in-region et préférait scroller la page en cascade (0,8 viewport
+            // auto-répété) jusqu'à perdre le focus → atterrissage rail
+            // « Paramètres ». En petite région, le scroll est borné (échec
+            // immédiat) → edge leave → cross-région → cible in-beam correcte
+            // (tabs / 1re rangée) avec entry/mémoire.
+            return DpadRegion(
+              memoryKey: 'hero_${widget.type.name}',
+              child: _HeroFanBanner(featured: featured, type: widget.type),
+            );
           }
           cursor += 1;
         }
         if (hasTabs) {
-          if (i == cursor) return widget.tabsBuilder!(ctx);
+          if (i == cursor) {
+            // §dpadHeroDown — même isolement que le hero (cf. ci-dessus).
+            return DpadRegion(
+              memoryKey: 'home_tabs',
+              child: widget.tabsBuilder!(ctx),
+            );
+          }
           cursor += 1;
         }
         if (showLastWatchedSlot) {
-          if (i == cursor) return _LastWatchedTvTile(entries: widget.entries);
+          if (i == cursor) {
+            return DpadRegion(
+              memoryKey: 'home_last_watched',
+              child: _LastWatchedTvTile(entries: widget.entries),
+            );
+          }
           cursor += 1;
         }
         final catIdx = i - cursor;

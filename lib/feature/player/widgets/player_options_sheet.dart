@@ -24,6 +24,17 @@ Future<void> showPlayerOptions(
       title: 'Options',
       icon: Icons.tune_rounded,
       children: [
+        // §tvOptionsOrder — « Épisode suivant » EN PREMIER (série en cours) :
+        // c'est l'action la plus fréquente du panneau, elle reçoit le focus
+        // initial au D-pad au lieu d'être en dernière position.
+        if (onNext != null)
+          _OptionRow(
+            icon: Icons.skip_next_rounded,
+            accent: kAccentTertiary,
+            title: 'Épisode suivant',
+            subtitle: "Passer à l'épisode suivant",
+            onTap: onNext,
+          ),
         _OptionRow(
           icon: Icons.subtitles_rounded,
           accent: kAccentSecondary,
@@ -38,14 +49,6 @@ Future<void> showPlayerOptions(
           subtitle: speedLabel,
           onTap: onSpeed,
         ),
-        if (onNext != null)
-          _OptionRow(
-            icon: Icons.skip_next_rounded,
-            accent: kAccentTertiary,
-            title: 'Épisode suivant',
-            subtitle: "Passer à l'épisode suivant",
-            onTap: onNext,
-          ),
       ],
     ),
   );
