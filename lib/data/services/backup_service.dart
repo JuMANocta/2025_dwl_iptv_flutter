@@ -9,6 +9,8 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/settings/perf_config.dart';
+import '../../core/settings/performance_settings_service.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
 import '../models/stream_account.dart';
@@ -45,6 +47,8 @@ class BackupContent {
   final String? activeAccountId;
   final String? tmdbKey;
   final Map<String, dynamic>? theme;
+  /// §perfSettings — réglages d'optimisation (null sur les vieux backups).
+  final Map<String, dynamic>? perf;
   final List<String> favorites;
   final Map<String, Map<String, dynamic>> watchProgress;
 
@@ -55,6 +59,7 @@ class BackupContent {
     required this.activeAccountId,
     required this.tmdbKey,
     required this.theme,
+    this.perf,
     required this.favorites,
     required this.watchProgress,
   });
@@ -66,6 +71,7 @@ class BackupContent {
         'activeAccountId': activeAccountId,
         'tmdbKey': tmdbKey,
         'theme': theme,
+        'perf': perf,
         'favorites': favorites,
         'watchProgress': watchProgress,
       };
@@ -79,6 +85,7 @@ class BackupContent {
         activeAccountId: j['activeAccountId'] as String?,
         tmdbKey: j['tmdbKey'] as String?,
         theme: j['theme'] as Map<String, dynamic>?,
+        perf: j['perf'] as Map<String, dynamic>?,
         favorites: (j['favorites'] as List?)?.cast<String>() ?? const [],
         watchProgress: ((j['watchProgress'] as Map?)
                 ?.cast<String, Map<String, dynamic>>()) ??
@@ -93,6 +100,7 @@ class BackupContent {
     }
     if ((tmdbKey ?? '').isNotEmpty) parts.add('clé TMDB');
     if (theme != null) parts.add('thème');
+    if (perf != null) parts.add('optimisation');
     if (favorites.isNotEmpty) {
       parts.add(
           '${favorites.length} favori${favorites.length > 1 ? 's' : ''}');
@@ -248,6 +256,15 @@ class BackupService {
       }
     }
 
+    // 3b. §perfSettings — Réglages d'optimisation (absents des vieux backups).
+    if (content.perf != null) {
+      try {
+        await PerformanceSettingsService.save(PerfConfig.fromJson(content.perf!));
+      } catch (e) {
+        debugPrint('⚠️ Réglages optimisation ignorés (parse fail) — $e');
+      }
+    }
+
     // 4. Favoris
     await FavoritesService.replaceAll(content.favorites);
 
@@ -292,6 +309,7 @@ class BackupService {
       activeAccountId: currentAccount?.id,
       tmdbKey: tmdbKey,
       theme: theme.toJson(),
+      perf: PerformanceSettingsService.config.value.toJson(),
       favorites: favorites,
       watchProgress: wpMap,
     );

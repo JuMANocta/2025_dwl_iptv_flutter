@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.13.0+87-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.13.2+89-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -272,6 +272,11 @@ lib/
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
+- [x] **Ancrage Netflix sur la fiche** (§rowAnchorDetails) — ancrage D-pad « élément focusé à gauche » sur les rangées épisodes / saisons / titres similaires / casting de la fiche
+- [x] **Profil Performance suggéré au 1er boot TV** (§perfAutoSuggest) — dialog one-shot sur Fire TV / Android TV détecté (si les réglages perf sont encore aux défauts)
+- [x] **Titre d'épisode fourni par le panel** (§epTitleProvider) — fallback du nom TMDB dans la fiche, l'action sheet et l'overlay du player
+- [ ] **Fusion des séries éclatées par saison** (§seasonMerge) — rollover d'épisode cross-saisons chez les providers qui séparent chaque saison en série distincte (diagnostic device d'abord)
+- [x] **Section « Optimisation » dans Paramètres** (§perfSettings) — profils Confort/Équilibré/Performance, toggle hero banner + rotation auto, nombre de cartes hero et de vignettes par rangée, diagnostic mémoire (RAM + entrées/disque par compte) + bouton « Libérer la mémoire » (Fire Stick / box faibles). Réglages inclus dans la sauvegarde `.aether`
 - [x] **Tag de qualité dans le player** (§watchContext a) — badge 4K/FHD/HD/SD dans l'overlay du player
 - [x] **Saison/épisode dans le player** (§watchContext b) — `S01 E04` affiché pendant la lecture d'une série
 - [x] **Quel « produit »/qualité sur les chaînes** (§watchContext c) — qualité affichée dans le player + labels de boutons suffixés par le compte pour départager les qualités identiques

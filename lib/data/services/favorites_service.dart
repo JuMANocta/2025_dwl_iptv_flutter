@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
+import 'package:aetherStream/data/models/parsed_playlist.dart';
+import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 
 /// Service de gestion des favoris (§1d).
@@ -88,6 +90,189 @@ class FavoritesService {
       }
     }
     return '$type|${TitleMetadata.computeGroupKey(body)}$yearSuffix';
+  }
+
+  // ── §favReconcile — Réconciliation post-changement de parsing ────────────
+  //
+  // Les clés canoniques descendent de `TitleMetadata.baseTitle`. Quand la
+  // sortie du parsing change (correctifs regex → bump `ParsedPlaylist.
+  // schemaVersion`), les clés persistées AVANT le changement ne matchent plus
+  // `keyFor` recalculé sur le nouveau baseTitle → favoris « fantômes » (cœur
+  // éteint, titre absent de la rangée Favoris, mais la clé traîne en base).
+  // Vécu au bump 11→12 (§parseAudit2026-06-30 : préfixes `|XX|` casse mixte
+  // strippés, pipes résiduels supprimés `CORP|US| CHRISTI`→`CORPUS CHRISTI`,
+  // exposants ᴴ²⁶⁵ normalisés).
+  //
+  // On ne peut pas transformer l'ancienne clé par manipulation de chaîne
+  // seule (impossible de savoir quel espace de `corp us christi` était un
+  // pipe) → on RAPPROCHE chaque clé orpheline des clés actuelles de la
+  // playlist en mémoire via une forme « squash » (groupKey sans espaces).
+
+  /// Forme compacte d'un corps de clé : normalisation groupKey puis retrait
+  /// des espaces → insensible aux découpages (`corp us christi` et
+  /// `corpus christi` → `corpuschristi`).
+  static String _squash(String s) =>
+      TitleMetadata.computeGroupKey(s).replaceAll(' ', '');
+
+  /// §favReconcile — Calcule les ré-appariements `ancienneClé → nouvelleClé`
+  /// des favoris orphelins (stockés mais ne correspondant plus à aucune entrée
+  /// de la playlist). Fonction PURE (aucun état, aucune I/O) → testable.
+  ///
+  /// Règles d'appariement (même type, même segment année pour movie/series ;
+  /// clé legacy sans année ↔ index sans année) :
+  ///   1. Égalité squash exacte (corruption pipes reconstituée).
+  ///   2. Fuzzy borné : le squash candidat est préfixe OU suffixe du squash
+  ///      stocké (ancien garbage de préfixe `|FR-4k|` ou de suffixe ᴴ²⁶⁵).
+  ///      Garde-fous : candidat ≥ 4 chars ET ≥ moitié du stocké ; plusieurs
+  ///      candidats → le plus long gagne ; égalité de longueur → on ne touche
+  ///      pas (ambigu).
+  ///   3. Aucun match → clé conservée telle quelle (jamais de suppression).
+  ///
+  /// [unresolvedOut] (optionnel) reçoit les clés orphelines restées sans
+  /// appariement — pour le log récapitulatif.
+  @visibleForTesting
+  static Map<String, String> reconcileKeys(
+    Set<String> storedKeys,
+    List<M3uEntry> entries, {
+    Set<String>? unresolvedOut,
+  }) {
+    if (storedKeys.isEmpty || entries.isEmpty) return const {};
+
+    // 1. Clés valides aujourd'hui (+ formes legacy movie/series) et index de
+    //    rapprochement `type[#année]` → { squash(groupKey) → clé canonique }.
+    final validKeys = <String>{};
+    final index = <String, Map<String, String>>{};
+    for (final e in entries) {
+      final key = keyFor(e);
+      if (!validKeys.add(key)) continue; // autre version du même groupe
+      if (e.type == M3uContentType.tv) {
+        (index['tv'] ??= {})[_squash(key.substring(3))] = key;
+      } else {
+        validKeys.add(_legacyKey(e));
+        final t = e.type == M3uContentType.movie ? 'movie' : 'series';
+        final squash = _squash(contentGroupKey(e));
+        (index['$t#${e.title.year ?? ''}'] ??= {})[squash] = key;
+        // Une clé legacy stockée (sans année) doit pouvoir migrer vers la
+        // clé canonique AVEC année → bucket sans année en parallèle.
+        (index[t] ??= {})[squash] = key;
+      }
+    }
+
+    // 2. Appariement des orphelines.
+    final rewrites = <String, String>{};
+    for (final stored in storedKeys) {
+      if (validKeys.contains(stored)) continue;
+
+      // Décompose type / corps / année (même convention que normalizeStoredKey).
+      String bucket;
+      String body;
+      if (stored.startsWith('tv|')) {
+        bucket = 'tv';
+        body = stored.substring(3);
+      } else if (stored.startsWith('movie|') || stored.startsWith('series|')) {
+        final type = stored.substring(0, stored.indexOf('|'));
+        body = stored.substring(type.length + 1);
+        bucket = type; // legacy sans année par défaut
+        final lastSep = body.lastIndexOf('|');
+        if (lastSep >= 0) {
+          final tail = body.substring(lastSep + 1);
+          if (RegExp(r'^\d{0,4}$').hasMatch(tail)) {
+            bucket = '$type#$tail';
+            body = body.substring(0, lastSep);
+          }
+        }
+      } else {
+        continue; // clé inconnue → intouchée
+      }
+
+      final candidates = index[bucket];
+      final storedSquash = _squash(body);
+      if (candidates == null || storedSquash.isEmpty) {
+        unresolvedOut?.add(stored);
+        continue;
+      }
+
+      // Règle 1 : égalité squash exacte.
+      final exact = candidates[storedSquash];
+      if (exact != null) {
+        if (exact != stored) rewrites[stored] = exact;
+        continue;
+      }
+
+      // Règle 2 : fuzzy borné préfixe/suffixe, le plus long gagne.
+      String? bestKey;
+      var bestLen = 0;
+      var ambiguous = false;
+      for (final cand in candidates.entries) {
+        final sq = cand.key;
+        if (sq.length < 4 || sq.length * 2 < storedSquash.length) continue;
+        if (!storedSquash.startsWith(sq) && !storedSquash.endsWith(sq)) {
+          continue;
+        }
+        if (sq.length > bestLen) {
+          bestLen = sq.length;
+          bestKey = cand.value;
+          ambiguous = false;
+        } else if (sq.length == bestLen && cand.value != bestKey) {
+          ambiguous = true;
+        }
+      }
+      if (bestKey != null && !ambiguous) {
+        rewrites[stored] = bestKey;
+      } else {
+        unresolvedOut?.add(stored);
+      }
+    }
+    return rewrites;
+  }
+
+  /// §favReconcile — Flag one-shot lié au schéma de cache : les clés ne
+  /// peuvent dériver QUE quand la sortie du parsing change (= bump schéma).
+  /// Une fois la réconciliation faite pour ce schéma, no-op à chaque boot
+  /// (pas de scan des ~centaines de milliers d'entrées pour rien).
+  static const String _reconcileFlag =
+      'favorites_reconciled_schema_${ParsedPlaylist.schemaVersion}';
+
+  static bool _reconciling = false;
+
+  /// §favReconcile — Ré-apparie les favoris orphelins contre la playlist en
+  /// mémoire ([ParsedPlaylistService.entries]). À appeler quand la playlist
+  /// est chargée (boot) ; [finalPass] pose le flag one-shot — ne le passer à
+  /// true que quand TOUS les comptes sont en mémoire (un favori peut n'exister
+  /// que sur un compte secondaire hydraté en différé).
+  static Future<void> reconcileWithPlaylist({bool finalPass = false}) async {
+    if (_reconciling) return;
+    _reconciling = true;
+    try {
+      await _ensureLoaded();
+      if (_cache.isEmpty) return;
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_reconcileFlag) ?? false) return;
+      final entries = ParsedPlaylistService.entries;
+      if (entries.isEmpty) return;
+
+      final unresolved = <String>{};
+      final rewrites =
+          reconcileKeys(Set.of(_cache), entries, unresolvedOut: unresolved);
+      if (rewrites.isNotEmpty) {
+        for (final r in rewrites.entries) {
+          _cache.remove(r.key);
+          _cache.add(r.value);
+        }
+        version.value++;
+        await _persist();
+      }
+      if (rewrites.isNotEmpty || unresolved.isNotEmpty) {
+        debugPrint('🔄 FavoritesService §favReconcile : '
+            '${rewrites.length} favori(s) migré(s), '
+            '${unresolved.length} non résolu(s)');
+      }
+      if (finalPass) await prefs.setBool(_reconcileFlag, true);
+    } catch (e) {
+      debugPrint('❌ FavoritesService: réconciliation échouée — $e');
+    } finally {
+      _reconciling = false;
+    }
   }
 
   /// Clé canonique pour un groupe (type + clé de regroupement).
@@ -241,5 +426,14 @@ class FavoritesService {
       ..addAll(keys);
     version.value++;
     await _persist();
+    // §favReconcile — Un backup .aether peut contenir des clés générées par
+    // une version antérieure du parsing → on ré-arme le flag puis on tente la
+    // réconciliation immédiatement (no-op silencieux si playlist pas chargée :
+    // le prochain boot s'en chargera, le flag étant effacé).
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_reconcileFlag);
+    } catch (_) {}
+    reconcileWithPlaylist(finalPass: true); // fire & forget
   }
 }

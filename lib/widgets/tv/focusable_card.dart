@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dpad/dpad.dart';
 import '../../core/themes/aether_theme_extension.dart';
 import '../../data/services/remote_control_service.dart';
+import 'dpad_row_anchor.dart';
 
 /// Wrapper de focus pour la navigation D-pad / clavier (§3c-2 → §dpadNav).
 ///
@@ -50,6 +51,15 @@ class FocusableCard extends StatefulWidget {
   /// l'item géométriquement le plus proche (qui restait « à fond à droite »).
   final bool entry;
 
+  /// §rowAnchor — Ancrage « façon Netflix » pour les cartes de carrousel
+  /// horizontal : au focus, la carte se cale au DÉBUT (gauche) du viewport,
+  /// la suite de la rangée défile devant. Sans ce flag, l'auto-scroll dpad
+  /// fait un « reveal minimal » : en avançant à droite, la carte focusée
+  /// reste collée au bord DROIT — vécu comme un défilement inversé (on ne
+  /// voit jamais ce qui arrive). Les scrollables verticaux ancêtres gardent
+  /// le reveal minimal standard. Sans effet hors carrousel (grilles).
+  final bool anchorRowStart;
+
   const FocusableCard({
     super.key,
     required this.child,
@@ -62,6 +72,7 @@ class FocusableCard extends StatefulWidget {
     this.backgroundColor,
     this.scaleOnFocus = true,
     this.entry = false,
+    this.anchorRowStart = false,
   });
 
   @override
@@ -74,6 +85,14 @@ class _FocusableCardState extends State<FocusableCard> {
     // Filet de sécurité : libère l'enregistrement télécommande web.
     RemoteControlService.instance.clearActivate(this);
     super.dispose();
+  }
+
+  /// §rowAnchor — Scroll custom remplaçant l'auto-scroll dpad quand
+  /// [FocusableCard.anchorRowStart] est actif. Logique partagée avec
+  /// [FocusableChip] (§rowAnchorDetails) dans [DpadRowAnchor].
+  void _anchorScroll() {
+    if (!mounted) return;
+    DpadRowAnchor.anchor(context);
   }
 
   @override
@@ -117,11 +136,17 @@ class _FocusableCardState extends State<FocusableCard> {
       onLongSelect: widget.onLongPress,
       // Tap tactile déjà géré (InkWell ou enfant) → on évite le double-fire.
       tapToSelect: false,
+      // §rowAnchor — l'auto-scroll dpad (reveal au bord le plus proche) est
+      // remplacé par notre ancrage début-de-rangée quand demandé.
+      autoScroll: !widget.anchorRowStart,
       effects: effects,
       onFocusChange: (focused) {
         if (focused) {
           RemoteControlService.instance
               .registerActivate(this, widget.onTap, widget.onLongPress);
+          if (widget.anchorRowStart) {
+            WidgetsBinding.instance.addPostFrameCallback((_) => _anchorScroll());
+          }
         } else {
           RemoteControlService.instance.clearActivate(this);
         }

@@ -253,8 +253,10 @@ class _SeeAllTile extends StatelessWidget {
     // §tvErgo — FocusableCard (et non InkWell nu) pour afficher le glow Matrix
     // au focus D-pad, cohérent avec les _HomeCard voisines du carrousel/grille.
     // Tuile de même taille que les cartes → le scale(1.05) par défaut convient.
+    // §rowAnchor — même ancrage début-de-rangée que les _HomeCard voisines.
     return FocusableCard(
       onTap: onTap,
+      anchorRowStart: true,
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
         width: width,

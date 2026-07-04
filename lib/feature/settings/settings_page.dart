@@ -5,6 +5,7 @@ import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/settings/about_page.dart';
 import 'package:aetherStream/feature/settings/backup_page.dart';
+import 'package:aetherStream/feature/settings/optimization_settings_page.dart';
 import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
 import 'package:aetherStream/feature/settings/xmltv_page.dart';
@@ -55,6 +56,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _openThemeSettings() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ThemeSettingsPage()),
+    );
+  }
+
+  Future<void> _openOptimisation() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const OptimizationSettingsPage()),
     );
   }
 
@@ -239,6 +246,14 @@ class _SettingsPageState extends State<SettingsPage> {
               title: 'Personnalisation',
               subtitle: 'Thème, couleurs, effets cyberpunk',
               onTap: _openThemeSettings,
+            ),
+            // §perfSettings — Optimisation Fire Stick / box faibles.
+            _SettingsTile(
+              icon: Icons.speed,
+              accentColor: kAccentSecondary,
+              title: 'Optimisation',
+              subtitle: 'Profils performance, hero, vignettes, mémoire',
+              onTap: _openOptimisation,
             ),
             const SizedBox(height: 8),
             // ── Groupe 3 : Sauvegarde & application (magenta) ──────────────

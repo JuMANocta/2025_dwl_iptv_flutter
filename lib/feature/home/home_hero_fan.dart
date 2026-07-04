@@ -49,7 +49,15 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     super.initState();
     _animCtrl = AnimationController(vsync: this, duration: _animDuration)
       ..addListener(_onTick);
+    // §perfSettings — le toggle « Rotation automatique » (Paramètres →
+    // Optimisation) rallume/coupe le timer en live.
+    PerformanceSettingsService.config.addListener(_onPerfChanged);
     _scheduleNext();
+  }
+
+  void _onPerfChanged() {
+    if (!mounted) return;
+    _scheduleNext(); // re-court-circuite (ou relance) selon heroAutoRotate
   }
 
   @override
@@ -62,6 +70,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   @override
   void dispose() {
     appRouteObserver.unsubscribe(this);
+    PerformanceSettingsService.config.removeListener(_onPerfChanged);
     _timer?.cancel();
     _animCtrl
       ..removeListener(_onTick)
@@ -95,7 +104,15 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
 
   void _scheduleNext() {
     _timer?.cancel();
-    if (widget.featured.length <= 1 || _focusPaused || _bgPaused) return;
+    // §perfSettings — 3e gate (avec _focusPaused/_bgPaused) : rotation coupée
+    // par l'utilisateur → le swipe/tap manuel reste actif (les handlers
+    // rappellent _scheduleNext, re-court-circuité ici à chaque fois).
+    if (widget.featured.length <= 1 ||
+        _focusPaused ||
+        _bgPaused ||
+        !PerformanceSettingsService.config.value.heroAutoRotate) {
+      return;
+    }
     _timer = Timer.periodic(_autoDuration, (_) {
       if (!mounted) return;
       _advance();

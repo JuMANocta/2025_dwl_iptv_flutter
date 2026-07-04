@@ -20,6 +20,7 @@ import 'feature/accounts/accounts_page.dart';
 import 'feature/accounts/expiration_alert_dialog.dart';
 import 'feature/onboarding/onboarding_page.dart';
 import 'feature/settings/backup_restore_flow.dart';
+import 'feature/settings/perf_suggest_dialog.dart';
 import 'feature/settings/web_console/web_console_page.dart';
 import 'feature/pairing/pairing_page.dart';
 import 'data/services/pairing_service.dart';
@@ -31,6 +32,7 @@ import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
 import 'core/themes/theme_service.dart';
 import 'core/themes/app_theme_config.dart';
+import 'core/settings/performance_settings_service.dart';
 import 'data/services/update_service.dart';
 import 'data/services/xmltv_service.dart';
 import 'feature/update/update_dialog.dart';
@@ -105,6 +107,7 @@ void main() async {
     HiddenRegionsService.init(),
     TrackPreferencesService.init(),
     ThemeService.load(),
+    PerformanceSettingsService.load(), // §perfSettings
   ]);
 
   runApp(const MyApp());
@@ -320,13 +323,25 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     if (accounts.length > 1) {
       final others = accounts.where((a) => a.id != acc?.id).toList();
       await ParsedPlaylistService.preloadOthersFromDisk(others);
+      // §favReconcile — 1re passe sur ce qui est déjà en mémoire (compte actif
+      // + préchargés disque). La passe FINALE (qui pose le flag one-shot) est
+      // déclenchée en fin d'hydratation, quand TOUS les comptes sont chargés.
+      FavoritesService.reconcileWithPlaylist(); // fire & forget
       _hydrateSecondaryAccounts(others); // fire & forget
+    } else {
+      // §favReconcile — Mono-compte : tout est en mémoire → passe unique qui
+      // pose le flag directement.
+      FavoritesService.reconcileWithPlaylist(finalPass: true); // fire & forget
     }
 
     // §17b — Fetch background des AccountInfo pour TOUS les comptes
     // (alimente le cache `ExpirationAlertService.infos`). On déclenche
     // la popup d'alerte si au moins un compte expire <30 jours.
     _checkExpirationAlerts(accounts);
+
+    // §perfAutoSuggest — Sur box TV, propose une fois le profil Performance
+    // (fire & forget, one-shot, seulement si la config perf est aux défauts).
+    _suggestTvPerfProfile();
 
     return (
       path:        path,
@@ -358,6 +373,20 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     }
   }
 
+  /// §perfAutoSuggest — Propose le profil Performance sur box TV (one-shot).
+  /// Délai 2,5 s pour laisser la home se monter (le dialog d'expiration §17b,
+  /// plus critique, arrive à 4 s et passerait par-dessus — cas rare accepté).
+  Future<void> _suggestTvPerfProfile() async {
+    try {
+      await Future.delayed(const Duration(milliseconds: 2500));
+      final ctx = navigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      await PerfSuggestDialog.maybeShow(ctx);
+    } catch (_) {
+      // Échec silencieux — pas critique au boot.
+    }
+  }
+
   /// Télécharge le M3U manquant des comptes secondaires et les charge en
   /// mémoire (parsing). Asynchrone & silencieux — la home se met à jour via
   /// `ParsedPlaylistService.version` quand chaque compte termine. §16 : push
@@ -384,6 +413,10 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         // Ne pas planter le démarrage à cause d'un compte cassé (network, IO…).
       }
     }
+    // §favReconcile — Passe FINALE : tous les comptes secondaires ont été
+    // tentés (chargés ou en erreur) → ré-appariement des favoris orphelins
+    // avec la vue la plus complète possible, puis pose du flag one-shot.
+    await FavoritesService.reconcileWithPlaylist(finalPass: true);
   }
 
   /// Permet de relancer la validation, typiquement après une action de l'utilisateur.

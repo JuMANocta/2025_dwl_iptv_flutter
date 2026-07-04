@@ -103,6 +103,8 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
       entry.displayName,
       entry.title.seasonNumber!,
       entry.title.episodeNumber!,
+      // §epSynopsis — id TMDB provider prioritaire (fallback recherche floue).
+      tmdbId: int.tryParse(entry.tmdbId ?? ''),
       yearFilter: entry.title.year,
       groupTitle: entry.groupTitle,
     );
@@ -143,13 +145,23 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                     : (entry.logoUrl?.isNotEmpty == true ? entry.logoUrl : null);
 
                 String epName = data?['name'] as String? ?? '';
+                // §epTitleProvider — fallback titre panel avant l'extraction
+                // regex du rawTitle (episodeName).
+                if (epName.isEmpty) epName = entry.episodeTitle ?? '';
                 if (epName.isEmpty || epName == entry.displayName) {
                   epName = episodeName(entry);
                 }
 
-                final double? voteAvg = (data?['vote_average'] as num?)?.toDouble();
-                final String? airDate  = data?['air_date'] as String?;
-                final String? overview = data?['overview'] as String?;
+                final double? voteAvg = (data?['vote_average'] as num?)?.toDouble()
+                    ?? entry.rating;
+                final String? airDate  = data?['air_date'] as String?
+                    ?? entry.releaseDate;
+                // §epSynopsis — fallback plot PROVIDER de l'épisode (mappé par
+                // fetchEpisodes) quand TMDB ne rend rien.
+                final String? tmdbOverview = data?['overview'] as String?;
+                final String? overview = (tmdbOverview?.isNotEmpty == true)
+                    ? tmdbOverview
+                    : entry.plot;
                 final s = (entry.title.seasonNumber ?? 0).toString().padLeft(2, '0');
                 final e = (entry.title.episodeNumber ?? 0).toString().padLeft(2, '0');
                 final dimColor = Theme.of(context).colorScheme.onSurface.withAlpha(128);
