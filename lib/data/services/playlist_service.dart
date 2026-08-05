@@ -75,7 +75,13 @@ class PlaylistService {
     }
   }
 
-  static Future<String> getOrDownloadPlaylist() async {
+  /// §bootStatus — [onDownloadStart] est appelé UNIQUEMENT si un téléchargement
+  /// réseau va réellement démarrer (cache absent ou périmé). L'appelant peut
+  /// ainsi afficher « téléchargement… » au lieu de « lecture du cache… » sans
+  /// que ce service connaisse l'UI.
+  static Future<String> getOrDownloadPlaylist({
+    void Function()? onDownloadStart,
+  }) async {
     final path = await playlistPath();
     final file = File(path);
 
@@ -92,6 +98,7 @@ class PlaylistService {
     } else {
       debugPrint("ℹ️ Aucune playlist en cache. Téléchargement initial...");
     }
+    onDownloadStart?.call();
     return downloadCurrentM3U();
   }
 

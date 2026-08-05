@@ -16,6 +16,37 @@ class TrendingTitle {
   const TrendingTitle({required this.title, this.originalTitle, this.year});
 }
 
+/// §personSearch — Résultat léger de `/search/person`, juste ce qu'il faut pour
+/// la rangée « Personnes » (le détail complet vient ensuite de
+/// `getPersonDetails` quand on ouvre la fiche).
+class PersonHit {
+  final int id;
+  final String name;
+  final String? profilePath;
+  /// "Acting", "Directing", "Writing"… (`known_for_department`).
+  final String? knownForDepartment;
+  final double popularity;
+
+  const PersonHit({
+    required this.id,
+    required this.name,
+    this.profilePath,
+    this.knownForDepartment,
+    this.popularity = 0,
+  });
+
+  /// Métier affichable en français (null si TMDB ne le donne pas).
+  String? get roleLabel => switch (knownForDepartment) {
+        'Directing' => 'Réalisateur',
+        'Acting' => 'Acteur',
+        'Writing' => 'Scénariste',
+        'Production' => 'Production',
+        'Sound' => 'Musique',
+        'Camera' => 'Image',
+        _ => null,
+      };
+}
+
 class TmdbService {
   Dio? _dio;
   String? _bearerToken;
@@ -306,7 +337,12 @@ class TmdbService {
           detailEndpoint,
           queryParameters: {
             'language': 'fr-FR',
-            'append_to_response': 'credits,videos', // 👈 Ceci demande les acteurs et les vidéos
+            // §tmdbMore — aligné sur getFullDetailsById : ce chemin fallback
+            // (recherche par titre, sans tmdb_id provider) perdait sinon les
+            // recommandations ET la certification d'âge. `credits` porte
+            // aussi `crew` → réalisateur (§directorView).
+            'append_to_response':
+                'credits,videos,recommendations,release_dates,content_ratings',
           }
       );
 
@@ -336,6 +372,47 @@ class TmdbService {
       debugPrint("❌ Erreur recherche personne : $e");
     }
     return null;
+  }
+
+  /// §personSearch — Recherche de PERSONNES (acteurs, réalisateurs…) pour la
+  /// rangée « Personnes » des résultats de recherche.
+  ///
+  /// Différence avec [getPersonId] (qui ne rend que le 1er id) : on expose la
+  /// LISTE avec ce qu'il faut pour l'afficher (nom, photo, métier). Trié par
+  /// popularité décroissante, plafonné à [limit].
+  /// Contrat maison : jamais d'exception, `const []` sans clé TMDB.
+  Future<List<PersonHit>> searchPersons(String query, {int limit = 10}) async {
+    final q = query.trim();
+    if (q.length < 2) return const [];
+    if (!await _init()) return const [];
+
+    try {
+      final response = await _dio!.get('/search/person', queryParameters: {
+        'query': q,
+        'language': 'fr-FR',
+      });
+      final results = (response.data?['results'] as List<dynamic>?) ?? const [];
+      final hits = <PersonHit>[];
+      for (final r in results) {
+        if (r is! Map) continue;
+        final id = r['id'];
+        final name = r['name'];
+        if (id is! int || name is! String || name.isEmpty) continue;
+        hits.add(PersonHit(
+          id: id,
+          name: name,
+          profilePath: r['profile_path'] as String?,
+          knownForDepartment: r['known_for_department'] as String?,
+          popularity: (r['popularity'] as num?)?.toDouble() ?? 0,
+        ));
+      }
+      hits.sort((a, b) => b.popularity.compareTo(a.popularity));
+      if (hits.length > limit) hits.length = limit;
+      return hits;
+    } catch (e) {
+      debugPrint('❌ §personSearch — recherche personne échouée : $e');
+      return const [];
+    }
   }
 
   Future<Person?> getPersonDetails(int personId) async {

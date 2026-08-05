@@ -233,21 +233,64 @@ class FavoritesService {
   static const String _reconcileFlag =
       'favorites_reconciled_schema_${ParsedPlaylist.schemaVersion}';
 
-  static bool _reconciling = false;
+  /// Nom du flag one-shot — exposé pour les tests de non-régression (§favAudit).
+  @visibleForTesting
+  static String get reconcileFlagKey => _reconcileFlag;
+
+  /// Remet le service à zéro entre deux tests (état statique partagé).
+  @visibleForTesting
+  static void resetForTest() {
+    _cache.clear();
+    _loaded = false;
+    _running = null;
+  }
+
+  /// Passe en cours, pour sérialiser les appels concurrents (§favAudit).
+  static Future<void>? _running;
 
   /// §favReconcile — Ré-apparie les favoris orphelins contre la playlist en
   /// mémoire ([ParsedPlaylistService.entries]). À appeler quand la playlist
   /// est chargée (boot) ; [finalPass] pose le flag one-shot — ne le passer à
   /// true que quand TOUS les comptes sont en mémoire (un favori peut n'exister
   /// que sur un compte secondaire hydraté en différé).
+  ///
+  /// §favAudit — L'ancienne garde `if (_reconciling) return;` faisait
+  /// silencieusement ABANDONNER la passe appelante. Quand c'était la passe
+  /// FINALE (multi-comptes : 1re passe fire & forget au boot, finale en fin
+  /// d'hydratation), le **flag one-shot n'était jamais posé** → scan complet
+  /// de la playlist à CHAQUE démarrage. On sérialise désormais : une passe
+  /// intermédiaire redondante est bien sautée, mais la finale attend son tour.
   static Future<void> reconcileWithPlaylist({bool finalPass = false}) async {
-    if (_reconciling) return;
-    _reconciling = true;
+    final running = _running;
+    if (running != null) {
+      if (!finalPass) return; // passe intermédiaire déjà couverte
+      await running;
+    }
+    final pass = _reconcilePass(finalPass: finalPass);
+    _running = pass;
+    try {
+      await pass;
+    } finally {
+      if (identical(_running, pass)) _running = null;
+    }
+  }
+
+  static Future<void> _reconcilePass({required bool finalPass}) async {
     try {
       await _ensureLoaded();
-      if (_cache.isEmpty) return;
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool(_reconcileFlag) ?? false) return;
+
+      // Aucun favori → rien ne peut avoir dérivé. Le flag est quand même posé
+      // (les favoris créés ensuite le seront avec le parsing courant), sinon
+      // on rescannerait la playlist à chaque boot pour rien.
+      if (_cache.isEmpty) {
+        if (finalPass) await prefs.setBool(_reconcileFlag, true);
+        return;
+      }
+
+      // Playlist pas encore en mémoire : on ne peut RIEN réconcilier, donc on
+      // ne pose surtout pas le flag (sinon des orphelins resteraient à vie).
       final entries = ParsedPlaylistService.entries;
       if (entries.isEmpty) return;
 
@@ -270,8 +313,6 @@ class FavoritesService {
       if (finalPass) await prefs.setBool(_reconcileFlag, true);
     } catch (e) {
       debugPrint('❌ FavoritesService: réconciliation échouée — $e');
-    } finally {
-      _reconciling = false;
     }
   }
 

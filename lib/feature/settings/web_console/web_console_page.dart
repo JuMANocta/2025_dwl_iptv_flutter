@@ -18,8 +18,28 @@ import '../../../data/services/web_console_service.dart';
 /// piloter la TV après qu'on a quitté cet écran. L'arrêt se fait explicitement
 /// via le bouton "Arrêter le serveur" (ou le timeout de sécurité 30 min du
 /// service).
+///
+/// §webConsoleOnly — Cet écran remplace l'ancien `PairingPage` sur **tous** les
+/// points d'entrée QR. Deux paramètres rendent ce remplacement indolore :
+/// [initialView] (le QR ouvre directement la bonne page côté navigateur) et
+/// [embedded] (rendu sans Scaffold, pour l'onboarding TV).
 class WebConsolePage extends StatefulWidget {
-  const WebConsolePage({super.key});
+  /// Vue ouverte côté navigateur au scan : `accounts`, `tmdb`, `backup`…
+  /// `null` = tableau de bord complet.
+  final String? initialView;
+
+  /// Rendu sans `Scaffold` ni AppBar, pour intégration dans un slide.
+  final bool embedded;
+
+  /// Notifie chaque action appliquée depuis le navigateur (onboarding TV).
+  final void Function(WebConsoleEvent event)? onEvent;
+
+  const WebConsolePage({
+    super.key,
+    this.initialView,
+    this.embedded = false,
+    this.onEvent,
+  });
 
   @override
   State<WebConsolePage> createState() => _WebConsolePageState();
@@ -37,7 +57,13 @@ class _WebConsolePageState extends State<WebConsolePage> {
   void initState() {
     super.initState();
     WakelockPlus.enable();
+    WebConsoleService.instance.lastEvent.addListener(_onServiceEvent);
     _start();
+  }
+
+  void _onServiceEvent() {
+    final e = WebConsoleService.instance.lastEvent.value;
+    if (e != null && mounted) widget.onEvent?.call(e);
   }
 
   Future<void> _start() async {
@@ -46,8 +72,15 @@ class _WebConsolePageState extends State<WebConsolePage> {
       // pendant que la télécommande téléphone est active), on la réutilise au
       // lieu de la redémarrer : sinon un nouveau token invaliderait la session
       // ouverte sur le téléphone.
-      if (!WebConsoleService.instance.isRunning) {
-        await WebConsoleService.instance.start(theme: ThemeService.config.value);
+      if (WebConsoleService.instance.isRunning) {
+        // §webConsoleOnly — Session réutilisée : on réoriente juste le QR vers
+        // la vue demandée par l'écran appelant (token et serveur intacts).
+        WebConsoleService.instance.setInitialView(widget.initialView);
+      } else {
+        await WebConsoleService.instance.start(
+          theme: ThemeService.config.value,
+          initialView: widget.initialView,
+        );
       }
       if (!mounted) return;
       setState(() {
@@ -81,6 +114,7 @@ class _WebConsolePageState extends State<WebConsolePage> {
     // §webConsolePersist — on relâche seulement le wakelock. Le serveur reste
     // actif en arrière-plan (télécommande téléphone) jusqu'à l'arrêt explicite
     // ou le timeout 30 min.
+    WebConsoleService.instance.lastEvent.removeListener(_onServiceEvent);
     WakelockPlus.disable();
     super.dispose();
   }
@@ -88,18 +122,20 @@ class _WebConsolePageState extends State<WebConsolePage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final content = Center(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(widget.embedded ? 8 : 24),
+        child: _starting
+            ? const CircularProgressIndicator()
+            : _error != null
+                ? _buildError(cs)
+                : _buildReady(cs),
+      ),
+    );
+    if (widget.embedded) return content;
     return Scaffold(
       appBar: AppBar(title: const Text('Console web'), elevation: 0),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: _starting
-              ? const CircularProgressIndicator()
-              : _error != null
-                  ? _buildError(cs)
-                  : _buildReady(cs),
-        ),
-      ),
+      body: content,
     );
   }
 
@@ -120,18 +156,24 @@ class _WebConsolePageState extends State<WebConsolePage> {
       );
 
   Widget _buildReady(ColorScheme cs) {
+    // §webConsoleOnly — En mode embarqué (slide d'onboarding), on compacte : le
+    // slide porte déjà son propre titre et le bouton d'arrêt n'a pas de sens
+    // avant même que la config soit faite.
+    final compact = widget.embedded;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          'Ouvre cette adresse dans un navigateur\nsur un PC ou un téléphone du même réseau :',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
-        ),
-        const SizedBox(height: 20),
+        if (!compact) ...[
+          Text(
+            'Ouvre cette adresse dans un navigateur\nsur un PC ou un téléphone du même réseau :',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+          ),
+          const SizedBox(height: 20),
+        ],
         // QR
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: EdgeInsets.all(compact ? 8 : 12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
@@ -143,21 +185,21 @@ class _WebConsolePageState extends State<WebConsolePage> {
           child: QrImageView(
             data: _url ?? '',
             version: QrVersions.auto,
-            size: 220,
+            size: compact ? 168 : 220,
             backgroundColor: Colors.white,
             eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
             dataModuleStyle: const QrDataModuleStyle(
                 dataModuleShape: QrDataModuleShape.square, color: Colors.black),
           ),
         ),
-        const SizedBox(height: 24),
+        SizedBox(height: compact ? 14 : 24),
         // URL lisible
         SelectableText(
           'http://$_ip:$_port',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: kAccentPrimary,
-            fontSize: 20,
+            fontSize: compact ? 17 : 20,
             fontWeight: FontWeight.bold,
             fontFeatures: const [FontFeature.tabularFigures()],
           ),
@@ -183,38 +225,40 @@ class _WebConsolePageState extends State<WebConsolePage> {
             ),
           ],
         ),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainer,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.lock_outline, size: 18, color: cs.onSurfaceVariant),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Le serveur reste actif en arrière-plan tant que tu utilises la '
-                  'télécommande, même après avoir quitté cet écran. Arrête-le ici '
-                  'quand tu as fini (sinon fermeture auto après 30 min).',
-                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+        if (!compact) ...[
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.lock_outline, size: 18, color: cs.onSurfaceVariant),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Le serveur reste actif en arrière-plan tant que tu utilises la '
+                    'télécommande, même après avoir quitté cet écran. Arrête-le ici '
+                    'quand tu as fini (sinon fermeture auto après 30 min).',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: _stopServer,
-          style: FilledButton.styleFrom(
-            backgroundColor: kWarning,
-            foregroundColor: Colors.black,
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _stopServer,
+            style: FilledButton.styleFrom(
+              backgroundColor: kWarning,
+              foregroundColor: Colors.black,
+            ),
+            icon: const Icon(Icons.power_settings_new),
+            label: const Text('Arrêter le serveur'),
           ),
-          icon: const Icon(Icons.power_settings_new),
-          label: const Text('Arrêter le serveur'),
-        ),
+        ],
       ],
     );
   }

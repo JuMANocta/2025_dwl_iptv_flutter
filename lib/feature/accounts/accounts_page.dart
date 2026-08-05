@@ -5,15 +5,12 @@ import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/services/expiration_alert_service.dart';
-import 'package:aetherStream/data/services/pairing_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
-import 'package:aetherStream/data/services/tmdb_api_service.dart';
-import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
-import 'package:aetherStream/feature/pairing/pairing_page.dart';
+import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
@@ -107,32 +104,23 @@ class _AccountsPageState extends State<AccountsPage> {
     }
   }
 
-  /// §3c-8 — Ajout d'un compte via pairing QR mobile→TV.
-  Future<void> _openPairing() async {
-    final result = await Navigator.of(context).push<PairingResult>(
+  /// §webConsoleOnly — Gestion des comptes depuis le téléphone via la Console
+  /// web (remplace l'ancien pairing QR mono-formulaire).
+  ///
+  /// Le QR ouvre directement la page « Comptes » du panneau : on y ajoute un
+  /// compte comme avant, mais on peut aussi le modifier, le recharger, le
+  /// supprimer ou basculer le compte principal — ce que le formulaire de
+  /// pairing ne permettait pas. La console enregistre elle-même côté service,
+  /// d'où le simple `_refresh()` au retour (aucun résultat à récupérer).
+  Future<void> _openPhoneConfig() async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PairingPage(
-          kind: PairingKind.account,
-          onManualFallback: () {
-            Navigator.of(context).pop();
-            _openEditor();
-          },
-        ),
+        builder: (_) => const WebConsolePage(initialView: 'accounts'),
       ),
     );
-    if (result is PairingAccountResult) {
-      await StreamAccountService.saveAccount(result.account);
-      await StreamAccountService.setCurrentAccount(result.account.id);
-      // §3c-8b — TMDB optionnel saisi dans le même form mobile.
-      final t = result.tmdbToken;
-      if (t != null && t.isNotEmpty) {
-        await TmdbApiService.saveApiKey(t);
-        TmdbService.resetInstance();
-      }
-      if (!mounted) return;
-      _priorityChanged = true;
-      _refresh();
-    }
+    if (!mounted) return;
+    _priorityChanged = true;
+    _refresh();
   }
 
   /// §3c-8 — Bifurcation du bouton "+" sur TV : mobile vs télécommande.
@@ -153,8 +141,10 @@ class _AccountsPageState extends State<AccountsPage> {
               autofocus: true,
               leading: Icon(Icons.phone_iphone, color: kAccentPrimary),
               title: const Text('Depuis mon téléphone'),
-              subtitle: const Text('Recommandé — QR + saisie confortable'),
-              onTap: () => Navigator.of(ctx).pop('pairing'),
+              subtitle: const Text(
+                  'Recommandé — QR vers le panneau complet (ajout, édition, '
+                  'rechargement)'),
+              onTap: () => Navigator.of(ctx).pop('console'),
             ),
             ListTile(
               leading: Icon(Icons.keyboard_alt_outlined,
@@ -173,8 +163,8 @@ class _AccountsPageState extends State<AccountsPage> {
         ],
       ),
     );
-    if (choice == 'pairing') {
-      await _openPairing();
+    if (choice == 'console') {
+      await _openPhoneConfig();
     } else if (choice == 'manual') {
       await _openEditor();
     }
@@ -402,7 +392,7 @@ class _AccountsPageState extends State<AccountsPage> {
 
   Widget _buildEmptyState(ColorScheme cs) {
     // §12-b — Widget EmptyState unifié.
-    // §3c-8 — Sur TV, CTA = pairing QR mobile (la saisie au D-pad est piégeante).
+    // §webConsoleOnly — Sur TV, CTA = Console web (la saisie au D-pad est piégeante).
     final isTv = PlatformTv.isTv;
     return EmptyState(
       icon: isTv ? Icons.qr_code_2 : Icons.account_circle_outlined,
@@ -412,7 +402,7 @@ class _AccountsPageState extends State<AccountsPage> {
           : 'Ajoute une URL M3U complète ou un compte Xtream Codes pour commencer à streamer.',
       ctaLabel: isTv ? 'Configurer depuis mon téléphone' : 'Ajouter une playlist',
       ctaIcon: isTv ? Icons.phone_iphone : Icons.add,
-      onCtaTap: isTv ? _openPairing : () => _openEditor(),
+      onCtaTap: isTv ? _openPhoneConfig : () => _openEditor(),
     );
   }
 

@@ -48,6 +48,40 @@ class Media {
   /// "16", "TP"/"U"… Null si TMDB ne la fournit pas pour ce pays.
   final String? certification;
 
+  // ── §directorView / §tmdbMore (2026-08-05) ────────────────────────────────
+  // Tous ces champs arrivaient DÉJÀ dans la réponse TMDB (`append_to_response`
+  // demande `credits`, qui contient `crew`) : c'est du parsing pur, aucun
+  // appel réseau supplémentaire.
+
+  /// §directorView — Qui a fait ce titre : **réalisateur** pour un film
+  /// (`credits.crew`, `job == 'Director'`), **créateur** pour une série
+  /// (`created_by` — TMDB ne renseigne quasi jamais `Director` au niveau
+  /// série). Réutilise [CastMember] : on récupère `id` (→ navigation vers sa
+  /// fiche) et `profile_path` gratuitement.
+  final CastMember? director;
+
+  /// Accroche officielle ("Le monde ne sera plus jamais le même").
+  final String? tagline;
+
+  /// §tmdbOnlyDetails — Titre en version originale, `null` s'il est identique
+  /// au titre localisé. Les fournisseurs IPTV nomment très souvent en VO : c'est
+  /// donc le second terme à essayer pour retrouver un titre dans les listes.
+  final String? originalTitle;
+
+  /// Nombre de votes — crédibilise la note (« ⭐ 7.8 · 12 400 votes »).
+  final int? voteCount;
+
+  /// "Released" / "In Production"… (surtout utile pour les séries).
+  final String? status;
+
+  /// Pays de production (absents de l'ancien bloc « Production »).
+  final List<String> productionCountries;
+
+  /// §tmdbMore — Date de sortie COMPLÈTE. [releaseDate] est conservée telle
+  /// quelle (l'appelant historique la tronque à l'année) ; celle-ci permet
+  /// d'afficher « 12 juillet 2023 » sans casser l'existant.
+  final String? releaseDateFull;
+
   Media({
     required this.id,
     required this.title,
@@ -66,6 +100,13 @@ class Media {
     this.collectionName,
     this.recommendations = const [],
     this.certification,
+    this.director,
+    this.tagline,
+    this.originalTitle,
+    this.voteCount,
+    this.status,
+    this.productionCountries = const [],
+    this.releaseDateFull,
   });
 
   factory Media.fromJson(Map<String, dynamic> json) {
@@ -89,6 +130,39 @@ class Media {
               profilePath: a['profile_path'] as String?,
             ))
         .toList();
+
+    // 1-bis. §directorView — Réalisateur (film) / créateur (série).
+    // `credits.crew` est déjà dans la payload : aucun appel réseau en plus.
+    CastMember? foundDirector;
+    if (isMovie) {
+      final rawCrew = (json['credits']?['crew'] as List<dynamic>?) ?? const [];
+      for (final c in rawCrew) {
+        if (c is! Map) continue;
+        if (c['job'] != 'Director') continue;
+        if (c['id'] == null || c['name'] == null) continue;
+        foundDirector = CastMember(
+          id: c['id'] as int,
+          name: c['name'] as String,
+          character: 'Réalisateur',
+          profilePath: c['profile_path'] as String?,
+        );
+        break; // le premier crédité fait foi (co-réalisateurs ignorés)
+      }
+    } else {
+      // Séries : TMDB expose le créateur dans `created_by`, pas dans crew.
+      final creators = (json['created_by'] as List<dynamic>?) ?? const [];
+      for (final c in creators) {
+        if (c is! Map) continue;
+        if (c['id'] == null || c['name'] == null) continue;
+        foundDirector = CastMember(
+          id: c['id'] as int,
+          name: c['name'] as String,
+          character: 'Créateur',
+          profilePath: c['profile_path'] as String?,
+        );
+        break;
+      }
+    }
 
     // 2. Recherche de la première bande-annonce (Trailer) en FR ou ANGLAIS
     String? foundTrailerKey;
@@ -133,6 +207,13 @@ class Media {
         ?.take(3)
         .map((c) => c['name'] as String)
         .join(', ');
+
+    // §tmdbMore — Pays de production (absents jusqu'ici de la fiche).
+    final countries = ((json['production_countries'] as List<dynamic>?) ??
+            const [])
+        .map((c) => (c is Map ? c['name'] : null) as String?)
+        .whereType<String>()
+        .toList();
 
     // §tmdbReco — Saga + recommandations (même type que le média parent).
     final coll = json['belongs_to_collection'] as Map<String, dynamic>?;
@@ -209,6 +290,29 @@ class Media {
       collectionName: coll?['name'] as String?,
       recommendations: recos,
       certification: certification,
+      // §directorView / §tmdbMore
+      director: foundDirector,
+      tagline: (json['tagline'] as String?)?.trim().isNotEmpty == true
+          ? (json['tagline'] as String).trim()
+          : null,
+      // §tmdbOnlyDetails — `original_title` (films) / `original_name` (séries).
+      // Écarté s'il est identique au titre localisé : la bascule VO n'aurait
+      // alors rien à proposer.
+      originalTitle: () {
+        final raw =
+            ((isMovie ? json['original_title'] : json['original_name']) as String?)
+                ?.trim();
+        final localized = (isMovie ? json['title'] : json['name']) as String?;
+        if (raw == null || raw.isEmpty || raw == localized?.trim()) return null;
+        return raw;
+      }(),
+      voteCount: (json['vote_count'] as num?)?.toInt(),
+      status: (json['status'] as String?)?.trim().isNotEmpty == true
+          ? (json['status'] as String).trim()
+          : null,
+      productionCountries: countries,
+      releaseDateFull:
+          (isMovie ? json['release_date'] : json['first_air_date']) as String?,
     );
   }
 }

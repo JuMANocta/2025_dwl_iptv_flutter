@@ -17,6 +17,7 @@ import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
+import 'package:aetherStream/feature/search/actor_details_page.dart';
 import 'package:aetherStream/feature/search/details_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
@@ -477,7 +478,10 @@ class _HomePageState extends State<HomePage> with RouteAware {
                         // bas pour rien). L'arrow_back est inline avec le champ.
                         SizedBox(height: MediaQuery.of(context).padding.top + 6),
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(4, 4, 16, 12),
+                          // §searchGap — bottom réduit (12 → 8) : combiné au
+                          // `top: 4` de l'en-tête de section, il ne reste que
+                          // ~12 px entre l'input et le premier résultat.
+                          padding: const EdgeInsets.fromLTRB(4, 4, 16, 8),
                           child: Row(
                             children: [
                               IconButton(
@@ -1016,16 +1020,29 @@ class _TypePageState extends State<_TypePage> {
   // ── Caches (memoization) — §perfBigList ─────────────────────────────────
   // CRUCIAL avec une grosse playlist (Ultimate ~600k entrées) : le GROUPEMENT
   // par catégorie/titre est O(n) sur des centaines de milliers d'entrées. Il ne
-  // dépend QUE des entrées + playlist + favoris. Le HERO "featured" (reprise)
+  // dépend QUE des entrées + playlist. Le HERO "featured" (reprise)
   // dépend EN PLUS de WatchProgress, qui bump toutes les 10 s en lecture ET au
   // retour du player → on cache les deux SÉPARÉMENT pour ne PAS re-grouper 500k
   // entrées à chaque tick de progression (cause d'un gros freeze au retour du
   // player avec Ultimate).
+  //
+  // §favAudit (2026-08-05) — Les FAVORIS ont été sortis de la clé de
+  // groupement pour la même raison : ils n'influencent qu'une catégorie
+  // VIRTUELLE (⭐, qui duplique des groupes déjà calculés). Tant qu'ils en
+  // faisaient partie, **chaque appui sur un cœur re-groupait toute la
+  // playlist** — le « temps d'attente sur certains favoris » signalé. La
+  // rangée ⭐ est désormais recalculée seule (`_ensureFavoriteCategory`), en
+  // O(groupes) au lieu de O(entrées) + regroupement + tri.
   Map<String, List<List<M3uEntry>>>? _cachedByCategory;
   List<String>? _cachedCategories;
   List<List<M3uEntry>>? _cachedFeatured;
+  /// Liste PLATE de tous les groupes (source de la catégorie ⭐). Nécessaire
+  /// séparément : `_cachedByCategory` duplique des groupes ('New', 'Favoris'),
+  /// on ne peut donc pas la reconstruire depuis ses valeurs.
+  List<List<M3uEntry>>? _cachedGroups;
   int _cachedGroupingKey = -1;
   int _cachedFeaturedKey = -1;
+  int _cachedFavoritesKey = -1;
 
   // §trending — Titres tendance TMDB de la semaine (chargés une fois, cache
   // 24h côté service). Null tant que pas chargé / pas de clé TMDB. Le croisement
@@ -1060,31 +1077,74 @@ class _TypePageState extends State<_TypePage> {
   /// désormais autorité pour "qu'est-ce qu'un titre normalisé" dans l'app.
   static String _normTitle(String s) => TitleMetadata.computeGroupKey(s);
 
-  /// Clé du GROUPEMENT (coûteux) : entrées + playlist + favoris. **PAS**
-  /// WatchProgress (sinon re-groupement complet toutes les 10 s en lecture).
+  /// Clé du GROUPEMENT (coûteux) : entrées + playlist. **PAS** WatchProgress
+  /// (sinon re-groupement complet toutes les 10 s en lecture) ni les favoris
+  /// (§favAudit — sinon re-groupement complet à chaque cœur).
   int _groupingKey() =>
       widget.entries.length * 1000003 +
-      ParsedPlaylistService.version.value * 1009 +
-      FavoritesService.version.value * 1013;
+      ParsedPlaylistService.version.value * 1009;
+
+  /// Tri des catégories : priorité (Favoris → France → New → …) puis alpha.
+  static List<String> _sortCategories(Map<String, dynamic> byCategory) =>
+      byCategory.keys.toList()
+        ..sort((a, b) {
+          final pa = _TypePage._categoryPriority(a);
+          final pb = _TypePage._categoryPriority(b);
+          if (pa != pb) return pa.compareTo(pb);
+          return a.toLowerCase().compareTo(b.toLowerCase());
+        });
 
   /// Groupe par catégorie puis par titre. Mémoïsé sur [_groupingKey].
   void _ensureGrouping() {
     final key = _groupingKey();
-    if (_cachedByCategory != null && _cachedGroupingKey == key) return;
+    if (_cachedByCategory != null && _cachedGroupingKey == key) {
+      // Groupement toujours valide, mais un cœur a pu changer entre-temps.
+      _ensureFavoriteCategory();
+      return;
+    }
 
-    final byCategory = _groupByCategoryThenByTitle(widget.entries, widget.type);
-    final categories = byCategory.keys.toList()
-      ..sort((a, b) {
-        final pa = _TypePage._categoryPriority(a);
-        final pb = _TypePage._categoryPriority(b);
-        if (pa != pb) return pa.compareTo(pb);
-        return a.toLowerCase().compareTo(b.toLowerCase());
-      });
+    final res = _groupByCategoryThenByTitle(widget.entries, widget.type);
 
-    _cachedByCategory = byCategory;
-    _cachedCategories = categories;
+    _cachedByCategory = res.byCategory;
+    _cachedGroups = res.groups;
+    _cachedCategories = _sortCategories(res.byCategory);
     _cachedGroupingKey = key;
     _cachedFeaturedKey = -1; // groupement changé → forcer le recalcul du hero
+    _cachedFavoritesKey = -1; // …et celui de la rangée ⭐
+    _ensureFavoriteCategory();
+  }
+
+  /// §favAudit — Recalcule la SEULE catégorie virtuelle ⭐ Favoris, mémoïsée sur
+  /// `FavoritesService.version`. Coût : un `isEntryFavorite` par groupe (et non
+  /// par entrée), sans re-groupement ni re-tri sauf apparition/disparition de
+  /// la rangée.
+  void _ensureFavoriteCategory() {
+    final favKey = FavoritesService.version.value;
+    if (_cachedFavoritesKey == favKey) return;
+    _cachedFavoritesKey = favKey;
+
+    final byCategory = _cachedByCategory!;
+    final hadRow = byCategory.containsKey('Favoris');
+
+    final favorites = <List<M3uEntry>>[];
+    for (final group in _cachedGroups!) {
+      if (FavoritesService.isEntryFavorite(group.first)) favorites.add(group);
+    }
+
+    if (favorites.isEmpty) {
+      byCategory.remove('Favoris');
+    } else {
+      byCategory['Favoris'] = favorites;
+    }
+
+    // Le tri ne dépend que du JEU de catégories : inutile de le refaire quand
+    // la rangée ⭐ change seulement de contenu.
+    if (hadRow != byCategory.containsKey('Favoris')) {
+      _cachedCategories = _sortCategories(byCategory);
+    }
+    // Le hero TV met les chaînes favorites en tête (`byCategory['Favoris']`),
+    // et le fallback films/séries parcourt les catégories → à recomposer.
+    _cachedFeaturedKey = -1;
   }
 
   /// Compose le hero "featured" (reprise + nouveautés) à partir du groupement
@@ -1406,7 +1466,14 @@ class _TypePageState extends State<_TypePage> {
     return out;
   }
 
-  Map<String, List<List<M3uEntry>>> _groupByCategoryThenByTitle(
+  /// §favAudit — Retourne AUSSI la liste plate des groupes : `byCategory`
+  /// duplique certains groupes ('New'), on ne peut donc pas la reconstruire
+  /// depuis ses valeurs. Elle sert de source à la catégorie ⭐, recalculée
+  /// indépendamment.
+  ({
+    Map<String, List<List<M3uEntry>>> byCategory,
+    List<List<M3uEntry>> groups,
+  }) _groupByCategoryThenByTitle(
     List<M3uEntry> entries,
     M3uContentType type,
   ) {
@@ -1511,24 +1578,15 @@ class _TypePageState extends State<_TypePage> {
       }
     }
 
-    // ⭐ Catégorie virtuelle "Favoris" — duplique les groupes que l'utilisateur
-    // a marqué comme favoris pour ce type de contenu. Ils restent visibles
-    // dans leur catégorie d'origine + apparaissent en tête de page.
-    // §homonymYear — itère `groups` (post-split films) pour rester cohérent
-    // avec les rangées de catégories. (Les favoris restent keyés par titre →
-    // un homonyme favorisé fait remonter ses variantes par année ; edge case
-    // rare, acceptable, et évite une migration risquée des favoris existants.)
-    final favoriteGroups = <List<M3uEntry>>[];
-    for (final group in groups) {
-      if (FavoritesService.isEntryFavorite(group.first)) {
-        favoriteGroups.add(group);
-      }
-    }
-    if (favoriteGroups.isNotEmpty) {
-      byCategory['Favoris'] = favoriteGroups;
-    }
-
-    return byCategory;
+    // ⭐ La catégorie virtuelle "Favoris" n'est PLUS calculée ici (§favAudit) :
+    // elle est injectée par `_ensureFavoriteCategory` à partir de `groups`,
+    // pour qu'un changement de favori ne relance pas tout ce groupement.
+    // §homonymYear — cette source est bien `groups` (post-split films), donc
+    // cohérente avec les rangées de catégories. (Les favoris restent keyés par
+    // titre → un homonyme favorisé fait remonter ses variantes par année ;
+    // edge case rare, acceptable, et évite une migration risquée des favoris
+    // existants.)
+    return (byCategory: byCategory, groups: groups);
   }
 }
 

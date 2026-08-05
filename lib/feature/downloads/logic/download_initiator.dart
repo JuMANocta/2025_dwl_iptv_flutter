@@ -14,12 +14,18 @@ import '../../../widgets/terminal_download_dialog.dart';
 import '../../../widgets/info_row.dart';
 import '../../../l10n/app_localizations.dart';
 
+/// §dlDirectWrite — Dossier de repli pour le fichier partiel.
+///
+/// N'est plus le chemin NOMINAL : par défaut on télécharge directement à côté
+/// du fichier de destination (cf. [_resolvePartPath]), ce qui supprime la copie
+/// finale. Ce cache privé ne sert plus que lorsque le dossier public est
+/// inaccessible en écriture — auquel cas on retombe sur le trajet historique
+/// (cache + `MediaStore.saveFile`).
+///
+/// On garde le cache EXTERNE (/sdcard/Android/data/.../cache/) plutôt
+/// qu'interne : il est sur la même partition flash que /sdcard/Movies/, donc la
+/// copie de repli reste la moins lente possible.
 Future<String> _getTempDirectory() async {
-  // Utiliser le cache externe (/sdcard/Android/data/.../cache/) plutôt que le
-  // cache interne (/data/user/0/.../cache/). Les deux sont sur la même partition
-  // flash que /sdcard/Movies/, donc la copie finale via MediaStore est
-  // significativement plus rapide (lecture/écriture sur le même volume).
-  // Fallback sur le cache interne si le stockage externe est indisponible.
   final externalDirs = await getExternalCacheDirectories();
   final basePath = (externalDirs != null && externalDirs.isNotEmpty)
       ? externalDirs.first.path
@@ -27,6 +33,46 @@ Future<String> _getTempDirectory() async {
   final tmp = Directory("$basePath/dl_tmp");
   if (!await tmp.exists()) await tmp.create(recursive: true);
   return tmp.path;
+}
+
+/// §dlDirectWrite — Le dossier accepte-t-il vraiment l'écriture ?
+///
+/// `Directory.exists()` ne suffit pas : sous scoped storage un dossier peut
+/// être listable sans être inscriptible. On écrit donc une sonde minuscule
+/// qu'on efface aussitôt — aucun résidu.
+Future<bool> _canWriteInto(String directory) async {
+  final probe = File('$directory/.aether_write_probe');
+  try {
+    await probe.writeAsString('x', flush: true);
+    return true;
+  } catch (e) {
+    debugPrint('⚠️ §dlDirectWrite: dossier non inscriptible ($directory) — $e');
+    return false;
+  } finally {
+    try {
+      if (await probe.exists()) await probe.delete();
+    } catch (_) {/* résidu inoffensif */}
+  }
+}
+
+/// §dlDirectWrite — Emplacement du fichier PARTIEL pendant le téléchargement.
+///
+/// **Nominal** : à côté du fichier final, donc sur le même volume → la
+/// finalisation devient un `rename()` (métadonnées, instantané) au lieu d'une
+/// copie de plusieurs Go qui bloquait le thread UI d'Android jusqu'à l'ANR.
+/// Le nom est préfixé d'un point (invisible du scanner média et des
+/// explorateurs) et suffixé `.part` (jamais indexé comme vidéo).
+///
+/// **Repli** : cache privé, et la finalisation repassera par MediaStore.
+/// Le manager déduit le mode à appliquer en comparant les dossiers parents —
+/// aucune migration des tâches déjà persistées n'est donc nécessaire.
+Future<String> _resolvePartPath(String finalDirectory, String fileName) async {
+  if (await _canWriteInto(finalDirectory)) {
+    return '$finalDirectory/.$fileName.part';
+  }
+  final tempDirectory = await _getTempDirectory();
+  debugPrint('↩️ §dlDirectWrite: repli cache privé → $tempDirectory');
+  return '$tempDirectory/$fileName';
 }
 
 String sanitizeFilename(String filename) => filename.replaceAll(RegExp(r'[\\/*?:"<>|]'), "_");
@@ -241,7 +287,6 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   }
 
   // 6. CRÉATION DE LA TÂCHE AVEC LE BON CHEMIN
-  final String tempDirectory = await _getTempDirectory();
   String baseFileName = sanitizeFilename(nom);
   // Ajout de l'année au nom de fichier si disponible
   if (releaseYear != null && releaseYear.isNotEmpty) {
@@ -253,7 +298,9 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
 
   // On construit le chemin final en utilisant le dossier obtenu par notre service.
   final finalPath = "$finalSaveDirectory/$baseFileName";
-  final tempPath = "$tempDirectory/$baseFileName"; // Chemin dans le cache privé
+  // §dlDirectWrite — Fichier partiel dans le dossier FINAL quand c'est possible
+  // (finalisation = rename instantané), sinon cache privé + MediaStore.
+  final tempPath = await _resolvePartPath(finalSaveDirectory, baseFileName);
   final taskId = 'task_${DateTime.now().millisecondsSinceEpoch}';
 
   final newTask = DownloadTask(

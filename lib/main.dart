@@ -21,12 +21,9 @@ import 'feature/accounts/expiration_alert_dialog.dart';
 import 'feature/onboarding/onboarding_page.dart';
 import 'feature/settings/backup_restore_flow.dart';
 import 'feature/settings/perf_suggest_dialog.dart';
+import 'core/boot/boot_status.dart';
 import 'feature/settings/web_console/web_console_page.dart';
-import 'feature/pairing/pairing_page.dart';
-import 'data/services/pairing_service.dart';
 import 'data/services/playlist_service.dart';
-import 'data/services/tmdb_api_service.dart';
-import 'data/services/tmdb_service.dart';
 import 'data/services/remote_control_service.dart';
 import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
@@ -281,11 +278,22 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
   /// Valide la configuration initiale et retourne les données du compte actif (null = pas de compte).
   Future<({String path, String accountId, String accountName})?> _initializeApp() async {
+    // §bootStatus — L'écran de lancement reflète l'étape réelle : sur une
+    // grosse playlist le boot dure plusieurs secondes, et un texte figé ne
+    // permettait pas de distinguer « ça travaille » de « c'est bloqué ».
+    BootStatus.reset();
+    BootStatus.set('// vérification du compte…');
     final accounts = await StreamAccountService.listAccounts();
     if (accounts.isEmpty) return null;
 
     // Téléchargement / vérification cache M3U du compte actif.
-    final path = await PlaylistService.getOrDownloadPlaylist();
+    BootStatus.set('// lecture de la playlist…');
+    final path = await PlaylistService.getOrDownloadPlaylist(
+      // Appelé seulement si le cache est absent/périmé → on distingue une
+      // lecture disque instantanée d'un vrai téléchargement réseau.
+      onDownloadStart: () =>
+          BootStatus.set('// téléchargement de la playlist…'),
+    );
     final acc  = await StreamAccountService.getCurrentAccount();
 
     // §initBoot — Parsing du M3U actif AWAITED ici (au lieu de le faire dans
@@ -294,7 +302,16 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // de seconde. Maintenant l'écran AetherStream tient jusqu'à ce que la
     // playlist active soit en mémoire → MainNavigation apparait directement.
     if (acc != null) {
-      await ParsedPlaylistService.loadActive(acc.id, acc.label, path);
+      // §bootStatus — Seule étape à progression DÉTERMINÉE : `loadActive`
+      // expose déjà `onProgress` (throttlé côté BootStatus au pourcentage
+      // entier). C'est aussi la plus longue sur un gros catalogue.
+      BootStatus.set('// analyse du catalogue…', progress: 0);
+      await ParsedPlaylistService.loadActive(
+        acc.id,
+        acc.label,
+        path,
+        onProgress: BootStatus.report,
+      );
     }
 
     // Multi-comptes : charger les autres playlists pour que la recherche et la
@@ -306,6 +323,9 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     //      (peut prendre plusieurs secondes, on ne bloque pas le boot dessus).
     if (accounts.length > 1) {
       final others = accounts.where((a) => a.id != acc?.id).toList();
+      // §bootStatus — Retour à une barre indéterminée : ce préchargement disque
+      // n'expose pas de progression (quelques ms par compte).
+      BootStatus.set('// chargement des autres comptes…');
       await ParsedPlaylistService.preloadOthersFromDisk(others);
       // §favReconcile — 1re passe sur ce qui est déjà en mémoire (compte actif
       // + préchargés disque). La passe FINALE (qui pose le flag one-shot) est
@@ -326,6 +346,8 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // §perfAutoSuggest — Sur box TV, propose une fois le profil Performance
     // (fire & forget, one-shot, seulement si la config perf est aux défauts).
     _suggestTvPerfProfile();
+
+    BootStatus.set('// prêt.', progress: 1);
 
     return (
       path:        path,
@@ -427,38 +449,19 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   /// Settings → Console web) depuis l'écran "aucun compte". Au retour, on
   /// relance l'init : si l'utilisateur a créé un compte côté navigateur,
   /// l'app bascule directement sur la home.
+  ///
+  /// §webConsoleOnly — C'est désormais **le** chemin QR de cet écran, y compris
+  /// sur TV où il remplace l'ancien pairing mono-formulaire : quand la playlist
+  /// est en cause, on veut pouvoir la recharger, la corriger ou restaurer une
+  /// sauvegarde, pas seulement en ressaisir l'URL. Le QR ouvre directement la
+  /// page « Comptes » du panneau, le reste restant à un clic.
   Future<void> _openWebConsole() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const WebConsolePage()),
-    );
-    if (mounted) _retryInitialization();
-  }
-
-  /// §3c-8 — Sur TV : ouvre directement le pairing QR (saisie au D-pad
-  /// impossible). En cas de succès, sauvegarde le compte et relance _init.
-  Future<void> _openPairingTv() async {
-    final result = await Navigator.of(context).push<PairingResult>(
       MaterialPageRoute(
-        builder: (_) => PairingPage(
-          kind: PairingKind.account,
-          onManualFallback: () {
-            Navigator.of(context).pop();
-            _recheckAfterSettings();
-          },
-        ),
+        builder: (_) => const WebConsolePage(initialView: 'accounts'),
       ),
     );
-    if (result is PairingAccountResult) {
-      await StreamAccountService.saveAccount(result.account);
-      await StreamAccountService.setCurrentAccount(result.account.id);
-      // §3c-8b — TMDB optionnel saisi dans le même form mobile.
-      final t = result.tmdbToken;
-      if (t != null && t.isNotEmpty) {
-        await TmdbApiService.saveApiKey(t);
-        TmdbService.resetInstance();
-      }
-    }
-    _retryInitialization();
+    if (mounted) _retryInitialization();
   }
 
   @override
@@ -493,9 +496,10 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         if (data != null) {
           return MainNavigation(initialData: data);
         }
-        // §3c-8 — Sur TV, pas de compte = on propose direct le pairing QR
-        // (la saisie au D-pad est inutilisable). Sur mobile, on garde le
-        // raccourci historique "Configurer les comptes".
+        // §webConsoleOnly — Sur TV, pas de compte = on propose direct la
+        // Console web (la saisie au D-pad est inutilisable, et le panneau
+        // complet couvre aussi bien l'ajout que la réparation d'une liste).
+        // Sur mobile, on garde le raccourci historique "Configurer les comptes".
         final isTv = PlatformTv.isTv;
         return Scaffold(
           appBar: AppBar(title: const Text('AetherStream')),
@@ -512,29 +516,34 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
                   const SizedBox(height: 8),
                   Text(
                     isTv
-                        ? 'Scanne un QR code avec ton téléphone pour ajouter une playlist sans avoir à taper.'
+                        ? 'Scanne un QR code avec ton téléphone pour gérer tes '
+                            'playlists sans avoir à taper à la télécommande.'
                         : 'Ajoutez un compte via la roue crantée pour commencer.',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
+                  // §webConsoleOnly — Sur TV, la Console web devient le bouton
+                  // PRINCIPAL (donc celui qui prend le focus D-pad). Avant, le
+                  // focus allait au pairing mono-formulaire et la console était
+                  // un lien discret en dessous : depuis une télécommande, on
+                  // tombait mécaniquement sur la version étroite.
                   FilledButton.icon(
-                    onPressed: isTv ? _openPairingTv : _recheckAfterSettings,
+                    onPressed: isTv ? _openWebConsole : _recheckAfterSettings,
                     icon: Icon(isTv ? Icons.phone_iphone : Icons.settings),
                     label: Text(isTv
                         ? 'Configurer depuis mon téléphone'
                         : 'Configurer les comptes'),
                   ),
-                  // §webConsoleFirstLaunch — Console web : même flux que
-                  // Settings → Console web. Accessible TV + mobile pour
-                  // gérer la 1ʳᵉ config depuis un navigateur (clavier
-                  // complet, plus simple que la saisie au D-pad ou que
-                  // l'app native sur petit écran).
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: _openWebConsole,
-                    icon: const Icon(Icons.language, size: 18),
-                    label: const Text('Configurer via Console web'),
-                  ),
+                  // Sur mobile, la Console web reste proposée en second : le
+                  // clavier du PC est plus confortable pour une longue URL.
+                  if (!isTv) ...[
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: _openWebConsole,
+                      icon: const Icon(Icons.language, size: 18),
+                      label: const Text('Configurer via Console web'),
+                    ),
+                  ],
                   // §restore — Récupérer une sauvegarde .aether existante.
                   const SizedBox(height: 8),
                   TextButton.icon(
@@ -607,27 +616,45 @@ class _LoadingScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
-                // Sous-titre terminal.
-                Text(
-                  '// initialisation…',
-                  style: GoogleFonts.sourceCodePro(
-                    color: cs.onSurfaceVariant.withAlpha(180),
-                    fontSize: 13,
-                    letterSpacing: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 40),
-                // Barre de progression thémée (indéterminée).
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 320),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(
-                      minHeight: 5,
-                      backgroundColor: cs.surfaceContainerHighest,
-                      valueColor: AlwaysStoppedAnimation<Color>(primary),
-                    ),
-                  ),
+                // §bootStatus — Sous-titre terminal + barre pilotés par
+                // l'étape réelle du boot (au lieu d'un texte figé).
+                ValueListenableBuilder<BootStep>(
+                  valueListenable: BootStatus.step,
+                  builder: (_, step, __) {
+                    final pct = step.progress == null
+                        ? ''
+                        : ' ${(step.progress! * 100).round()} %';
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${step.label}$pct',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.sourceCodePro(
+                            color: cs.onSurfaceVariant.withAlpha(180),
+                            fontSize: 13,
+                            letterSpacing: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 40),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 320),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: LinearProgressIndicator(
+                              minHeight: 5,
+                              // `null` → animation indéterminée (étapes sans
+                              // progression mesurable).
+                              value: step.progress,
+                              backgroundColor: cs.surfaceContainerHighest,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(primary),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),

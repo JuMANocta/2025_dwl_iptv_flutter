@@ -17,6 +17,22 @@ import '../core/utils/image_cache_config.dart';
 ///     un `loadingBuilder`) ;
 ///   - aucun fondu (`fadeInDuration: zero`) pour ne pas introduire d'effet
 ///     visuel qui n'existait pas.
+///
+/// ⚠️ **Ne PAS rajouter `maxWidthDiskCache` / `maxHeightDiskCache`** (§imgFix,
+/// 2026-08-05 — retiré après avoir cassé le backdrop des fiches). Trois raisons :
+///   1. `cached_network_image` **assert** que le `cacheManager` est un
+///      `ImageCacheManager` dès qu'un de ces caps est fourni
+///      (`_image_loader.dart:89`). Nos managers sont des `CacheManager` nus →
+///      l'assertion casse en debug, le flux part en erreur et l'image est
+///      remplacée par le `fallback` (fiche au fond gris).
+///   2. C'est **redondant pour TMDB** : l'URL porte déjà la taille
+///      (`/t/p/w1280/…`), donc le fichier téléchargé est déjà capé et
+///      `image.width > maxWidth` est faux → aucun redimensionnement.
+///   3. C'est **contre-productif pour les images provider** : le
+///      redimensionnement ré-encode en **PNG**
+///      (`image_cache_manager.dart:98`), ce qui peut peser plus lourd que le
+///      JPEG d'origine.
+/// Pour limiter le poids stocké, jouer sur la taille demandée dans l'URL.
 class AetherImage extends StatelessWidget {
   /// URL distante. `null`/vide → [fallback] directement (pas de requête).
   final String? url;
@@ -27,9 +43,6 @@ class AetherImage extends StatelessWidget {
 
   /// Cap de décodage en mémoire (ex-`Image.network(cacheWidth:)`).
   final int? cacheWidth;
-
-  /// Cap de la largeur du fichier STOCKÉ sur disque (utile sur les backdrops).
-  final int? maxWidthDiskCache;
 
   /// Cadrage — `topCenter` sur les photos de casting (garde les yeux).
   final Alignment alignment;
@@ -51,7 +64,6 @@ class AetherImage extends StatelessWidget {
     this.height,
     this.fit = BoxFit.cover,
     this.cacheWidth,
-    this.maxWidthDiskCache,
     this.alignment = Alignment.center,
     this.borderRadius,
     this.fallback,
@@ -77,7 +89,6 @@ class AetherImage extends StatelessWidget {
         fit: fit,
         alignment: alignment,
         memCacheWidth: cacheWidth,
-        maxWidthDiskCache: maxWidthDiskCache,
         fadeInDuration: Duration.zero,
         fadeOutDuration: Duration.zero,
         errorWidget: (ctx, _, __) => _fallback(ctx),

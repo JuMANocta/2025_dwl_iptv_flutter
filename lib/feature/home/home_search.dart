@@ -36,16 +36,13 @@ class _SearchView extends StatelessWidget {
 
     final totalGroups = filmsHits.length + seriesHits.length + tvHits.length;
 
-    if (totalGroups == 0) {
-      // §12-b — Empty state unifié pour la recherche.
-      return EmptyState(
-        icon: Icons.search_off,
-        title: 'Aucun résultat',
-        subtitle: 'Rien à afficher pour "$query". Essaie un autre mot-clé ou vérifie l\'orthographe.',
-      );
-    }
+    // §personSearch — La rangée Personnes se gère seule (async TMDB) et se
+    // masque si elle n'a rien. On la monte TOUJOURS quand une requête est en
+    // cours : sinon, chercher un réalisateur absent de la playlist afficherait
+    // « Aucun résultat » alors que TMDB a bien trouvé quelqu'un.
+    final persons = _PersonSection(query: query);
 
-    final sections = <Widget>[];
+    final sections = <Widget>[persons];
     if (filmsHits.isNotEmpty) {
       sections.add(_ResultSection(
         title: 'Films',
@@ -71,8 +68,30 @@ class _SearchView extends StatelessWidget {
       ));
     }
 
+    if (totalGroups == 0) {
+      // §12-b — Empty state unifié. §personSearch : placé APRÈS la rangée
+      // Personnes (qui peut, elle, avoir trouvé quelqu'un) et centré sur la
+      // hauteur restante plutôt que sur tout l'écran.
+      sections.add(Padding(
+        padding: const EdgeInsets.only(top: 32),
+        child: EmptyState(
+          icon: Icons.search_off,
+          title: 'Aucun titre trouvé',
+          subtitle:
+              'Rien dans vos listes pour "$query". Essaie un autre mot-clé ou '
+              'vérifie l\'orthographe.',
+        ),
+      ));
+    }
+
+    // §searchGap — Top à 0 : le champ de recherche est posé DANS la Column de
+    // `searchBody` (home_page.dart), donc cette liste commence déjà sous lui.
+    // L'ancien `padding.top + 76` datait de l'époque où le champ flottait par
+    // -dessus en AppBar : la hauteur était comptée deux fois, d'où le grand
+    // vide entre l'input et le premier résultat. Le seul espace restant vient
+    // du `top: 4` de `_SearchSectionHeader`.
     return ListView(
-      padding: EdgeInsets.fromLTRB(0, MediaQuery.of(context).padding.top + 76, 0, 24),
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 24),
       children: sections,
     );
   }
@@ -114,6 +133,220 @@ class _SearchView extends StatelessWidget {
   }
 }
 
+/// §personSearch — Rangée « Personnes » (acteurs / réalisateurs) en tête des
+/// résultats, alimentée par TMDB.
+///
+/// **Seul bloc ASYNC de la recherche** (le reste filtre la playlist en
+/// mémoire, de façon synchrone) → widget dédié pour ne pas rendre tout
+/// `_SearchView` stateful. La requête part sur changement de `query` (déjà
+/// debouncée à 220 ms par `_HomePageState`), et un **token de requête** ignore
+/// les réponses arrivées dans le désordre.
+///
+/// Se retire complètement (`SizedBox.shrink`) sans clé TMDB ou sans résultat :
+/// l'app doit rester pleinement utilisable sans TMDB.
+class _PersonSection extends StatefulWidget {
+  final String query;
+  const _PersonSection({required this.query});
+
+  @override
+  State<_PersonSection> createState() => _PersonSectionState();
+}
+
+class _PersonSectionState extends State<_PersonSection> {
+  List<PersonHit> _hits = const [];
+  int _requestId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _search();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PersonSection old) {
+    super.didUpdateWidget(old);
+    if (old.query != widget.query) _search();
+  }
+
+  Future<void> _search() async {
+    final token = ++_requestId;
+    final q = widget.query.trim();
+    if (q.length < 2) {
+      if (_hits.isNotEmpty && mounted) setState(() => _hits = const []);
+      return;
+    }
+    if (!await TmdbApiService.hasApiKey()) return;
+    final res = await TmdbService.instance.searchPersons(q);
+    // Réponse obsolète (l'utilisateur a continué à taper) → on jette.
+    if (!mounted || token != _requestId) return;
+    setState(() => _hits = res);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hits.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SearchSectionHeader(
+            title: 'Personnes',
+            icon: Icons.person_outline,
+            count: _hits.length,
+          ),
+          SizedBox(
+            // photo ronde 72 + nom (2 lignes) + métier + marge textScaler TV.
+            height: 148,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: _hits.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (_, i) => _PersonCard(hit: _hits[i]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// §personSearch — Vignette de personne : photo RONDE (code visuel qui la
+/// distingue immédiatement des affiches rectangulaires) + nom + métier.
+class _PersonCard extends StatelessWidget {
+  final PersonHit hit;
+  const _PersonCard({required this.hit});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final photo = TmdbService.getPosterUrl(hit.profilePath, size: 'w185');
+    final role = hit.roleLabel;
+
+    return FocusableCard(
+      scaleOnFocus: false,
+      anchorRowStart: true, // §rowAnchorDetails
+      borderRadius: BorderRadius.circular(40),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: hit.id)),
+      ),
+      child: SizedBox(
+        width: 84,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipOval(
+              child: SizedBox(
+                width: 72,
+                height: 72,
+                child: AetherImage(
+                  url: photo,
+                  width: 72,
+                  height: 72,
+                  fit: BoxFit.cover,
+                  cacheWidth: 160,
+                  alignment: Alignment.topCenter,
+                  fallback: (_) => Container(
+                    color: cs.surfaceContainerHighest,
+                    alignment: Alignment.center,
+                    child: Icon(Icons.person,
+                        size: 32, color: cs.onSurfaceVariant),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hit.name,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (role != null)
+              Text(
+                role,
+                style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// §personSearch — En-tête de section de résultats (barre gradient + icône +
+/// titre + compteur), extrait de `_ResultSection` pour être partagé avec la
+/// rangée « Personnes » → zéro divergence visuelle entre les sections.
+class _SearchSectionHeader extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final int count;
+
+  const _SearchSectionHeader({
+    required this.title,
+    required this.icon,
+    required this.count,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 22,
+            decoration: BoxDecoration(
+              gradient: kAetherGradient,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Icon(icon, size: 18, color: kAccentPrimary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 17,
+                color: cs.onSurface,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ResultSection extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -129,57 +362,14 @@ class _ResultSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    gradient: kAetherGradient,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Icon(icon, size: 18, color: kAccentPrimary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 17,
-                      color: cs.onSurface,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${groups.length}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // §personSearch — en-tête factorisé (partagé avec _PersonSection).
+          _SearchSectionHeader(title: title, icon: icon, count: groups.length),
           // §tvZoom — Largeur de vignette + hauteur pilotées par la largeur
           // réelle (poster 2:3 ou logo carré pour les chaînes).
           LayoutBuilder(
@@ -276,8 +466,9 @@ class _SearchEmptyState extends StatelessWidget {
       builder: (_, __, ___) {
         final history = SearchHistoryService.all;
         return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-              16, MediaQuery.of(context).padding.top + 80, 16, 24),
+          // §searchGap — Même vestige que dans `_SearchView` (ex-`+ 80`) : les
+          // suggestions d'historique étaient poussées loin sous le champ.
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

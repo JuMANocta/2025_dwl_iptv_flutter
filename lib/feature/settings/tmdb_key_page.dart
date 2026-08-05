@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
-import 'package:aetherStream/data/services/pairing_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
-import 'package:aetherStream/feature/pairing/pairing_page.dart';
+import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 
 /// Sous-page Settings (§1g) : gestion de la clé API TMDB.
@@ -42,28 +41,24 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
     }
   }
 
-  /// §3c-8 — Pairing QR mobile→TV pour coller la clé TMDB depuis le téléphone.
-  Future<void> _openPairing() async {
+  /// §webConsoleOnly — Console web mobile→TV pour coller la clé TMDB depuis le
+  /// téléphone (remplace l'ancien pairing QR mono-champ).
+  ///
+  /// Le QR ouvre directement la page « Clé TMDB » du panneau, qui enregistre
+  /// elle-même via `TmdbApiService` + `TmdbService.resetInstance()`. On relit
+  /// donc simplement la clé au retour pour rafraîchir l'affichage.
+  Future<void> _openPhoneConfig() async {
     final messenger = ScaffoldMessenger.of(context);
-    final result = await Navigator.of(context).push<PairingResult>(
+    final hadKey = _hasSavedKey;
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PairingPage(
-          kind: PairingKind.tmdb,
-          onManualFallback: () {
-            Navigator.of(context).pop();
-            setState(() => _showAdvancedManual = true);
-          },
-        ),
+        builder: (_) => const WebConsolePage(initialView: 'tmdb'),
       ),
     );
-    if (result is PairingTmdbResult) {
-      await TmdbApiService.saveApiKey(result.token);
-      TmdbService.resetInstance();
-      if (!mounted) return;
-      setState(() {
-        _keyController.text = result.token;
-        _hasSavedKey = true;
-      });
+    if (!mounted) return;
+    await _loadKey();
+    if (!mounted) return;
+    if (!hadKey && _hasSavedKey) {
       messenger.showSnackBar(
         SnackBar(
           content: Text('✅ TMDb connecté'),
@@ -174,7 +169,7 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
                       const SizedBox(height: 20),
                       _TvPairingCta(
                         hasKey: _hasSavedKey,
-                        onTap: _openPairing,
+                        onTap: _openPhoneConfig,
                       ),
                     ],
                     if (showManualField) ...[

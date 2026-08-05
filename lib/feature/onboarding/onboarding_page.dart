@@ -3,26 +3,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
-import 'package:aetherStream/data/services/pairing_service.dart';
-import 'package:aetherStream/data/services/stream_account_service.dart';
-import 'package:aetherStream/data/services/tmdb_api_service.dart';
-import 'package:aetherStream/data/services/tmdb_service.dart';
-import 'package:aetherStream/feature/pairing/pairing_page.dart';
+import 'package:aetherStream/data/services/web_console_service.dart';
 import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
+import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 
-/// Onboarding 3 écrans affichés une seule fois (§1i + §3c-8 TV).
+/// Onboarding affiché une seule fois (§1i + §3c-8 TV + §webConsoleOnly).
 ///
 /// Stocke `onboarding_done_v1=true` dans SharedPreferences une fois fini.
 /// L'aiguilleur (`_LaunchDecider` dans main.dart) consulte
 /// [OnboardingService.shouldShow] avant la première navigation.
 ///
-/// Sur **TV** (§3c-8) :
+/// Sur **TV** (§webConsoleOnly, 2026-08-05) : **2 slides** au lieu de 3.
 ///   - Slide 1 : Welcome (inchangé)
-///   - Slide 2 : `PairingPage` embarqué (kind=account) — l'utilisateur scanne
-///     le QR avec son téléphone et remplit l'URL/login/pass dans une UI mobile
-///     plutôt qu'au D-pad (saisie texte ~impossible sur télécommande).
-///   - Slide 3 : `PairingPage` embarqué (kind=tmdb) — pareil pour le Bearer
-///     Token TMDB (220 caractères, donc encore plus critique).
+///   - Slide 2 : Console web embarquée — l'utilisateur scanne UN seul QR et
+///     configure playlist ET clé TMDB (et tout le reste) depuis son navigateur.
+///
+/// Avant, ces deux réglages exigeaient **deux sessions de pairing successives**,
+/// chacune limitée à un formulaire unique. La Console web couvrant déjà tout,
+/// le troisième slide n'avait plus de raison d'être : un seul scan suffit, et
+/// comme le serveur survit à la fermeture de l'écran, le téléphone peut
+/// continuer à configurer pendant que la TV est déjà sur l'accueil.
 class OnboardingService {
   static const String _prefsKey = 'onboarding_done_v1';
 
@@ -67,10 +67,24 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final _ctrl = PageController();
   int _index = 0;
 
+  /// §webConsoleOnly — Message de confirmation affiché sur le slide console
+  /// quand une action arrive du téléphone (la TV doit montrer que ça a marché,
+  /// l'utilisateur regarde son écran, pas la télé).
+  String? _consoleStatus;
+
+  /// Garde anti-double-appel : plusieurs actions peuvent arriver coup sur coup
+  /// depuis le navigateur (compte + TMDB), or `_finish` ne doit courir qu'une
+  /// fois — sinon `onFinish` navigue deux fois.
+  bool _finishing = false;
+
   bool get _isTv => PlatformTv.isTv;
-  int get _slideCount => 3;
+
+  /// TV : Welcome + Console web. Mobile : les 3 slides informationnels.
+  int get _slideCount => _isTv ? 2 : 3;
 
   Future<void> _finish() async {
+    if (_finishing) return;
+    _finishing = true;
     await OnboardingService.markDone();
     if (!mounted) return;
     widget.onFinish();
@@ -98,33 +112,25 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
-  // Callbacks invoqués par les slides pairing TV après réception du résultat.
-  Future<void> _onAccountReceived(PairingAccountResult r) async {
-    await StreamAccountService.saveAccount(r.account);
-    await StreamAccountService.setCurrentAccount(r.account.id);
-    // §3c-8b — TMDB optionnel saisi dans le même form mobile : on l'applique
-    // et on saute le slide 3 (pas besoin d'un second pairing).
-    final t = r.tmdbToken;
-    if (t != null && t.isNotEmpty) {
-      await TmdbApiService.saveApiKey(t);
-      TmdbService.resetInstance();
-      if (!mounted) return;
-      Future.delayed(const Duration(milliseconds: 700), _finish);
+  /// §webConsoleOnly — Une action vient d'être appliquée depuis le navigateur.
+  ///
+  /// La Console web enregistre elle-même (compte, token…) : contrairement au
+  /// pairing, il n'y a rien à sauvegarder ici. On se contente de confirmer à
+  /// l'écran, puis de terminer l'onboarding dès qu'un **compte** existe — c'est
+  /// la seule config qui bloque le démarrage de l'app. Le serveur restant actif
+  /// en arrière-plan, le téléphone peut poursuivre (TMDB, thème…) pendant que
+  /// la TV bascule sur l'accueil.
+  void _onConsoleEvent(WebConsoleEvent event) {
+    if (event.isAccountChange) {
+      setState(() => _consoleStatus = '✅ Playlist enregistrée');
+      Future.delayed(const Duration(milliseconds: 1200), () {
+        if (mounted) _finish();
+      });
       return;
     }
-    if (!mounted) return;
-    // Auto-advance vers slide TMDB après une courte pause.
-    Future.delayed(const Duration(milliseconds: 700), () {
-      if (mounted) _next();
-    });
-  }
-
-  Future<void> _onTmdbReceived(PairingTmdbResult r) async {
-    await TmdbApiService.saveApiKey(r.token);
-    TmdbService.resetInstance();
-    // Fin directe : TMDB est le dernier slide.
-    if (!mounted) return;
-    Future.delayed(const Duration(milliseconds: 700), _finish);
+    if (event.isTmdbChange) {
+      setState(() => _consoleStatus = '✅ Clé TMDB enregistrée');
+    }
   }
 
   @override
@@ -138,8 +144,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isLast = _index == _slideCount - 1;
-    // Sur TV, on masque "Suivant" sur les slides pairing (auto-advance après réception).
-    final hideNext = _isTv && (_index == 1 || _index == 2);
 
     return Scaffold(
       body: Container(
@@ -174,12 +178,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 child: PageView.builder(
                   controller: _ctrl,
                   itemCount: _slideCount,
-                  // Sur TV en mode pairing, on désactive le swipe horizontal :
-                  // PairingPage embed gère son propre scroll vertical et un
-                  // swipe accidentel ferait perdre la session de pairing.
-                  physics: _isTv && (_index == 1 || _index == 2)
-                      ? const NeverScrollableScrollPhysics()
-                      : null,
+                  // §webConsoleOnly — Le swipe redevient libre : la session
+                  // Console web survit au changement de slide (le serveur ne
+                  // s'arrête qu'explicitement), contrairement au pairing qu'un
+                  // swipe accidentel faisait perdre.
                   onPageChanged: (i) => setState(() => _index = i),
                   itemBuilder: (_, i) => _buildSlide(i),
                 ),
@@ -205,29 +207,31 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   }),
                 ),
               ),
-              if (!hideNext)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(24, 0, 24, _index == 0 ? 8 : 28),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: FilledButton(
-                      onPressed: _next,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: kAccentPrimary,
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        textStyle: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.bold),
+              Padding(
+                padding: EdgeInsets.fromLTRB(24, 0, 24, _index == 0 ? 8 : 28),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: _next,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: kAccentPrimary,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(isLast ? 'Commencer' : 'Suivant'),
+                      textStyle: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.bold),
                     ),
+                    // §webConsoleOnly — Le bouton reste visible sur le slide
+                    // console : l'utilisateur peut entrer sans configurer (il
+                    // retrouvera la console dans les Paramètres) au lieu d'être
+                    // coincé à attendre un scan, comme c'était le cas avec le
+                    // pairing en auto-advance seul.
+                    child: Text(isLast ? 'Commencer' : 'Suivant'),
                   ),
-                )
-              else
-                const SizedBox(height: 16),
+                ),
+              ),
               // §restore — Slide d'accueil uniquement : récupérer une sauvegarde.
               if (_index == 0)
                 Padding(
@@ -252,24 +256,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
     if (i == 0) return const _WelcomeSlide();
 
     if (_isTv) {
-      if (i == 1) {
-        return _TvPairingSlide(
-          key: const ValueKey('pair_account'),
-          kind: PairingKind.account,
-          title: 'Ajoute ta playlist',
-          subtitle:
-              'Configure ton compte IPTV depuis ton téléphone — la saisie au D-pad serait longue et fastidieuse.',
-          onAccountResult: _onAccountReceived,
-        );
-      }
-      // i == 2
-      return _TvPairingSlide(
-        key: const ValueKey('pair_tmdb'),
-        kind: PairingKind.tmdb,
-        title: 'Affiches et synopsis (optionnel)',
-        subtitle:
-            'Colle ton Bearer Token TMDB depuis ton téléphone pour enrichir tes films et séries.',
-        onTmdbResult: _onTmdbReceived,
+      // i == 1 — Console web : playlist + TMDB + tout le reste en un seul scan.
+      return _TvConsoleSlide(
+        key: const ValueKey('console'),
+        status: _consoleStatus,
+        onEvent: _onConsoleEvent,
       );
     }
 
@@ -372,22 +363,17 @@ class _InfoSlide extends StatelessWidget {
   }
 }
 
-/// Slide TV intégrant un PairingPage embarqué.
-class _TvPairingSlide extends StatelessWidget {
-  final PairingKind kind;
-  final String title;
-  final String subtitle;
-  final void Function(PairingAccountResult)? onAccountResult;
-  final void Function(PairingTmdbResult)? onTmdbResult;
+/// §webConsoleOnly — Slide TV intégrant la **Console web** embarquée.
+///
+/// Remplace les deux anciens slides de pairing : un seul QR donne accès au
+/// panneau complet (playlist, TMDB, thème, sauvegarde…), au lieu d'enchaîner
+/// deux formulaires mono-champ.
+class _TvConsoleSlide extends StatelessWidget {
+  /// Confirmation poussée par le state parent quand le téléphone valide.
+  final String? status;
+  final void Function(WebConsoleEvent) onEvent;
 
-  const _TvPairingSlide({
-    super.key,
-    required this.kind,
-    required this.title,
-    required this.subtitle,
-    this.onAccountResult,
-    this.onTmdbResult,
-  });
+  const _TvConsoleSlide({super.key, this.status, required this.onEvent});
 
   @override
   Widget build(BuildContext context) {
@@ -398,7 +384,7 @@ class _TvPairingSlide extends StatelessWidget {
         children: [
           const SizedBox(height: 8),
           Text(
-            title,
+            'Configure depuis ton téléphone',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: cs.onSurface,
@@ -410,7 +396,9 @@ class _TvPairingSlide extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              subtitle,
+              'Scanne ce QR code : tu pourras ajouter ta playlist, ta clé TMDB '
+              'et régler le reste depuis ton navigateur — la saisie au D-pad '
+              'serait longue et fastidieuse.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: cs.onSurfaceVariant,
@@ -419,42 +407,28 @@ class _TvPairingSlide extends StatelessWidget {
               ),
             ),
           ),
+          if (status != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              status!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: kSuccess,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Expanded(
-            child: _InlinePairing(
-              kind: kind,
-              onAccountResult: onAccountResult,
-              onTmdbResult: onTmdbResult,
+            child: WebConsolePage(
+              embedded: true,
+              initialView: 'accounts',
+              onEvent: onEvent,
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Wrapper qui intercepte les résultats du `PairingPage` embarqué pour les
-/// propager vers le state de l'onboarding (sauvegarde + auto-advance).
-class _InlinePairing extends StatelessWidget {
-  final PairingKind kind;
-  final void Function(PairingAccountResult)? onAccountResult;
-  final void Function(PairingTmdbResult)? onTmdbResult;
-
-  const _InlinePairing({
-    required this.kind,
-    this.onAccountResult,
-    this.onTmdbResult,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return PairingPage(
-      kind: kind,
-      embedded: true,
-      onResult: (r) {
-        if (r is PairingAccountResult) onAccountResult?.call(r);
-        if (r is PairingTmdbResult) onTmdbResult?.call(r);
-      },
     );
   }
 }

@@ -18,6 +18,7 @@ import '../../data/models/m3u_entry.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/tv/focusable_chip.dart';
 import '../../widgets/aether_image.dart';
+import '../../widgets/playlist_search_sheet.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'actor_details_page.dart';
 import 'm3u_filter.dart';
@@ -37,6 +38,42 @@ class DetailsPage extends StatefulWidget {
   final List<M3uEntry> versions;
 
   const DetailsPage({super.key, required this.entry, this.versions = const []});
+
+  /// §tmdbOnlyDetails — Fiche d'un titre ABSENT des listes, alimentée par TMDB
+  /// seul (typiquement depuis une filmographie, où ces titres ne menaient
+  /// jusqu'ici nulle part).
+  ///
+  /// On réutilise volontairement cette page plutôt que d'en écrire une seconde :
+  /// tout son rendu (header, tagline, note, section Infos, casting, similaires,
+  /// bande-annonce) est déjà piloté par les données TMDB. Une page jumelle
+  /// divergerait dès la première retouche visuelle.
+  factory DetailsPage.fromTmdb({
+    Key? key,
+    required int tmdbId,
+    required String title,
+    required M3uContentType type,
+  }) =>
+      DetailsPage(
+        key: key,
+        entry: buildTmdbOnlyEntry(tmdbId: tmdbId, title: title, type: type),
+      );
+
+  /// Entrée SYNTHÉTIQUE : `url` vide = marqueur « aucune source jouable », lu
+  /// par `_isTmdbOnly`. Le `tmdbId` renseigné fait passer `_loadData` par
+  /// `getFullDetailsById` — donc aucune recherche floue, aucun homonyme.
+  @visibleForTesting
+  static M3uEntry buildTmdbOnlyEntry({
+    required int tmdbId,
+    required String title,
+    required M3uContentType type,
+  }) =>
+      M3uEntry(
+        url: '',
+        accountId: '',
+        type: type,
+        title: TitleMetadata.parse(title),
+        tmdbId: tmdbId.toString(),
+      );
 
   @override
   State<DetailsPage> createState() => _DetailsPageState();
@@ -84,6 +121,13 @@ class _DetailsPageState extends State<DetailsPage> {
   List<M3uEntry> _apiSeriesStubs = const [];
 
   final ScrollController _episodeScrollController = ScrollController();
+
+  /// §tmdbOnlyDetails — Aucune source jouable : la fiche vit sur TMDB seul.
+  ///
+  /// On teste l'entrée RÉELLEMENT sélectionnée plutôt que `widget.entry` : elle
+  /// suit la sélection d'épisode et vaut `widget.versions.first` dès qu'une
+  /// version existe. C'est donc la seule mesure fiable de « peut-on lire ? ».
+  bool get _isTmdbOnly => _selectedEntry.url.isEmpty;
 
   bool get _isEpisode =>
       _episodeSelected &&
@@ -942,11 +986,11 @@ class _DetailsPageState extends State<DetailsPage> {
                     AetherImage(
                       url: headerUrl,
                       fit: BoxFit.cover,
-                      // §imgPerf — cap de décodage ; §imgDiskCache — cap aussi
-                      // le fichier STOCKÉ (le backdrop est la plus grosse image
-                      // de l'app).
+                      // §imgPerf — cap de DÉCODAGE uniquement. Le poids stocké
+                      // est déjà borné par la taille demandée dans l'URL
+                      // (`w1280`) : cf. l'avertissement sur `AetherImage` quant
+                      // à `maxWidthDiskCache`, qui cassait cette image.
                       cacheWidth: 720,
-                      maxWidthDiskCache: 1280,
                       fallback: (_) =>
                           Container(color: cs.surfaceContainerHighest),
                     )
@@ -998,6 +1042,20 @@ class _DetailsPageState extends State<DetailsPage> {
                       letterSpacing: 0.3,
                     ),
                   ),
+                  // §tmdbMore — Accroche officielle sous le titre (italique).
+                  if (_tmdbData?.tagline?.isNotEmpty == true) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      _tmdbData!.tagline!,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontStyle: FontStyle.italic,
+                        color: cs.onSurfaceVariant,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                   const SizedBox(height: 6),
 
                   // MÉTADONNÉES
@@ -1005,7 +1063,10 @@ class _DetailsPageState extends State<DetailsPage> {
                     children: [
                       if (releaseDate != null)
                         _buildMetaTag(releaseDate, cs.onSurfaceVariant),
-                      if (_tmdbData?.runtimeOrEpisodeLength != null && !isSeries) ...[
+                      // §tmdbMore — la durée était CALCULÉE puis masquée pour
+                      // les séries (`&& !isSeries`) : « 45m/épisode » est une
+                      // info utile, on l'affiche aussi.
+                      if (_tmdbData?.runtimeOrEpisodeLength != null) ...[
                         const SizedBox(width: 8),
                         Text('•', style: TextStyle(color: cs.onSurfaceVariant)),
                         const SizedBox(width: 8),
@@ -1027,9 +1088,21 @@ class _DetailsPageState extends State<DetailsPage> {
                           style: TextStyle(
                               fontWeight: FontWeight.bold, color: kWarning, fontSize: 14),
                         ),
+                        // §tmdbMore — nombre de votes : crédibilise la note.
+                        if ((_tmdbData?.voteCount ?? 0) > 0)
+                          Text(
+                            ' · ${_formatCount(_tmdbData!.voteCount!)}',
+                            style: TextStyle(
+                                fontSize: 11, color: cs.onSurfaceVariant),
+                          ),
                       ],
                     ],
                   ),
+
+                  // §directorView — Réalisateur / créateur sur sa PROPRE ligne :
+                  // la Row ci-dessus n'est ni scrollable ni Wrap (elle contient
+                  // un Spacer), y glisser un nom long provoquerait un overflow.
+                  _buildDirectorLine(cs),
                   const SizedBox(height: 10),
 
                   // §tmdbBadges — Badges des langues dispo (MULTI/VF/VOSTFR).
@@ -1041,29 +1114,10 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 16),
                   ],
 
-                  // ── SÉRIES : navigation immédiate ──────────────────────────
-                  if (isSeries) ...[
-                    _buildSeriesNavigator(cs, l10n),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // ── FILMS : qualités + actions ──────────────────────────────
-                  if (!isSeries) ...[
-                    if (_uniqueVersions.isNotEmpty) ...[
-                      _buildQualityChips(cs),
-                      const SizedBox(height: 12),
-                    ],
-                    _buildActionButtons(l10n),
-                    if (_tmdbData?.trailerKey != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12.0),
-                        child: SizedBox(
-                            width: double.infinity, child: _buildTrailerButton()),
-                      ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // SYNOPSIS : épisode si sélectionné, série sinon
+                  // §detailsLayout — SYNOPSIS REMONTÉ : on lit de quoi ça parle
+                  // AVANT de décider (ordre Netflix/Disney+). Il passe donc
+                  // aussi devant le navigateur de saisons, ce qui est cohérent :
+                  // on choisit son épisode après avoir lu le pitch.
                   if (displayOverview?.isNotEmpty == true) ...[
                     Text('Synopsis',
                         style: Theme.of(context)
@@ -1079,9 +1133,52 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 16),
                   ],
 
+                  // §tmdbOnlyDetails — Titre absent des listes : on remplace
+                  // TOUTE la zone d'actions (et le navigateur série, qui n'a
+                  // aucune saison à lister) par le panneau d'indisponibilité.
+                  // Indispensable : `_buildActionButtons` câble « Lire » et
+                  // « Télécharger » sur `_selectedEntry.url`, ici vide.
+                  if (_isTmdbOnly) ...[
+                    _buildUnavailablePanel(cs),
+                    if (_tmdbData?.trailerKey != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: SizedBox(
+                            width: double.infinity, child: _buildTrailerButton()),
+                      ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // ── SÉRIES : navigation immédiate ──────────────────────────
+                  if (isSeries && !_isTmdbOnly) ...[
+                    _buildSeriesNavigator(cs, l10n),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // ── FILMS : qualités + actions ──────────────────────────────
+                  if (!isSeries && !_isTmdbOnly) ...[
+                    if (_uniqueVersions.isNotEmpty) ...[
+                      _buildQualityChips(cs),
+                      const SizedBox(height: 12),
+                    ],
+                    _buildActionButtons(l10n),
+                    if (_tmdbData?.trailerKey != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: SizedBox(
+                            width: double.infinity, child: _buildTrailerButton()),
+                      ),
+                    const SizedBox(height: 16),
+                  ],
+
                   // BANDE-ANNONCE — série tant qu'on est en contexte SÉRIE
                   // (aucun épisode en contexte épisode : défaut E01 inclus).
-                  if (isSeries && !showEpisodeContext && _tmdbData?.trailerKey != null) ...[
+                  // (`!_isTmdbOnly` : le panneau d'indisponibilité porte déjà
+                  // son propre bouton bande-annonce → évite le doublon.)
+                  if (isSeries &&
+                      !_isTmdbOnly &&
+                      !showEpisodeContext &&
+                      _tmdbData?.trailerKey != null) ...[
                     SizedBox(width: double.infinity, child: _buildTrailerButton()),
                     const SizedBox(height: 16),
                   ],
@@ -1141,24 +1238,9 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 16),
                   ],
 
-                  // GENRES (toujours — TMDB ou provider §23)
-                  if (displayGenres.isNotEmpty) ...[
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: displayGenres
-                          .map((g) => Chip(
-                                label: Text(g),
-                                backgroundColor: cs.surfaceContainerHighest,
-                                labelStyle: TextStyle(
-                                    color: cs.onSurfaceVariant, fontSize: 12),
-                                side: BorderSide.none,
-                                padding: EdgeInsets.zero,
-                              ))
-                          .toList(),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  // §infoGenre — Les genres ne forment plus une rangée de chips
+                  // isolée ici : ils sont devenus la 1re ligne de « Infos »
+                  // (voir `_buildInfoSection`), où ils sont enfin étiquetés.
 
                   // PLATEFORMES (toujours)
                   Builder(builder: (context) {
@@ -1195,16 +1277,10 @@ class _DetailsPageState extends State<DetailsPage> {
                     );
                   }),
 
-                  // PRODUCTION (toujours)
-                  if (_tmdbData?.productionCompanies?.isNotEmpty == true) ...[
-                    Divider(color: cs.outlineVariant),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Production: ${_tmdbData!.productionCompanies}',
-                      style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  // §tmdbMore — Section « Infos » (remplace l'ancienne ligne
+                  // brute « Production: A, B, C ») : genre, réalisateur, pays,
+                  // studios, statut, durée.
+                  _buildInfoSection(cs, isSeries, displayGenres),
 
                   // ── À DÉCOUVRIR (en fin de fiche) ──────────────────────────
                   // §tmdbReco — Saga (collection) puis titres similaires dispo :
@@ -2015,6 +2091,207 @@ class _DetailsPageState extends State<DetailsPage> {
               color: color, fontSize: 12, fontWeight: FontWeight.bold)),
     );
   }
+
+  /// §tmdbMore — « 12 400 votes » (séparateur d'espace, comme MemoryStatsCard).
+  String _formatCount(int n) {
+    final s = n.toString();
+    final grouped =
+        s.replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]} ');
+    return '$grouped vote${n > 1 ? 's' : ''}';
+  }
+
+  /// §directorView — « De **Christopher Nolan** » (film) / « Créé par … »
+  /// (série), cliquable vers sa fiche et ses autres titres disponibles.
+  /// Rien du tout si TMDB ne fournit pas l'info.
+  Widget _buildDirectorLine(ColorScheme cs) {
+    final d = _tmdbData?.director;
+    if (d == null || d.name.trim().isEmpty) return const SizedBox.shrink();
+    final label = (d.character == 'Créateur') ? 'Créé par' : 'De';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: FocusableCard(
+        scaleOnFocus: false,
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: d.id)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: [
+              Icon(Icons.movie_creation_outlined,
+                  size: 14, color: cs.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text('$label ',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Flexible(
+                child: Text(
+                  d.name,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: kAccentSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(Icons.chevron_right, size: 14, color: kAccentSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// §tmdbMore — Section « Infos » : remplace l'ancienne ligne brute
+  /// `Production: A, B, C` (texte 12 px sans titre de section) par une grille
+  /// libellé/valeur, alignée sur le style des autres sections de la fiche.
+  /// Chaque ligne absente est omise ; la section disparaît si tout est vide.
+  /// §tmdbOnlyDetails — Zone d'actions d'un titre absent des listes.
+  ///
+  /// Sans issue, cette fiche ne serait que décorative : le bouton de recherche
+  /// est ce qui la rend utile. Le repérage automatique
+  /// (`ActorDetailsPage._findMatches`) est **exact par choix**, pour ne jamais
+  /// produire de faux positif — il rate donc les titres présents sous une autre
+  /// graphie. On laisse l'utilisateur chercher et trancher lui-même.
+  Widget _buildUnavailablePanel(ColorScheme cs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainer,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.video_library_outlined,
+                  size: 20, color: cs.onSurfaceVariant),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Pas dans vos listes — fiche affichée depuis TMDB.',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        _glowButton(
+          color: kAccentSecondary,
+          onPressed: _searchInPlaylists,
+          child: _btnContent(Icons.search, 'CHERCHER DANS MES LISTES'),
+        ),
+      ],
+    );
+  }
+
+  /// Ouvre la recherche manuelle ; un résultat choisi rouvre la fiche NORMALE
+  /// (entrée réelle + versions), donc avec lecture et téléchargement.
+  Future<void> _searchInPlaylists() async {
+    final group = await PlaylistSearchSheet.show(
+      context,
+      title: _tmdbData?.title.isNotEmpty == true
+          ? _tmdbData!.title
+          : widget.entry.displayName,
+      originalTitle: _tmdbData?.originalTitle,
+      type: widget.entry.type,
+    );
+    if (group == null || group.isEmpty || !mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => DetailsPage(entry: group.first, versions: group),
+      ),
+    );
+  }
+
+  Widget _buildInfoSection(
+    ColorScheme cs,
+    bool isSeries,
+    List<String> genres,
+  ) {
+    final m = _tmdbData;
+    final rows = <(String, String)>[];
+
+    // §infoGenre — Le genre ouvre la section : c'est la classification la plus
+    // parlante. Il vivait avant en rangée de chips ISOLÉE entre le casting et
+    // « Infos », ce qui en faisait un bloc orphelin sans libellé.
+    if (genres.isNotEmpty) {
+      rows.add(('Genre', genres.take(4).join(', ')));
+    }
+
+    final d = m?.director;
+    if (d != null && d.name.trim().isNotEmpty) {
+      rows.add(((d.character == 'Créateur') ? 'Créateur' : 'Réalisateur', d.name));
+    }
+    if (m?.productionCountries.isNotEmpty == true) {
+      rows.add(('Pays', m!.productionCountries.take(3).join(', ')));
+    }
+    if (m?.productionCompanies?.trim().isNotEmpty == true) {
+      rows.add(('Studios', m!.productionCompanies!.trim()));
+    }
+    if (m?.status?.trim().isNotEmpty == true) {
+      rows.add(('Statut', _statusLabel(m!.status!)));
+    }
+    if (m?.runtimeOrEpisodeLength?.trim().isNotEmpty == true) {
+      rows.add((isSeries ? 'Épisode' : 'Durée', m!.runtimeOrEpisodeLength!));
+    }
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Infos',
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.bold)),
+        Divider(color: cs.outlineVariant),
+        const SizedBox(height: 4),
+        for (final r in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 92,
+                  child: Text(
+                    r.$1,
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    r.$2,
+                    style: TextStyle(fontSize: 12, color: cs.onSurface),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  /// Traduit le `status` TMDB (anglais) pour l'affichage.
+  String _statusLabel(String raw) => switch (raw) {
+        'Released' => 'Sorti',
+        'Post Production' => 'Post-production',
+        'In Production' => 'En production',
+        'Planned' => 'Annoncé',
+        'Returning Series' => 'En cours',
+        'Ended' => 'Terminée',
+        'Canceled' => 'Annulée',
+        _ => raw,
+      };
 }
 
 /// §castPhotos — Vignette d'acteur (photo + nom + rôle) du carrousel casting de
