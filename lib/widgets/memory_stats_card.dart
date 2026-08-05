@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 
@@ -22,7 +23,12 @@ class MemoryStatsCard extends StatefulWidget {
 }
 
 class _MemoryStatsCardState extends State<MemoryStatsCard> {
-  ({int rssMb, int maxRssMb, List<({String label, int entries, int diskMb})> accounts})? _stats;
+  ({
+    int rssMb,
+    int maxRssMb,
+    int imgCacheMb,
+    List<({String label, int entries, int diskMb})> accounts
+  })? _stats;
   bool _busy = false;
 
   @override
@@ -58,8 +64,15 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
           diskMb: (disk / (1024 * 1024)).round(),
         ));
       }
+      // §imgDiskCache — poids du cache disque des vignettes.
+      final imgBytes = await AetherImageCache.totalSizeBytes();
       if (!mounted) return;
-      setState(() => _stats = (rssMb: rss, maxRssMb: maxRss, accounts: list));
+      setState(() => _stats = (
+            rssMb: rss,
+            maxRssMb: maxRss,
+            imgCacheMb: (imgBytes / (1024 * 1024)).round(),
+            accounts: list,
+          ));
     } catch (_) {
       // silencieux
     } finally {
@@ -123,6 +136,9 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
           else ...[
             _statRow(context, 'RAM process',
                 '${s.rssMb} Mo (peak ${s.maxRssMb} Mo)'),
+            const SizedBox(height: 4),
+            // §imgDiskCache — vignettes persistées (évite les re-téléchargements).
+            _statRow(context, 'Cache images', '${s.imgCacheMb} Mo'),
             const SizedBox(height: 6),
             for (final a in s.accounts)
               Padding(

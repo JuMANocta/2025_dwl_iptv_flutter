@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.13.2+89-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.13.3+90-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -272,6 +272,21 @@ lib/
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
 ### 📅 Planifié
+**🔥 Top priorité (2026-08-05)** :
+- [x] **Plafond du cache image en RAM** (§imgMemCache) — réglable dans Optimisation (20-150 Mo, 40 Mo en profil Performance) au lieu des 100 Mo par défaut de Flutter ; rendu possible par le cache disque
+- [x] **Cache disque des images** (§imgDiskCache) — vignettes persistées sur disque (widget partagé `AetherImage`, rétention 60 j TMDB / 7 j provider), backdrop de fiche en w1280, ligne « Cache images » + bouton de purge dans Optimisation
+- [ ] **Cache d'URL TMDB persistant** (§tmdbUrlPersist) — éviter de refaire toutes les recherches TMDB à chaque démarrage pour les titres sans affiche fournie par la liste
+- [ ] **Audit de la gestion des favoris** (§favAudit) — latence d'affichage sur certains favoris : vérifier la conformité du code (recalcul des clés à chaque build, cache chargé avant lecture, réconciliation au boot)
+- [ ] **Plantage lecture 4K sur TV** (§tv4kCrash) — lecture hachée + UI qui plante, investigation prioritaire (lié §tv4kTexture)
+- [ ] **Téléchargement écrit directement à l'emplacement final** (§dlDirectWrite) — supprimer le déplacement post-DL qui fait planter certains téléphones
+- [ ] **Téléchargements : bouton Relancer + reprise auto si bloqué** (§dlRestart / §dlWatchdog)
+- [ ] **Fiche film : vue réalisateur + ses films disponibles** (§directorView), **synopsis avant les boutons** (§detailsLayout), **infos TMDB élargies** (§tmdbMore)
+- [ ] **Sens de défilement des carrousels en remontant la page** (§carouselScrollDir)
+- [ ] **Recherche par personne** (§personSearch) — acteur/réalisateur/scénariste façon TMDB
+- [ ] **Enchaînement automatique de l'épisode suivant en fin de lecture** (§autoNextEp) — compte à rebours annulable type Netflix
+
+**Autres** :
+- [ ] **Bandeau SYSTEM UPDATE repensé** (§updateBanner) — version actuelle vs release avec animation « decode Matrix » (différence en surbrillance), pluie Matrix sur tout le bandeau, changelog remplacé par un lien vers la release GitHub
 - [x] **Ancrage Netflix sur la fiche** (§rowAnchorDetails) — ancrage D-pad « élément focusé à gauche » sur les rangées épisodes / saisons / titres similaires / casting de la fiche
 - [x] **Profil Performance suggéré au 1er boot TV** (§perfAutoSuggest) — dialog one-shot sur Fire TV / Android TV détecté (si les réglages perf sont encore aux défauts)
 - [x] **Titre d'épisode fourni par le panel** (§epTitleProvider) — fallback du nom TMDB dans la fiche, l'action sheet et l'overlay du player
@@ -280,8 +295,7 @@ lib/
 - [x] **Tag de qualité dans le player** (§watchContext a) — badge 4K/FHD/HD/SD dans l'overlay du player
 - [x] **Saison/épisode dans le player** (§watchContext b) — `S01 E04` affiché pendant la lecture d'une série
 - [x] **Quel « produit »/qualité sur les chaînes** (§watchContext c) — qualité affichée dans le player + labels de boutons suffixés par le compte pour départager les qualités identiques
-- [ ] **Reprise « prochain épisode non vu »** — présélectionner E+1 à l'ouverture d'une série quand le précédent est terminé (tracker le dernier épisode complété, §nextUnwatched)
-- [ ] **Découpage `home_page.dart`** (3 696 lignes) — extraction hero/cards/rows/search vers `home/widgets/` (après les tests unitaires)
+- [x] **Découpage `home_page.dart`** — 3 435 → 1 416 lignes via `part`/`part of` (`home_card` / `home_hero_fan` / `home_category` / `home_search`)
 - [ ] **Grille EPG XMLTV pour replay** — sélection programme dans la grille (en complément du picker manuel)
 - [x] **Pistes audio + sous-titres (embarqués)** — sélecteur in-player (bouton CC) + préférence de langue mémorisée
 - [ ] **Sous-titres externes** — fichier/URL `.srt` + recherche en ligne auto par TMDB

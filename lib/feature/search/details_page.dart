@@ -17,6 +17,7 @@ import '../downloads/logic/download_initiator.dart';
 import '../../data/models/m3u_entry.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/tv/focusable_chip.dart';
+import '../../widgets/aether_image.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'actor_details_page.dart';
 import 'm3u_filter.dart';
@@ -845,9 +846,13 @@ class _DetailsPageState extends State<DetailsPage> {
       _currentEpisode.logoUrl,
       widget.entry.logoUrl,
     ].firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
+    // §imgDiskCache — le backdrop demandait `original` (2000-3800 px, plusieurs
+    // Mo) alors qu'il s'affiche sur 360 px de haut max (180-300 sur TV). Avec
+    // un cache DISQUE, chaque fiche visitée serait stockée en pleine résolution
+    // → `w1280`, largement au-dessus du besoin, ~5× plus léger.
     final String? headerUrl    = headerPath != null
         ? TmdbService.getPosterUrl(headerPath,
-            size: (showEpisodeContext && stillPath != null) ? 'w780' : 'original')
+            size: (showEpisodeContext && stillPath != null) ? 'w780' : 'w1280')
         : playlistPoster;
 
     // §epTitleProvider — nom d'épisode : TMDB prioritaire, sinon le titre
@@ -934,13 +939,15 @@ class _DetailsPageState extends State<DetailsPage> {
                 fit: StackFit.expand,
                 children: [
                   if (headerUrl != null)
-                    Image.network(
-                      headerUrl,
+                    AetherImage(
+                      url: headerUrl,
                       fit: BoxFit.cover,
-                      // §imgPerf — backdrop header full-width → cap décodage.
+                      // §imgPerf — cap de décodage ; §imgDiskCache — cap aussi
+                      // le fichier STOCKÉ (le backdrop est la plus grosse image
+                      // de l'app).
                       cacheWidth: 720,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, __, ___) =>
+                      maxWidthDiskCache: 1280,
+                      fallback: (_) =>
                           Container(color: cs.surfaceContainerHighest),
                     )
                   else
@@ -2047,21 +2054,18 @@ class _CastCard extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: photoUrl != null
-                  ? Image.network(
-                      photoUrl,
-                      width: 92,
-                      height: 138,
-                      fit: BoxFit.cover,
-                      // §imgPerf — photo casting 92×138 → cap décodage (2×).
-                      cacheWidth: 220,
-                      gaplessPlayback: true,
-                      // Cadre sur le haut → garde le visage (yeux) plutôt que de
-                      // recentrer sur le bas (bouche/menton).
-                      alignment: Alignment.topCenter,
-                      errorBuilder: (_, __, ___) => placeholder(),
-                    )
-                  : placeholder(),
+              // §imgDiskCache — cache disque ; §imgPerf cap 220 px.
+              child: AetherImage(
+                url: photoUrl,
+                width: 92,
+                height: 138,
+                fit: BoxFit.cover,
+                cacheWidth: 220,
+                // Cadre sur le haut → garde le visage (yeux) plutôt que de
+                // recentrer sur le bas (bouche/menton).
+                alignment: Alignment.topCenter,
+                fallback: (_) => placeholder(),
+              ),
             ),
             const SizedBox(height: 6),
             // §tvRails — Le texte est mis en retrait (horizontal + bas) pour ne
@@ -2136,17 +2140,15 @@ class _RelatedCard extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: (poster != null && poster.isNotEmpty)
-                  ? Image.network(
-                      poster,
-                      width: w,
-                      height: h,
-                      fit: BoxFit.cover,
-                      cacheWidth: 240,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, __, ___) => placeholder(),
-                    )
-                  : placeholder(),
+              // §imgDiskCache — cache disque partagé (AetherImage).
+              child: AetherImage(
+                url: poster,
+                width: w,
+                height: h,
+                fit: BoxFit.cover,
+                cacheWidth: 240,
+                fallback: (_) => placeholder(),
+              ),
             ),
             const SizedBox(height: 6),
             Padding(

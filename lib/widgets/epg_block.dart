@@ -3,6 +3,7 @@ import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/models/xmltv_program.dart';
 import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/quality_buttons.dart';
 
 class EpgNowNextBlock extends StatefulWidget {
@@ -133,30 +134,29 @@ class EpgProgramRow extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // §imgDiskCache — cache disque partagé. La CASCADE historique est
+              // conservée : icône du programme → icône de la chaîne → vide.
+              // §imgPerf — cap décodage 108 px (vignette 54×38, 2× densité).
               if (program.iconUrl != null || channelIconUrl != null)
-                ClipRRect(
+                AetherImage(
+                  url: program.iconUrl ?? channelIconUrl,
+                  width: 54,
+                  height: 38,
+                  fit: BoxFit.cover,
+                  cacheWidth: 108,
                   borderRadius: BorderRadius.circular(6),
-                  child: Image.network(
-                    program.iconUrl ?? channelIconUrl!,
-                    width: 54,
-                    height: 38,
-                    fit: BoxFit.cover,
-                    // §imgPerf — vignette EPG 54×38 → cap décodage (2× densité).
-                    cacheWidth: 108,
-                    gaplessPlayback: true,
-                    errorBuilder: (_, __, ___) {
-                      if (program.iconUrl != null && channelIconUrl != null) {
-                        return Image.network(
-                          channelIconUrl!,
-                          width: 54, height: 38, fit: BoxFit.cover,
-                          cacheWidth: 108,
-                          gaplessPlayback: true,
-                          errorBuilder: (_, __, ___) => const SizedBox(width: 54, height: 38),
-                        );
-                      }
-                      return const SizedBox(width: 54, height: 38);
-                    },
-                  ),
+                  fallback: (_) =>
+                      (program.iconUrl != null && channelIconUrl != null)
+                          ? AetherImage(
+                              url: channelIconUrl,
+                              width: 54,
+                              height: 38,
+                              fit: BoxFit.cover,
+                              cacheWidth: 108,
+                              fallback: (_) =>
+                                  const SizedBox(width: 54, height: 38),
+                            )
+                          : const SizedBox(width: 54, height: 38),
                 )
               else
                 const SizedBox(width: 54, height: 38),

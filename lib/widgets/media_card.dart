@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
+import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
@@ -16,15 +17,17 @@ Widget _poster(List<M3uEntry> versions, IconData fallbackIcon, Color accentColor
     borderRadius: BorderRadius.circular(8),
     child: SizedBox(
       width: 70, height: 105,
-      child: logoUrl != null && logoUrl.isNotEmpty
-          ? Image.network(
-              logoUrl,
-              width: 70, height: 105, fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _posterFallback(fallbackIcon, accentColor),
-              loadingBuilder: (_, child, progress) =>
-                  progress == null ? child : _posterFallback(fallbackIcon, accentColor),
-            )
-          : _posterFallback(fallbackIcon, accentColor),
+      // §imgDiskCache — cache disque partagé. Ce site n'avait AUCUN cap de
+      // décodage (seul des 14) → ajout de `cacheWidth` pour un poster 70×105.
+      child: AetherImage(
+        url: logoUrl,
+        width: 70,
+        height: 105,
+        fit: BoxFit.cover,
+        cacheWidth: 220,
+        fallback: (_) => _posterFallback(fallbackIcon, accentColor),
+        showFallbackWhileLoading: true,
+      ),
     ),
   );
 }

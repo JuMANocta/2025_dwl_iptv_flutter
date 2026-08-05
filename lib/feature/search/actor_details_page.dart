@@ -6,6 +6,7 @@ import '../../data/services/tmdb_api_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/models/person_model.dart';
 import '../../data/models/m3u_entry.dart';
+import '../../widgets/aether_image.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'details_page.dart';
 
@@ -145,18 +146,14 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (profileUrl != null)
-                        Image.network(
-                          profileUrl,
-                          fit: BoxFit.cover,
-                          // §imgPerf — header full-width → cap décodage.
-                          cacheWidth: 720,
-                          gaplessPlayback: true,
-                          errorBuilder: (_, __, ___) =>
-                              Container(color: cs.surfaceContainerHighest),
-                        )
-                      else
-                        Container(color: cs.surfaceContainerHighest),
+                      // §imgDiskCache — cache disque ; §imgPerf cap 720 px.
+                      AetherImage(
+                        url: profileUrl,
+                        fit: BoxFit.cover,
+                        cacheWidth: 720,
+                        fallback: (_) =>
+                            Container(color: cs.surfaceContainerHighest),
+                      ),
                       DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(

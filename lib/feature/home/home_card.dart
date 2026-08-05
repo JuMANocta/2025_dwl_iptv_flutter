@@ -125,9 +125,12 @@ class _HomeCardState extends State<_HomeCard> {
                     child: SizedBox(
                       width: 50,
                       height: widget.type == M3uContentType.tv ? 50 : 75,
-                      child: (entry.logoUrl != null && entry.logoUrl!.isNotEmpty)
-                          ? Image.network(entry.logoUrl!, fit: BoxFit.cover, cacheWidth: 150, gaplessPlayback: true, errorBuilder: (_, __, ___) => const SizedBox.shrink())
-                          : const SizedBox.shrink(),
+                      // §imgDiskCache — cache disque partagé (AetherImage).
+                      child: AetherImage(
+                        url: entry.logoUrl,
+                        fit: BoxFit.cover,
+                        cacheWidth: 150,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -382,24 +385,18 @@ class _HomeCardState extends State<_HomeCard> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Image
-                    if (logoUrl != null && logoUrl.isNotEmpty)
-                      Image.network(
-                        logoUrl,
-                        fit: isTv ? BoxFit.contain : BoxFit.cover,
-                        // §imgPerf — Carte poster ~120-200 px ; on cap le
-                        // décodage à 360 px. Combiné à `gaplessPlayback`, plus
-                        // de flash blanc / re-décodage au rebuild (focus, auto-
-                        // rotation, version bumps).
-                        cacheWidth: 360,
-                        gaplessPlayback: true,
-                        errorBuilder: (_, __, ___) =>
-                            _fallback(fallbackIcon, cs),
-                        loadingBuilder: (_, child, progress) =>
-                            progress == null ? child : _fallback(fallbackIcon, cs),
-                      )
-                    else
-                      _fallback(fallbackIcon, cs),
+                    // Image — §imgDiskCache : cache DISQUE (les vignettes se
+                    // re-téléchargeaient à chaque affichage, le cache mémoire
+                    // étant évincé sous pression sur box faible).
+                    // §imgPerf — cap de décodage conservé à 360 px (carte
+                    // poster ~120-200 px).
+                    AetherImage(
+                      url: logoUrl,
+                      fit: isTv ? BoxFit.contain : BoxFit.cover,
+                      cacheWidth: 360,
+                      fallback: (_) => _fallback(fallbackIcon, cs),
+                      showFallbackWhileLoading: true,
+                    ),
                     // Gradient bottom overlay pour la lisibilité du titre
                     Positioned.fill(
                       child: DecoratedBox(

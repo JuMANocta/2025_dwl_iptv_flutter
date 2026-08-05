@@ -470,26 +470,24 @@ class _HeroFanCard extends StatelessWidget {
               // §heroUnify — Chaînes : logo (souvent carré/transparent) en
               // `contain` sur fond sombre → rendu "tuile chaîne" propre, pas de
               // crop/étirement. Films/séries : poster en `cover` (inchangé).
+              // §imgDiskCache — cache disque partagé ; §imgPerf cap 320 px.
               type == M3uContentType.tv
                   ? Container(
                       color: const Color(0xFF15171C),
                       padding: const EdgeInsets.all(16),
                       alignment: Alignment.center,
-                      child: Image.network(
-                        logoUrl,
+                      child: AetherImage(
+                        url: logoUrl,
                         fit: BoxFit.contain,
                         cacheWidth: 320,
-                        gaplessPlayback: true,
-                        errorBuilder: (_, __, ___) => _fallback(fallbackIcon),
+                        fallback: (_) => _fallback(fallbackIcon),
                       ),
                     )
-                  : Image.network(
-                      logoUrl,
+                  : AetherImage(
+                      url: logoUrl,
                       fit: BoxFit.cover,
-                      // §imgPerf — Vignette ~120-180 px → cap 320 px de décodage.
                       cacheWidth: 320,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, __, ___) => _fallback(fallbackIcon),
+                      fallback: (_) => _fallback(fallbackIcon),
                     )
             else
               _fallback(fallbackIcon),

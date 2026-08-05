@@ -16,6 +16,7 @@ void main() {
         heroAutoRotate: false,
         heroCardCount: 8,
         maxItemsPerRow: 10,
+        imageCacheMb: 40,
       );
       expect(PerfConfig.fromJson(cfg.toJson()), cfg);
     });
@@ -32,9 +33,32 @@ void main() {
     });
 
     test('valeurs hors bornes → clampées à la lecture', () {
-      final cfg = PerfConfig.fromJson(const {'hcc': 999, 'mir': 0});
+      final cfg = PerfConfig.fromJson(const {'hcc': 999, 'mir': 0, 'icm': 9999});
       expect(cfg.heroCardCount, PerfConfig.maxHeroCards);
       expect(cfg.maxItemsPerRow, PerfConfig.minItemsPerRow);
+      expect(cfg.imageCacheMb, PerfConfig.maxImageCacheMb);
+    });
+
+    test('§imgMemCache — cache image RAM jamais nul (plancher)', () {
+      // À 0 Mo le scroll re-décoderait chaque vignette à chaque frame :
+      // le plancher protège d'un réglage (ou d'un JSON) destructeur.
+      final cfg = PerfConfig.fromJson(const {'icm': 0});
+      expect(cfg.imageCacheMb, PerfConfig.minImageCacheMb);
+      expect(cfg.imageCacheMb, greaterThan(0));
+    });
+
+    test('§imgMemCache — les profils descendent sous le défaut Flutter (100 Mo)',
+        () {
+      // Le cache DISQUE (§imgDiskCache) absorbe les évictions → on peut
+      // rendre la RAM à l'app sans re-télécharger.
+      for (final p in PerfConfig.presets) {
+        expect(p.config.imageCacheMb, lessThan(100));
+        expect(p.config.imageCacheMb,
+            greaterThanOrEqualTo(PerfConfig.minImageCacheMb));
+      }
+      // Performance doit être le plus économe des trois.
+      expect(PerfConfig.performance.imageCacheMb,
+          lessThan(PerfConfig.defaults.imageCacheMb));
     });
   });
 

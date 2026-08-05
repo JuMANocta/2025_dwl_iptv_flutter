@@ -17,6 +17,7 @@ import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/main.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
+import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/quality_buttons.dart';
 import 'package:aetherStream/widgets/epg_block.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
@@ -172,15 +173,13 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          imageUrl,
+                        // §imgDiskCache — cache disque ; §imgPerf cap 720 px.
+                        child: AetherImage(
+                          url: imageUrl,
                           height: stillPath != null ? 160 : 140,
                           width: double.infinity,
                           fit: stillPath != null ? BoxFit.cover : BoxFit.contain,
-                          // §imgPerf — bandeau ~full-width × 160 → cap décodage.
                           cacheWidth: 720,
-                          gaplessPlayback: true,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                         ),
                       ),
                     ),
@@ -253,7 +252,9 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(entry.logoUrl!, height: 150, cacheWidth: 320, gaplessPlayback: true, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                  // §imgDiskCache — cache disque partagé (AetherImage).
+                  child: AetherImage(
+                      url: entry.logoUrl, height: 150, cacheWidth: 320),
                 ),
               ),
             Padding(

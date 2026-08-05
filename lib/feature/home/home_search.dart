@@ -472,15 +472,14 @@ class _LastWatchedTvTile extends StatelessWidget {
                       width: 48,
                       height: 48,
                       color: Colors.black26,
-                      child: (last.logoUrl != null && last.logoUrl!.isNotEmpty)
-                          ? Image.network(last.logoUrl!,
-                              fit: BoxFit.contain,
-                              cacheWidth: 144,
-                              gaplessPlayback: true,
-                              errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.live_tv,
-                                  color: Colors.white54))
-                          : const Icon(Icons.live_tv, color: Colors.white54),
+                      // §imgDiskCache — cache disque partagé (AetherImage).
+                      child: AetherImage(
+                        url: last.logoUrl,
+                        fit: BoxFit.contain,
+                        cacheWidth: 144,
+                        fallback: (_) =>
+                            const Icon(Icons.live_tv, color: Colors.white54),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),

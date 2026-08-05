@@ -25,16 +25,37 @@ class PerformanceSettingsService {
     } catch (_) {
       // Conserve les valeurs par défaut si la lecture échoue.
     }
+    applyImageCacheLimit();
   }
 
   /// Applique et persiste une nouvelle config.
   /// Le ValueNotifier déclenche immédiatement le rebuild de la home.
   static Future<void> save(PerfConfig newConfig) async {
     config.value = newConfig;
+    applyImageCacheLimit();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kKey, jsonEncode(newConfig.toJson()));
     } catch (_) {}
+  }
+
+  /// §imgMemCache — Applique le plafond du cache image EN MÉMOIRE
+  /// (`PaintingBinding.instance.imageCache`), dont le défaut Flutter est de
+  /// 100 Mo — beaucoup trop sur une box TV où la RAM est le goulot.
+  ///
+  /// Réglage rendu possible par §imgDiskCache : une image évincée de la RAM se
+  /// relit désormais sur disque au lieu de repartir en réseau. Le plafond en
+  /// NOMBRE d'images est aligné proportionnellement (défaut Flutter : 1000).
+  static void applyImageCacheLimit() {
+    try {
+      final mb = config.value.imageCacheMb;
+      final cache = PaintingBinding.instance.imageCache;
+      cache.maximumSizeBytes = mb * 1024 * 1024;
+      cache.maximumSize = (mb * 10).clamp(200, 1000);
+      debugPrint('🖼️ §imgMemCache : cache image mémoire plafonné à $mb Mo');
+    } catch (e) {
+      debugPrint('⚠️ §imgMemCache : application du plafond échouée — $e');
+    }
   }
 
   static Future<void> reset() => save(PerfConfig.defaults);

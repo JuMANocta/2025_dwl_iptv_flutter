@@ -2,7 +2,7 @@ name: aetherStream
 description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
-version: 1.13.2+89
+version: 1.13.3+90
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -40,6 +40,8 @@ dependencies:
   cryptography: ^2.7.0              # AES-256-GCM + PBKDF2 (sauvegarde §10)
   file_picker: ^8.1.7               # sélection fichier .aether (import §10)
   qr_flutter: ^4.1.0                # génération QR code (§3c-8 pairing mobile→TV)
+  cached_network_image: ^3.4.1      # §imgDiskCache — cache DISQUE des vignettes
+  flutter_cache_manager: ^3.4.1     # §imgDiskCache — politiques de rétention (TMDB/provider)
   dpad: ^3.0.0
 
 dev_dependencies:

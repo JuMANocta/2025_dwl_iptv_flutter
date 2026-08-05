@@ -20,6 +20,7 @@ import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/feature/search/details_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
+import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
