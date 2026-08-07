@@ -126,10 +126,11 @@ class _HomeCardState extends State<_HomeCard> {
                       width: 50,
                       height: widget.type == M3uContentType.tv ? 50 : 75,
                       // §imgDiskCache — cache disque partagé (AetherImage).
+                      // §imgThrash — décodage calé sur les 50 px réels.
                       child: AetherImage(
                         url: entry.logoUrl,
                         fit: BoxFit.cover,
-                        cacheWidth: 150,
+                        cacheWidth: decodeWidthFor(context, 50),
                       ),
                     ),
                   ),
@@ -393,7 +394,11 @@ class _HomeCardState extends State<_HomeCard> {
                     AetherImage(
                       url: logoUrl,
                       fit: isTv ? BoxFit.contain : BoxFit.cover,
-                      cacheWidth: 360,
+                      // §imgThrash — était 360 en dur, pour une vignette qui
+                      // mesure ~120-145 px logiques : ~3× de RAM gaspillée par
+                      // image, d'où la saturation du cache et le re-décodage
+                      // permanent sur TV.
+                      cacheWidth: decodeWidthFor(context, cardWidth),
                       fallback: (_) => _fallback(fallbackIcon, cs),
                       showFallbackWhileLoading: true,
                     ),

@@ -16,7 +16,10 @@ void main() {
         heroAutoRotate: false,
         heroCardCount: 8,
         maxItemsPerRow: 10,
-        imageCacheMb: 40,
+        // Valeur DANS les bornes : sous le plancher, la lecture clampe et le
+        // roundtrip ne peut pas être l'identité (§imgThrash a relevé le
+        // plancher de 20 à 60).
+        imageCacheMb: 80,
       );
       expect(PerfConfig.fromJson(cfg.toJson()), cfg);
     });
@@ -47,18 +50,26 @@ void main() {
       expect(cfg.imageCacheMb, greaterThan(0));
     });
 
-    test('§imgMemCache — les profils descendent sous le défaut Flutter (100 Mo)',
+    test('§imgThrash — aucun profil ne descend au niveau qui provoque le thrash',
         () {
-      // Le cache DISQUE (§imgDiskCache) absorbe les évictions → on peut
-      // rendre la RAM à l'app sans re-télécharger.
+      // ⚠️ Ce test verrouillait EXACTEMENT l'inverse : il exigeait que les
+      // profils passent SOUS le défaut Flutter (100 Mo), au motif que le cache
+      // disque absorbait les évictions. C'était faux — réduire ce cache ne
+      // réduit pas la mémoire nécessaire pour afficher un écran, ça force à
+      // re-décoder en boucle. Résultat : TV saccadée et vignettes qui
+      // clignotaient, surtout au profil « Performance » que l'app propose
+      // justement sur box TV.
       for (final p in PerfConfig.presets) {
-        expect(p.config.imageCacheMb, lessThan(100));
         expect(p.config.imageCacheMb,
-            greaterThanOrEqualTo(PerfConfig.minImageCacheMb));
+            greaterThanOrEqualTo(PerfConfig.minImageCacheMb),
+            reason: '${p.name} sous le plancher anti-thrash');
       }
-      // Performance doit être le plus économe des trois.
+      // Le profil le plus léger doit rester dans l'ordre de grandeur du défaut
+      // Flutter : on allège par le hero et les vignettes, pas par le cache.
+      expect(PerfConfig.performance.imageCacheMb, greaterThanOrEqualTo(80));
+      // Confort reste le plus généreux des trois.
       expect(PerfConfig.performance.imageCacheMb,
-          lessThan(PerfConfig.defaults.imageCacheMb));
+          lessThanOrEqualTo(PerfConfig.defaults.imageCacheMb));
     });
   });
 

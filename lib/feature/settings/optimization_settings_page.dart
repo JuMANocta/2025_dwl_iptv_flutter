@@ -179,9 +179,10 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Text(
                   'Mémoire vive réservée aux images déjà affichées (défaut '
-                  'Flutter : 100 Mo). Baisser libère de la RAM : les vignettes '
-                  'évincées sont relues depuis le cache disque, sans '
-                  're-téléchargement.',
+                  'Flutter : 100 Mo). ⚠️ Baisser ne rend pas l\'app plus '
+                  'fluide : trop bas, les vignettes sont re-décodées en '
+                  'permanence et l\'affichage se met à saccader. À n\'ajuster '
+                  'que si la mémoire manque vraiment.',
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),

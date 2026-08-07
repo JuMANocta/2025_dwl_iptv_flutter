@@ -360,6 +360,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
                 type: widget.type,
                 isActive: isActive,
                 onTap: () => _onCardTap(context, i),
+                width: w,
               ),
             ),
           ),
@@ -399,11 +400,16 @@ class _HeroFanCard extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
 
+  /// §imgThrash — Largeur de rendu, pour caler le décodage de l'affiche dessus
+  /// (elle était figée à 320 px quelle que soit la taille réelle de la carte).
+  final double width;
+
   const _HeroFanCard({
     required this.versions,
     required this.type,
     required this.isActive,
     required this.onTap,
+    required this.width,
   });
 
   @override
@@ -470,7 +476,10 @@ class _HeroFanCard extends StatelessWidget {
               // §heroUnify — Chaînes : logo (souvent carré/transparent) en
               // `contain` sur fond sombre → rendu "tuile chaîne" propre, pas de
               // crop/étirement. Films/séries : poster en `cover` (inchangé).
-              // §imgDiskCache — cache disque partagé ; §imgPerf cap 320 px.
+              // §imgDiskCache — cache disque partagé.
+              // §imgThrash — décodage calé sur la largeur RÉELLE de la carte
+              // (était figé à 320 px). Plafond plus haut que les vignettes : le
+              // hero est la plus grande image de l'accueil.
               type == M3uContentType.tv
                   ? Container(
                       color: const Color(0xFF15171C),
@@ -479,14 +488,14 @@ class _HeroFanCard extends StatelessWidget {
                       child: AetherImage(
                         url: logoUrl,
                         fit: BoxFit.contain,
-                        cacheWidth: 320,
+                        cacheWidth: decodeWidthFor(context, width, max: 640),
                         fallback: (_) => _fallback(fallbackIcon),
                       ),
                     )
                   : AetherImage(
                       url: logoUrl,
                       fit: BoxFit.cover,
-                      cacheWidth: 320,
+                      cacheWidth: decodeWidthFor(context, width, max: 640),
                       fallback: (_) => _fallback(fallbackIcon),
                     )
             else

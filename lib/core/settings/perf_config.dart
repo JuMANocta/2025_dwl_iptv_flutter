@@ -24,24 +24,31 @@ class PerfConfig {
   /// tronqués).
   final int maxItemsPerRow;
 
-  /// §imgMemCache — Plafond du cache image **en mémoire** (Mo), appliqué à
-  /// `PaintingBinding.instance.imageCache`. Le défaut Flutter est de 100 Mo,
-  /// énorme sur une box TV où l'on se bat pour la RAM.
+  /// Plafond du cache image **en mémoire** (Mo), appliqué à
+  /// `PaintingBinding.instance.imageCache` (défaut Flutter : 100 Mo).
   ///
-  /// Ce réglage n'était pas envisageable AVANT §imgDiskCache : évincer une
-  /// image de la RAM signifiait la re-télécharger. Avec le cache disque, une
-  /// éviction ne coûte plus qu'une relecture locale → on peut baisser
-  /// franchement sans dégrader l'affichage.
+  /// ⚠️ **§imgThrash — corrigé le 2026-08-05.** La version précédente
+  /// descendait SOUS le défaut Flutter (80 / 60 / **40** Mo) en présentant la
+  /// baisse comme un gain : le cache disque absorbant les évictions, on croyait
+  /// pouvoir réduire sans dommage. C'était faux. Réduire ce cache ne réduit pas
+  /// la mémoire nécessaire pour AFFICHER un écran : ça force seulement à
+  /// re-décoder en boucle, ce qui a rendu la TV saccadée et fait clignoter les
+  /// vignettes (elles disparaissaient puis revenaient).
+  ///
+  /// Le vrai levier était ailleurs : décoder les images à leur taille
+  /// d'affichage (cf. `decodeWidthFor`), ce qui divise leur coût par ~3. À
+  /// mémoire égale, le cache contient donc désormais 3× plus de vignettes.
   final int imageCacheMb;
 
   static const int minHeroCards = 5;
   static const int maxHeroCards = 15;
   static const int minItemsPerRow = 5;
   static const int maxItemsPerRowLimit = 25;
-  /// Plancher volontairement non nul : à 0 le scroll re-décoderait chaque
-  /// vignette à chaque frame (pire que le problème résolu).
-  static const int minImageCacheMb = 20;
-  static const int maxImageCacheMb = 150;
+
+  /// §imgThrash — Plancher relevé de 20 à 60 Mo : en dessous, le cache ne tient
+  /// même plus un écran d'accueil et le thrash est garanti.
+  static const int minImageCacheMb = 60;
+  static const int maxImageCacheMb = 200;
 
   const PerfConfig({
     required this.heroEnabled,
@@ -54,14 +61,12 @@ class PerfConfig {
   // ── Presets ───────────────────────────────────────────────────────────────
 
   /// Confort = comportement historique de l'app (défaut).
-  /// §imgMemCache : 80 Mo au lieu des 100 Mo par défaut de Flutter — le cache
-  /// disque absorbe désormais les évictions.
   static const PerfConfig defaults = PerfConfig(
     heroEnabled: true,
     heroAutoRotate: true,
     heroCardCount: 15,
     maxItemsPerRow: 15,
-    imageCacheMb: 80,
+    imageCacheMb: 120,
   );
 
   /// Hero conservé mais immobile, rangées allégées.
@@ -70,17 +75,23 @@ class PerfConfig {
     heroAutoRotate: false,
     heroCardCount: 10,
     maxItemsPerRow: 10,
-    imageCacheMb: 60,
+    imageCacheMb: 100,
   );
 
   /// Fire Stick / box faible : hero coupé (les valeurs hero restent cohérentes
   /// si l'utilisateur le réactive ensuite à la main).
+  ///
+  /// ⚠️ §imgThrash — Le cache image N'EST PLUS le levier d'allègement de ce
+  /// profil : c'est lui qui provoquait les saccades TV, or ce profil est celui
+  /// que §perfAutoSuggest propose justement sur box TV. On allège désormais par
+  /// le hero et le nombre de vignettes ; le cache reste au niveau du défaut
+  /// Flutter.
   static const PerfConfig performance = PerfConfig(
     heroEnabled: false,
     heroAutoRotate: false,
     heroCardCount: 8,
     maxItemsPerRow: 10,
-    imageCacheMb: 40,
+    imageCacheMb: 80,
   );
 
   /// Profils affichés dans OptimizationSettingsPage. Un état ne correspondant

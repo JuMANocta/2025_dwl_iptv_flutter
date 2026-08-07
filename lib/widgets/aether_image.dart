@@ -3,6 +3,29 @@ import 'package:flutter/material.dart';
 
 import '../core/utils/image_cache_config.dart';
 
+/// §imgThrash — Largeur de **décodage** d'une vignette affichée sur
+/// [logicalWidth] px logiques.
+///
+/// **Pourquoi ce helper existe** : les `cacheWidth` étaient des constantes
+/// (360 pour les cartes d'accueil, 320 pour le hero) alors que les vignettes
+/// mesurent ~120-145 px logiques. Une affiche 2:3 décodée à 360 px occupe
+/// 360×540×4 ≈ 777 Ko en RAM, contre ≈ 265 Ko à la bonne taille : **~3× de
+/// gaspillage**, qui saturait le cache image et provoquait un re-décodage
+/// permanent sur TV (vignettes qui disparaissent puis reviennent).
+///
+/// La bonne valeur est la largeur de rendu × `devicePixelRatio` : décoder plus
+/// finement ne se voit pas, décoder moins finement rend flou. Le plafond [max]
+/// protège les écrans à très forte densité, où le produit s'emballe sans gain
+/// perceptible sur une vignette.
+int decodeWidthFor(
+  BuildContext context,
+  double logicalWidth, {
+  int max = 400,
+}) {
+  final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+  return (logicalWidth * dpr).round().clamp(80, max);
+}
+
 /// §imgDiskCache — Image réseau **avec cache disque**, partagée par toute l'app.
 ///
 /// Remplace les 14 `Image.network` dupliqués : ceux-ci n'avaient qu'un cache

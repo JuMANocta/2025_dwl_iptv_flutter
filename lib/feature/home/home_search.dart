@@ -245,7 +245,8 @@ class _PersonCard extends StatelessWidget {
                   width: 72,
                   height: 72,
                   fit: BoxFit.cover,
-                  cacheWidth: 160,
+                  // §imgThrash — 72 px réels, décodés à la densité de l'écran.
+                  cacheWidth: decodeWidthFor(context, 72),
                   alignment: Alignment.topCenter,
                   fallback: (_) => Container(
                     color: cs.surfaceContainerHighest,
@@ -667,7 +668,8 @@ class _LastWatchedTvTile extends StatelessWidget {
                       child: AetherImage(
                         url: last.logoUrl,
                         fit: BoxFit.contain,
-                        cacheWidth: 144,
+                        // §imgThrash — 48 px réels.
+                        cacheWidth: decodeWidthFor(context, 48),
                         fallback: (_) =>
                             const Icon(Icons.live_tv, color: Colors.white54),
                       ),

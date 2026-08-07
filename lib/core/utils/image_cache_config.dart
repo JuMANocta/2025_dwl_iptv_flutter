@@ -40,23 +40,31 @@ abstract final class AetherImageCache {
   /// Affiches / backdrops / photos TMDB (fallback + fiche) : chemin immuable
   /// → rétention la plus longue, quota serré (images unitairement lourdes :
   /// backdrops w1280, stills w780).
+  /// §imgThrash — quota relevé de 400 à 1500. À 400 objets, une simple session
+  /// de navigation dépassait le plafond et `flutter_cache_manager` évinçait les
+  /// plus anciennes : la visite suivante repartait donc **en réseau**.
   static final CacheManager tmdb = CacheManager(
     Config(
       _tmdbKey,
       stalePeriod: const Duration(days: 60),
-      maxNrOfCacheObjects: 400,
+      maxNrOfCacheObjects: 1500,
     ),
   );
 
   /// Posters/logos des LISTES + icônes EPG — **source principale des
-  /// vignettes** (home, hero, recherche) → le plus gros quota. ~1200 vignettes
-  /// à 20-60 Ko ≈ 50 Mo, ce qui couvre plusieurs catégories entièrement
-  /// scrollées sans éviction.
+  /// vignettes** (home, hero, recherche) → le plus gros quota.
+  ///
+  /// §imgThrash — Quota relevé de 1200 à 4000. L'accueil seul représente déjà
+  /// ~900 vignettes (≈20 catégories × 15 items × 3 types), avant le hero, la
+  /// recherche et les fiches : 1200 était dépassé en une session, et chaque
+  /// éviction se payait en **re-téléchargement**. À 20-60 Ko pièce, 4000 objets
+  /// ≈ 150 Mo de disque — mesurés et purgeables depuis Paramètres →
+  /// Optimisation.
   static final CacheManager provider = CacheManager(
     Config(
       _providerKey,
       stalePeriod: const Duration(days: 30),
-      maxNrOfCacheObjects: 1200,
+      maxNrOfCacheObjects: 4000,
     ),
   );
 

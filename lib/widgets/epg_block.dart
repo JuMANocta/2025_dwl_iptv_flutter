@@ -143,7 +143,8 @@ class EpgProgramRow extends StatelessWidget {
                   width: 54,
                   height: 38,
                   fit: BoxFit.cover,
-                  cacheWidth: 108,
+                  // §imgThrash — décodage calé sur les 54 px réels.
+                  cacheWidth: decodeWidthFor(context, 54),
                   borderRadius: BorderRadius.circular(6),
                   fallback: (_) =>
                       (program.iconUrl != null && channelIconUrl != null)

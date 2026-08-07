@@ -196,6 +196,30 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       },
     );
     RemoteControlService.instance.registerPlayer(_remoteHandlers);
+    _releaseImageCache();
+  }
+
+  /// §playerMem — Rend au décodeur vidéo la RAM immobilisée par les vignettes.
+  ///
+  /// L'accueil reste MONTÉ derrière le player (route conservée) : son arbre de
+  /// widgets, et surtout les images déjà décodées, continuent d'occuper la
+  /// mémoire pendant tout le film — jusqu'à ~120 Mo au profil Confort. Or
+  /// aucune de ces vignettes n'est visible derrière une vidéo plein écran.
+  ///
+  /// `imageCache.clear()` ne vide que les entrées **conservées pour plus tard**
+  /// : les images encore référencées par des widgets vivants sont suivies à
+  /// part (`liveImages`) et ne sont pas jetées. Au retour, les vignettes
+  /// évincées se relisent depuis le cache DISQUE (§imgDiskCache) — donc sans
+  /// re-téléchargement.
+  ///
+  /// Particulièrement utile sur box TV, où cette RAM manque au décodage 4K.
+  void _releaseImageCache() {
+    try {
+      PaintingBinding.instance.imageCache.clear();
+      debugPrint('🖼️ §playerMem : cache image RAM libéré pour la lecture');
+    } catch (_) {
+      // Non critique : au pire on garde le comportement précédent.
+    }
   }
 
   // ── §1h Wakelock — actif uniquement quand le player joue ─────────────────

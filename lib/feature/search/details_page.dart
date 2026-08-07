@@ -2331,13 +2331,15 @@ class _CastCard extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              // §imgDiskCache — cache disque ; §imgPerf cap 220 px.
+              // §imgDiskCache — cache disque ; §imgThrash — décodage calé sur
+              // les 92 px réels (rangée de casting = beaucoup d'images d'un
+              // coup, donc le sur-décodage y coûtait cher).
               child: AetherImage(
                 url: photoUrl,
                 width: 92,
                 height: 138,
                 fit: BoxFit.cover,
-                cacheWidth: 220,
+                cacheWidth: decodeWidthFor(context, 92),
                 // Cadre sur le haut → garde le visage (yeux) plutôt que de
                 // recentrer sur le bas (bouche/menton).
                 alignment: Alignment.topCenter,
@@ -2423,7 +2425,8 @@ class _RelatedCard extends StatelessWidget {
                 width: w,
                 height: h,
                 fit: BoxFit.cover,
-                cacheWidth: 240,
+                // §imgThrash — largeur de rendu réelle.
+                cacheWidth: decodeWidthFor(context, w),
                 fallback: (_) => placeholder(),
               ),
             ),
