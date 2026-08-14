@@ -17,6 +17,7 @@ import 'widgets/track_selector_sheet.dart';
 import 'widgets/player_options_sheet.dart';
 import 'player_action_handlers.dart';
 import 'package:dpad/dpad.dart';
+import '../../core/navigation/focus_route_memory.dart';
 import '../../core/utils/platform_tv.dart';
 
 enum VideoSourceType {
@@ -186,14 +187,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
     _remoteHandlers = PlayerActionHandlers(
       togglePlayPause: _togglePlayPause,
+      setPlaying: _setPlaying,
+      nextEpisode: widget.onNextEpisode,
       seek: _handleSeek,
       changeVolume: _handleVolumeChange,
       toggleControls: _toggleControls,
       showControls: _showControls,
       showOptions: _showTvOptions,
-      exitPlayer: () {
-        if (mounted) Navigator.of(context).maybePop();
-      },
+      exitPlayer: AppBack.popFromUi,
     );
     RemoteControlService.instance.registerPlayer(_remoteHandlers);
     _releaseImageCache();
@@ -500,6 +501,18 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _showControls();
   }
 
+  /// §mediaKeys — Lecture/pause explicite (touches PLAY et PAUSE séparées de la
+  /// télécommande). Basculer serait faux : PAUSE sur une vidéo déjà en pause la
+  /// relancerait.
+  void _setPlaying(bool play) {
+    if (play) {
+      _ctrl.player.play();
+    } else {
+      _ctrl.player.pause();
+    }
+    _showControls();
+  }
+
   void _toggleControls() {
     if (_controlsVisible) {
       _hideTimer?.cancel();
@@ -639,7 +652,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               synopsis: widget.synopsis,
               visible: _controlsVisible,
               badgeType: widget.badgeType,
-              onBack: () => Navigator.of(context).pop(),
+              // §dpadBack — Même chemin que la touche Retour physique (debounce
+              // partagé) : un `pop()` direct doublonnait avec elle.
+              onBack: AppBack.popFromUi,
               onInteraction: _showControls,
               onLockChanged: (locked) => setState(() => _isLocked = locked),
               onNextEpisode: widget.onNextEpisode,

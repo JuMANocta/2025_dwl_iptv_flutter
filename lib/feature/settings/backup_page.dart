@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
-import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
 import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
 /// Page Sauvegarde / Restauration (§10).
 ///
@@ -18,20 +19,10 @@ class BackupPage extends StatefulWidget {
   State<BackupPage> createState() => _BackupPageState();
 }
 
-class _BackupPageState extends State<BackupPage> {
+class _BackupPageState extends State<BackupPage> with TvInitialFocus {
   bool _exporting = false;
   bool _importing = false;
 
-  @override
-  void initState() {
-    super.initState();
-    // §19 — Auto-focus initial sur TV.
-    if (PlatformTv.isTv) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-    }
-  }
 
   // ── EXPORT ────────────────────────────────────────────────────────────────
 
@@ -62,7 +53,7 @@ class _BackupPageState extends State<BackupPage> {
   Future<String?> _askExportPassword() async {
     final pwd1 = TextEditingController();
     final pwd2 = TextEditingController();
-    return showDialog<String>(
+    return showAppDialog<String>(
       context: context,
       builder: (ctx) {
         bool visible = false;
@@ -155,7 +146,7 @@ class _BackupPageState extends State<BackupPage> {
   }
 
   void _showExportSuccessDialog(String fileName) {
-    showDialog<void>(
+    showAppDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Row(

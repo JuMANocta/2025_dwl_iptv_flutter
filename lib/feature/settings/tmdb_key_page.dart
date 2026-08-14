@@ -6,6 +6,7 @@ import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 /// Sous-page Settings (§1g) : gestion de la clé API TMDB.
 ///
@@ -20,7 +21,7 @@ class TmdbKeyPage extends StatefulWidget {
   State<TmdbKeyPage> createState() => _TmdbKeyPageState();
 }
 
-class _TmdbKeyPageState extends State<TmdbKeyPage> {
+class _TmdbKeyPageState extends State<TmdbKeyPage> with TvInitialFocus {
   final _keyController = TextEditingController();
   bool _isKeyVisible = false;
   bool _hasSavedKey = false;
@@ -33,12 +34,6 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> {
   void initState() {
     super.initState();
     _loadKey();
-    // §19 — Auto-focus initial sur TV (CTA pairing en tête).
-    if (PlatformTv.isTv) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-    }
   }
 
   /// §webConsoleOnly — Console web mobile→TV pour coller la clé TMDB depuis le

@@ -6,6 +6,7 @@ import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/web_console_service.dart';
 import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
+import 'package:aetherStream/widgets/tv/focusable_card.dart';
 
 /// Onboarding affiché une seule fois (§1i + §3c-8 TV + §webConsoleOnly).
 ///
@@ -164,13 +165,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
             children: [
               Align(
                 alignment: Alignment.topRight,
-                child: TextButton(
-                  onPressed: _finish,
-                  child: Text(
-                    'Passer',
-                    style: TextStyle(
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w600),
+                child: FocusableCard(
+                  onTap: _finish,
+                  scaleOnFocus: false,
+                  child: TextButton(
+                    onPressed: _finish,
+                    child: Text(
+                      'Passer',
+                      style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
               ),
@@ -212,7 +217,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 child: SizedBox(
                   width: double.infinity,
                   height: 48,
-                  child: FilledButton(
+                  // §dpadAlign — L'onboarding n'avait AUCUN focusable : au
+                  // premier lancement sur TV, la télécommande ne pouvait rien
+                  // sélectionner (ni Suivant, ni Passer). Le CTA prend le focus
+                  // d'entrée, les deux autres boutons deviennent atteignables.
+                  child: FocusableCard(
+                    autofocus: true,
+                    scaleOnFocus: false,
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _next,
+                    child: FilledButton(
                     onPressed: _next,
                     style: FilledButton.styleFrom(
                       backgroundColor: kAccentPrimary,
@@ -229,6 +243,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                     // coincé à attendre un scan, comme c'était le cas avec le
                     // pairing en auto-advance seul.
                     child: Text(isLast ? 'Commencer' : 'Suivant'),
+                    ),
                   ),
                 ),
               ),
@@ -236,12 +251,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
               if (_index == 0)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 24),
-                  child: TextButton.icon(
-                    onPressed: _onRestoreTap,
-                    icon: const Icon(Icons.cloud_download_outlined, size: 18),
-                    label: const Text('J\'ai déjà une sauvegarde (.aether)'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: kAccentSecondary,
+                  child: FocusableCard(
+                    onTap: _onRestoreTap,
+                    scaleOnFocus: false,
+                    child: TextButton.icon(
+                      onPressed: _onRestoreTap,
+                      icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                      label: const Text('J\'ai déjà une sauvegarde (.aether)'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: kAccentSecondary,
+                      ),
                     ),
                   ),
                 ),

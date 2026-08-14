@@ -4,6 +4,8 @@ import '../../core/themes/colors.dart';
 import '../../data/services/replay_service.dart';
 import '../../data/services/xmltv_service.dart';
 import '../../data/models/xmltv_program.dart';
+import '../../widgets/tv/focusable_card.dart';
+import '../../widgets/tv/focusable_chip.dart';
 
 /// Sheet permettant à l'utilisateur de choisir manuellement
 /// un jour, une heure et une durée pour lancer un replay.
@@ -248,26 +250,34 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
                   gradient: kAetherGradient,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: _confirm,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.play_arrow_rounded,
-                            color: kWhite, size: 22),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Regarder  •  ${_buildLabel()}',
-                          style: const TextStyle(
-                            color: kWhite,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
+                // §dpadAlign — Le CTA principal du picker n'était pas focusable :
+                // à la télécommande on ne pouvait pas voir qu'il était
+                // sélectionné (ni l'atteindre autrement qu'à l'aveugle).
+                child: FocusableCard(
+                  borderRadius: BorderRadius.circular(12),
+                  scaleOnFocus: false,
+                  onTap: _confirm,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: _confirm,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.play_arrow_rounded,
+                              color: kWhite, size: 22),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Regarder  •  ${_buildLabel()}',
+                            style: const TextStyle(
+                              color: kWhite,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -429,10 +439,17 @@ class _XmltvProgramRow extends StatelessWidget {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final timeFmt = DateFormat('HH:mm');
 
-    return InkWell(
+    // §dpadAlign — Chaque programme du guide devient focusable (les non
+    // rejouables restent inertes : rien à lancer, donc rien à sélectionner).
+    return FocusableCard(
       onTap: onTap,
+      enabled: onTap != null,
+      scaleOnFocus: false,
       borderRadius: BorderRadius.circular(8),
-      child: Container(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
         margin: const EdgeInsets.only(bottom: 2),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
@@ -547,6 +564,7 @@ class _XmltvProgramRow extends StatelessWidget {
               const SizedBox(width: 22),
           ],
         ),
+        ),
       ),
     );
   }
@@ -606,15 +624,21 @@ class _DaySelector extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ChoiceChip(
-                  label: Text(label),
-                  selected: isSelected,
-                  onSelected: (_) => onChanged(d),
-                  selectedColor: kAccentPrimary,
-                  labelStyle: TextStyle(
-                    color: isSelected ? kWhite : null,
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
+                // §dpadAlign — Focus visible à la télécommande (le `ChoiceChip`
+                // nu n'a que l'overlay Material, invisible à 3 m).
+                FocusableChip(
+                  onTap: () => onChanged(d),
+                  anchorRowStart: true,
+                  child: ChoiceChip(
+                    label: Text(label),
+                    selected: isSelected,
+                    onSelected: (_) => onChanged(d),
+                    selectedColor: kAccentPrimary,
+                    labelStyle: TextStyle(
+                      color: isSelected ? kWhite : null,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
                   ),
                 ),
                 // Indicateur EPG disponible
@@ -735,16 +759,24 @@ class _ArrowButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: kAccentPrimary.withValues(alpha: 0.15),
+    // §dpadAlign — Les ± 15 min sont le SEUL chemin utilisable à la
+    // télécommande : le `showTimePicker` central (cadran Material) n'est pas
+    // navigable au D-pad, on ne le rend donc pas focusable.
+    return FocusableCard(
+      onTap: onTap,
+      scaleOnFocus: false,
       borderRadius: BorderRadius.circular(10),
-      child: InkWell(
+      child: Material(
+        color: kAccentPrimary.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(10),
-        onTap: onTap,
-        child: SizedBox(
-          width: 44,
-          height: 52,
-          child: Icon(icon, color: kAccentPrimary, size: 22),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: SizedBox(
+            width: 44,
+            height: 52,
+            child: Icon(icon, color: kAccentPrimary, size: 22),
+          ),
         ),
       ),
     );
@@ -772,14 +804,17 @@ class _ChipRow<T> extends StatelessWidget {
       runSpacing: 8,
       children: items.map((item) {
         final isSelected = item == selected;
-        return ChoiceChip(
-          label: Text(label(item)),
-          selected: isSelected,
-          onSelected: (_) => onSelected(item),
-          selectedColor: kAccentPrimary,
-          labelStyle: TextStyle(
-            color: isSelected ? kWhite : null,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        return FocusableChip(
+          onTap: () => onSelected(item),
+          child: ChoiceChip(
+            label: Text(label(item)),
+            selected: isSelected,
+            onSelected: (_) => onSelected(item),
+            selectedColor: kAccentPrimary,
+            labelStyle: TextStyle(
+              color: isSelected ? kWhite : null,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
           ),
         );
       }).toList(),

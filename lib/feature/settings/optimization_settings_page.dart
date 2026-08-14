@@ -3,12 +3,12 @@ import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
-import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/widgets/memory_stats_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 /// §perfSettings — Page « Optimisation » (Fire Stick / terminaux faibles).
 ///
@@ -24,7 +24,7 @@ class OptimizationSettingsPage extends StatefulWidget {
       _OptimizationSettingsPageState();
 }
 
-class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> {
+class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> with TvInitialFocus {
   late PerfConfig _config;
 
   /// Change de valeur après « Libérer la mémoire » → recrée la MemoryStatsCard
@@ -35,12 +35,6 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> {
   void initState() {
     super.initState();
     _config = PerformanceSettingsService.config.value;
-    // §19 — Auto-focus initial sur TV.
-    if (PlatformTv.isTv) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-    }
   }
 
   /// Applique la config en live (ValueNotifier → rebuild home) et la persiste.

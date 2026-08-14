@@ -5,6 +5,7 @@ import '../../core/settings/perf_config.dart';
 import '../../core/settings/performance_settings_service.dart';
 import '../../core/themes/colors.dart';
 import '../../core/utils/platform_tv.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
 /// §perfAutoSuggest — Propose UNE FOIS le profil Performance au boot sur
 /// box TV détectée (Fire Stick / Android TV), là où le hero fan et les
@@ -27,7 +28,7 @@ abstract final class PerfSuggestDialog {
     await prefs.setBool(_kFlag, true); // posé AVANT l'affichage (jamais 2×)
 
     if (!context.mounted) return;
-    final apply = await showDialog<bool>(
+    final apply = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         icon: Icon(Icons.speed, size: 40, color: kAccentSecondary),

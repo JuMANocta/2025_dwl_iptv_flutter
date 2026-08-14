@@ -3,6 +3,7 @@ import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
 import '../../core/utils/platform_tv.dart';
 import '../../widgets/tv/focusable_chip.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 class ThemeSettingsPage extends StatefulWidget {
   const ThemeSettingsPage({super.key});
@@ -11,7 +12,7 @@ class ThemeSettingsPage extends StatefulWidget {
   State<ThemeSettingsPage> createState() => _ThemeSettingsPageState();
 }
 
-class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
+class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFocus {
   late AppThemeConfig _config;
 
   // Palette de couleurs disponibles pour la personnalisation
@@ -36,12 +37,6 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> {
   void initState() {
     super.initState();
     _config = ThemeService.config.value;
-    // §19 — Auto-focus initial sur TV.
-    if (PlatformTv.isTv) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-    }
   }
 
   /// Applique la config en live (ValueNotifier → rebuild MyApp) et la sauvegarde.

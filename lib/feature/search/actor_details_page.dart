@@ -9,6 +9,7 @@ import '../../data/models/m3u_entry.dart';
 import '../../widgets/aether_image.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'details_page.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 class ActorDetailsPage extends StatefulWidget {
   final int personId;
@@ -18,7 +19,7 @@ class ActorDetailsPage extends StatefulWidget {
   State<ActorDetailsPage> createState() => _ActorDetailsPageState();
 }
 
-class _ActorDetailsPageState extends State<ActorDetailsPage> {
+class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus {
   // Index depuis la mémoire ParsedPlaylistService : titre normalisé → toutes
   // les entrées correspondantes (toutes qualités). Reconstruit quand la
   // playlist change (cf. `_refreshLookup`).

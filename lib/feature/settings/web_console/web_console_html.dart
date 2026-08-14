@@ -262,6 +262,7 @@ String buildDashboard(AppThemeConfig t, String token) {
     <div class="grid">
       ${_navCard(token, 'backup', '💾', 'Sauvegarde', 'Importer / exporter .aether')}
       ${_navCard(token, 'about', 'ℹ️', 'À propos', 'Version & liens GitHub')}
+      ${_navCard(token, 'logs', '📝', 'Journal', 'Diagnostic & touches télécommande')}
       ${_navCard(token, 'reset', '🧹', 'Réinitialiser', 'Vider favoris, reprises, historique')}
     </div>
   </div>
@@ -292,6 +293,83 @@ String buildAbout(AppThemeConfig t, String token, String version) {
   </div>
   ''';
   return _shell(t, 'À propos', body);
+}
+
+// ─── Journal de diagnostic (§tvLogs) ─────────────────────────────────────────
+
+/// Vue « Journal » : la TV n'a pas de logcat accessible, donc tout ce que
+/// l'application écrit via `debugPrint` atterrit ici, avec un export texte.
+///
+/// Le contenu arrive **déjà expurgé** (rédaction faite côté Dart, au niveau du
+/// puits) : aucun identifiant IPTV ne transite sur le réseau local.
+String buildLogs(AppThemeConfig t, String token, String content, bool keyTrace,
+    int lineCount) {
+  final tk = Uri.encodeQueryComponent(token);
+  final body = '''
+  ${_backLink(token)}
+  <div class="sec">
+    <h2>Journal de diagnostic</h2>
+    <p class="muted">Tout ce que l'application écrit pendant son exécution.
+      Les identifiants (URLs de playlist, mots de passe) sont masqués avant
+      d'arriver ici.</p>
+    <div class="row">
+      <button class="btn" id="autoBtn" onclick="toggleAuto()">⏸️ Auto : ON</button>
+      <button class="btn" id="keyBtn" onclick="toggleKeys()">
+        ${keyTrace ? '⌨️ Touches : ON' : '⌨️ Touches : OFF'}</button>
+      <a class="btn" href="/logs.txt?t=$tk" download="aetherstream-log.txt">⬇️ Télécharger</a>
+      <button class="btn" onclick="clearLogs()">🧹 Vider</button>
+    </div>
+    <p class="muted" id="meta">$lineCount lignes</p>
+    <pre id="log" class="log">${esc(content)}</pre>
+  </div>
+  <style>
+    .log { max-height: 62vh; overflow: auto; white-space: pre-wrap;
+           word-break: break-word; font-size: 12px; line-height: 1.45;
+           background: rgba(0,0,0,.45); border: 1px solid var(--bd);
+           border-radius: 10px; padding: 10px; margin-top: 10px; }
+  </style>
+  <script>
+    let auto = true;
+    let keys = ${keyTrace ? 'true' : 'false'};
+    const logEl = () => document.getElementById('log');
+    function atBottom(){ const e = logEl();
+      return e.scrollTop + e.clientHeight >= e.scrollHeight - 24; }
+    async function refresh(){
+      try {
+        const stick = atBottom();
+        const r = await fetch('/logs.txt?t=' + encodeURIComponent(T));
+        const txt = await r.text();
+        const e = logEl();
+        e.textContent = txt;
+        document.getElementById('meta').textContent =
+          txt.split('\\n').length + ' lignes';
+        if (stick) e.scrollTop = e.scrollHeight;
+      } catch (err) {}
+    }
+    function toggleAuto(){
+      auto = !auto;
+      document.getElementById('autoBtn').textContent =
+        auto ? '⏸️ Auto : ON' : '▶️ Auto : OFF';
+      if (auto) refresh();
+    }
+    async function toggleKeys(){
+      keys = !keys;
+      const r = await api('/api/logs/keytrace', { on: keys });
+      document.getElementById('keyBtn').textContent =
+        keys ? '⌨️ Touches : ON' : '⌨️ Touches : OFF';
+      toast(keys ? 'Appuie sur les touches de ta télécommande' : 'Traceur arrêté', r.ok);
+      refresh();
+    }
+    async function clearLogs(){
+      const r = await api('/api/logs/clear', {});
+      toast(r.ok ? 'Journal vidé' : 'Échec', r.ok);
+      refresh();
+    }
+    setInterval(() => { if (auto) refresh(); }, 2000);
+    window.addEventListener('load', () => { const e = logEl(); e.scrollTop = e.scrollHeight; });
+  </script>
+  ''';
+  return _shell(t, 'Journal', body);
 }
 
 String _navCard(String token, String view, String ic, String title, String sub) {

@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../core/diagnostics/log_buffer.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
 import '../models/stream_account.dart';
@@ -183,6 +184,15 @@ class WebConsoleService {
         return;
       }
 
+      // §tvLogs — Export texte du journal (téléchargeable, et rechargé toutes
+      // les 2 s par la vue « Journal » pour un suivi en direct).
+      if (req.method == 'GET' && uri.path == '/logs.txt') {
+        res.headers.contentType = ContentType.text;
+        res.write(DiagnosticLog.dump());
+        await res.close();
+        return;
+      }
+
       if (req.method == 'POST' && uri.path.startsWith('/api/')) {
         await _handleApi(req, uri.path);
         return;
@@ -236,6 +246,10 @@ class WebConsoleService {
         final info = await PackageInfo.fromPlatform();
         page = html.buildAbout(_theme, tk, '${info.version}+${info.buildNumber}');
         break;
+      case 'logs':
+        page = html.buildLogs(_theme, tk, DiagnosticLog.dump(),
+            DiagnosticLog.keyTrace, DiagnosticLog.lineCount);
+        break;
       default:
         page = html.buildDashboard(_theme, tk);
     }
@@ -286,6 +300,17 @@ class WebConsoleService {
           await _reloadAccount(payload['id'] as String?);
           _json(req, 200, {'ok': true});
           break;
+        // §tvLogs — Traceur de touches : montre ce que la télécommande émet
+        // réellement (indispensable pour les touches média, invisibles sans
+        // logcat sur TV).
+        case '/api/logs/keytrace':
+          DiagnosticLog.keyTrace = payload['on'] == true;
+          _json(req, 200, {'ok': true});
+          break;
+        case '/api/logs/clear':
+          DiagnosticLog.clear();
+          _json(req, 200, {'ok': true});
+          break;
         case '/api/tmdb/save':
           await _saveTmdb((payload['token'] as String?) ?? '');
           _json(req, 200, {'ok': true});
@@ -327,7 +352,9 @@ class WebConsoleService {
       // §webConsoleOnly — On n'arrive ici que si l'action a réussi (toute erreur
       // est levée et interceptée ci-dessous). `/api/remote` est exclu : il part
       // à CHAQUE appui de touche de la télécommande et noierait les abonnés.
-      if (path != '/api/remote') _emit(path);
+      // §tvLogs — `/api/logs/*` est exclu pour la même raison : consulter le
+      // journal est une action de diagnostic, elle ne change pas la config.
+      if (path != '/api/remote' && !path.startsWith('/api/logs/')) _emit(path);
     } catch (e) {
       debugPrint('❌ WebConsoleService API $path: $e');
       _json(req, 400, {'ok': false, 'error': e.toString()});

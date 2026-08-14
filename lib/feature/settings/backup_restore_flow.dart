@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
 /// Flux UI complet de restauration d'une sauvegarde `.aether` (§10), extrait
 /// pour être réutilisable depuis `BackupPage` (Paramètres) ET l'onboarding
@@ -53,7 +54,7 @@ Future<bool> runBackupImportFlow(BuildContext context) async {
 
 Future<String?> _askImportPassword(BuildContext context) async {
   final ctrl = TextEditingController();
-  return showDialog<String>(
+  return showAppDialog<String>(
     context: context,
     builder: (ctx) {
       bool visible = false;
@@ -96,7 +97,7 @@ Future<String?> _askImportPassword(BuildContext context) async {
 }
 
 Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {
-  return showDialog<bool>(
+  return showAppDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Row(
@@ -164,7 +165,7 @@ Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {
 
 Future<void> _showImportSuccessDialog(
     BuildContext context, BackupContent content) {
-  return showDialog<void>(
+  return showAppDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Row(

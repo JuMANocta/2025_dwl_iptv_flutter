@@ -341,7 +341,7 @@ class CategoryListPage extends StatefulWidget {
   State<CategoryListPage> createState() => _CategoryListPageState();
 }
 
-class _CategoryListPageState extends State<CategoryListPage> {
+class _CategoryListPageState extends State<CategoryListPage> with TvInitialFocus {
   // §quickwin — scroll-to-top sur les grosses catégories (2000+ items) :
   // remonter au D-pad sur TV/Fire Stick était pénible.
   final ScrollController _scrollController = ScrollController();
@@ -401,6 +401,8 @@ class _CategoryListPageState extends State<CategoryListPage> {
         ),
       ),
       extendBodyBehindAppBar: true,
+      // §dpadAlign — La grille « Voir tout » n'avait pas de région propre : elle
+      // naviguait dans le scope global, sans mémoire de colonne ni bord défini.
       floatingActionButton: _showScrollTop
           ? FloatingActionButton.small(
               backgroundColor: kAccentPrimary,
@@ -430,7 +432,10 @@ class _CategoryListPageState extends State<CategoryListPage> {
               : null,
         ),
         child: SafeArea(
-          child: LayoutBuilder(
+          child: DpadRegion(
+            debugLabel: 'categoryGrid',
+            memoryKey: 'category_${widget.type.name}_${widget.category}',
+            child: LayoutBuilder(
             builder: (ctx, constraints) {
               const spacing = 10.0;
               // §tvZoom — Colonnes pilotées par la largeur réelle (3 sur
@@ -462,9 +467,11 @@ class _CategoryListPageState extends State<CategoryListPage> {
                   versions: widget.groups[i],
                   type: widget.type,
                   width: tileWidth,
+                  isEntry: i == 0,
                 ),
               );
             },
+            ),
           ),
         ),
       ),

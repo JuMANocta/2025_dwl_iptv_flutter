@@ -9,6 +9,7 @@ import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
+import 'package:aetherStream/core/navigation/focus_route_memory.dart';
 import 'package:aetherStream/main.dart' show checkForUpdate;
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
@@ -109,9 +110,20 @@ class _MainNavigationState extends State<MainNavigation> {
     } catch (_) {/* silent */}
   }
 
+  /// §dpadRestore — Focus mémorisé pour chaque onglet, au moment où on le quitte.
+  ///
+  /// La bascule d'onglet ne pousse aucune route, mais elle détruit quand même
+  /// les focusables (l'`IndexedStack` et les `ExcludeFocus` de la home) : le
+  /// nœud focalisé meurt, et le filet de `dpad` retombe sur la 1re carte de
+  /// l'accueil en faisant défiler la liste tout en haut. On rend donc le focus
+  /// nous-mêmes, exactement comme [FocusRouteMemory] le fait pour les routes.
+  final Map<int, FocusSnapshot> _tabFocus = <int, FocusSnapshot>{};
+
   void _onTap(int i) {
     if (i == _navIndex) return;
+    _tabFocus[_navIndex] = FocusSnapshot.capture();
     setState(() => _navIndex = i);
+    _tabFocus[i]?.restore();
   }
 
   /// Ouvre le hub Settings natif. §18 — Depuis que la navigation D-pad du hub
@@ -210,7 +222,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
         // Pas sur l'accueil → y revenir (sort recherche / téléchargements).
         if (_navIndex != 0) {
-          setState(() => _navIndex = 0);
+          _onTap(0); // §dpadRestore — passe par la mémoire de focus d'onglet
           return;
         }
 
@@ -274,7 +286,17 @@ class _TvNavigationRail extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     // §dpadNav — Le franchissement vers le contenu (→) est géré par la
     // `DpadRegion` parente (edge: leave). Plus de `Focus` custom ici.
-    return NavigationRail(
+    //
+    // §dpadAlign — Le rail garde volontairement le focus NATIF de Material
+    // (pas de `FocusableCard` par destination) : §railRevert documente qu'une
+    // personnalisation du focus ici avait déjà empêché de sortir du menu à la
+    // télécommande. On se limite donc au visuel : `focusColor` très marqué, pour
+    // que la destination focusée se voie à 3 m comme le reste de l'application.
+    return Theme(
+      data: Theme.of(context).copyWith(
+        focusColor: cs.primary.withAlpha(90),
+      ),
+      child: NavigationRail(
         selectedIndex: selectedIndex,
         minWidth: 64,
         // §railCenter — Centrage vertical des destinations dans la hauteur
@@ -318,6 +340,7 @@ class _TvNavigationRail extends StatelessWidget {
             label: Text('Paramètres'),
           ),
         ],
-      );
+      ),
+    );
   }
 }

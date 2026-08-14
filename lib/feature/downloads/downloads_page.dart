@@ -6,6 +6,7 @@ import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 /// §dlTheme — Puce de filtre reprenant le langage visuel des puces de l'app
 /// (cf. les chips de saison de `DetailsPage`) : teinte de l'accent en fond,
@@ -109,7 +110,7 @@ class DownloadsPage extends StatefulWidget {
   State<DownloadsPage> createState() => _DownloadsPageState();
 }
 
-class _DownloadsPageState extends State<DownloadsPage> {
+class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
   final DownloadManagerService _downloadManager = DownloadManagerService();
 
   DownloadFilter _filter = DownloadFilter.all;

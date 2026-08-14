@@ -15,6 +15,7 @@ import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 /// Page de gestion des comptes IPTV (§1g — refonte).
 ///
@@ -39,7 +40,7 @@ class AccountsPage extends StatefulWidget {
   State<AccountsPage> createState() => _AccountsPageState();
 }
 
-class _AccountsPageState extends State<AccountsPage> {
+class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
   late Future<List<StreamAccount>> _accountsFuture;
   String? _priorityAccountId;
   bool _priorityChanged = false;
@@ -48,12 +49,6 @@ class _AccountsPageState extends State<AccountsPage> {
   void initState() {
     super.initState();
     _accountsFuture = _loadAccounts();
-    // §19 — Auto-focus initial sur TV (1ère tile compte ou bouton +).
-    if (PlatformTv.isTv) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-    }
   }
 
   Future<List<StreamAccount>> _loadAccounts() async {
@@ -129,7 +124,7 @@ class _AccountsPageState extends State<AccountsPage> {
       _openEditor();
       return;
     }
-    final choice = await showDialog<String>(
+    final choice = await showAppDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Comment ajouter une playlist ?'),
@@ -173,7 +168,7 @@ class _AccountsPageState extends State<AccountsPage> {
   Future<void> _clearCache(StreamAccount acc) async {
     final l10n = AppLocalizations.of(context)!;
     final isActive = acc.id == _priorityAccountId;
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Vider le cache ?'),
@@ -226,7 +221,7 @@ class _AccountsPageState extends State<AccountsPage> {
 
   Future<void> _delete(StreamAccount acc) async {
     final l10n = AppLocalizations.of(context)!;
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(l10n.deleteAccountDialogTitle),
@@ -618,7 +613,7 @@ class _AccountCardState extends State<_AccountCard> {
     final h = age.inHours;
     final m = age.inMinutes % 60;
     final ageStr = h > 0 ? '${h}h${m > 0 ? ' ${m}min' : ''}' : '${m}min';
-    return showDialog<bool>(
+    return showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Recharger ?'),

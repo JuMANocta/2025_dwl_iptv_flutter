@@ -13,6 +13,7 @@ import '../../../core/utils/storage_file.dart';
 import '../../../widgets/terminal_download_dialog.dart';
 import '../../../widgets/info_row.dart';
 import '../../../l10n/app_localizations.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
 /// §dlDirectWrite — Dossier de repli pour le fichier partiel.
 ///
@@ -110,7 +111,7 @@ Future<void> verifierEtTelecharger({
         debugPrint("⏳ Ce téléchargement est déjà dans la liste (état: ${existingTask.status}).");
         final rootContext = navigatorKey.currentContext;
         if (rootContext != null && rootContext.mounted) {
-          showDialog(
+          showAppDialog(
               context: rootContext,
               builder: (_) => TerminalDownloadDialog(taskId: existingTask.id));
         }
@@ -127,7 +128,7 @@ Future<void> verifierEtTelecharger({
         // On affiche le moniteur pour que l'utilisateur voie la reprise.
         final rootContext = navigatorKey.currentContext;
         if (rootContext != null && rootContext.mounted) {
-          showDialog(
+          showAppDialog(
               context: rootContext,
               builder: (_) => TerminalDownloadDialog(
                 taskId: existingTask.id,
@@ -210,7 +211,7 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   // On prépare l'extension pour l'afficher dans le dialogue
   final String extension = _ext(url).toUpperCase();
 
-  final bool? confirm = await showDialog<bool>(
+  final bool? confirm = await showAppDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       // 1. Row pour combiner icône et texte
@@ -323,7 +324,7 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   final rootContext = navigatorKey.currentContext;
   if (rootContext == null || !rootContext.mounted) return;
 
-  showDialog(
+  showAppDialog(
     context: rootContext,
     barrierDismissible: true,
     builder: (context) => TerminalDownloadDialog(taskId: taskId),

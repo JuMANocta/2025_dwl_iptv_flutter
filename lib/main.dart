@@ -15,6 +15,7 @@ import 'data/services/last_watched_channel_service.dart';
 import 'data/services/hidden_regions_service.dart';
 import 'data/services/track_preferences_service.dart';
 import 'core/navigation/main_navigation.dart';
+import 'core/navigation/focus_route_memory.dart';
 import 'data/services/expiration_alert_service.dart';
 import 'feature/accounts/accounts_page.dart';
 import 'feature/accounts/expiration_alert_dialog.dart';
@@ -22,6 +23,7 @@ import 'feature/onboarding/onboarding_page.dart';
 import 'feature/settings/backup_restore_flow.dart';
 import 'feature/settings/perf_suggest_dialog.dart';
 import 'core/boot/boot_status.dart';
+import 'core/diagnostics/log_buffer.dart';
 import 'feature/settings/web_console/web_console_page.dart';
 import 'data/services/playlist_service.dart';
 import 'data/services/remote_control_service.dart';
@@ -47,10 +49,20 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final RouteObserver<PageRoute<dynamic>> appRouteObserver =
     RouteObserver<PageRoute<dynamic>>();
 
+/// §dpadRestore — Mémoire de focus par route : au retour d'une fiche ou du
+/// player, le focus revient sur la carte d'où l'on est parti au lieu de retomber
+/// sur la 1re carte de l'accueil (ce qui donnait l'impression d'un rechargement
+/// de page). Détail du mécanisme dans `focus_route_memory.dart`.
+final FocusRouteMemory focusRouteMemory = FocusRouteMemory();
+
 /// Point d'entrée de l'application.
 void main() async {
   // Séquence d'initialisation critique avant le lancement de l'UI.
   WidgetsFlutterBinding.ensureInitialized();
+  // §tvLogs — Capture des logs AVANT tout le reste : sur TV il n'y a pas de
+  // logcat accessible, ce tampon est le seul moyen de voir ce qui se passe
+  // (consultable et exportable depuis la console web du téléphone).
+  DiagnosticLog.install();
   MediaKit.ensureInitialized();
   await MediaStore.ensureInitialized();
   MediaStore.appFolder = 'AetherStream';
@@ -125,10 +137,6 @@ class MyApp extends StatelessWidget {
     );
   }
 
-  /// §dpadNav — Dernier appui Back (debounce anti double-pop, repris de l'ancien
-  /// TvBackHandler). Static car [MyApp] est un widget immuable (const).
-  static DateTime _lastBack = DateTime.fromMillisecondsSinceEpoch(0);
-
   /// §dpadNav — Thème de focus global (reproduit §focusVisibility avec la couleur
   /// du thème actif) : effet par défaut des `DpadFocusable` sans `effects` propres.
   DpadThemeData _dpadTheme(AppThemeConfig config) {
@@ -143,25 +151,10 @@ class MyApp extends StatelessWidget {
     );
   }
 
-  /// §dpadNav — Touche Retour : pop la route courante si possible (debounce
-  /// 350 ms). Retourne `true` si consommé. Si rien à pop → `false` (le système
-  /// gère, ex. quitter l'app).
-  bool _handleDpadBack() {
-    final nav = navigatorKey.currentState;
-    if (nav == null || !nav.canPop()) return false;
-    final now = DateTime.now();
-    if (now.difference(_lastBack) < const Duration(milliseconds: 350)) {
-      return true; // ignore les répétitions trop rapprochées
-    }
-    _lastBack = now;
-    nav.maybePop();
-    return true;
-  }
-
   Widget _buildApp(AppThemeConfig config) {
     return MaterialApp(
       navigatorKey: navigatorKey,
-      navigatorObservers: [appRouteObserver],
+      navigatorObservers: [appRouteObserver, focusRouteMemory],
       title: 'AetherStream',
       themeMode: config.themeMode,
       theme: lightTheme(config),
@@ -220,7 +213,17 @@ class MyApp extends StatelessWidget {
               LogicalKeyboardKey.gameButtonY,
             ],
           ),
-          onBack: _handleDpadBack,
+          // §mediaKeys — Touches média de la télécommande (PLAY, PAUSE, STOP,
+          // avance/recul rapide, piste suivante). Elles n'étaient captées nulle
+          // part : ni ici, ni côté Android, ni par media_kit. Routées vers le
+          // même dispatch que la télécommande web → un seul chemin d'actions.
+          // Hors lecture, ces actions sont ignorées (pas de faux positif sur
+          // l'accueil).
+          shortcuts: {
+            for (final e in kMediaKeyActions.entries)
+              e.key: () => RemoteControlService.instance.dispatch(e.value),
+          },
+          onBack: AppBack.pop,
           onMenu: () => RemoteControlService.instance.invokeMenu(),
           child: wrapped,
         );

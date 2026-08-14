@@ -7,6 +7,15 @@ import 'package:flutter/foundation.dart';
 class PlayerActionHandlers {
   final VoidCallback togglePlayPause;
 
+  /// §mediaKeys — Lecture/pause **explicite**, pour les télécommandes qui ont
+  /// des touches PLAY et PAUSE séparées (basculer serait faux : appuyer sur
+  /// PAUSE alors que c'est déjà en pause relancerait la lecture).
+  final void Function(bool play) setPlaying;
+
+  /// §mediaKeys — Épisode suivant (touche ⏭), `null` si le contenu n'en a pas
+  /// (film, chaîne live).
+  final VoidCallback? nextEpisode;
+
   /// Avance / recule la lecture de [delta] (négatif = recul).
   final void Function(Duration delta) seek;
 
@@ -27,7 +36,9 @@ class PlayerActionHandlers {
 
   const PlayerActionHandlers({
     required this.togglePlayPause,
+    required this.setPlaying,
     required this.seek,
+    this.nextEpisode,
     required this.changeVolume,
     required this.toggleControls,
     required this.showControls,

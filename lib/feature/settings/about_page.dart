@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aetherStream/core/themes/colors.dart';
-import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/update_service.dart';
 import 'package:aetherStream/feature/update/update_dialog.dart';
 import 'package:aetherStream/widgets/memory_stats_card.dart';
+import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 /// Page À propos (§1L-e).
 ///
@@ -20,7 +21,7 @@ class AboutPage extends StatefulWidget {
   State<AboutPage> createState() => _AboutPageState();
 }
 
-class _AboutPageState extends State<AboutPage> {
+class _AboutPageState extends State<AboutPage> with TvInitialFocus {
   static const String _ghRepo = 'https://github.com/JuMANocta/2025_dwl_iptv_flutter';
   static const String _ghReleases = '$_ghRepo/releases';
 
@@ -33,12 +34,6 @@ class _AboutPageState extends State<AboutPage> {
   void initState() {
     super.initState();
     _loadInfo();
-    // §19 — Auto-focus initial sur TV (sur "Vérifier MAJ").
-    if (PlatformTv.isTv) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-    }
   }
 
   Future<void> _loadInfo() async {
@@ -140,6 +135,26 @@ class _AboutPageState extends State<AboutPage> {
                     // gros providers (sur Fire Stick / Android TV avec ~180 Mo
                     // de playlists en mémoire, c'est utile de voir la conso).
                     const MemoryStatsCard(),
+                    const SizedBox(height: 12),
+                    // §tvLogs — Sur TV il n'y a pas de logcat : le journal de
+                    // diagnostic se consulte depuis le téléphone en scannant le
+                    // QR (et s'exporte en .txt pour être transmis).
+                    FilledButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              const WebConsolePage(initialView: 'logs'),
+                        ),
+                      ),
+                      icon: const Icon(Icons.receipt_long),
+                      label: const Text('Journal de diagnostic',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: kAccentTertiary,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
                     const SizedBox(height: 20),
                     FilledButton.icon(
                       onPressed: _checking ? null : _checkUpdates,

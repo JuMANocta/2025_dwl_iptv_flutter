@@ -31,6 +31,12 @@
     <!-- Installation d'APK (mise à jour in-app) — Android 8+ -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- §dpadBack — `enableOnBackInvokedCallback="false"` ci-dessous : le Back
+         prédictif est DÉSACTIVÉ explicitement. Avec targetSdk 36 il serait actif
+         par défaut sur Android 15+ (OnBackInvokedCallback), alors que Fire OS
+         (Android 9/11) reste sur `onBackPressed` → deux comportements de Retour
+         selon la box. On fige l'ancien chemin pour n'en avoir qu'un seul
+         partout — cf. `AppBack` (lib/core/navigation/focus_route_memory.dart). -->
     <application
         android:label="AetherStream"
         android:name="${applicationName}"
@@ -40,7 +46,8 @@
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:enableOnBackInvokedCallback="false">
 
         <activity
             android:name=".MainActivity"

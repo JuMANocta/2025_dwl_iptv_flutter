@@ -60,7 +60,7 @@ class DownloadTaskTile extends StatelessWidget {
   void _openMonitor({bool isResume = false}) {
     final rootContext = navigatorKey.currentContext;
     if (rootContext == null || !rootContext.mounted) return;
-    showDialog(
+    showAppDialog(
       context: rootContext,
       builder: (_) =>
           TerminalDownloadDialog(taskId: task.id, isResume: isResume),
@@ -71,7 +71,7 @@ class DownloadTaskTile extends StatelessWidget {
   /// (la suppression, elle, en avait déjà une).
   Future<bool> _confirmCancel(BuildContext context) async {
     final l10n = AppLocalizations.of(context)!;
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Row(
@@ -209,7 +209,7 @@ class DownloadTaskTile extends StatelessWidget {
   Future<void> _deleteTask(BuildContext context) async {
     final l10n = AppLocalizations.of(context)!;
     final downloadManager = DownloadManagerService();
-    final bool? confirm = await showDialog<bool>(
+    final bool? confirm = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         // 1. Un titre avec une icône d'avertissement claire

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../data/services/update_service.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
 /// §updateGreen — Vert vif du dialog de MAJ (style « Matrix terminal », figé,
 /// indépendant du thème). Remplace `kSuccess` (#4CAF50, trop terne sur fond
@@ -18,7 +19,7 @@ class UpdateDialog extends StatefulWidget {
   const UpdateDialog({super.key, required this.info});
 
   static Future<void> show(BuildContext context, UpdateInfo info) {
-    return showDialog(
+    return showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => UpdateDialog(info: info),
