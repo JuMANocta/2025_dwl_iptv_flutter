@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dpad/dpad.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
 import '../../core/utils/platform_tv.dart';
@@ -745,14 +746,27 @@ class _DetailsPageState extends State<DetailsPage> {
         SizedBox(
           // poster 104×156 + gap + titre 2 lignes + marge textScaler TV ×1.3.
           height: 230,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            // ignore: deprecated_member_use
-            cacheExtent: 600,
-            itemCount: groups.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (_, i) => _RelatedCard(group: groups[i]),
+          // §dpadRowEntry — Région propre à la rangée : en descendant depuis le
+          // bloc du dessus, le focus se cale sur la 1re carte au lieu de tomber
+          // au milieu (le repli géométrique atterrissait sous la colonne d'où
+          // l'on venait, donc en pleine rangée).
+          // ⚠️ Pas de `memoryKey` ici : c'est une mémoire STATIQUE GLOBALE au
+          // package, partagée entre toutes les fiches — la colonne mémorisée
+          // sur un film serait rejouée sur le suivant, dont le casting n'a rien
+          // à voir. La mémoire d'instance (une région par fiche montée) est
+          // exactement ce qu'on veut.
+          child: DpadRegion(
+            debugLabel: 'detailsRelated',
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              // ignore: deprecated_member_use
+              cacheExtent: 600,
+              itemCount: groups.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (_, i) =>
+                  _RelatedCard(group: groups[i], isEntry: i == 0),
+            ),
           ),
         ),
         const SizedBox(height: 24),
@@ -1195,17 +1209,25 @@ class _DetailsPageState extends State<DetailsPage> {
                       // §castPhotos — hauteur = photo portrait 2:3 (92×138) + nom
                       // (2 lignes) + rôle + marge pour le textScaler TV ×1.3.
                       height: 218,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        // §focusScroll — cache plus large pour que la nav D-pad
-                        // trouve toujours la card suivante dans l'arbre de focus.
-                        // ignore: deprecated_member_use
-                        cacheExtent: 600,
-                        itemCount: _tmdbData!.castMembers.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 12),
-                        itemBuilder: (_, i) =>
-                            _CastCard(member: _tmdbData!.castMembers[i]),
+                      // §dpadRowEntry — Sans région propre, descendre depuis la
+                      // bande-annonce atterrissait sur le 3e acteur (repli
+                      // géométrique) ; repartir vers la gauche faisait alors
+                      // sauter toute la rangée d'un coup.
+                      child: DpadRegion(
+                        debugLabel: 'detailsCast',
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          // §focusScroll — cache plus large pour que la nav D-pad
+                          // trouve toujours la card suivante dans l'arbre de focus.
+                          // ignore: deprecated_member_use
+                          cacheExtent: 600,
+                          itemCount: _tmdbData!.castMembers.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 12),
+                          itemBuilder: (_, i) => _CastCard(
+                              member: _tmdbData!.castMembers[i],
+                              isEntry: i == 0),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -1418,10 +1440,14 @@ class _DetailsPageState extends State<DetailsPage> {
             ),
           )
         else
-          SingleChildScrollView(
+          // §dpadRowEntry — Région propre : on entre par la 1re saison.
+          DpadRegion(
+            debugLabel: 'detailsSeasons',
+            child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: _seasonEpisodes.entries.map((entry) {
+              children: _seasonEpisodes.entries.toList().asMap().entries.map((e) {
+                final entry = e.value;
                 final sNum = entry.key;
                 final epCount = entry.value.length;
                 final isSelected = sNum == _selectedSeason;
@@ -1432,6 +1458,7 @@ class _DetailsPageState extends State<DetailsPage> {
                   child: FocusableChip(
                     onTap: () => _selectSeason(sNum),
                     anchorRowStart: true,
+                    entry: e.key == 0,
                     borderRadius: BorderRadius.circular(14),
                     child: GestureDetector(
                       onTap: isSelected ? null : () => _selectSeason(sNum),
@@ -1499,17 +1526,29 @@ class _DetailsPageState extends State<DetailsPage> {
                 );
               }).toList(),
             ),
+            ),
           ),
 
         // ÉPISODES (scroll horizontal, apparaît dès qu'une saison est choisie)
         if (_selectedSeason != null &&
             _seasonEpisodes[_selectedSeason] != null) ...[
           const SizedBox(height: 12),
-          SingleChildScrollView(
+          // §dpadRowEntry — Région propre : on entre par le 1er épisode.
+          // La `key` sur la saison recrée la région à chaque changement de
+          // saison : sans elle, la région resterait montée avec la mémoire de
+          // l'ancienne saison et ferait atterrir le focus en plein milieu.
+          DpadRegion(
+            key: ValueKey<int?>(_selectedSeason),
+            debugLabel: 'detailsEpisodes',
+            child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             controller: _episodeScrollController,
             child: Row(
-              children: _seasonEpisodes[_selectedSeason]!.map((group) {
+              children: _seasonEpisodes[_selectedSeason]!
+                  .asMap()
+                  .entries
+                  .map((e) {
+                final group = e.value;
                 final isCurrent = _episodeSelected &&
                     group.episodeNumber ==
                         _currentEpisode.title.episodeNumber &&
@@ -1523,6 +1562,7 @@ class _DetailsPageState extends State<DetailsPage> {
                   child: FocusableChip(
                     onTap: () => _selectEpisode(group),
                     anchorRowStart: true,
+                    entry: e.key == 0,
                     borderRadius: BorderRadius.circular(8),
                     child: GestureDetector(
                     onTap: isCurrent ? null : () => _selectEpisode(group),
@@ -1560,6 +1600,7 @@ class _DetailsPageState extends State<DetailsPage> {
                   ),
                 );
               }).toList(),
+            ),
             ),
           ),
         ],
@@ -1889,51 +1930,20 @@ class _DetailsPageState extends State<DetailsPage> {
     );
   }
 
-  /// §detailsActions — Bouton d'action style **contour néon** : bordure ET texte
-  /// à la couleur du thème [color], fond quasi transparent (léger voile teinté),
-  /// + glow coloré. [active] `false` ou `onPressed == null` → bouton **grisé**
-  /// (bord + texte éteints, pas de glow) tout en gardant le gabarit. Sert aussi
-  /// d'indicateur d'état (ex. favori allumé/éteint).
+  /// §detailsActions + §detailsFocusFill — Bouton d'action **contour néon au
+  /// repos, plein au focus**. Cf. [_ActionButton].
   Widget _glowButton({
     required Color color,
     required VoidCallback? onPressed,
     required Widget child,
     bool active = true,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lit = active && onPressed != null;
-    // Éteint : gris discret adapté au mode (nuit/jour).
-    final dimmed = isDark ? Colors.white38 : Colors.black38;
-    final fg = lit ? color : dimmed; // bordure + texte + icône
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: lit
-            ? [
-                BoxShadow(
-                  color: color.withAlpha(70),
-                  blurRadius: 14,
-                  spreadRadius: -2,
-                ),
-              ]
-            : null,
-      ),
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          foregroundColor: fg,
-          disabledForegroundColor: dimmed,
-          // Léger voile teinté quand allumé pour un peu de corps, sinon transparent.
-          backgroundColor:
-              lit ? color.withAlpha(isDark ? 26 : 16) : Colors.transparent,
-          side: BorderSide(color: fg, width: 1.6),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
+  }) =>
+      _ActionButton(
+        color: color,
         onPressed: onPressed,
+        active: active,
         child: child,
-      ),
-    );
-  }
+      );
 
   /// Contenu icône + libellé centré pour un [_glowButton] (le texte s'ellipse).
   Widget _btnContent(IconData icon, String label) => Row(
@@ -2298,9 +2308,98 @@ class _DetailsPageState extends State<DetailsPage> {
 /// la fiche détail. Tap → [ActorDetailsPage] (id direct, sans recherche par nom).
 /// Mobile + TV (focus glow via [FocusableCard], sans scale pour ne pas déborder
 /// la rangée à hauteur fixe).
+/// §detailsFocusFill — Bouton d'action de la fiche : **vide au repos, plein au
+/// focus**.
+///
+/// Avant, les 4 boutons (Lire / Oublier / Télécharger / Favori) portaient tous
+/// un voile teinté permanent : à la télécommande, on ne distinguait pas celui
+/// qui était sélectionné de ses voisins. Ils sont désormais en contour pur, et
+/// **seul le bouton focusé se remplit** — le déplacement ⬆⬇ devient lisible à
+/// 3 m d'un coup d'œil.
+///
+/// L'état éteint ([active] `false` ou `onPressed` nul) reste gris et sans glow,
+/// tout en gardant le gabarit : il sert aussi d'indicateur (favori allumé /
+/// éteint).
+class _ActionButton extends StatefulWidget {
+  final Color color;
+  final VoidCallback? onPressed;
+  final Widget child;
+  final bool active;
+
+  const _ActionButton({
+    required this.color,
+    required this.onPressed,
+    required this.child,
+    this.active = true,
+  });
+
+  @override
+  State<_ActionButton> createState() => _ActionButtonState();
+}
+
+class _ActionButtonState extends State<_ActionButton> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lit = widget.active && widget.onPressed != null;
+    final dimmed = isDark ? Colors.white38 : Colors.black38;
+    final filled = _focused && lit;
+
+    // Rempli : fond à la couleur pleine, contenu en négatif pour le contraste.
+    // Au repos : fond transparent, contour et texte colorés.
+    final fg = filled
+        ? (isDark ? Colors.black : Colors.white)
+        : (lit ? widget.color : dimmed);
+    final bg = filled ? widget.color : Colors.transparent;
+    final border = lit ? widget.color : dimmed;
+
+    return FocusableChip(
+      onTap: widget.onPressed,
+      enabled: widget.onPressed != null,
+      borderRadius: BorderRadius.circular(14),
+      onFocusChange: (f) {
+        if (mounted) setState(() => _focused = f);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: lit
+              ? [
+                  BoxShadow(
+                    color: widget.color.withAlpha(filled ? 120 : 70),
+                    blurRadius: filled ? 20 : 14,
+                    spreadRadius: -2,
+                  ),
+                ]
+              : null,
+        ),
+        child: OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            foregroundColor: fg,
+            disabledForegroundColor: dimmed,
+            backgroundColor: bg,
+            side: BorderSide(color: border, width: 1.6),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          onPressed: widget.onPressed,
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 class _CastCard extends StatelessWidget {
   final CastMember member;
-  const _CastCard({required this.member});
+
+  /// §dpadRowEntry — 1re carte de la rangée = point d'entrée vertical.
+  final bool isEntry;
+  const _CastCard({required this.member, this.isEntry = false});
 
   @override
   Widget build(BuildContext context) {
@@ -2320,6 +2419,7 @@ class _CastCard extends StatelessWidget {
     return FocusableCard(
       scaleOnFocus: false,
       anchorRowStart: true,
+      entry: isEntry,
       borderRadius: BorderRadius.circular(10),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: member.id)),
@@ -2384,7 +2484,10 @@ class _CastCard extends StatelessWidget {
 /// tap → ouvre la fiche du titre. Focusable au D-pad.
 class _RelatedCard extends StatelessWidget {
   final List<M3uEntry> group;
-  const _RelatedCard({required this.group});
+
+  /// §dpadRowEntry — 1re carte de la rangée = point d'entrée vertical.
+  final bool isEntry;
+  const _RelatedCard({required this.group, this.isEntry = false});
 
   @override
   Widget build(BuildContext context) {
@@ -2407,6 +2510,7 @@ class _RelatedCard extends StatelessWidget {
       // §rowAnchorDetails — carte focusée calée à gauche (saga/similaires).
       child: FocusableCard(
         anchorRowStart: true,
+        entry: isEntry,
         borderRadius: BorderRadius.circular(12),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
