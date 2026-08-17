@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.15.2+95-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.15.3+96-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -232,6 +232,8 @@ lib/
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Écran de démarrage refondu** (§bootShell, 2026-08-17) — Un décor unique et soigné pour **tous** les états de lancement : chargement, aucun compte, erreur. Auparavant seul le chargement était travaillé, les deux autres tombaient sur du Material brut (icône rouge codée en dur, `AppBar`, boutons à peine focusables à la télécommande). Nouveau **journal de démarrage** : les étapes franchies restent affichées **avec leur durée**, l'étape en cours a son curseur et son pourcentage. Tout suit le thème choisi — le preset Minimaliste obtient une version sobre, sans halo ni scanlines. Enfin **lisible sur TV** (le wordmark et le texte étaient dimensionnés pour un téléphone)
+- [x] **Démarrage plus rapide à l'affichage** (§bootFast, 2026-08-17) — L'écran apparaît désormais **immédiatement** : seuls la détection de plateforme et le thème sont attendus avant le premier rendu. Les neuf services, MediaKit et MediaStore s'initialisent ensuite, visibles dans le journal — avant, on regardait la couleur du splash système pendant toute cette phase
 - [x] **Épisode suivant automatique + infos qui suivent la lecture** (§episodeMeta/§autoNextEp, 2026-08-17) — À la fin d'un épisode, le suivant s'enchaîne après un **décompte annulable**. Un changement de **saison** demande toujours une confirmation explicite, et la fin de série ramène à la fiche. Le changement d'épisode se fait désormais **sans recharger le lecteur** (plus d'écran noir ni de re-buffering entre deux épisodes) — ce qui corrige au passage le titre et le synopsis qui restaient ceux de l'épisode précédent. Réglable dans Paramètres → Optimisation
 - [x] **Rafraîchissement des listes secondaires** (§secondaryRefresh, 2026-08-17) — Le cache de 24 h ne s'appliquait qu'au compte principal : la playlist d'un compte secondaire, une fois téléchargée, ne se mettait **jamais** à jour. Elle est désormais revérifiée au démarrage comme les autres, et rafraîchie immédiatement quand on passe le compte en principal ou qu'on vide son cache
 - [x] **Navigation télécommande alignée + touches média** (§dpadAlign, 2026-08-14) — Le retour ne « recharge » plus la page : le focus revient **sur la carte d'où l'on est parti** (une mémoire de focus par route remplace le repli du package D-pad, qui retombait toujours sur la 1re vignette de l'accueil en faisant défiler la liste en haut). Un seul chemin pour le bouton Retour (physique, télécommande web, bouton du player). Les touches **PLAY / PAUSE / STOP / avance / recul / piste suivante** de la télécommande sont enfin gérées — elles n'étaient captées nulle part. Alignement D-pad des écrans oubliés : tous les dialogs de confirmation, les feuilles Replay, la grille « Voir tout », l'onboarding
