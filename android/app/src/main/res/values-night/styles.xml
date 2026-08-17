@@ -17,6 +17,10 @@
 
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- §splashHandoff — Fond explicite plutôt que `?android:colorBackground`,
+             qui vaut du NOIR PUR sous Theme.Black — donc pas tout à fait la
+             couleur de l'écran de démarrage Flutter. Cette fenêtre reste
+             visible derrière l'UI Flutter. -->
+        <item name="android:windowBackground">@color/aether_boot_background</item>
     </style>
 </resources>

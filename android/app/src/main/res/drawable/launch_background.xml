@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- §splashOff — Fond uni : plus d'image ni de logo centré (cold start =
-     simple flash de couleur, comportement Android par défaut). -->
+<!-- §splashHandoff — Fond uni aligné sur l'écran de démarrage Flutter
+     (#121212). Plus d'image ni de logo (§splashOff), et surtout plus de
+     marche visible à l'arrivée de l'app. Couleur définie dans
+     values/colors.xml. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
-        <color android:color="#F5F5F5"/>
+        <color android:color="@color/aether_boot_background"/>
     </item>
 </layer-list>

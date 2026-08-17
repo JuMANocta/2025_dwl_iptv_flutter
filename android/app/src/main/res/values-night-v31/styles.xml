@@ -7,7 +7,7 @@
         <item name="android:windowDrawsSystemBarBackgrounds">false</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <!-- §splashOff — Splash Android 12+ neutralisé (cf. values-v31). -->
-        <item name="android:windowSplashScreenBackground">#000000</item>
+        <item name="android:windowSplashScreenBackground">@color/aether_boot_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_transparent</item>
         <item name="android:windowSplashScreenAnimationDuration">0</item>
     </style>
@@ -18,6 +18,10 @@
          
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- §splashHandoff — Fond explicite plutôt que `?android:colorBackground`,
+             qui vaut du NOIR PUR sous Theme.Black — donc pas tout à fait la
+             couleur de l'écran de démarrage Flutter. Cette fenêtre reste
+             visible derrière l'UI Flutter. -->
+        <item name="android:windowBackground">@color/aether_boot_background</item>
     </style>
 </resources>

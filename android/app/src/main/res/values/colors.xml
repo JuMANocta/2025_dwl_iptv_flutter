@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  §splashHandoff — Couleur de la fenêtre Android affichée AVANT que Flutter ne
+  dessine sa première frame.
+
+  Android peint toujours une fenêtre entre le tap sur l'icône et le premier
+  rendu Flutter (chargement des libs natives + démarrage de la VM Dart) : on ne
+  peut pas ne rien afficher, on choisit seulement QUOI afficher. §splashOff a
+  retiré le logo ; il restait un aplat de couleur.
+
+  Cet aplat valait #F5F5F5 en mode clair système et #000000 en mode sombre,
+  alors que l'écran de démarrage Flutter est sur `surface` = #121212. D'où une
+  marche visible à l'arrivée de l'app — et carrément un FLASH BLANC si
+  l'appareil était en mode clair.
+
+  On aligne donc sur la couleur exacte de l'écran de démarrage, dans les DEUX
+  modes : l'identité AetherStream est sombre quel que soit le réglage Android.
+  Valeur unique ici, référencée partout — pas de hex recopié dans 6 fichiers.
+
+  ⚠️ Doit rester égale à `ColorScheme.dark().surface` / `kDeepDarkGrey`
+  (`lib/core/themes/colors.dart`), sinon la marche réapparaît.
+
+  Volontairement défini dans `values/` uniquement : `values-night/` hérite de
+  cette valeur, donc les deux modes partagent la même couleur.
+-->
+<resources>
+    <color name="aether_boot_background">#121212</color>
+</resources>
