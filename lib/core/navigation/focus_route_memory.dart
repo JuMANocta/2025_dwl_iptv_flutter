@@ -38,11 +38,22 @@ class FocusRouteMemory extends NavigatorObserver {
   final Map<Route<dynamic>, WeakReference<FocusNode>> _memory =
       <Route<dynamic>, WeakReference<FocusNode>>{};
 
+  /// Route actuellement au sommet de la pile.
+  ///
+  /// ⚠️ Indispensable : certains flux **dépilent puis empilent dans la même
+  /// frame** (le panneau d'options du player se ferme pour ouvrir le sélecteur
+  /// de pistes). La restauration de focus n'a lieu qu'à la fin de l'animation de
+  /// sortie — soit bien après. Sans ce contrôle, on rendrait le focus à une
+  /// route désormais recouverte, en le volant à l'écran que l'utilisateur
+  /// regarde.
+  Route<dynamic>? _top;
+
   @visibleForTesting
   int get trackedRouteCount => _memory.length;
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _top = route;
     if (previousRoute == null) return;
     final FocusNode? focused = FocusManager.instance.primaryFocus;
     if (focused == null || focused is FocusScopeNode) {
@@ -55,20 +66,28 @@ class FocusRouteMemory extends NavigatorObserver {
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     _memory.remove(route);
+    if (identical(_top, route)) _top = previousRoute;
     if (previousRoute == null) return;
     final FocusNode? node = _memory.remove(previousRoute)?.target;
     if (node == null) return;
-    _afterExitTransition(route, () => _restore(node));
+    _afterExitTransition(route, () {
+      // Une autre route a été empilée entre-temps : c'est elle qui doit garder
+      // le focus, pas celle qu'on vient de révéler.
+      if (!identical(_top, previousRoute)) return;
+      _restore(node);
+    });
   }
 
   @override
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
     _memory.remove(route);
+    if (identical(_top, route)) _top = previousRoute;
   }
 
   @override
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     if (oldRoute != null) _memory.remove(oldRoute);
+    if (oldRoute != null && identical(_top, oldRoute)) _top = newRoute;
   }
 
   /// Exécute [action] une fois la route sortante réellement disposée.

@@ -315,7 +315,7 @@ String buildLogs(AppThemeConfig t, String token, String content, bool keyTrace,
     <div class="row">
       <button class="btn" id="autoBtn" onclick="toggleAuto()">⏸️ Auto : ON</button>
       <button class="btn" id="keyBtn" onclick="toggleKeys()">
-        ${keyTrace ? '⌨️ Touches : ON' : '⌨️ Touches : OFF'}</button>
+        ${keyTrace ? '⌨️ Touches + focus : ON' : '⌨️ Touches + focus : OFF'}</button>
       <a class="btn" href="/logs.txt?t=$tk" download="aetherstream-log.txt">⬇️ Télécharger</a>
       <button class="btn" onclick="clearLogs()">🧹 Vider</button>
     </div>
@@ -356,8 +356,9 @@ String buildLogs(AppThemeConfig t, String token, String content, bool keyTrace,
       keys = !keys;
       const r = await api('/api/logs/keytrace', { on: keys });
       document.getElementById('keyBtn').textContent =
-        keys ? '⌨️ Touches : ON' : '⌨️ Touches : OFF';
-      toast(keys ? 'Appuie sur les touches de ta télécommande' : 'Traceur arrêté', r.ok);
+        keys ? '⌨️ Touches + focus : ON' : '⌨️ Touches + focus : OFF';
+      toast(keys ? 'Navigue à la télécommande : touches ET focus sont tracés'
+                 : 'Traceur arrêté', r.ok);
       refresh();
     }
     async function clearLogs(){

@@ -110,6 +110,54 @@ void main() {
       expect(observer.trackedRouteCount, 0);
     });
 
+    testWidgets(
+        'pop suivi d\'un push dans la même frame → le focus reste au NOUVEL '
+        'écran', (tester) async {
+      // Régression réelle : le panneau d'options du player se ferme pour ouvrir
+      // le sélecteur de pistes. Sans le contrôle « la route révélée est-elle
+      // encore au sommet ? », on rendait le focus à la page du dessous — plus
+      // rien ne répondait à la télécommande dans le nouveau panneau.
+      final observer = FocusRouteMemory();
+      final decoy = FocusNode(debugLabel: 'decoy');
+      final origin = FocusNode(debugLabel: 'origin');
+      final second = FocusNode(debugLabel: 'second');
+      addTearDown(decoy.dispose);
+      addTearDown(origin.dispose);
+      addTearDown(second.dispose);
+
+      await tester.pumpWidget(MaterialApp(
+        navigatorObservers: <NavigatorObserver>[observer],
+        home: _FirstPage(decoy: decoy, origin: origin),
+      ));
+      origin.requestFocus();
+      await tester.pump();
+
+      final NavigatorState nav =
+          tester.state<NavigatorState>(find.byType(Navigator));
+      final firstRoute = MaterialPageRoute<void>(
+        builder: (_) => const _SecondPage(),
+      );
+      nav.push(firstRoute);
+      await tester.pumpAndSettle();
+
+      // Ferme la 1re et ouvre la 2e dans la même frame.
+      nav.pop();
+      nav.push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          body: Focus(
+            focusNode: second,
+            autofocus: true,
+            child: const SizedBox(width: 40, height: 40),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(FocusManager.instance.primaryFocus, second,
+          reason: 'le focus doit rester sur l\'écran effectivement affiché');
+      expect(FocusManager.instance.primaryFocus, isNot(origin));
+    });
+
     test('didRemove et didReplace purgent la mémoire', () {
       final observer = FocusRouteMemory();
       final a = MaterialPageRoute<void>(builder: (_) => const SizedBox());

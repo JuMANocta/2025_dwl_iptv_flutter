@@ -225,6 +225,10 @@ class MyApp extends StatelessWidget {
           },
           onBack: AppBack.pop,
           onMenu: () => RemoteControlService.instance.invokeMenu(),
+          // §focusTrace — Journalise ce qui prend le focus quand le traceur est
+          // actif : « la télécommande ne fait plus rien » est presque toujours
+          // un problème de focus, pas de touche.
+          onFocusChange: DiagnosticLog.traceFocus,
           child: wrapped,
         );
 
@@ -334,7 +338,15 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       // + préchargés disque). La passe FINALE (qui pose le flag one-shot) est
       // déclenchée en fin d'hydratation, quand TOUS les comptes sont chargés.
       FavoritesService.reconcileWithPlaylist(); // fire & forget
-      _hydrateSecondaryAccounts(others); // fire & forget
+      // §secondaryRefresh — Différé de quelques secondes : l'hydratation peut
+      // désormais RETÉLÉCHARGER (contrôle de TTL, plus seulement peupler les
+      // manquants). On laisse la home s'afficher et se stabiliser avant de
+      // lancer du réseau + du parsing en isolate — sur box TV, les deux en même
+      // temps se sentent. Même motif que le préchargement XMLTV.
+      Future.delayed(
+        const Duration(seconds: 5),
+        () => _hydrateSecondaryAccounts(others),
+      ); // fire & forget
     } else {
       // §favReconcile — Mono-compte : tout est en mémoire → passe unique qui
       // pose le flag directement.
@@ -403,22 +415,39 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   /// "EN COURS…" pendant download/parse puis "DISPONIBLE" à la fin.
   Future<void> _hydrateSecondaryAccounts(List<StreamAccount> others) async {
     for (final acc in others) {
-      // Si déjà chargé via preloadOthersFromDisk → skip réseau.
-      if (ParsedPlaylistService.stateOf(acc.id) ==
-          AccountLoadState.loaded) {
-        continue;
+      // §secondaryRefresh — On ne saute PLUS les comptes déjà chargés depuis le
+      // disque : ils passent quand même par le contrôle de TTL. Avant, un compte
+      // secondaire dont le cache existait n'était jamais retéléchargé, quelle
+      // que soit son ancienneté — sa liste restait figée à vie.
+      final bool alreadyLoaded =
+          ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded;
+      if (!alreadyLoaded) {
+        ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.downloading);
       }
-      ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.downloading);
       try {
-        final p = await PlaylistService.ensureDownloadedForAccount(acc);
-        if (p == null) {
-          ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
+        final res = await PlaylistService.ensureDownloadedForAccount(acc);
+        if (res.path == null) {
+          if (!alreadyLoaded) {
+            ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
+          }
+          continue;
+        }
+        if (alreadyLoaded) {
+          // Rien de neuf : la copie en mémoire est déjà la bonne.
+          if (!res.downloaded) continue;
+          // Fichier renouvelé → la mémoire est périmée, on la remplace
+          // atomiquement (reloadFromDisk parse AVANT de permuter, donc pas
+          // d'état vide intermédiaire visible sur la home).
+          await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, res.path!);
+          debugPrint('🔄 §secondaryRefresh : « ${acc.label} » rechargée en mémoire.');
           continue;
         }
         // loadSecondary gère lui-même les transitions parsing → loaded / error.
-        await ParsedPlaylistService.loadSecondary(acc.id, acc.label, p);
+        await ParsedPlaylistService.loadSecondary(acc.id, acc.label, res.path!);
       } catch (_) {
-        ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
+        if (!alreadyLoaded) {
+          ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
+        }
         // Ne pas planter le démarrage à cause d'un compte cassé (network, IO…).
       }
     }

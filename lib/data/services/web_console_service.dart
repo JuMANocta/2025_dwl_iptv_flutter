@@ -294,6 +294,13 @@ class WebConsoleService {
           final id = payload['id'] as String?;
           if (id == null) throw 'ID manquant';
           await StreamAccountService.setCurrentAccount(id);
+          // §secondaryRefresh — Même traitement que la bascule côté TV : si la
+          // playlist du nouveau principal est périmée, on la rafraîchit en
+          // arrière-plan (la réponse HTTP ne l'attend pas).
+          final newPrimary = await StreamAccountService.getAccount(id);
+          if (newPrimary != null) {
+            unawaited(PlaylistService.refreshIfStale(newPrimary));
+          }
           _json(req, 200, {'ok': true});
           break;
         case '/api/account/reload':
@@ -427,7 +434,7 @@ class WebConsoleService {
     if (cur?.id == id) {
       path = await PlaylistService.downloadCurrentM3U();
     } else {
-      path = await PlaylistService.ensureDownloadedForAccount(acc);
+      path = (await PlaylistService.ensureDownloadedForAccount(acc)).path;
     }
     if (path == null) throw 'Téléchargement impossible (URL/connexion ?).';
     await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
@@ -526,7 +533,7 @@ class WebConsoleService {
   /// Télécharge + parse un compte en arrière-plan (silencieux).
   Future<void> _hydrate(StreamAccount acc) async {
     try {
-      final path = await PlaylistService.ensureDownloadedForAccount(acc);
+      final path = (await PlaylistService.ensureDownloadedForAccount(acc)).path;
       if (path != null) {
         await ParsedPlaylistService.loadSecondary(acc.id, acc.label, path);
       }

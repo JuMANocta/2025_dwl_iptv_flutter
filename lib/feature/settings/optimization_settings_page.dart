@@ -158,6 +158,19 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
+              // §autoNextEp — Réglage de CONFORT, volontairement hors des
+              // profils de performance (les 3 presets le laissent intact).
+              _sectionLabel('Lecture', cs),
+              _switchTile(
+                icon: Icons.skip_next_rounded,
+                title: 'Épisode suivant automatique',
+                subtitle:
+                    'Enchaîne l\'épisode suivant en fin de lecture, après un '
+                    'décompte annulable. Un changement de saison demande '
+                    'toujours confirmation.',
+                value: _config.autoNextEpisode,
+                onChanged: (v) => _apply(_config.copyWith(autoNextEpisode: v)),
+              ),
               _sectionLabel('Mémoire & usage', cs),
               // §imgMemCache — plafond du cache image EN RAM.
               _buildStepper(

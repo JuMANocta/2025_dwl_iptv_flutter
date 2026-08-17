@@ -133,6 +133,26 @@ class DpadModalRegion extends StatelessWidget {
 ///
 /// Remplace les 18 copies de ce même `postFrame → FocusScope.nextFocus()` qui
 /// avaient essaimé dans les pages de réglages.
+/// §dpadAlign — Le focus courant appartient-il au sous-arbre de [context] ?
+///
+/// ⚠️ **Ne PAS remplacer par « quelque chose a-t-il le focus ? »** — c'était le
+/// premier jet, et il cassait un cas réel : quand le panneau d'options du player
+/// se ferme pour ouvrir le sélecteur de pistes, les deux opérations ont lieu
+/// dans la même frame. L'ancien dialog est encore vivant pendant son animation
+/// de sortie et détient encore le focus, donc le nouveau panneau croyait « il y
+/// a déjà un focus, je ne le vole pas » et ne focalisait rien : plus rien ne
+/// répondait à la télécommande.
+///
+/// La bonne question n'est pas « y a-t-il un focus ? » mais « le focus est-il
+/// CHEZ MOI ? ».
+bool hasFocusInside(BuildContext context) {
+  final FocusNode? current = FocusManager.instance.primaryFocus;
+  if (current == null || current is FocusScopeNode) return false;
+  final FocusScopeNode scope = FocusScope.of(context);
+  return identical(current.enclosingScope, scope) ||
+      current.ancestors.contains(scope);
+}
+
 class TvAutofocusFirst extends StatefulWidget {
   final Widget child;
 
@@ -154,10 +174,7 @@ class _TvAutofocusFirstState extends State<TvAutofocusFirst> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        // Ne pas voler le focus si quelque chose l'a déjà pris (autofocus
-        // explicite d'un champ de saisie, restauration de `dpad`).
-        final FocusNode? current = FocusManager.instance.primaryFocus;
-        if (current != null && current is! FocusScopeNode) return;
+        if (hasFocusInside(context)) return;
         FocusScope.of(context).nextFocus();
       });
     });

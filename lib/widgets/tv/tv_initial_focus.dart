@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../core/utils/platform_tv.dart';
+import 'tv_adaptive_modal.dart' show hasFocusInside;
 
 /// §dpadAlign — Focus initial d'une page sur TV.
 ///
@@ -26,10 +27,11 @@ mixin TvInitialFocus<T extends StatefulWidget> on State<T> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final FocusNode? current = FocusManager.instance.primaryFocus;
-        // Quelque chose de réel a déjà le focus (champ autofocus, restauration
-        // de route) → on ne le lui prend pas.
-        if (current != null && current is! FocusScopeNode) return;
+        // Quelque chose de CETTE page a déjà le focus (champ autofocus,
+        // restauration de route) → on ne le lui prend pas. Le test doit être
+        // limité au sous-arbre : un nœud encore vivant d'un écran en train de
+        // se fermer ne doit pas nous empêcher de prendre le focus.
+        if (hasFocusInside(context)) return;
         FocusScope.of(context).nextFocus();
       });
     });

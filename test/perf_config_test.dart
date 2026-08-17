@@ -90,4 +90,36 @@ void main() {
       }
     });
   });
+
+  group('PerfConfig — §autoNextEp', () {
+    test('activé par défaut', () {
+      expect(PerfConfig.defaults.autoNextEpisode, isTrue);
+    });
+
+    test('clé absente (backup antérieur) → défaut, pas de crash', () {
+      final cfg = PerfConfig.fromJson({'he': false});
+      expect(cfg.autoNextEpisode, PerfConfig.defaults.autoNextEpisode);
+    });
+
+    test('roundtrip toJson/fromJson conserve la valeur', () {
+      final off = PerfConfig.defaults.copyWith(autoNextEpisode: false);
+      expect(PerfConfig.fromJson(off.toJson()).autoNextEpisode, isFalse);
+    });
+
+    test('exclu de l\'égalité : couper l\'enchaînement ne bascule PAS en '
+        '« Personnalisé »', () {
+      // C'est un réglage de confort, pas un levier de performance : les 3
+      // profils doivent rester sélectionnables quel qu'en soit l'état.
+      final off = PerfConfig.defaults.copyWith(autoNextEpisode: false);
+      expect(off, PerfConfig.defaults);
+      expect(off.hashCode, PerfConfig.defaults.hashCode);
+    });
+
+    test('les presets ne touchent pas au réglage', () {
+      for (final p in PerfConfig.presets) {
+        expect(p.config.autoNextEpisode, isTrue,
+            reason: '${p.name} ne doit pas désactiver l\'enchaînement');
+      }
+    });
+  });
 }

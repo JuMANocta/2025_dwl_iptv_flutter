@@ -40,6 +40,17 @@ class PerfConfig {
   /// mémoire égale, le cache contient donc désormais 3× plus de vignettes.
   final int imageCacheMb;
 
+  /// §autoNextEp — Enchaîne automatiquement l'épisode suivant à la fin d'un
+  /// épisode, après un court décompte annulable.
+  ///
+  /// Volontairement **hors des profils** de performance : c'est un choix de
+  /// confort, pas un levier de fluidité — les 3 presets le laissent donc
+  /// intact. `true` par défaut, comme sur les plateformes de streaming.
+  ///
+  /// Ne s'applique jamais aux chaînes live ni au replay, et jamais au
+  /// franchissement de saison (qui demande toujours une confirmation).
+  final bool autoNextEpisode;
+
   static const int minHeroCards = 5;
   static const int maxHeroCards = 15;
   static const int minItemsPerRow = 5;
@@ -56,6 +67,7 @@ class PerfConfig {
     required this.heroCardCount,
     required this.maxItemsPerRow,
     required this.imageCacheMb,
+    this.autoNextEpisode = true,
   });
 
   // ── Presets ───────────────────────────────────────────────────────────────
@@ -125,6 +137,7 @@ class PerfConfig {
         'hcc': heroCardCount,
         'mir': maxItemsPerRow,
         'icm': imageCacheMb,
+        'ane': autoNextEpisode,
       };
 
   /// Clés optionnelles + valeurs clampées à la lecture → rétro-compat des
@@ -138,6 +151,7 @@ class PerfConfig {
             .clamp(minItemsPerRow, maxItemsPerRowLimit),
         imageCacheMb: (j['icm'] as int? ?? defaults.imageCacheMb)
             .clamp(minImageCacheMb, maxImageCacheMb),
+        autoNextEpisode: j['ane'] as bool? ?? defaults.autoNextEpisode,
       );
 
   PerfConfig copyWith({
@@ -146,6 +160,7 @@ class PerfConfig {
     int? heroCardCount,
     int? maxItemsPerRow,
     int? imageCacheMb,
+    bool? autoNextEpisode,
   }) =>
       PerfConfig(
         heroEnabled: heroEnabled ?? this.heroEnabled,
@@ -153,6 +168,7 @@ class PerfConfig {
         heroCardCount: heroCardCount ?? this.heroCardCount,
         maxItemsPerRow: maxItemsPerRow ?? this.maxItemsPerRow,
         imageCacheMb: imageCacheMb ?? this.imageCacheMb,
+        autoNextEpisode: autoNextEpisode ?? this.autoNextEpisode,
       );
 
   // Égalité champ-à-champ → détection du preset actif dans la page.
@@ -164,6 +180,9 @@ class PerfConfig {
       other.heroCardCount == heroCardCount &&
       other.maxItemsPerRow == maxItemsPerRow &&
       other.imageCacheMb == imageCacheMb;
+  // NB : `autoNextEpisode` est volontairement EXCLU de l'égalité — c'est un
+  // réglage de confort, pas un paramètre de profil. L'inclure ferait basculer
+  // la page en « Personnalisé » dès qu'on touche l'interrupteur.
 
   @override
   int get hashCode => Object.hash(

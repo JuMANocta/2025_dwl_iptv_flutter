@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
@@ -79,6 +80,12 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
       _priorityAccountId = id;
       _priorityChanged = true;
     });
+    // §secondaryRefresh — En arrière-plan : si la playlist du nouveau principal
+    // est périmée, elle est retéléchargée maintenant au lieu d'attendre le
+    // prochain démarrage. Non attendu volontairement — la home se remet à jour
+    // toute seule via `ParsedPlaylistService.version`.
+    final acc = await StreamAccountService.getAccount(id);
+    if (acc != null) unawaited(PlaylistService.refreshIfStale(acc));
   }
 
   Future<void> _openEditor({StreamAccount? initial}) async {
@@ -173,9 +180,8 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
       builder: (ctx) => AlertDialog(
         title: const Text('Vider le cache ?'),
         content: Text(
-          isActive
-              ? 'La playlist du compte "${acc.label}" sera re-téléchargée depuis le serveur maintenant.'
-              : 'La playlist du compte "${acc.label}" sera re-téléchargée au prochain chargement de ce compte.',
+          'La playlist du compte "${acc.label}" sera re-téléchargée depuis le '
+          'serveur maintenant.',
         ),
         actions: [
           TextButton(
@@ -208,10 +214,26 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
       }
       _priorityChanged = true;
     } else {
-      // Compte secondaire : invalidation lazy, le DL se fera quand l'utilisateur
-      // basculera dessus (pas de home à rebuilder dans l'immédiat).
-      await PlaylistService.deleteForAccountId(acc.id);
-      ParsedPlaylistService.invalidate(acc.id);
+      // §secondaryRefresh — Avant, on se contentait d'invalider en pariant sur
+      // « le DL se fera quand l'utilisateur basculera dessus » — or basculer de
+      // compte principal ne télécharge rien : la liste restait vide jusqu'au
+      // redémarrage suivant. On retélécharge donc tout de suite, comme pour le
+      // compte actif.
+      try {
+        await PlaylistService.deleteForAccountId(acc.id);
+        ParsedPlaylistService.invalidate(acc.id);
+        final res = await PlaylistService.ensureDownloadedForAccount(acc);
+        if (res.path != null) {
+          await ParsedPlaylistService.reloadFromDisk(
+              acc.id, acc.label, res.path!);
+        }
+      } catch (e) {
+        if (!mounted) return;
+        messenger..hideCurrentSnackBar()..showSnackBar(
+          SnackBar(content: Text('Échec : $e')),
+        );
+        return;
+      }
     }
     if (!mounted) return;
     messenger..hideCurrentSnackBar()..showSnackBar(
@@ -581,8 +603,9 @@ class _AccountCardState extends State<_AccountCard> {
         // Compte principal → downloadCurrentM3U (messages d'erreur précis).
         newPath = await PlaylistService.downloadCurrentM3U();
       } else {
-        newPath =
-            await PlaylistService.ensureDownloadedForAccount(widget.account);
+        newPath = (await PlaylistService
+                .ensureDownloadedForAccount(widget.account))
+            .path;
       }
       if (newPath == null) {
         throw const HttpException(

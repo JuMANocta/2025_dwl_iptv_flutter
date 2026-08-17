@@ -14,6 +14,7 @@ import '../../data/services/xtream_api_service.dart';
 import '../../core/utils/app_snackbar.dart';
 import '../../data/models/media_model.dart';
 import '../player/player_page.dart';
+import '../player/player_media.dart';
 import '../downloads/logic/download_initiator.dart';
 import '../../data/models/m3u_entry.dart';
 import '../../l10n/app_localizations.dart';
@@ -179,28 +180,6 @@ class _DetailsPageState extends State<DetailsPage> {
 
   /// §1i — Sélectionne l'épisode suivant + recharge les métadonnées TMDB +
   /// rebascule sur la fiche détaillée. Utilisé par le bouton "next" du player.
-  void _goToNextEpisode() {
-    final next = _nextEpisode;
-    if (next == null) return;
-    final epNum  = next.title.episodeNumber;
-    final season = next.title.seasonNumber;
-    if (epNum == null || season == null) return;
-    final group = _seasonEpisodes[season]
-        ?.where((g) => g.episodeNumber == epNum)
-        .firstOrNull;
-    if (group == null) return;
-    setState(() {
-      _selectedSeason = season;
-      _episodeSelected = true;
-      _autoDefaultSelection = false; // enchaînement épisode suivant
-      _currentEpisode = group.best;
-      _uniqueVersions = _deduplicateVersions(group.versions);
-      _selectedEntry = _uniqueVersions.isNotEmpty
-          ? _uniqueVersions.first
-          : group.best;
-    });
-    _loadData();
-  }
 
   @override
   void initState() {
@@ -1814,23 +1793,67 @@ class _DetailsPageState extends State<DetailsPage> {
             ? PlayerBadgeType.series
             : PlayerBadgeType.movie,
         startPosition: from,
-        onNextEpisode: hasNext
-            ? () {
-                // Retour à DetailsPage + sélection auto épisode suivant +
-                // relance du player. Évite d'empiler des PlayerPage.
-                // §nextEpPortrait — On supprime la restauration portrait du
-                // dispose du player courant (qui sinon écraserait, ~300 ms plus
-                // tard, le landscape du player suivant → épisode en portrait).
-                PlayerPage.suppressOrientationRestore = true;
-                Navigator.of(context).pop();
-                _goToNextEpisode();
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) _launchSelected();
-                });
-              }
-            : null,
+        seasonNumber: _selectedEntry.title.seasonNumber,
+        // §episodeMeta — Le player ne pousse plus de nouvelle route pour changer
+        // d'épisode : il demande le contenu suivant et bascule en place.
+        onRequestNext: hasNext ? _prepareNextEpisode : null,
       ),
     ));
+  }
+
+  /// §episodeMeta — Prépare l'épisode suivant **métadonnées comprises**.
+  ///
+  /// L'ancien chemin (`_goToNextEpisode` + pop/push) lançait la lecture à la
+  /// frame suivante, bien avant que `_loadData()` — qui interroge TMDB — n'ait
+  /// résolu : le nouveau player naissait donc avec le titre et le synopsis de
+  /// l'épisode **précédent**, et ses champs étant `final`, ils ne pouvaient plus
+  /// jamais être corrigés.
+  ///
+  /// Ici on **attend** le chargement avant de rendre la main. Le player couvre
+  /// cette latence par son décompte de fin d'épisode (ou un bref « chargement… »
+  /// sur un appui manuel).
+  Future<PlayerMedia?> _prepareNextEpisode() async {
+    final next = _nextEpisode;
+    if (next == null) return null;
+    final epNum = next.title.episodeNumber;
+    final season = next.title.seasonNumber;
+    if (epNum == null || season == null) return null;
+    final group = _seasonEpisodes[season]
+        ?.where((g) => g.episodeNumber == epNum)
+        .firstOrNull;
+    if (group == null) return null;
+
+    setState(() {
+      _selectedSeason = season;
+      _episodeSelected = true;
+      _autoDefaultSelection = false; // enchaînement épisode suivant
+      _currentEpisode = group.best;
+      _uniqueVersions = _deduplicateVersions(group.versions);
+      _selectedEntry = _uniqueVersions.isNotEmpty
+          ? _uniqueVersions.first
+          : group.best;
+      _isLoading = true;
+      // LA correction : sans ça, `_playerTitle`/`_playerSynopsis` reliraient les
+      // données TMDB de l'épisode précédent. `_selectEpisode` le faisait déjà,
+      // ce chemin-ci l'avait oublié.
+      _episodeData = null;
+    });
+
+    await _loadData();
+    if (!mounted) return null;
+
+    FavoritesService.addEntry(_selectedEntry);
+    return PlayerMedia(
+      path: _selectedEntry.url,
+      title: _playerTitle,
+      qualityTag: _selectedEntry.title.qualityOrDefault,
+      episodeTag: _selectedEntry.title.seasonEpisodeLabel,
+      seriesName: _playerSeriesName,
+      synopsis: _playerSynopsis,
+      sourceType: VideoSourceType.network,
+      badgeType: PlayerBadgeType.series,
+      seasonNumber: season,
+    );
   }
 
   Widget _buildActionButtons(AppLocalizations l10n) {

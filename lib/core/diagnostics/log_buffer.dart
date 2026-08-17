@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show FocusNode;
 
 import '../utils/log_sanitizer.dart';
 
@@ -158,6 +159,26 @@ abstract final class DiagnosticLog {
           'physical 0x${event.physicalKey.usbHidUsage.toRadixString(16)})');
     }
     return false; // observateur pur — ne consomme jamais
+  }
+
+  /// §focusTrace — Journalise le nœud qui prend le focus.
+  ///
+  /// Quand la télécommande « ne fait plus rien », la question n'est presque
+  /// jamais « la touche arrive-t-elle ? » mais **« qu'est-ce qui a le focus ? »**
+  /// — un focus resté sur l'écran du dessous fait avaler les flèches par
+  /// celui-ci. C'est invisible sans logcat ; cette trace le rend lisible.
+  ///
+  /// Branché sur `Dpad(onFocusChange:)`, actif en même temps que le traceur de
+  /// touches pour pouvoir lire touche et focus dans le même fil.
+  static void traceFocus(FocusNode? node) {
+    if (!_keyTrace) return;
+    if (node == null) {
+      add('🎯 focus perdu (plus aucun élément focalisé)');
+      return;
+    }
+    final String label = node.debugLabel ?? node.context?.widget.runtimeType.toString() ?? '?';
+    final String scope = node.enclosingScope?.debugLabel ?? 'scope?';
+    add('🎯 focus → $label   [dans $scope]');
   }
 }
 

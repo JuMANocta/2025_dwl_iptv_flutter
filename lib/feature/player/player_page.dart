@@ -9,12 +9,16 @@ import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/data/services/track_preferences_service.dart';
 import 'package:aetherStream/data/services/remote_control_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/app_snackbar.dart';
+import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'player_controller.dart';
 import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
 import 'widgets/track_selector_sheet.dart';
 import 'widgets/player_options_sheet.dart';
+import 'widgets/next_episode_overlay.dart';
+import 'player_media.dart';
 import 'player_action_handlers.dart';
 import 'package:dpad/dpad.dart';
 import '../../core/navigation/focus_route_memory.dart';
@@ -37,12 +41,11 @@ enum PlayerBadgeType {
 }
 
 class PlayerPage extends StatefulWidget {
-  /// §nextEpPortrait — Quand on enchaîne sur l'épisode suivant, on POP le player
-  /// courant puis on en PUSH un nouveau. Le `dispose()` du player poppé restaure
-  /// le portrait (mobile) ~300 ms plus tard (fin d'anim de pop), donc APRÈS
-  /// l'`initState` landscape du nouveau player → l'épisode suivant s'ouvrait en
-  /// portrait. Ce flag, levé par l'appelant avant le pop, fait sauter la
-  /// restauration portrait du dispose (puis se réarme tout seul).
+  /// §nextEpPortrait — Vestige de l'ancien enchaînement pop/push d'épisodes,
+  /// devenu **inutile** depuis §episodeMeta : on ne démonte plus le player pour
+  /// changer d'épisode, donc plus de `dispose()` qui restaurait le portrait par
+  /// dessus l'`initState` landscape du suivant. Conservé (toujours `false`) le
+  /// temps de valider sur appareil, à retirer ensuite.
   static bool suppressOrientationRestore = false;
 
   final String path;
@@ -75,9 +78,24 @@ class PlayerPage extends StatefulWidget {
   /// même film) en passant une clé canonique commune.
   final String? progressKey;
 
-  /// §1i — Callback "épisode suivant". Si défini, un bouton ▶▶ apparaît dans
-  /// les contrôles du player. À utiliser pour les séries depuis [DetailsPage].
-  final VoidCallback? onNextEpisode;
+  /// §episodeMeta — Fournit le contenu à lire ENSUITE (séries).
+  ///
+  /// Si défini, le bouton ▶▶ apparaît dans les contrôles et l'enchaînement
+  /// automatique de fin d'épisode s'active. **Asynchrone à dessein** : l'appelant
+  /// ([DetailsPage]) en profite pour aller chercher les métadonnées TMDB du
+  /// prochain épisode — le player n'affiche donc jamais les infos du précédent.
+  /// Retourne `null` quand il n'y a plus rien à lire (fin de série).
+  ///
+  /// ⚠️ Cet appel **fait avancer l'état de l'appelant**. Le player met le
+  /// résultat en cache (`_pendingNext`) : si l'utilisateur annule
+  /// l'enchaînement, un ⏭ ultérieur réutilise ce cache au lieu de rappeler la
+  /// fonction, sinon on sauterait un épisode.
+  final Future<PlayerMedia?> Function()? onRequestNext;
+
+  /// §autoNextEp — Saison du contenu lancé (séries), pour détecter le
+  /// franchissement de saison. `null` hors séries.
+  final int? seasonNumber;
+
   const PlayerPage({
     super.key,
     required this.path,
@@ -92,8 +110,26 @@ class PlayerPage extends StatefulWidget {
     this.replayDuration,
     this.startPosition,
     this.progressKey,
-    this.onNextEpisode,
+    this.onRequestNext,
+    this.seasonNumber,
   });
+
+  /// §episodeMeta — Contenu initial, assemblé depuis les champs du widget.
+  PlayerMedia get initialMedia => PlayerMedia(
+        path: path,
+        title: title,
+        qualityTag: qualityTag,
+        episodeTag: episodeTag,
+        seriesName: seriesName,
+        synopsis: synopsis,
+        sourceType: sourceType,
+        badgeType: badgeType,
+        replayStart: replayStart,
+        replayDuration: replayDuration,
+        startPosition: startPosition,
+        progressKey: progressKey,
+        seasonNumber: seasonNumber,
+      );
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -101,6 +137,18 @@ class PlayerPage extends StatefulWidget {
 
 class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   late final AetherPlayerController _ctrl;
+
+  /// §episodeMeta — Contenu courant. Remplacé par [_switchTo] sans démonter la
+  /// page : c'est ce qui permet aux infos affichées de suivre l'épisode lu.
+  late PlayerMedia _media;
+
+  /// Prochain contenu déjà résolu (métadonnées comprises), mis en cache pour ne
+  /// pas rappeler `onRequestNext` — qui fait avancer l'état de l'appelant — si
+  /// l'utilisateur annule puis redemande l'épisode suivant.
+  PlayerMedia? _pendingNext;
+
+  /// Vrai pendant l'attente de `onRequestNext` (affiche « chargement… »).
+  bool _loadingNext = false;
 
   bool _controlsVisible = true;
   Timer? _hideTimer;
@@ -118,9 +166,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   /// Vrai pour les sources qui ne doivent PAS sauvegarder de progression
   /// (chaînes TV live = durée infinie, replay timeshift = pas de reprise utile).
-  bool get _skipProgress =>
-      widget.badgeType == PlayerBadgeType.live ||
-      widget.sourceType == VideoSourceType.networkReplay;
+  bool get _skipProgress => _media.skipProgress;
 
   // ── §1h Wakelock + Lifecycle ─────────────────────────────────────────────
   /// Souscription à `stream.playing` pour activer/désactiver le wakelock.
@@ -171,14 +217,16 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    _currentPath = widget.path;
+    _media = widget.initialMedia;
+    _currentPath = _media.path;
     // §replayBuffer — profil mpv timeshift (buffering propre aux frontières
     // de segments HLS longs) quand on lit un replay.
     _ctrl = AetherPlayerController(
-      timeshift: widget.sourceType == VideoSourceType.networkReplay,
+      timeshift: _media.sourceType == VideoSourceType.networkReplay,
     );
     _listenErrors();
     _listenPlaybackForWakelock();
+    _listenCompleted();
     WidgetsBinding.instance.addObserver(this);
     _openMedia();
     _startHideTimer();
@@ -188,7 +236,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _remoteHandlers = PlayerActionHandlers(
       togglePlayPause: _togglePlayPause,
       setPlaying: _setPlaying,
-      nextEpisode: widget.onNextEpisode,
+      nextEpisode: widget.onRequestNext == null ? null : _requestNextEpisode,
       seek: _handleSeek,
       changeVolume: _handleVolumeChange,
       toggleControls: _toggleControls,
@@ -304,9 +352,170 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     final pos = _ctrl.player.state.position;
     final dur = _ctrl.player.state.duration;
     if (dur <= Duration.zero) return;
-    final key = widget.progressKey ?? widget.path;
+    // §episodeMeta — clé du contenu COURANT, pas celle du widget : après une
+    // bascule d'épisode, écrire sur l'ancienne clé fausserait les reprises.
     // saveProgress applique ses propres règles (min duration, threshold 95%, etc.).
-    WatchProgressService.saveProgress(key, pos, dur);
+    WatchProgressService.saveProgress(_media.resumeKey, pos, dur);
+  }
+
+  // ── §episodeMeta / §autoNextEp — Enchaînement d'épisodes ─────────────────
+
+  /// Souscription à la fin de lecture (déclenche l'enchaînement).
+  StreamSubscription<bool>? _completedSub;
+
+  /// Décompte avant bascule automatique ; `null` = aucun encart affiché.
+  Timer? _autoNextTimer;
+  int _autoNextRemaining = 0;
+
+  /// État de l'encart de fin, `null` tant que la lecture est en cours.
+  EndOfPlaybackKind? _endOfPlayback;
+
+  static const int _autoNextCountdownSeconds = 8;
+
+  /// Garde de ré-entrance : `completed` peut réémettre (notamment au moment où
+  /// l'on ouvre le média suivant) et `_onPlaybackCompleted` est asynchrone.
+  bool _handlingCompletion = false;
+
+  void _listenCompleted() {
+    _completedSub = _ctrl.player.stream.completed.listen((done) {
+      if (!done || !mounted) return;
+      // Live et replay n'ont pas de « fin » exploitable.
+      if (_skipProgress) return;
+      if (_handlingCompletion || _endOfPlayback != null) return;
+      // Une durée nulle = flux pas encore chargé : `completed` peut passer à
+      // `true` transitoirement à l'ouverture, ce n'est pas une vraie fin.
+      if (_ctrl.player.state.duration <= Duration.zero) return;
+      _onPlaybackCompleted();
+    });
+  }
+
+  /// Résout le prochain contenu (une seule fois — le résultat est mis en cache,
+  /// cf. [PlayerPage.onRequestNext]).
+  Future<PlayerMedia?> _resolveNext() async {
+    if (_pendingNext != null) return _pendingNext;
+    final request = widget.onRequestNext;
+    if (request == null) return null;
+    if (mounted) setState(() => _loadingNext = true);
+    try {
+      final next = await request();
+      _pendingNext = next;
+      return next;
+    } catch (e) {
+      debugPrint('⚠️ §episodeMeta onRequestNext : $e');
+      return null;
+    } finally {
+      if (mounted) setState(() => _loadingNext = false);
+    }
+  }
+
+  /// Bouton ⏭ / panneau d'options / touche média « piste suivante ».
+  Future<void> _requestNextEpisode() async {
+    if (_loadingNext) return;
+    _cancelAutoNext();
+    final next = await _resolveNext();
+    if (!mounted) return;
+    if (next == null) {
+      AppSnackBar.show(context, 'Dernier épisode disponible.');
+      return;
+    }
+    await _switchTo(next);
+  }
+
+  /// §episodeMeta — Change de contenu **sans changer de route**.
+  ///
+  /// L'ancien enchaînement démontait le player et en poussait un nouveau :
+  /// contrôleur `media_kit` détruit puis recréé (écran noir + re-buffering
+  /// complet, très visible sur box TV) et métadonnées figées à la construction.
+  Future<void> _switchTo(PlayerMedia next) async {
+    // Clore proprement le contenu courant avant d'écraser `_media`.
+    _saveProgress();
+    _progressTimer?.cancel();
+    _pendingRetryTimer?.cancel();
+    _cancelAutoNext();
+
+    if (!mounted) return;
+    setState(() {
+      _media = next;
+      _pendingNext = null;
+      _endOfPlayback = null;
+      _currentPath = next.path; // sinon un retry .ts/.m3u8 de l'épisode
+      _retryCount = 0; //        précédent contaminerait le suivant
+      _hasError = false;
+      _errorMessage = '';
+      _seekAccumSeconds = 0;
+      _seekOverlayVisible = false;
+    });
+
+    await _openMedia();
+    if (!mounted) return;
+    _startProgressTracking();
+    _showControls();
+    debugPrint('▶️ §episodeMeta : bascule sur « ${next.title} ».');
+  }
+
+  Future<void> _onPlaybackCompleted() async {
+    if (widget.onRequestNext == null) return;
+    _handlingCompletion = true;
+    try {
+      await _resolveAndShowEndOverlay();
+    } finally {
+      _handlingCompletion = false;
+    }
+  }
+
+  Future<void> _resolveAndShowEndOverlay() async {
+    final next = await _resolveNext();
+    if (!mounted) return;
+
+    if (next == null) {
+      // Fin de série : rien à enchaîner.
+      setState(() => _endOfPlayback = EndOfPlaybackKind.endOfSeries);
+      return;
+    }
+
+    if (_media.crossesSeasonTo(next)) {
+      // Changer de saison est une décision : on attend une action explicite,
+      // pas de décompte.
+      setState(() => _endOfPlayback = EndOfPlaybackKind.endOfSeason);
+      return;
+    }
+
+    if (!PerformanceSettingsService.config.value.autoNextEpisode) {
+      setState(() => _endOfPlayback = EndOfPlaybackKind.manual);
+      return;
+    }
+    _startAutoNextCountdown(next);
+  }
+
+  void _startAutoNextCountdown(PlayerMedia next) {
+    setState(() {
+      _endOfPlayback = EndOfPlaybackKind.countdown;
+      _autoNextRemaining = _autoNextCountdownSeconds;
+    });
+    _autoNextTimer?.cancel();
+    _autoNextTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_autoNextRemaining <= 1) {
+        t.cancel();
+        _switchTo(next);
+        return;
+      }
+      setState(() => _autoNextRemaining--);
+    });
+  }
+
+  void _cancelAutoNext() {
+    _autoNextTimer?.cancel();
+    _autoNextTimer = null;
+  }
+
+  /// « Annuler » : on reste sur l'écran de fin sans enchaîner.
+  void _dismissEndOverlay() {
+    _cancelAutoNext();
+    if (mounted) setState(() => _endOfPlayback = null);
   }
 
   Future<void> _initBrightness() async {
@@ -321,13 +530,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       // `Media(start:)` (cf. AetherPlayerController.open) → fini la lecture qui
       // repart à 0 (le seek post-open était avalé par media_kit v2). Pas de
       // reprise pour les sources live/replay (`_skipProgress`).
-      final start = (_skipProgress) ? null : widget.startPosition;
+      final start = (_skipProgress) ? null : _media.startPosition;
       // §trackLangPref — Préférence de langue posée AVANT l'open (mpv choisit la
       // piste au chargement → plus de switch/re-demux ~3 s = « le film se
       // relance »). Pas pour live/replay.
       final audioLang = _skipProgress ? null : TrackPreferencesService.audio;
       final subLang = _skipProgress ? null : TrackPreferencesService.subtitle;
-      if (widget.sourceType == VideoSourceType.file) {
+      if (_media.sourceType == VideoSourceType.file) {
         await _ctrl.openFile(_currentPath,
             start: start, audioLang: audioLang, subLang: subLang);
       } else {
@@ -357,7 +566,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _hideTimer?.cancel();
     await showPlayerOptions(
       context,
-      hasNext: widget.onNextEpisode != null,
+      hasNext: widget.onRequestNext != null,
       speedLabel: _speed == 1.0 ? 'Normale (1.0×)' : '$_speed×',
       onTracks: () {
         Navigator.of(context).pop();
@@ -367,11 +576,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         Navigator.of(context).pop();
         _showSpeedMenu();
       },
-      onNext: widget.onNextEpisode == null
+      onNext: widget.onRequestNext == null
           ? null
           : () {
               Navigator.of(context).pop();
-              widget.onNextEpisode!.call();
+              _requestNextEpisode();
             },
     );
     if (mounted) _startHideTimer();
@@ -416,14 +625,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _retryCount++;
       // Retry 2 : tente l'extension alternative
       if (_retryCount == 2) {
-        final alt = _altExtUrl(widget.path);
+        final alt = _altExtUrl(_media.path);
         if (alt != null) {
           _currentPath = alt;
           debugPrint(
               '⚠️ PlayerPage: retry $_retryCount/$_maxRetries — extension alternative: $alt');
         }
       } else {
-        _currentPath = widget.path; // retour à l'URL originale
+        _currentPath = _media.path; // retour à l'URL originale
       }
       debugPrint(
           '⚠️ PlayerPage: erreur stream — retry $_retryCount/$_maxRetries dans 5s\n$error');
@@ -532,7 +741,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     setState(() {
       _hasError = false;
       _retryCount = 0;
-      _currentPath = widget.path;
+      _currentPath = _media.path;
     });
     _openMedia();
   }
@@ -548,6 +757,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _saveProgress(); // dernière sauvegarde à la sortie du player
     _playingSub?.cancel();
     _errorSub?.cancel();
+    _completedSub?.cancel();
+    _autoNextTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _releaseWakelock();
     _ctrl.dispose();
@@ -645,21 +856,39 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // 3. Overlay contrôles.
             PlayerControls(
               player: _ctrl.player,
-              title: widget.title,
-              qualityTag: widget.qualityTag,
-              episodeTag: widget.episodeTag,
-              seriesName: widget.seriesName,
-              synopsis: widget.synopsis,
+              title: _media.title,
+              qualityTag: _media.qualityTag,
+              episodeTag: _media.episodeTag,
+              seriesName: _media.seriesName,
+              synopsis: _media.synopsis,
               visible: _controlsVisible,
-              badgeType: widget.badgeType,
+              badgeType: _media.badgeType,
               // §dpadBack — Même chemin que la touche Retour physique (debounce
               // partagé) : un `pop()` direct doublonnait avec elle.
               onBack: AppBack.popFromUi,
               onInteraction: _showControls,
               onLockChanged: (locked) => setState(() => _isLocked = locked),
-              onNextEpisode: widget.onNextEpisode,
+              onNextEpisode:
+                  widget.onRequestNext == null ? null : _requestNextEpisode,
               onShowTracks: _showTrackSelector,
             ),
+
+            // §autoNextEp — Encart de fin (décompte / fin de saison / fin de
+            // série). Masqué en mode lock, comme le reste des overlays.
+            if (_endOfPlayback != null && !_isLocked)
+              NextEpisodeOverlay(
+                kind: _endOfPlayback!,
+                nextTitle: _pendingNext?.title,
+                nextEpisodeTag: _pendingNext?.episodeTag,
+                nextSeason: _pendingNext?.seasonNumber,
+                remainingSeconds: _autoNextRemaining,
+                loading: _loadingNext,
+                onPlayNow: _pendingNext == null
+                    ? null
+                    : () => _switchTo(_pendingNext!),
+                onDismiss: _dismissEndOverlay,
+                onLeave: AppBack.popFromUi,
+              ),
 
             // §1i — Overlay buffering central : visible quand le player charge
             // un nouveau segment HLS. Désactivé en mode lock pour ne pas troubler
@@ -677,15 +906,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               ),
 
             // 4. Barre replay (uniquement en mode networkReplay).
-            if (widget.sourceType == VideoSourceType.networkReplay)
+            if (_media.sourceType == VideoSourceType.networkReplay)
               Positioned(
                 left: 16,
                 right: 16,
                 bottom: 90,
                 child: PlayerReplayBar(
                   player: _ctrl.player,
-                  replayStart: widget.replayStart,
-                  replayDuration: widget.replayDuration,
+                  replayStart: _media.replayStart,
+                  replayDuration: _media.replayDuration,
                   visible: _controlsVisible,
                 ),
               ),
