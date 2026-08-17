@@ -6,7 +6,7 @@
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowDrawsSystemBarBackgrounds">false</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
-        <!-- §splashOff — Splash Android 12+ neutralisé (cf. values-v31). -->
+        <!-- §splashOff — Même traitement qu'en clair (cf. values-v31). -->
         <item name="android:windowSplashScreenBackground">@color/aether_boot_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_transparent</item>
         <item name="android:windowSplashScreenAnimationDuration">0</item>

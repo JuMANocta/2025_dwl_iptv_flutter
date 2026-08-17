@@ -66,3 +66,6 @@ android/.gradle/
 /aetherstream.jks
 /android/key.properties
 android/build/
+
+# §splashIdentity — aperçu jetable du générateur d'icône (tool/gen_splash_icon.py --preview)
+tool/_splash_preview.png

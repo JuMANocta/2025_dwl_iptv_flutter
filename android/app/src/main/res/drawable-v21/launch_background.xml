@@ -1,8 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- §splashHandoff — Fond uni aligné sur l'écran de démarrage Flutter
-     (#121212). Plus d'image ni de logo (§splashOff), et surtout plus de
-     marche visible à l'arrivée de l'app. Couleur définie dans
-     values/colors.xml. -->
+<!-- §splashOff + §splashHandoff — Fenêtre de lancement Android : fond uni, RIEN
+     dessus.
+
+     Cette fenêtre ne peut pas être supprimée (Android la peint le temps que les
+     libs natives et la VM Dart démarrent), mais son contenu est à nous. On la
+     laisse volontairement vide, sur EXACTEMENT la couleur de l'écran de
+     démarrage Flutter (@color/aether_boot_background) : elle devient donc
+     invisible, l'app semble s'ouvrir directement sur son écran de démarrage.
+
+     Pour réafficher le logo (§splashIdentity) : ajouter un second <item> avec
+     <bitmap android:gravity="center" android:src="@drawable/splash"/>, et
+     repasser `windowSplashScreenAnimatedIcon` sur @drawable/android12splash
+     dans values-v31/ et values-night-v31/. Les PNG sont déjà là, régénérables
+     via `python tool/gen_splash_icon.py`.
+
+     Ne PAS relancer `flutter_native_splash:create` : il écraserait ce fichier. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <color android:color="@color/aether_boot_background"/>

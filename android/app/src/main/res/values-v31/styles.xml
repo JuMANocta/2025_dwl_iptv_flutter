@@ -6,10 +6,13 @@
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowDrawsSystemBarBackgrounds">false</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
-        <!-- §splashOff — Splash Android 12+ neutralisé : fond uni + icône
-             TRANSPARENTE (sinon le système retombe sur l'icône launcher = logo
-             AetherStream → le splash réapparait). Durée d'animation 0 pour
-             écourter au maximum la fenêtre système (Android impose un minimum). -->
+        <!-- §splashOff — Sur Android 12+, le système gère lui-même la fenêtre
+             de lancement : on ne peut pas y peindre librement, on lui fournit un
+             fond et une icône. L'icône est TRANSPARENTE pour ne rien montrer —
+             sans ça le système retombe sur l'icône du launcher.
+             Pour afficher le logo (§splashIdentity) : @drawable/android12splash,
+             généré à 66 % pour survivre au masque circulaire du système.
+             Durée d'animation 0 : Android impose de toute façon un minimum. -->
         <item name="android:windowSplashScreenBackground">@color/aether_boot_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_transparent</item>
         <item name="android:windowSplashScreenAnimationDuration">0</item>
