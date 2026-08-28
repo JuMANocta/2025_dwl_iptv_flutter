@@ -36,6 +36,16 @@ const Color kQualitySD  = kMatrixGreenDim;   // Vert Matrix dim
 /// gris terne, distinct des 4 couleurs qualité ci-dessus et lisible sur fond
 /// sombre sans crier.
 const Color kQualityUnknown = Color(0xFFF0EAD6);
+/// §camQuality — Rip de salle (HDTS/HDCAM/CAMRIP…). C'est bien une qualité,
+/// mais la PIRE : orange d'alerte, pour qu'on ne lance pas un cam par erreur
+/// en croyant prendre un flux normal.
+const Color kQualityCam = Color(0xFFFF6D00);
+
+/// §providerTag — Marqueur de tête du fournisseur (FR, US, IT, RU, PPV…).
+/// Gris-bleu NEUTRE, volontairement en dehors du code couleur des qualités :
+/// ce n'est ni une qualité ni une langue, et l'afficher comme telle était
+/// précisément le défaut corrigé.
+const Color kProviderTag = Color(0xFF7E8FA6);
 
 // ── Langues ─────────────────────────────────────────────────────────────────
 Color get kLangMulti     => kAccentPrimary;       // suit le thème

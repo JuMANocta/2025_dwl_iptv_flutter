@@ -17,9 +17,24 @@ void main() {
     'PLATINIUM': '$dir/PLATINIUM_vod_cache.json',
     'PREMIUM': '$dir/PREMIUM_vod_cache.json',
     'VOD': '$dir/VOD_vod_cache.json',
+    // §xenoFormat — 4e fournisseur, format de nommage distinct (préfixe à pipe
+    // fermant seul `FR| Titre`, tags `[MULTI-SUB]`). Sans lui dans ce script,
+    // la validation ne voyait tout simplement pas le format qu'on gère.
+    'XENO': '$dir/xenoIptv.json',
   };
 
   final parsed = <String, Map<String, List<String>>>{}; // provider → kind → baseTitles
+  // §yearTitle — Une base réduite à un tag (« (FR HD) », « SD », « FHD ») est un
+  // titre PERDU à l'écran. Ce compteur doit rester à ZÉRO.
+  final degenerate = <String, List<String>>{};
+  final orphan = <String, List<String>>{};
+  final tagOnly = RegExp(
+    r'^[\s\(\)\[\]\-_.]*'
+    r'(?:FR|EN|VO|VF|VOST|VOSTFR|MULTI|SUB|AUDIO|4K|UHD|FHD|HD|SD|'
+    r'HDR|DV|MULTi)'
+    r'[\s\(\)\[\]\-_.]*$',
+    caseSensitive: false,
+  );
   final samples = <String>[];
 
   for (final e in files.entries) {
@@ -35,6 +50,15 @@ void main() {
         if (name.isEmpty) continue;
         final meta = TitleMetadata.parse(name);
         bases.add(meta.groupKey); // §23b — la vraie clé de regroupement
+        // §orphanBracket — Crochet/parenthèse FERMANT sans ouvrant (ou
+        // l'inverse) : résidu du strip des tags sur un délimiteur MAL FORMÉ
+        // côté fournisseur (`… - 2026 |HDTS]` → `… - ]`). Visible à l'écran.
+        if (_unbalanced(meta.baseTitle)) {
+          (orphan[e.key] ??= <String>[]).add('$name  ->  "${meta.baseTitle}"');
+        }
+        if (meta.baseTitle.trim().isEmpty || tagOnly.hasMatch(meta.baseTitle)) {
+          (degenerate[e.key] ??= <String>[]).add('$name  ->  "${meta.baseTitle}"');
+        }
         if (kind != 'live' && i < 8) {
           samples.add('[${e.key}/$kind] ${name.padRight(60).substring(0, 60)} '
               '→ base="${meta.baseTitle}" q=${meta.quality} y=${meta.year} '
@@ -57,6 +81,15 @@ void main() {
     print('$kind: PLATINIUM=${p.length} PREMIUM=${r.length} VOD=${v.length}');
     print('  P∩R=${p.intersection(r).length}  P∩V=${p.intersection(v).length}'
         '  R∩V=${r.intersection(v).length}  P∩R∩V=${p.intersection(r).intersection(v).length}');
+    // §xenoFormat — Le 4e fournisseur : c'est SA convergence qui mesure le gain.
+    // Avant le correctif, ses clés portaient le préfixe (`fr lanterns`) et ne
+    // rencontraient donc presque jamais celles des autres listes.
+    final x = parsed['XENO']![kind]!;
+    final xs = x.toSet();
+    print('  XENO=${xs.length} (sur ${x.length} titres, '
+        '${x.length - xs.length} doublons internes fusionnés)');
+    print('  X∩P=${xs.intersection(p).length}  X∩R=${xs.intersection(r).length}'
+        '  X∩V=${xs.intersection(v).length}');
   }
 
   // Contrôles ciblés : préfixes composés qui cassaient l'ancienne regex.
@@ -117,4 +150,45 @@ void main() {
     print('  ${c.padRight(48)} → base="${m.baseTitle}" key="${m.groupKey}" '
         'q=${m.quality} y=${m.year} langs=${m.languages} label=${m.versionLabel}');
   }
+
+  // §orphanBracket — Bilan des titres à délimiteur orphelin.
+  print('');
+  print('== Bases à crochet/parenthèse orphelin ==');
+  var totalOrphan = 0;
+  for (final e in orphan.entries) {
+    totalOrphan += e.value.length;
+    print('  ${e.key.padRight(11)} ${e.value.length}');
+    for (final sample in e.value.take(5)) {
+      print('      $sample');
+    }
+  }
+  if (orphan.isEmpty) print('  aucun (attendu)');
+  print('  TOTAL: $totalOrphan');
+
+  // §yearTitle — Bilan des titres PERDUS (base vide ou réduite à un tag).
+  print('');
+  print('== Titres dégénérés (base vide ou réduite à un tag) ==');
+  var totalDegenerate = 0;
+  for (final e in degenerate.entries) {
+    totalDegenerate += e.value.length;
+    print('  ${e.key.padRight(11)} ${e.value.length}');
+    for (final sample in e.value.take(6)) {
+      print('      $sample');
+    }
+  }
+  if (degenerate.isEmpty) print('  aucun (attendu)');
+  print('  TOTAL: $totalDegenerate');
+}
+
+/// §orphanBracket — Vrai si les crochets/parenthèses ne s'équilibrent pas.
+bool _unbalanced(String s) {
+  var sq = 0, rd = 0;
+  for (final c in s.codeUnits) {
+    if (c == 0x5B) sq++;      // [
+    if (c == 0x5D) sq--;      // ]
+    if (c == 0x28) rd++;      // (
+    if (c == 0x29) rd--;      // )
+    if (sq < 0 || rd < 0) return true;
+  }
+  return sq != 0 || rd != 0;
 }

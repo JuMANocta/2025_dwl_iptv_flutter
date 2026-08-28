@@ -12,16 +12,23 @@ import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 /// MÊME compte), on suffixe par le **nom du compte** (multi-comptes) ou, à
 /// défaut, un index → l'utilisateur distingue clairement les flux.
 List<(M3uEntry, String)> labeledVersions(List<M3uEntry> versions) {
-  const order = {'4K': 0, 'UHD': 0, 'FHD': 1, 'HD': 2, 'SD': 3};
+  // §camQuality — CAM classé APRÈS SD : un rip de salle est le pire flux
+  // disponible, il ne doit jamais être proposé en premier.
+  const order = {'4K': 0, 'UHD': 0, 'FHD': 1, 'HD': 2, 'SD': 3, 'CAM': 4};
   final sorted = List<M3uEntry>.from(versions)
     ..sort((a, b) => (order[a.title.quality] ?? 99)
         .compareTo(order[b.title.quality] ?? 99));
 
-  // 1) Label de base (qualité > langue > versionLabel > « Flux N »).
+  // 1) Label de base (qualité > langue > versionLabel > marqueur > « Flux N »).
+  // §providerTag — Le marqueur du fournisseur (FR, US, IT…) reste le DERNIER
+  // recours avant « Flux N » : il distingue réellement deux versions, mais ce
+  // n'est pas une qualité — d'où le libellé « version » et non « qualité » sur
+  // le déroulant ci-dessous.
   String baseLabel(M3uEntry v, int i) =>
       v.title.quality ??
       (v.title.languages.isNotEmpty ? v.title.languages.first : null) ??
       v.title.versionLabel ??
+      v.title.providerTag ??
       'Flux ${i + 1}';
   final bases = sorted.indexed.map((e) => baseLabel(e.$2, e.$1)).toList();
 
@@ -56,6 +63,8 @@ Color _qualityColor(String? q) {
       return kQualityHD;
     case 'SD':
       return kQualitySD;
+    case 'CAM': // §camQuality — rip de salle
+      return kQualityCam;
     default:
       return kQualityUnknown;
   }
@@ -131,8 +140,8 @@ class _QualityButtonsRowState extends State<QualityButtonsRow> {
                       const SizedBox(width: 4),
                       Text(
                         _expanded
-                            ? 'Masquer les qualités'
-                            : 'Changer la qualité',
+                            ? 'Masquer les versions'
+                            : 'Changer de version',
                         style: TextStyle(
                             color: cs.onSurfaceVariant,
                             fontSize: 13,

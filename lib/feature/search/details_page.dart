@@ -2059,7 +2059,10 @@ class _DetailsPageState extends State<DetailsPage> {
 
   static String _buildQualityLabel(M3uEntry v, int index) {
     final q  = v.title.quality;
-    final vl = v.title.versionLabel;
+    // §providerTag — Le marqueur (FR, US, IT…) complète la qualité au lieu de
+    // s'y substituer : « FHD · FR » se lit, « FR » tout seul se lisait comme
+    // une qualité. Il ne sert de libellé PRINCIPAL qu'en dernier recours.
+    final vl = v.title.versionLabel ?? v.title.providerTag;
     if (q != null && vl != null) return '$q · $vl';
     if (q != null) return q;
     if (vl != null) return vl;
