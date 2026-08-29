@@ -39,6 +39,7 @@ import 'data/services/update_service.dart';
 import 'data/services/xmltv_service.dart';
 import 'data/services/measured_quality_service.dart';
 import 'data/services/inferred_category_service.dart';
+import 'data/services/tmdb_poster_cache.dart';
 import 'feature/update/update_dialog.dart';
 import 'feature/player/video_fit.dart';
 import 'feature/player/video_stats.dart';
@@ -144,6 +145,7 @@ Future<void> _initServices() async {
     VideoStatsPreference.load(), // §videoStats
     MeasuredQualityService.init(), // §qualityTruth
     InferredCategoryService.init(), // §inferredCat
+    TmdbPosterCache.init(), // §tmdbUrlPersist
   ]);
 }
 

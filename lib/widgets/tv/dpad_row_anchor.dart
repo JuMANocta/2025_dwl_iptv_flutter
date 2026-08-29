@@ -28,26 +28,31 @@ abstract final class DpadRowAnchor {
   /// sous les yeux — le « saut au milieu d'un carrousel ».
   static ScrollableState? _lastRow;
 
-  /// §carouselRewindTouch — Signale qu'une rangée devient ACTIVE au doigt.
+  /// §pageViewRewind — Traceur de diagnostic. Laissé EN DUR à `true` : il ne
+  /// journalise que sur changement de composition (quelques lignes par
+  /// session) et c'est lui qui a permis d'établir que la `PageView` était
+  /// ramassée comme une rangée. Le coût est nul, l'information est rare.
+  static const bool _traceEnabled = true;
+  static String? _lastTrace;
+
+  /// §pageViewRewind — Ce scrollable est-il une **vraie rangée** ?
   ///
-  /// **Le manque.** Le rembobinage §carouselScrollDir n'était branché que sur
-  /// le FOCUS : au doigt, aucun événement de focus n'est émis, donc une rangée
-  /// avancée à la main restait avancée indéfiniment. On la retrouvait « au
-  /// milieu » en revenant dessus, exactement le défaut que §carouselScrollDir
-  /// avait corrigé pour la télécommande.
+  /// ⚠️ **Le piège qui a produit une régression critique** : `visitAncestorElements`
+  /// ramasse TOUS les scrollables ancêtres d'une carte, et la `PageView` des
+  /// onglets (Séries / Films / Chaînes) est elle aussi **horizontale**. Elle
+  /// passait donc le test `Axis.horizontal`, devenait `_lastRow`, et
+  /// [_rewind] la ramenait à sa page 0 — l'accueil sautait sur « Séries » et
+  /// n'en repartait plus.
   ///
-  /// Appelée au démarrage d'un défilement horizontal
-  /// (`ScrollStartNotification`), elle applique la MÊME règle : la rangée
-  /// qu'on quitte revient à son début. Les deux modes d'entrée partagent donc
-  /// `_lastRow` et `_rewind`, et ne peuvent pas diverger.
-  ///
-  /// ⚠️ Ne fait rien si la rangée est déjà l'active : reprendre son propre
-  /// défilement ne doit surtout pas le rembobiner sous les doigts.
-  static void noteTouchScroll(ScrollableState row) {
-    if (axisDirectionToAxis(row.axisDirection) != Axis.horizontal) return;
-    if (identical(row, _lastRow)) return;
-    _rewind(_lastRow);
-    _lastRow = row;
+  /// Une `PageView` se reconnaît à sa position, qui implémente [PageMetrics] ;
+  /// aucun `ListView` de carrousel n'a cette propriété. C'est le seul
+  /// discriminant fiable — la direction ne suffit pas, et comparer des
+  /// `debugLabel` serait fragile.
+  static bool _isRow(ScrollableState s) {
+    if (axisDirectionToAxis(s.axisDirection) != Axis.horizontal) return false;
+    final p = s.position;
+    if (!p.hasPixels || !p.hasContentDimensions) return false;
+    return p is! PageMetrics;
   }
 
   /// À appeler en post-frame quand le widget gagne le focus. [context] =
@@ -68,8 +73,23 @@ abstract final class DpadRowAnchor {
     // §rowAnchorJump — Si le focus quitte les carrousels (grille, bouton…), on
     // oublie la rangée courante : y revenir plus tard doit compter comme une
     // ARRIVÉE, pas comme un déplacement interne.
-    if (!scrollables.any(
-        (s) => axisDirectionToAxis(s.axisDirection) == Axis.horizontal)) {
+    // §pageViewRewind — Traceur : combien de scrollables ancêtres, combien
+    // sont de VRAIES rangées, et lesquels sont écartés (PageView). Une seule
+    // ligne par changement de composition — sinon le journal serait noyé, la
+    // fonction étant appelée à chaque prise de focus.
+    if (_traceEnabled) {
+      final sig = scrollables
+          .map((s) => '${axisDirectionToAxis(s.axisDirection).name}'
+              '${s.position is PageMetrics ? "/PAGEVIEW" : ""}'
+              '${_isRow(s) ? "→rangée" : ""}')
+          .join(', ');
+      if (sig != _lastTrace) {
+        _lastTrace = sig;
+        debugPrint('🔍 §pageViewRewind — ancêtres scrollables : [$sig]');
+      }
+    }
+
+    if (!scrollables.any(_isRow)) {
       _lastRow = null;
     }
 
@@ -79,8 +99,9 @@ abstract final class DpadRowAnchor {
       final position = s.position;
       if (!position.hasPixels || !position.hasContentDimensions) continue;
 
-      final horizontal =
-          axisDirectionToAxis(s.axisDirection) == Axis.horizontal;
+      // §pageViewRewind — Une `PageView` est horizontale mais n'est PAS une
+      // rangée : la traiter comme telle la faisait rembobiner sur sa 1re page.
+      final horizontal = _isRow(s);
       final bounds = MatrixUtils.transformRect(
         render.getTransformTo(viewport),
         Offset.zero & render.size,
@@ -153,6 +174,13 @@ abstract final class DpadRowAnchor {
   /// où la restauration §dpadRestore doit rester maîtresse.
   static void _rewind(ScrollableState? row) {
     if (row == null || !row.mounted) return;
+    // §pageViewRewind — Double sécurité : même si un appelant se trompait de
+    // scrollable, on ne rembobinera jamais une `PageView`.
+    if (!_isRow(row)) {
+      debugPrint('⚠️ §pageViewRewind — rembobinage REFUSÉ sur un scrollable '
+          'qui n\'est pas une rangée (${row.axisDirection})');
+      return;
+    }
     final position = row.position;
     if (!position.hasPixels || !position.hasContentDimensions) return;
     if ((position.pixels - position.minScrollExtent).abs() < 0.5) return;

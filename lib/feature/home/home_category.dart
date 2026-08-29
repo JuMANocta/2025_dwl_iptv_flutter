@@ -163,20 +163,18 @@ class _CategoryRow extends StatelessWidget {
                 // marge via le padding du ListView ; `Clip.none` évite que le
                 // ListView rogne le contour aux bords de la rangée.
                 final vSlack = PlatformTv.isTv ? 48.0 : 20.0;
-                // §carouselRewindTouch — Au doigt, aucun focus n'est émis :
-                // c'est le DÉBUT d'un défilement horizontal qui signale la
-                // rangée active, et fait rembobiner la précédente. Même règle,
-                // même état (`_lastRow`) que la navigation à la télécommande.
-                return NotificationListener<ScrollStartNotification>(
-                  onNotification: (n) {
-                    final ctx = n.context;
-                    if (ctx != null) {
-                      final sc = Scrollable.maybeOf(ctx);
-                      if (sc != null) DpadRowAnchor.noteTouchScroll(sc);
-                    }
-                    return false; // on observe, on ne consomme pas
-                  },
-                  child: DpadRegion(
+                // §carouselRewindTouch — RETIRÉ le 2026-08-29 (régression
+                // critique, cf. §pageViewRewind). `Scrollable.maybeOf(n.context)`
+                // ne rendait PAS le carrousel émetteur mais un scrollable
+                // ancêtre — dont la `PageView` des onglets, qui est elle aussi
+                // horizontale. Elle devenait la « rangée active », et le
+                // rembobinage la ramenait à sa page 0 : l'accueil sautait sur
+                // « Séries » en boucle et devenait inutilisable.
+                //
+                // Le rembobinage reste actif au D-pad (§carouselScrollDir), où
+                // il est correct. Ne PAS remettre de déclencheur tactile sans
+                // vérifier que le scrollable transmis est bien le carrousel.
+                return DpadRegion(
                   // §carouselScrollDir — Entrée par la GAUCHE, décision
                   // INVERSÉE par rapport à §dpadNav.
                   //
@@ -238,7 +236,6 @@ class _CategoryRow extends StatelessWidget {
                       },
                     ),
                   ),
-                ),
                 );
               },
             ),
