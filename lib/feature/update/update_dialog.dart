@@ -1,8 +1,11 @@
 import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:aetherStream/core/themes/colors.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../widgets/matrix_rain.dart';
+import 'version_diff_line.dart';
 import '../../data/services/update_service.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
@@ -109,25 +112,54 @@ class _UpdateDialogState extends State<UpdateDialog> {
     return '[${'█' * filled}${'▒' * (length - filled)}] ${(progress * 100).toStringAsFixed(1)}%';
   }
 
+  /// §updateBanner — Ouvre la page GitHub de la release.
+  ///
+  /// ⚠️ Repli sur la liste des releases quand `html_url` manque (release
+  /// éditée à la main, ou champ absent du JSON) : mieux vaut la bonne page à
+  /// un clic près qu'un bouton mort.
+  Future<void> _openRelease() async {
+    final url = widget.info.htmlUrl ??
+        'https://github.com/JuMANocta/2025_dwl_iptv_flutter/releases';
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('⚠️ §updateBanner — ouverture de la release impossible : $e');
+    }
+  }
+
+  /// Bouton « terminal » discret, pour les actions secondaires.
+  Widget _terminalLinkButton({
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.sourceCodePro(
+          color: _kTermGreen,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final sizeStr = widget.info.sizeBytes != null
         ? '${(widget.info.sizeBytes! / 1024 / 1024).toStringAsFixed(1)} MB'
         : null;
 
-    // Changelog formaté en lignes terminal
-    final changelogLines = widget.info.body
-        ?.trim()
-        .split('\n')
-        .where((l) => l.trim().isNotEmpty)
-        .map((l) => '  ${l.trim()}')
-        .join('\n');
-
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(20),
       child: Container(
-        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.black.withAlpha((255 * 0.93).round()),
           border: Border.all(color: _kTermGreen.withAlpha(60)),
@@ -136,7 +168,26 @@ class _UpdateDialogState extends State<UpdateDialog> {
             BoxShadow(color: _kTermGreen.withAlpha(25), blurRadius: 12, spreadRadius: 2),
           ],
         ),
-        child: Column(
+        // §updateBanner — La pluie Matrix passe DERRIÈRE tout le bandeau, au
+        // lieu de n'exister que derrière la barre de progression (donc
+        // seulement pendant le téléchargement, donc presque jamais vue).
+        //
+        // ⚠️ `alpha: 45` : à pleine intensité elle rend le texte illisible.
+        // ⚠️ `ClipRRect` obligatoire, sinon elle déborde des coins arrondis.
+        // ⚠️ `IgnorePointer` : elle ne doit intercepter ni les taps ni le
+        // focus, sinon elle volerait la cible du D-pad sur TV.
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Stack(
+            children: [
+              const Positioned.fill(
+                child: IgnorePointer(
+                  child: RepaintBoundary(child: MatrixRain(alpha: 45)),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -164,12 +215,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     ),
                     const SizedBox(height: 6),
 
-                    // Versions
-                    Text(
-                      '> REMOTE : ${widget.info.tagName}\n'
-                      '> RELEASE: ${widget.info.releaseName}',
-                      style: GoogleFonts.sourceCodePro(
-                        color: const Color(0xFFADFF2F), fontSize: 12),
+                    // §updateBanner — Versions confrontées, la nouvelle se
+                    // « décode » et la partie qui CHANGE est mise en évidence.
+                    // Avant : « > REMOTE : v1.15.9 » seul, sans jamais dire de
+                    // quelle version on part.
+                    VersionDiffLine(
+                      localVersion: widget.info.localVersion,
+                      remoteVersion: widget.info.tagName,
                     ),
 
                     if (sizeStr != null) ...[
@@ -181,21 +233,21 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       ),
                     ],
 
-                    // Changelog
-                    if (changelogLines != null && changelogLines.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        '> CHANGELOG:',
-                        style: GoogleFonts.sourceCodePro(
-                          color: _kTermGreen, fontSize: 12,
-                          fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        changelogLines,
-                        style: GoogleFonts.sourceCodePro(
-                          color: const Color(0xFF33FF33), fontSize: 11),
-                      ),
-                    ],
+                    // §updateBanner — Le changelog GitHub était dumpé en
+                    // Markdown BRUT dans un scroll de 260 px : illisible, et
+                    // impraticable à la télécommande. On renvoie vers la
+                    // source, qui le rend correctement.
+                    const SizedBox(height: 8),
+                    Text(
+                      '> DIFF    : voir la release sur GitHub',
+                      style: GoogleFonts.sourceCodePro(
+                          color: const Color(0xFF00AA00), fontSize: 11),
+                    ),
+                    const SizedBox(height: 4),
+                    _terminalLinkButton(
+                      label: '[ VIEW CHANGELOG ]',
+                      onPressed: _openRelease,
+                    ),
 
                     const SizedBox(height: 10),
 
@@ -207,11 +259,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
                           color: const Color(0xFFADFF2F), fontSize: 12),
                       ),
                       const SizedBox(height: 4),
-                      // Pluie Matrix pendant le téléchargement
                       SizedBox(
                         height: 48,
                         child: Stack(children: [
-                          RepaintBoundary(child: _MiniMatrixRain()),
                           Center(
                             child: Text(
                               _asciiBar(_progress),
@@ -265,6 +315,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 if (_state != _DownloadState.downloading) ...[
                   const SizedBox(width: 8),
                   TextButton(
+                    // §updateBanner — Autofocus : le dialogue n'avait AUCUN
+                    // focus initial, donc à la télécommande il fallait
+                    // « chercher » le bouton à l'aveugle avant de pouvoir
+                    // faire quoi que ce soit.
+                    autofocus: true,
                     onPressed: _startDownload,
                     style: TextButton.styleFrom(
                       backgroundColor: _kTermGreen.withAlpha(25),
@@ -284,6 +339,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
               ],
             ),
           ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -291,77 +350,3 @@ class _UpdateDialogState extends State<UpdateDialog> {
 }
 
 enum _DownloadState { idle, downloading, error }
-
-// ─── Mini Matrix Rain (version compacte pour la barre de progression) ─────────
-
-class _MiniMatrixRain extends StatefulWidget {
-  @override
-  State<_MiniMatrixRain> createState() => _MiniMatrixRainState();
-}
-
-class _MiniMatrixRainState extends State<_MiniMatrixRain>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late List<({double x, double phase, double speed})> _drops;
-
-  @override
-  void initState() {
-    super.initState();
-    final rng = Random();
-    _drops = List.generate(10, (i) => (
-      x: i / 10 + rng.nextDouble() * 0.04,
-      phase: rng.nextDouble(),
-      speed: (rng.nextInt(3) + 1).toDouble(),
-    ));
-    _controller = AnimationController(
-      vsync: this, duration: const Duration(seconds: 3),
-    )..repeat();
-  }
-
-  @override
-  void dispose() { _controller.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (_, __) => CustomPaint(
-        painter: _MiniRainPainter(_drops, _controller.value),
-        size: Size.infinite,
-      ),
-    );
-  }
-}
-
-class _MiniRainPainter extends CustomPainter {
-  final List<({double x, double phase, double speed})> drops;
-  final double t;
-  const _MiniRainPainter(this.drops, this.t);
-
-  static const _chars = '01アイウエオABCDEF#\$%';
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (int i = 0; i < drops.length; i++) {
-      final d = drops[i];
-      final yProgress = (t * d.speed + d.phase) % 1.0;
-      final y = yProgress * size.height;
-      final charIndex = ((t * 20 + i * 3.7) * _chars.length).floor().abs() % _chars.length;
-      final tp = TextPainter(
-        text: TextSpan(
-          text: _chars[charIndex],
-          style: TextStyle(
-            color: kSuccess.withAlpha(80),
-            fontSize: 9, fontWeight: FontWeight.bold,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      );
-      tp.layout();
-      tp.paint(canvas, Offset(d.x * size.width, y));
-    }
-  }
-
-  @override
-  bool shouldRepaint(_MiniRainPainter old) => old.t != t;
-}

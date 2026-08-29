@@ -1,9 +1,7 @@
 {
     "@@locale": "fr",
-
     "downloadManagerTitle": "Gestion des Téléchargements",
     "noDownloads": "Aucun téléchargement",
-
     "downloadDialogTitle": "Démarrer le téléchargement",
     "downloadDialogFileNameLabel": "Nom du fichier",
     "downloadDialogFileSizeLabel": "Taille du fichier",
@@ -12,9 +10,7 @@
     "cancel": "Annuler",
     "download": "Télécharger",
     "denied": "Permission refusée. Le téléchargement ne peut pas commencer.",
-
-
-    "terminalTitle": "//:INTERFACE_FLUX_TELECHARGEMENT",
+    "terminalTitle": "//:FLUX_DOWNLOAD_INTERFACE",
     "terminalResumeMessage": "🔄 Reprise du téléchargement :\n🎞️ {fileName}",
     "terminalStartMessage": "ℹ️ Lancement du téléchargement :\n🎞️ {fileName}",
     "terminalFileSizeMessage": "📦 Taille du fichier : {fileSize}",
@@ -22,13 +18,12 @@
     "terminalSuccessMessage": "\n🟢 SUCCÈS : Téléchargement terminé !",
     "terminalFatalErrorMessage": "\n☣️ FATAL : Une erreur est survenue",
     "terminalSpeedMessage": "Vitesse",
+    "terminalRetryCountMessage": "Relances",
     "terminalEtaMessage": "Temps restant",
     "terminalCancelMessage": "\nℹ️ ABANDON : Téléchargement annulé par l'utilisateur",
     "terminalCloseButton": "[ FERMER ]",
     "terminalAbortingButton": "[ PAUSE... ]",
     "terminalAbortButton": "[ PAUSE ]",
-
-    "searchPageDefaultTitle": "AetherStream",
     "searchPageDownloadsTooltip": "Voir les téléchargements",
     "searchPageReloadTooltip": "Recharger la playlist",
     "searchPageAccountsTooltip": "Comptes et Paramètres",
@@ -41,26 +36,22 @@
     "searchFilterTv": "TV",
     "searchNoResults": "Aucun résultat trouvé.",
     "searchNoContent": "Aucun contenu à afficher.",
-
     "actionSheetChooseVersion": "Choisir une version pour :",
     "chipSeasons": "{count,plural, =1{1 Saison} other{{count} Saisons}}",
     "chipEpisodes": "{count,plural, =1{1 Ép.} other{{count} Ép.}}",
     "season": "Saison",
     "episode": "Épisode",
-
     "favoriteAdd": "Ajouter aux favoris",
     "favoriteRemove": "Retirer des favoris",
     "actionSheetPlay": "Lire",
     "actionSheetPlaySubtitle": "Lance la lecture (mise en cache automatique).",
     "actionSheetDownload": "Télécharger en arrière-plan",
     "actionSheetDownloadSubtitle": "Pour regarder plus tard sans connexion.",
-
     "deleteDialogTitle": "Supprimer le fichier ?",
     "deleteDialogSizeLabel": "Taille",
     "deleteDialogWarning": "Cette action est irréversible et le fichier sera définitivement effacé.",
     "deleteDialogConfirmButton": "Supprimer",
     "deleteTooltip": "Supprimer définitivement",
-
     "taskStatusDownloading": "Téléchargement en cours...",
     "taskStatusRemaining": " • {remainingSize} restant",
     "taskStatusCompleted": "Terminé • {size} • {date}",
@@ -68,20 +59,15 @@
     "taskStatusCanceled": "Annulé {progressInfo} • Appuyer pour relancer",
     "taskStatusPending": "En attente • {date}",
     "taskStatusUnknownError": "Erreur inconnue",
-
-    "playlistManagementTitle": "Téléchargement de la playlist",
-    "playlistCardTitle": "Playlist .m3u",
     "playlistCardSubtitleNone": "Aucune playlist téléchargée dans ce contexte.",
     "playlistCardSubtitleLastFile": "Dernier fichier : {path}",
     "playlistDownloadButton": "Télécharger / Mettre à jour",
     "playlistDeleteButton": "Supprimer",
     "playlistManagementTip": "Astuce : vous pouvez aussi recharger la playlist depuis la roue crantée ou via l'icône de rafraîchissement sur l'écran de recherche.",
-
     "accountsTitle": "Gestion des Comptes",
     "deleteAccountDialogTitle": "Supprimer le compte ?",
     "deleteAccountDialogContent": "Cette action est définitive.",
     "deleteAccountConfirm": "Supprimer",
-    "playlistInfoTitle": "Infos playlist",
     "playlistInfoChecking": "Vérification de la playlist...",
     "playlistInfoUnavailable": "Aucune playlist disponible ou erreur de chargement.",
     "playlistInfoTryReload": "Tenter un rechargement",
@@ -97,7 +83,6 @@
     "accountActionEdit": "Modifier",
     "accountActionDelete": "Supprimer",
     "accountsFab": "Nouveau",
-
     "editAccountTitleAdd": "Ajouter un compte",
     "editAccountTitleEdit": "Modifier le compte",
     "editAccountNameLabel": "Nom du compte (ex: Salon, Vacances...)",
@@ -116,9 +101,20 @@
     "editAccountCookiesLabel": "Cookies (optionnel)",
     "editAccountCookiesHint": "ex: PHPSESSID=xxxxxx;",
     "editAccountSaveButton": "Enregistrer",
-
     "playerGenericError": "Impossible de lire ce média.",
     "playerLoading": "Initialisation du lecteur...",
-    "playerLoadingError": "Erreur de chargement: {error}"
-
+    "playerLoadingError": "Erreur de chargement: {error}",
+    "settingsTitle": "Paramètres",
+    "aboutTitle": "À propos",
+    "backupTitle": "Sauvegarde",
+    "optimizationTitle": "Optimisation",
+    "regionFilterTitle": "Langues / régions",
+    "themeSettingsTitle": "Personnalisation",
+    "tmdbKeyTitle": "Clé API TMDB",
+    "xmltvTitle": "Guide des chaînes",
+    "webConsoleTitle": "Console web",
+    "navHome": "Accueil",
+    "navSearch": "Recherche",
+    "navDownloads": "Téléchargements",
+    "navSettings": "Paramètres"
 }

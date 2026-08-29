@@ -9,6 +9,7 @@ import 'package:aetherStream/widgets/memory_stats_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import '../../l10n/app_localizations.dart';
 
 /// §perfSettings — Page « Optimisation » (Fire Stick / terminaux faibles).
 ///
@@ -81,7 +82,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Optimisation'),
+        title: Text(AppLocalizations.of(context)!.optimizationTitle),
         elevation: 0,
         scrolledUnderElevation: 0,
         actions: [

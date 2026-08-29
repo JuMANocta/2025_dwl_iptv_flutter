@@ -3,12 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
-import 'package:aetherStream/data/models/m3u_entry.dart';
+import 'package:aetherStream/data/models/parsed_playlist.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/services/expiration_alert_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/data/services/playlist_reload_service.dart';
 import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
@@ -46,10 +47,148 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
   String? _priorityAccountId;
   bool _priorityChanged = false;
 
+  /// §reloadAll — Empêche un second lot pendant qu'un premier tourne.
+  bool _reloadingAll = false;
+
+  /// Progression du lot, lue par la boîte de dialogue.
+  ///
+  /// ⚠️ Un `ValueNotifier` plutôt qu'un `setState` de la page : le lot dure
+  /// plusieurs minutes et la page entière contient quatre grosses cartes avec
+  /// leurs `FutureBuilder`. Reconstruire tout ça à chaque étape serait du
+  /// gaspillage pur — seule la ligne de progression change.
+  final ValueNotifier<String> _reloadProgress = ValueNotifier('');
+
+  @override
+  void dispose() {
+    _reloadProgress.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
     _accountsFuture = _loadAccounts();
+  }
+
+
+  /// §reloadAll — Recharge TOUTES les listes, séquentiellement.
+  Future<void> _reloadAll(List<StreamAccount> accounts) async {
+    if (_reloadingAll) return;
+
+    // ── UNE seule confirmation, en tête ──────────────────────────────────
+    // ⚠️ La confirmation par carte se déclenche quand la playlist a moins de
+    // 24 h. Appliquée en boucle, elle poserait la question quatre fois. On
+    // demande une fois, en NOMMANT les listes récentes — c'est la seule
+    // information qui pourrait faire changer d'avis.
+    final recent = <String>[];
+    for (final a in accounts) {
+      final age = await PlaylistReloadService.cacheAge(a.id);
+      if (age != null && age.inHours < 24) recent.add(a.label);
+    }
+    if (!mounted) return;
+
+    final ok = await showAppDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tout recharger ?'),
+        content: Text(
+          recent.isEmpty
+              ? 'Les ${accounts.length} listes vont être retéléchargées depuis '
+                  'leurs serveurs. Cela peut prendre plusieurs minutes.'
+              : 'Les ${accounts.length} listes vont être retéléchargées depuis '
+                  'leurs serveurs.\n\nDéjà à jour (moins de 24 h) : '
+                  '${recent.join(', ')}.\n\nCela peut prendre plusieurs '
+                  'minutes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Tout recharger',
+                style:
+                    TextStyle(color: kWarning, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _reloadingAll = true);
+    final messenger = ScaffoldMessenger.of(context);
+    _reloadProgress.value = 'Préparation…';
+
+    // Boîte de progression : le geste dure plusieurs minutes, un spinner muet
+    // laisserait croire à un blocage.
+    unawaited(showAppDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false, // on ne quitte pas un lot en cours par mégarde
+        child: AlertDialog(
+          title: const Text('Rechargement en cours'),
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: ValueListenableBuilder<String>(
+                  valueListenable: _reloadProgress,
+                  builder: (_, v, __) => Text(v),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ));
+
+    final succeeded = <String>[];
+    final failed = <String, String>{};
+
+    // ⚠️ SÉQUENTIEL, jamais en parallèle : chaque catalogue est parsé EN RAM.
+    // Quatre listes de 80 000 entrées décodées en même temps mettraient une
+    // Fire Stick à genoux — c'est d'ailleurs la raison d'être
+    // d'`unloadIdleSecondaries`.
+    for (var i = 0; i < accounts.length; i++) {
+      final a = accounts[i];
+      _reloadProgress.value = 'Liste ${i + 1}/${accounts.length} — ${a.label}';
+      try {
+        await PlaylistReloadService.reloadAccount(
+          a,
+          isPriority: a.id == _priorityAccountId,
+        );
+        succeeded.add(a.label);
+      } catch (e) {
+        // ⚠️ Un échec n'arrête PAS le lot : une liste injoignable ne doit pas
+        // empêcher de rafraîchir les autres — c'est exactement le problème
+        // qu'on cherche à supprimer.
+        failed[a.label] = e.toString();
+        debugPrint('❌ §reloadAll — « ${a.label} » : $e');
+      }
+    }
+
+    final result = ReloadBatchResult(succeeded: succeeded, failed: failed);
+    debugPrint('🔄 §reloadAll — ${result.summary}');
+
+    if (!mounted) return;
+    Navigator.of(context).pop(); // ferme la boîte de progression
+    setState(() {
+      _reloadingAll = false;
+      _accountsFuture = _loadAccounts();
+    });
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(result.summary),
+        duration: Duration(seconds: result.allOk ? 3 : 6),
+      ));
   }
 
   Future<List<StreamAccount>> _loadAccounts() async {
@@ -340,6 +479,29 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
           title: Text(l10n.accountsTitle),
           elevation: 0,
           scrolledUnderElevation: 0,
+          // §reloadAll — Action de PAGE, pas de carte. Avec quatre comptes, le
+          // rechargement un par un demandait quatre descentes, quatre
+          // confirmations et quatre attentes ; sur TV, chaque aller-retour au
+          // D-pad le doublait. L'AppBar était libre, et le FAB déjà pris par
+          // « Ajouter ».
+          actions: [
+            FutureBuilder<List<StreamAccount>>(
+              future: _accountsFuture,
+              builder: (ctx, snap) {
+                final accounts = snap.data;
+                if (accounts == null || accounts.length < 2) {
+                  // Un seul compte : le bouton de sa carte suffit, une action
+                  // de page ferait doublon.
+                  return const SizedBox.shrink();
+                }
+                return IconButton(
+                  tooltip: 'Tout recharger',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _reloadingAll ? null : () => _reloadAll(accounts),
+                );
+              },
+            ),
+          ],
         ),
         floatingActionButton: FutureBuilder<List<StreamAccount>>(
           future: _accountsFuture,
@@ -431,13 +593,28 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
     // §16 — Bandeau renommé "COMPTE PRINCIPAL" (au lieu d'"ACTIF") + ligne
     // "X comptes secondaires chargés" pour clarifier que tous les comptes
     // cohabitent en mémoire, pas juste le principal.
-    return ValueListenableBuilder<Map<String, AccountLoadState>>(
-      valueListenable: ParsedPlaylistService.loadStates,
-      builder: (context, states, _) {
+    // §bannerCount — On écoute AUSSI `version` : le décompte ci-dessous lit la
+    // mémoire réelle, qui change sans que `loadStates` bouge (déchargement,
+    // rechargement depuis le disque).
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        ParsedPlaylistService.loadStates,
+        ParsedPlaylistService.version,
+      ]),
+      builder: (context, _) {
+        final states = ParsedPlaylistService.loadStates.value;
+        // ⚠️ **Le décompte ne peut PAS venir de `loadStates`** : quand un
+        // compte est déchargé, `setLoadState(notLoaded)` **supprime la clé**
+        // de la map. Un secondaire déchargé disparaissait donc du décompte, et
+        // le bandeau annonçait « 1/3 chargés » alors que rien n'avait échoué.
+        //
+        // `entriesCountOf` lit `_memory` directement — et, contrairement à
+        // `getAccount()`, ne touche PAS `_lastAccess` : consulter le bandeau ne
+        // doit pas repousser le déchargement (§secondaryCounts).
         final loadedOthers = accounts
             .where((a) =>
                 a.id != active.id &&
-                states[a.id] == AccountLoadState.loaded)
+                ParsedPlaylistService.entriesCountOf(a.id) > 0)
             .length;
         final inProgressOthers = accounts
             .where((a) =>
@@ -446,8 +623,10 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                     states[a.id] == AccountLoadState.parsing))
             .length;
         return Container(
-          margin: const EdgeInsets.fromLTRB(4, 0, 4, 14),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          margin: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+          // §bannerSlim — Bandeau resserré : il occupait trois lignes de texte
+          // et 20 px de marge intérieure pour une information de contexte.
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
             color: cs.surfaceContainerHighest,
@@ -475,7 +654,7 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                     Text(
                       'COMPTE PRINCIPAL',
                       style: TextStyle(
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 1.2,
                         color: cs.onSurfaceVariant.withAlpha(180),
@@ -492,27 +671,42 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                         color: cs.onSurface,
                       ),
                     ),
-                    if (accounts.length > 1) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _secondaryStatusLabel(loadedOthers, inProgressOthers,
-                            accounts.length - 1),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: cs.onSurfaceVariant.withAlpha(200),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
+              // §bannerSlim — Le statut des secondaires passe À DROITE, sur la
+              // même ligne que le décompte : le bandeau tenait sur trois lignes
+              // pour dire deux choses.
               if (accounts.length > 1)
-                Text(
-                  '${accounts.length} comptes',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onSurfaceVariant,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${accounts.length} listes',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    Text(
+                      // §bannerCount — Le décompte porte sur TOUTES les listes,
+                      // pas seulement les secondaires.
+                      //
+                      // ⚠️ Il affichait « 2/2 » juste sous « 3 listes » : deux
+                      // dénominateurs différents à deux lignes d'écart, ça se
+                      // lit comme une contradiction. Le principal est chargé
+                      // par construction (on est dessus), donc l'inclure ne
+                      // fausse rien et rend les deux lignes cohérentes.
+                      _secondaryStatusLabel(loadedOthers + 1, inProgressOthers,
+                          accounts.length),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: cs.onSurfaceVariant.withAlpha(190),
+                      ),
+                    ),
+                  ],
                 ),
             ],
           ),
@@ -521,12 +715,15 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
     );
   }
 
+  /// §bannerSlim — Libellé court : il vit désormais à droite du bandeau, sur
+  /// une largeur contrainte. « comptes secondaires chargés » était trop long et
+  /// forçait le retour à la ligne, ce qui épaississait le bandeau.
+  ///
+  /// [loaded] et [total] portent sur TOUTES les listes (§bannerCount).
   String _secondaryStatusLabel(int loaded, int inProgress, int total) {
     if (total == 0) return '';
-    if (inProgress > 0) {
-      return '✦ $loaded/$total comptes secondaires chargés · $inProgress en cours…';
-    }
-    return '✓ $loaded/$total comptes secondaires chargés';
+    if (inProgress > 0) return '$loaded/$total · $inProgress en cours…';
+    return '✓ $loaded/$total chargées';
   }
 }
 
@@ -598,24 +795,12 @@ class _AccountCardState extends State<_AccountCard> {
     setState(() => _reloading = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await PlaylistService.deleteForAccountId(widget.account.id);
-      String? newPath;
-      if (widget.isPriority) {
-        // Compte principal → downloadCurrentM3U (messages d'erreur précis).
-        newPath = await PlaylistService.downloadCurrentM3U();
-      } else {
-        newPath = (await PlaylistService
-                .ensureDownloadedForAccount(widget.account))
-            .path;
-      }
-      if (newPath == null) {
-        throw const HttpException(
-            'Téléchargement impossible (vérifie l\'URL ou la connexion).');
-      }
-      await ParsedPlaylistService.reloadFromDisk(
-        widget.account.id,
-        widget.account.label,
-        newPath,
+      // §reloadAll — Logique extraite dans `PlaylistReloadService` : le
+      // rechargement en LOT s'en sert aussi, et dupliquer aurait garanti la
+      // divergence des deux chemins.
+      await PlaylistReloadService.reloadAccount(
+        widget.account,
+        isPriority: widget.isPriority,
       );
       if (!mounted) return;
       messenger..hideCurrentSnackBar()..showSnackBar(
@@ -777,35 +962,44 @@ class _AccountCardState extends State<_AccountCard> {
                       ),
                       const SizedBox(height: 14),
                       // ── Stats playlist (live via ParsedPlaylistService) ─────
+                      // §secondaryCounts — Les compteurs ne dépendent plus de la
+                      // présence du compte EN MÉMOIRE.
+                      //
+                      // ⚠️ Deux défauts corrigés d'un coup :
+                      //   1. `getAccount()` **touche `_lastAccess`** — consulter
+                      //      les stats repoussait le déchargement du compte,
+                      //      alors que la page n'est pas un usage de la liste.
+                      //   2. On parcourait jusqu'à 153 000 entrées à CHAQUE
+                      //      reconstruction, juste pour compter — et le résultat
+                      //      tombait à **zéro** dès que le compte était déchargé,
+                      //      donnant l'impression d'une liste vide.
+                      //
+                      // `countsOf` lit les listes pré-splittées si le compte est
+                      // en mémoire, sinon l'EN-TÊTE du cache disque (une seule
+                      // ligne décompressée, mémoïsée).
                       ListenableBuilder(
                         listenable: ParsedPlaylistService.version,
                         builder: (context, _) {
-                          final parsed = ParsedPlaylistService.getAccount(
-                              widget.account.id);
-                          final entries = parsed?.entries ?? const <M3uEntry>[];
-                          int films = 0, series = 0, tv = 0;
-                          for (final e in entries) {
-                            switch (e.type) {
-                              case M3uContentType.movie:
-                                films++;
-                                break;
-                              case M3uContentType.series:
-                                series++;
-                                break;
-                              case M3uContentType.tv:
-                                tv++;
-                                break;
-                            }
-                          }
-                          return Column(
-                            children: [
-                              _CountsRow(films: films, series: series, tv: tv),
-                              const SizedBox(height: 12),
-                              _FileStatsBlock(
-                                accountId: widget.account.id,
-                                hasParsed: parsed != null,
-                              ),
-                            ],
+                          return FutureBuilder<PlaylistCounts?>(
+                            future:
+                                ParsedPlaylistService.countsOf(widget.account.id),
+                            builder: (context, snap) {
+                              final c = snap.data;
+                              return Column(
+                                children: [
+                                  _CountsRow(
+                                    films: c?.films,
+                                    series: c?.series,
+                                    tv: c?.tv,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _FileStatsBlock(
+                                    accountId: widget.account.id,
+                                    hasParsed: c != null,
+                                  ),
+                                ],
+                              );
+                            },
                           );
                         },
                       ),
@@ -1031,9 +1225,12 @@ class _Chip extends StatelessWidget {
 // PlaylistManagementPage) ────────────────────────────────────────────────────
 
 class _CountsRow extends StatelessWidget {
-  final int films;
-  final int series;
-  final int tv;
+  /// §secondaryCounts — `null` = total INCONNU (cache d'avant §secondaryCounts,
+  /// ou aucun cache). On affiche « — » : un faux « 0 » se lit comme une liste
+  /// vide, ce qui était précisément le bug.
+  final int? films;
+  final int? series;
+  final int? tv;
   const _CountsRow({required this.films, required this.series, required this.tv});
 
   @override
@@ -1052,7 +1249,7 @@ class _CountsRow extends StatelessWidget {
 
 class _CountTile extends StatelessWidget {
   final IconData icon;
-  final int value;
+  final int? value;
   final String label;
   final Color color;
   const _CountTile({
@@ -1077,7 +1274,7 @@ class _CountTile extends StatelessWidget {
           Icon(icon, color: color, size: 18),
           const SizedBox(height: 4),
           Text(
-            _formatCount(value),
+            value == null ? '—' : _formatCount(value!),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,

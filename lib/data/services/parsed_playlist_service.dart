@@ -299,6 +299,70 @@ class ParsedPlaylistService {
     }
   }
 
+  /// §secondaryCounts — Totaux par type d'un compte, s'il est EN MÉMOIRE.
+  static PlaylistCounts? countsInMemory(String accountId) {
+    // ⚠️ Lecture directe de `_memory`, PAS `getAccount()` : celui-ci **touche
+    // `_lastAccess`**, donc consulter un compteur repousserait le déchargement
+    // du compte — l'inverse de ce qu'on veut.
+    final p = _memory[accountId];
+    if (p == null) return null;
+    // Listes pré-splittées (`late final`) : aucun parcours des entrées.
+    return PlaylistCounts(
+      films: p.films.length,
+      series: p.series.length,
+      tv: p.tv.length,
+    );
+  }
+
+  /// Mémo des en-têtes lus sur disque, par compte.
+  ///
+  /// ⚠️ Indispensable : la carte se reconstruit à chaque notification, et
+  /// décompresser un en-tête à chaque rebuild annulerait tout le bénéfice.
+  /// Invalidé par [invalidateCountsCache] quand le cache disque est réécrit.
+  static final Map<String, PlaylistCounts> _diskCounts = {};
+
+  static void invalidateCountsCache(String accountId) =>
+      _diskCounts.remove(accountId);
+
+  /// §secondaryCounts — Totaux d'un compte, mémoire d'abord, sinon **en-tête du
+  /// cache disque**.
+  ///
+  /// Ne décompresse que la **première ligne** du NDJSON gzippé : on s'arrête
+  /// dès qu'elle est lue, sans jamais matérialiser les 153 000 entrées.
+  static Future<PlaylistCounts?> countsOf(String accountId) async {
+    final mem = countsInMemory(accountId);
+    if (mem != null) return mem;
+
+    final cached = _diskCounts[accountId];
+    if (cached != null) return cached;
+
+    try {
+      final path = await _diskCachePath(accountId);
+      final file = File(path);
+      if (!await file.exists()) return null;
+      final line = await file
+          .openRead()
+          .transform(gzip.decoder)
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .first; // ⚠️ `.first` ferme le flux : rien d'autre n'est décompressé.
+      final header = jsonDecode(line) as Map<String, dynamic>;
+      final films = header['nFilms'] as int?;
+      final series = header['nSeries'] as int?;
+      final tv = header['nTv'] as int?;
+      // Cache écrit AVANT §secondaryCounts : l'en-tête n'a pas les totaux. On
+      // ne renvoie rien plutôt que des zéros — un « — » se lit mieux qu'un
+      // faux « 0 », et le prochain rechargement les écrira.
+      if (films == null || series == null || tv == null) return null;
+      final counts = PlaylistCounts(films: films, series: series, tv: tv);
+      _diskCounts[accountId] = counts;
+      return counts;
+    } catch (e) {
+      debugPrint('⚠️ §secondaryCounts — en-tête illisible pour $accountId : $e');
+      return null;
+    }
+  }
+
   // ── Accesseurs synchrones ─────────────────────────────────────────────────
 
   /// Toutes les entrées de tous les comptes actuellement chargés en mémoire.
@@ -647,6 +711,16 @@ class ParsedPlaylistService {
         'accountId': playlist.accountId,
         'm3uModAt':  playlist.m3uModifiedAt.toIso8601String(),
         'count':     playlist.entries.length,
+        // §secondaryCounts — Totaux par type, écrits dans l'EN-TÊTE.
+        //
+        // Ils étaient recomptés en RAM à chaque affichage, en parcourant
+        // jusqu'à 153 000 entrées — et surtout, ils tombaient à **zéro** dès
+        // qu'un compte secondaire était déchargé, laissant croire à une liste
+        // vide. Dans l'en-tête, ils sont **exacts et instantanés**, y compris
+        // compte déchargé, et se lisent sans décompresser tout le fichier.
+        'nFilms':    playlist.films.length,
+        'nSeries':   playlist.series.length,
+        'nTv':       playlist.tv.length,
         // §langFilter — signature du filtre de régions au moment du parse.
         'filterSig': HiddenRegionsService.signature,
       });
@@ -656,6 +730,8 @@ class ParsedPlaylistService {
       }
       gzipSink.close(); // flush du trailer gzip dans l'IOSink
       await raw.flush();
+      // §secondaryCounts — L'en-tête vient de changer : le mémo est périmé.
+      _diskCounts.remove(playlist.accountId);
       debugPrint('💾 ParsedPlaylist: sauvegardé (streamé) — ${playlist.entries.length} entrées');
     } catch (e) {
       debugPrint('❌ ParsedPlaylist: erreur sauvegarde disque — $e');

@@ -14,6 +14,8 @@ import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/core/navigation/focus_route_memory.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/main.dart' show checkForUpdate;
+import '../../l10n/app_localizations.dart';
+import '../themes/colors.dart';
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
 ///
@@ -202,9 +204,10 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final isTv = PlatformTv.isTv;
     final bool isWide = MediaQuery.of(context).size.width > 700;
-    final bool useRail = PlatformTv.isTv || isWide;
-
+    final bool useRail = isTv || isWide;
     final stack = IndexedStack(
       index: _stackIndex,
       children: [
@@ -247,7 +250,27 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
     // Mobile : NavigationBar bottom classique (comportement historique).
     return _wrapBack(Scaffold(
       body: stack,
-      bottomNavigationBar: NavigationBar(
+      // §navBarSeparate — Un filet en dégradé et une ombre TRÈS diffuse
+      // détachent la barre du fond.
+      //
+      // Sur un fond quasi noir, une barre de la même famille de gris se lit
+      // comme un prolongement de la page : on ne voyait plus qu'elle formait un
+      // bloc à part. Les trois effets (fond d'un cran plus clair via le thème,
+      // filet, ombre) sont volontairement faibles — pris ensemble ils suffisent,
+      // et aucun ne transforme un repère discret en bandeau.
+      bottomNavigationBar: DecoratedBox(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(90),
+              blurRadius: 12,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            NavigationBar(
         selectedIndex: _navIndex,
         onDestinationSelected: _onTap,
         // §navBarSlim — La barre Material 3 fait 80 px de haut par défaut, ce
@@ -258,27 +281,52 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
         // mais trois icônes seules (maison / loupe / flèche) se devinent moins
         // bien qu'on ne le croit, et c'est un repère permanent de l'app.
         height: 68,
-        destinations: const [
+        // §frOnly — Les libellés nomment des PAGES : ils passent par l10n
+        // comme les titres d'AppBar, pour n'avoir qu'une source de vérité.
+        // ⚠️ `const` retiré : la liste dépend maintenant du contexte.
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Accueil',
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(Icons.home),
+            label: l10n.navHome,
           ),
           NavigationDestination(
-            icon: Icon(Icons.search),
-            label: 'Recherche',
+            icon: const Icon(Icons.search),
+            label: l10n.navSearch,
           ),
           NavigationDestination(
-            icon: Icon(Icons.download_outlined),
-            selectedIcon: Icon(Icons.download),
-            label: 'Téléchargements',
+            icon: const Icon(Icons.download_outlined),
+            selectedIcon: const Icon(Icons.download),
+            label: l10n.navDownloads,
           ),
           NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Paramètres',
+            icon: const Icon(Icons.settings_outlined),
+            selectedIcon: const Icon(Icons.settings),
+            label: l10n.navSettings,
           ),
         ],
+      ),
+      // Le filet reprend `kAetherGradient` : la séparation porte
+      // l'identité de l'app au lieu d'ajouter une couleur de plus.
+      Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        child: IgnorePointer(
+          child: Container(
+            height: 1,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: kAetherGradient.colors
+                    .map((c) => c.withAlpha(70))
+                    .toList(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ],
+  ),
       ),
     ));
   }
@@ -337,6 +385,7 @@ class _AppNavigationRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
     final isTv = PlatformTv.isTv;
     // §dpadNav — Le franchissement vers le contenu (→) est géré par la
@@ -351,12 +400,22 @@ class _AppNavigationRail extends StatelessWidget {
       data: Theme.of(context).copyWith(
         focusColor: cs.primary.withAlpha(90),
       ),
-      child: NavigationRail(
+      // §navBarSeparate — Même traitement que la barre du bas, sur le bord
+      // DROIT. Le rail se fondait dans le fond pour la même raison
+      // (`cs.surface` = `scaffoldBackgroundColor`).
+      //
+      // ⚠️ Le fond est lu depuis `navigationBarTheme` plutôt que recopié : les
+      // deux barres nomment les mêmes pages, les laisser diverger en couleur
+      // était le vrai risque.
+      child: Stack(
+        children: [
+          NavigationRail(
         selectedIndex: selectedIndex,
         minWidth: 64,
         groupAlignment: isTv ? 0.0 : -1.0,
         labelType: NavigationRailLabelType.all,
-        backgroundColor: cs.surface,
+        backgroundColor:
+            Theme.of(context).navigationBarTheme.backgroundColor ?? cs.surface,
         indicatorColor: cs.primary.withAlpha(40),
         selectedIconTheme: IconThemeData(color: cs.primary),
         selectedLabelTextStyle:
@@ -382,25 +441,48 @@ class _AppNavigationRail extends StatelessWidget {
             ),
           ),
         ) : null,
-        destinations: const [
+        // §frOnly — Mêmes clés que la barre du bas : les deux nomment les
+        // mêmes pages, les laisser diverger était le vrai risque.
+        destinations: [
           NavigationRailDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: Text('Accueil'),
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(Icons.home),
+            label: Text(l10n.navHome),
           ),
           NavigationRailDestination(
-            icon: Icon(Icons.search),
-            label: Text('Recherche'),
+            icon: const Icon(Icons.search),
+            label: Text(l10n.navSearch),
           ),
           NavigationRailDestination(
-            icon: Icon(Icons.download_outlined),
-            selectedIcon: Icon(Icons.download),
-            label: Text('Téléchargements'),
+            icon: const Icon(Icons.download_outlined),
+            selectedIcon: const Icon(Icons.download),
+            label: Text(l10n.navDownloads),
           ),
           NavigationRailDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: Text('Paramètres'),
+            icon: const Icon(Icons.settings_outlined),
+            selectedIcon: const Icon(Icons.settings),
+            label: Text(l10n.navSettings),
+          ),
+        ],
+          ),
+          Positioned(
+            top: 0,
+            bottom: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Container(
+                width: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: kAetherGradient.colors
+                        .map((c) => c.withAlpha(70))
+                        .toList(),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),

@@ -38,6 +38,7 @@ import 'data/services/update_service.dart';
 import 'data/services/xmltv_service.dart';
 import 'data/services/measured_quality_service.dart';
 import 'data/services/inferred_category_service.dart';
+import 'data/services/tmdb_poster_cache.dart';
 import 'feature/update/update_dialog.dart';
 import 'feature/player/video_fit.dart';
 import 'feature/player/video_stats.dart';
@@ -154,6 +155,7 @@ Future<void> _initServices() async {
     VideoStatsPreference.load(), // §videoStats
     MeasuredQualityService.init(), // §qualityTruth
     InferredCategoryService.init(), // §inferredCat
+    TmdbPosterCache.init(), // §tmdbUrlPersist
   ]);
 }
 
@@ -212,9 +214,22 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      // §frOnly — La langue est IMPOSÉE, elle ne suit pas l'appareil.
+      //
+      // ⚠️ Ne pas « nettoyer » cette ligne. Sans elle, l'app suivait la langue
+      // du téléphone : sur un appareil en anglais, les rares écrans câblés sur
+      // l10n (Téléchargements, Comptes) passaient en anglais pendant que tout
+      // le reste de l'interface — écrit en français directement dans le code —
+      // restait en français. Résultat : une app à moitié traduite, jamais une
+      // app anglaise.
+      //
+      // La base bilingue est conservée telle quelle (`app_en.arb` reste le
+      // template et reste complet) : le jour où l'interface entière passera par
+      // l10n, il suffira de retirer cette ligne.
+      locale: const Locale('fr'),
       supportedLocales: const [
+        Locale('fr'), // Français — en PREMIER : c'est aussi le repli
         Locale('en'), // Anglais
-        Locale('fr'), // Français
       ],
 
       // Le `builder` est utilisé ici pour superposer un bandeau "BETA"

@@ -15,12 +15,25 @@ class UpdateInfo {
   final String downloadUrl; // URL directe de l'APK
   final int? sizeBytes;
 
+  /// §updateBanner — Version INSTALLÉE, pour la confronter à [tagName].
+  ///
+  /// Elle était déjà lue (`PackageInfo`) pour décider s'il faut proposer la
+  /// mise à jour, mais **jamais renvoyée** : le bandeau annonçait donc une
+  /// version cible sans dire de quoi on part.
+  final String localVersion;
+
+  /// §updateBanner — Page GitHub de la release (`html_url` du JSON), pour
+  /// remplacer le changelog dumpé en texte brut par un lien vers la source.
+  final String? htmlUrl;
+
   const UpdateInfo({
     required this.tagName,
     required this.releaseName,
     this.body,
     required this.downloadUrl,
     this.sizeBytes,
+    required this.localVersion,
+    this.htmlUrl,
   });
 }
 
@@ -90,6 +103,10 @@ class UpdateService {
         body: body,
         downloadUrl: downloadUrl,
         sizeBytes: sizeBytes,
+        // §updateBanner — On renvoie le build complet (`1.2.0+45`) : c'est ce
+        // qui distingue deux versions au même numéro public.
+        localVersion: '${info.version}+${info.buildNumber}',
+        htmlUrl: data['html_url'] as String?,
       );
     } catch (e) {
       debugPrint('⚠️ UpdateService: vérification échouée → $e');

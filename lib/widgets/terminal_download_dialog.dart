@@ -1,17 +1,12 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/widgets/matrix_rain.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../data/models/download_task.dart';
 import '../data/services/download_manager_service.dart';
 import '../core/utils/formatters.dart';
 import '../l10n/app_localizations.dart';
-
-const String _kMatrixChars =
-    '01234567890'
-    'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン'
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    '#\$%&?<>!@=+*:-|';
 
 // Pool de messages de boot Matrix (1 tiré au sort)
 const List<String> _kBootPool = [
@@ -139,8 +134,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
     if (task.status == DownloadStatus.downloading) {
       // Reprise après une erreur : replier les erreurs passées dans un accordéon
       if (_hasFatalError) {
-        _collapseRecentErrors();
-        _logs.add({'message': '> RETRY #$_retryCount — RECONNECTING...', 'type': 'retry'});
+        _collapseRecentErrors(task);
       }
       // §dlRestartFix — `_isDownloadComplete` était un drapeau qui ne se
       // RÉARMAIT JAMAIS : après un téléchargement terminé, le moniteur restait
@@ -150,10 +144,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       if (_isDownloadComplete) {
         _isDownloadComplete = false;
         _stopwatch = null; // vitesse/ETA recalculés pour la nouvelle session
-        _logs.add({
-          'message': '> RESTART — NEW TRANSFER INITIATED...',
-          'type': 'retry',
-        });
+        _pushRetryLine('> RESTART — NEW TRANSFER INITIATED...');
       }
       _stopwatch ??= Stopwatch()..start();
       const barLength = 20;
@@ -175,13 +166,14 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
 
       final speedInfo = _speed > 0 ? '\n🚀 ${l10n.terminalSpeedMessage} : ${formatFileSize(_speed.toInt())}/s' : '';
       final etaInfo = _eta > 0 ? '\n⏳ ${l10n.terminalEtaMessage} : ${formatDuration(_eta)}' : '';
-      final formatted = '\n[$bar] ${(task.progress * 100).toStringAsFixed(1)}%$speedInfo$etaInfo';
+      // §dlWatchdog — Le nombre de relances s'affiche DANS le bloc stats,
+      // qui est remplacé à chaque rafraîchissement : il ne s'empile jamais.
+      final retryInfo = _retryCount > 0
+          ? '\n🔁 ${l10n.terminalRetryCountMessage} : $_retryCount'
+          : '';
+      final formatted = '\n[$bar] ${(task.progress * 100).toStringAsFixed(1)}%$speedInfo$etaInfo$retryInfo';
 
-      if (_logs.isNotEmpty && _logs.last['type'] == 'stats') {
-        _logs[_logs.length - 1] = {'message': formatted, 'type': 'stats'};
-      } else {
-        _logs.add({'message': formatted, 'type': 'stats'});
-      }
+      _writeStats(formatted);
     } else if (task.status == DownloadStatus.finalizing &&
         _lastTaskState?.status != DownloadStatus.finalizing) {
       // Forcer la barre à 100% avant le message de finalisation
@@ -204,6 +196,21 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       _hasFatalError = true;
     } else if (task.status == DownloadStatus.canceled &&
         _lastTaskState?.status != DownloadStatus.canceled) {
+      // §dlWatchdog — Une relance passe TECHNIQUEMENT par `canceled` (couper le
+      // flux, puis reprendre au même octet). Le moniteur y répondait « ABORT :
+      // annulé par l'utilisateur » + « YOU TOOK THE RED PILL », juste après que
+      // l'utilisateur ait appuyé sur RELANCER — et ces deux lignes cassaient la
+      // suite : la dernière entrée n'étant plus de type `stats`, la reprise
+      // AJOUTAIT une SECONDE barre de progression sous la première.
+      //
+      // Une relance ne doit donc RIEN écrire : même barre, qui continue, et
+      // pour seul témoin le compteur affiché dessous. Le compteur PERSISTÉ sur
+      // la tâche est ce qui distingue les deux cas.
+      if (task.retryCount > _retryCount) {
+        _retryCount = task.retryCount;
+        setState(() => _lastTaskState = task);
+        return;
+      }
       _logs.add({'message': l10n.terminalCancelMessage, 'type': 'log'});
       _logs.add({'message': '\n> YOU TOOK THE RED PILL.', 'type': 'matrix'});
     }
@@ -212,10 +219,31 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
     _scrollToBottom();
   }
 
+
+  /// §dlWatchdog — Écrit une ligne de relance en REMPLAÇANT la précédente si
+  /// elle est encore la dernière du journal.
+  ///
+  /// Sert au redémarrage d'un transfert DÉJÀ TERMINÉ : là, c'est bien un
+  /// nouveau transfert, il mérite sa ligne. Une simple relance, elle, n'écrit
+  /// RIEN (cf. la branche `canceled`) — pour le client, rien ne s'est passé.
+  void _pushRetryLine(String message) {
+    if (_logs.isNotEmpty && _logs.last['type'] == 'retry') {
+      _logs[_logs.length - 1] = {'message': message, 'type': 'retry'};
+    } else {
+      _logs.add({'message': message, 'type': 'retry'});
+    }
+  }
+
   // Regroupe les entrées d'erreur en fin de log dans un accordéon replié.
   // Appelé quand le téléchargement reprend après un état failed.
-  void _collapseRecentErrors() {
-    _retryCount++;
+  void _collapseRecentErrors(DownloadTask task) {
+    // §dlWatchdog — Le compteur vient de la TÂCHE dès qu'elle en sait plus que
+    // nous : il vivait ici seul, donc il repartait à zéro dès qu'on refermait
+    // le moniteur, alors que le transfert, lui, continuait. On garde le repli
+    // local pour les reconnexions internes au flux, que `restartTask` ne voit
+    // pas passer.
+    _retryCount =
+        task.retryCount > _retryCount ? task.retryCount : _retryCount + 1;
     int firstErrorIndex = _logs.length;
     for (int i = _logs.length - 1; i >= 0; i--) {
       if (_logs[i]['type'] == 'error') {
@@ -243,13 +271,25 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
     if (!hasStats) {
       // 19/20 colonnes = 95 %
       final partialBar = '${'█' * 19}▒';
-      _logs.add({'message': '\n[$partialBar] 95.0%', 'type': 'stats'});
+      _writeStats('\n[$partialBar] 95.0%');
     }
-    if (_logs.isNotEmpty && _logs.last['type'] == 'stats') {
-      _logs[_logs.length - 1] = {'message': '\n[$fullBar] 100.0%', 'type': 'stats'};
-    } else {
-      _logs.add({'message': '\n[$fullBar] 100.0%', 'type': 'stats'});
-    }
+    _writeStats('\n[$fullBar] 100.0%');
+  }
+
+  /// §dlWatchdog — INVARIANT : il n'y a qu'UNE barre de progression, et elle
+  /// est toujours la dernière ligne du journal.
+  ///
+  /// Le motif d'origine ne remplaçait la barre que si elle était **déjà** la
+  /// dernière entrée. Il suffisait donc qu'une ligne s'intercale — une erreur,
+  /// un accordéon replié, un message de reprise — pour qu'une SECONDE barre
+  /// naisse en dessous, la première restant figée sur le pourcentage et le
+  /// débit d'avant l'incident. Avec des relances automatiques, ces fantômes
+  /// s'accumulaient. On efface donc l'ancienne où qu'elle soit, puis on réécrit
+  /// la nouvelle en bas : pour l'utilisateur la barre n'a jamais bougé, seul le
+  /// compteur de relances change.
+  void _writeStats(String formatted) {
+    _logs.removeWhere((l) => l['type'] == 'stats');
+    _logs.add({'message': formatted, 'type': 'stats'});
   }
 
   @override
@@ -357,7 +397,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                       opacity: _lastTaskState?.status == DownloadStatus.downloading ? 1.0 : 0.0,
                       duration: const Duration(milliseconds: 600),
                       child: RepaintBoundary(
-                        child: _MatrixRainBackground(
+                        child: MatrixRain(
                           active: _lastTaskState?.status == DownloadStatus.downloading,
                         ),
                       ),
@@ -497,20 +537,14 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                   runSpacing: 8,
                   alignment: WrapAlignment.end,
                   children: [
-                    // §dlErgo — RELANCER en tête : c'est l'action qu'on cherche
-                    // en regardant le moniteur quand le débit s'effondre
-                    // (bridage fournisseur). Rétablir la connexion repart
-                    // souvent à pleine vitesse, et la reprise `Range` fait
-                    // repartir du même octet — rien n'est perdu.
-                    _terminalButton(
-                      label: 'RELANCER',
-                      color: kAccentSecondary,
-                      onPressed: () {
-                        final t = _lastTaskState;
-                        if (t == null) return;
-                        _downloadManager.restartTask(t);
-                      },
-                    ),
+                    // §dlWatchdog — Plus de bouton RELANCER pendant le
+                    // transfert : le service surveille lui-même le débit et
+                    // reconnecte quand il décroche (`_maybeAutoRestart`).
+                    // Le bouton demandait à l'utilisateur de surveiller un
+                    // chiffre et d'appuyer au bon moment — c'est exactement ce
+                    // qu'une machine fait mieux. Il reste sur le cas ERREUR,
+                    // où plus aucun octet ne circule : là, rien ne repartirait
+                    // tout seul.
                     _terminalButton(
                       label: l10n.terminalAbortButton,
                       color: kWarning,
@@ -533,130 +567,6 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
 
 // ─── Matrix Rain ─────────────────────────────────────────────────────────────
 
-class _RainDrop {
-  final double xFraction;
-  final double phase;
-  final double speed;
-  const _RainDrop({required this.xFraction, required this.phase, required this.speed});
-}
-
-class _MatrixRainBackground extends StatefulWidget {
-  final bool active;
-  const _MatrixRainBackground({this.active = true});
-
-  @override
-  State<_MatrixRainBackground> createState() => _MatrixRainBackgroundState();
-}
-
-class _MatrixRainBackgroundState extends State<_MatrixRainBackground>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late List<_RainDrop> _drops;
-
-  static const int _dropCount = 14;
-
-  @override
-  void initState() {
-    super.initState();
-    final rng = Random();
-    _drops = List.generate(
-      _dropCount,
-      (i) => _RainDrop(
-        xFraction: i / _dropCount + rng.nextDouble() * 0.04,
-        phase: rng.nextDouble(),
-        // Speed entier obligatoire : garantit (1.0*n + phase) % 1.0 == phase
-        // → pas de saut de position au rebouclage du controller
-        speed: (rng.nextInt(3) + 1).toDouble(), // 1x, 2x ou 3x par cycle
-      ),
-    );
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 5),
-    )..repeat();
-  }
-
-  @override
-  void didUpdateWidget(_MatrixRainBackground oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.active && !oldWidget.active) {
-      _controller.repeat();
-    } else if (!widget.active && oldWidget.active) {
-      _controller.stop();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) => SizedBox.expand(
-        child: CustomPaint(
-          painter: _MatrixRainPainter(_drops, _controller.value),
-        ),
-      ),
-    );
-  }
-}
-
-class _MatrixRainPainter extends CustomPainter {
-  final List<_RainDrop> drops;
-  final double animValue;
-
-  const _MatrixRainPainter(this.drops, this.animValue);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const chars = _kMatrixChars;
-    const trailSteps = 8;
-    const charHeight = 9.0;
-
-    for (int i = 0; i < drops.length; i++) {
-      final drop = drops[i];
-      final x = drop.xFraction * size.width;
-      final yProgress = (animValue * drop.speed + drop.phase) % 1.0;
-      final yHead = yProgress * (size.height + trailSteps * charHeight) - trailSteps * charHeight;
-
-      // Traîne dégradée
-      for (int j = 1; j <= trailSteps; j++) {
-        final yTrail = yHead - j * charHeight;
-        if (yTrail < 0 || yTrail > size.height) continue;
-        final alpha = (1.0 - j / trailSteps) * 0.12;
-        canvas.drawRect(
-          Rect.fromLTWH(x - 4, yTrail, 10, charHeight),
-          Paint()..color = Color.fromRGBO(0, 180, 0, alpha),
-        );
-      }
-
-      // Caractère de tête
-      if (yHead >= -charHeight && yHead <= size.height) {
-        final charIndex =
-            ((animValue * 30 + i * 4.3 + drop.phase * 10).floor()).abs() % chars.length;
-        final tp = TextPainter(
-          text: TextSpan(
-            text: chars[charIndex],
-            style: TextStyle(
-              color: kSuccess.withAlpha(140),
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        );
-        tp.layout();
-        tp.paint(canvas, Offset(x - 4, yHead));
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_MatrixRainPainter old) => old.animValue != animValue;
-}
 
 // ─── Widgets utilitaires ──────────────────────────────────────────────────────
 

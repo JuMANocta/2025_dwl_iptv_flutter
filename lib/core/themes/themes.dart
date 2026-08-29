@@ -137,6 +137,13 @@ ThemeData lightTheme(AppThemeConfig config) {
       labelStyle: const TextStyle(color: kMediumGrey),
       hintStyle:  const TextStyle(color: kMediumGrey),
     ),
+    // §navBarSeparate — Pendant clair du réglage documenté côté sombre : le
+    // `NavigationBar` Material 3 lit `navigationBarTheme`, pas
+    // `bottomNavigationBarTheme`.
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: kWhite,
+      elevation: 0,
+    ),
     bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: kWhite,
       selectedItemColor:   config.primaryColor,
@@ -233,6 +240,19 @@ ThemeData darkTheme(AppThemeConfig config) {
       ),
       labelStyle: const TextStyle(color: kTextDarkSecondary),
       hintStyle:  const TextStyle(color: kMediumGrey),
+    ),
+    // §navBarSeparate — Le thème Material 2 `bottomNavigationBarTheme` (juste
+    // au-dessus) ne s'applique QU'AU `BottomNavigationBar` hérité. L'app utilise
+    // le `NavigationBar` Material 3, qui lit `navigationBarTheme` — absent
+    // jusqu'ici. Il prenait donc sa couleur M3 par défaut, à un cheveu du
+    // `scaffoldBackgroundColor` (#121212) : la barre se fondait dans le noir de
+    // l'app et ne se distinguait plus du contenu.
+    //
+    // Un seul cran plus clair suffit ; le reste de la séparation vient du filet
+    // et de l'ombre posés dans `MainNavigation` (effet volontairement léger).
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: kContainerDark,
+      elevation: 0,
     ),
     bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: kDeepDarkGrey,

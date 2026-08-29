@@ -4,6 +4,7 @@ import '../../core/themes/theme_service.dart';
 import '../../core/utils/platform_tv.dart';
 import '../../widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import '../../l10n/app_localizations.dart';
 
 class ThemeSettingsPage extends StatefulWidget {
   const ThemeSettingsPage({super.key});
@@ -52,7 +53,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Personnalisation'),
+        title: Text(AppLocalizations.of(context)!.themeSettingsTitle),
         elevation: 0,
         scrolledUnderElevation: 0,
         actions: [

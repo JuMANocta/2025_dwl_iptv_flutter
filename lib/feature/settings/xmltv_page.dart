@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import '../../l10n/app_localizations.dart';
 
 /// Sous-page Settings (§1g) : guide des chaînes XMLTV.
 ///
@@ -67,7 +68,7 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Guide des chaînes'),
+        title: Text(AppLocalizations.of(context)!.xmltvTitle),
         elevation: 0,
         scrolledUnderElevation: 0,
       ),

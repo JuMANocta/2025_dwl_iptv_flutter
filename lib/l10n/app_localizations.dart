@@ -206,6 +206,12 @@ abstract class AppLocalizations {
   /// **'Speed'**
   String get terminalSpeedMessage;
 
+  /// No description provided for @terminalRetryCountMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Retries'**
+  String get terminalRetryCountMessage;
+
   /// No description provided for @terminalEtaMessage.
   ///
   /// In en, this message translates to:
@@ -235,12 +241,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'[ PAUSE ]'**
   String get terminalAbortButton;
-
-  /// No description provided for @searchPageDefaultTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'AetherStream'**
-  String get searchPageDefaultTitle;
 
   /// No description provided for @searchPageDownloadsTooltip.
   ///
@@ -452,18 +452,6 @@ abstract class AppLocalizations {
   /// **'Unknown error'**
   String get taskStatusUnknownError;
 
-  /// No description provided for @playlistManagementTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Playlist Download'**
-  String get playlistManagementTitle;
-
-  /// No description provided for @playlistCardTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Playlist .m3u'**
-  String get playlistCardTitle;
-
   /// No description provided for @playlistCardSubtitleNone.
   ///
   /// In en, this message translates to:
@@ -517,12 +505,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete'**
   String get deleteAccountConfirm;
-
-  /// No description provided for @playlistInfoTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Playlist Info'**
-  String get playlistInfoTitle;
 
   /// No description provided for @playlistInfoChecking.
   ///
@@ -739,6 +721,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Loading error: {error}'**
   String playerLoadingError(Object error);
+
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @aboutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get aboutTitle;
+
+  /// No description provided for @backupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup'**
+  String get backupTitle;
+
+  /// No description provided for @optimizationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Optimization'**
+  String get optimizationTitle;
+
+  /// No description provided for @regionFilterTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Languages / regions'**
+  String get regionFilterTitle;
+
+  /// No description provided for @themeSettingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get themeSettingsTitle;
+
+  /// No description provided for @tmdbKeyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB API key'**
+  String get tmdbKeyTitle;
+
+  /// No description provided for @xmltvTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Channel guide'**
+  String get xmltvTitle;
+
+  /// No description provided for @webConsoleTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Web console'**
+  String get webConsoleTitle;
+
+  /// No description provided for @navHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get navHome;
+
+  /// No description provided for @navSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get navSearch;
+
+  /// No description provided for @navDownloads.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloads'**
+  String get navDownloads;
+
+  /// No description provided for @navSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get navSettings;
 }
 
 class _AppLocalizationsDelegate
