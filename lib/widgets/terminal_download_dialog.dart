@@ -1,17 +1,12 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/widgets/matrix_rain.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../data/models/download_task.dart';
 import '../data/services/download_manager_service.dart';
 import '../core/utils/formatters.dart';
 import '../l10n/app_localizations.dart';
-
-const String _kMatrixChars =
-    '01234567890'
-    'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン'
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    '#\$%&?<>!@=+*:-|';
 
 // Pool de messages de boot Matrix (1 tiré au sort)
 const List<String> _kBootPool = [
@@ -357,7 +352,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                       opacity: _lastTaskState?.status == DownloadStatus.downloading ? 1.0 : 0.0,
                       duration: const Duration(milliseconds: 600),
                       child: RepaintBoundary(
-                        child: _MatrixRainBackground(
+                        child: MatrixRain(
                           active: _lastTaskState?.status == DownloadStatus.downloading,
                         ),
                       ),
@@ -533,130 +528,6 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
 
 // ─── Matrix Rain ─────────────────────────────────────────────────────────────
 
-class _RainDrop {
-  final double xFraction;
-  final double phase;
-  final double speed;
-  const _RainDrop({required this.xFraction, required this.phase, required this.speed});
-}
-
-class _MatrixRainBackground extends StatefulWidget {
-  final bool active;
-  const _MatrixRainBackground({this.active = true});
-
-  @override
-  State<_MatrixRainBackground> createState() => _MatrixRainBackgroundState();
-}
-
-class _MatrixRainBackgroundState extends State<_MatrixRainBackground>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late List<_RainDrop> _drops;
-
-  static const int _dropCount = 14;
-
-  @override
-  void initState() {
-    super.initState();
-    final rng = Random();
-    _drops = List.generate(
-      _dropCount,
-      (i) => _RainDrop(
-        xFraction: i / _dropCount + rng.nextDouble() * 0.04,
-        phase: rng.nextDouble(),
-        // Speed entier obligatoire : garantit (1.0*n + phase) % 1.0 == phase
-        // → pas de saut de position au rebouclage du controller
-        speed: (rng.nextInt(3) + 1).toDouble(), // 1x, 2x ou 3x par cycle
-      ),
-    );
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 5),
-    )..repeat();
-  }
-
-  @override
-  void didUpdateWidget(_MatrixRainBackground oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.active && !oldWidget.active) {
-      _controller.repeat();
-    } else if (!widget.active && oldWidget.active) {
-      _controller.stop();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) => SizedBox.expand(
-        child: CustomPaint(
-          painter: _MatrixRainPainter(_drops, _controller.value),
-        ),
-      ),
-    );
-  }
-}
-
-class _MatrixRainPainter extends CustomPainter {
-  final List<_RainDrop> drops;
-  final double animValue;
-
-  const _MatrixRainPainter(this.drops, this.animValue);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const chars = _kMatrixChars;
-    const trailSteps = 8;
-    const charHeight = 9.0;
-
-    for (int i = 0; i < drops.length; i++) {
-      final drop = drops[i];
-      final x = drop.xFraction * size.width;
-      final yProgress = (animValue * drop.speed + drop.phase) % 1.0;
-      final yHead = yProgress * (size.height + trailSteps * charHeight) - trailSteps * charHeight;
-
-      // Traîne dégradée
-      for (int j = 1; j <= trailSteps; j++) {
-        final yTrail = yHead - j * charHeight;
-        if (yTrail < 0 || yTrail > size.height) continue;
-        final alpha = (1.0 - j / trailSteps) * 0.12;
-        canvas.drawRect(
-          Rect.fromLTWH(x - 4, yTrail, 10, charHeight),
-          Paint()..color = Color.fromRGBO(0, 180, 0, alpha),
-        );
-      }
-
-      // Caractère de tête
-      if (yHead >= -charHeight && yHead <= size.height) {
-        final charIndex =
-            ((animValue * 30 + i * 4.3 + drop.phase * 10).floor()).abs() % chars.length;
-        final tp = TextPainter(
-          text: TextSpan(
-            text: chars[charIndex],
-            style: TextStyle(
-              color: kSuccess.withAlpha(140),
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        );
-        tp.layout();
-        tp.paint(canvas, Offset(x - 4, yHead));
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_MatrixRainPainter old) => old.animValue != animValue;
-}
 
 // ─── Widgets utilitaires ──────────────────────────────────────────────────────
 

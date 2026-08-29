@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.15.10+103-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.15.11+104-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -300,7 +300,6 @@ lib/
 - [ ] **Enchaînement automatique de l'épisode suivant en fin de lecture** (§autoNextEp) — compte à rebours annulable type Netflix
 
 **Autres** :
-- [ ] **Bandeau SYSTEM UPDATE repensé** (§updateBanner) — version actuelle vs release avec animation « decode Matrix » (différence en surbrillance), pluie Matrix sur tout le bandeau, changelog remplacé par un lien vers la release GitHub
 - [x] **Ancrage Netflix sur la fiche** (§rowAnchorDetails) — ancrage D-pad « élément focusé à gauche » sur les rangées épisodes / saisons / titres similaires / casting de la fiche
 - [x] **Profil Performance suggéré au 1er boot TV** (§perfAutoSuggest) — dialog one-shot sur Fire TV / Android TV détecté (si les réglages perf sont encore aux défauts)
 - [x] **Titre d'épisode fourni par le panel** (§epTitleProvider) — fallback du nom TMDB dans la fiche, l'action sheet et l'overlay du player
@@ -317,6 +316,8 @@ lib/
 - [x] **Recherche insensible aux accents** (§searchAccents, 2026-08-29) — « ecarlate » trouve désormais « La Servante Écarlate ». **18 % des titres** de vos listes portent un accent : ils étaient inatteignables sans clavier accentué, ce qui pénalisait surtout la saisie à la télécommande
 - [x] **La recherche ne part plus dès la première lettre** (§searchMinLen, 2026-08-29) — trois caractères minimum pour les films et séries, au lieu de balayer plus de 320 000 entrées à chaque frappe. Les **chaînes** restent cherchables dès la première lettre (« TF1 », « M6 »)
 - [x] **Le clavier ne masque plus les résultats** (§searchKeyboard, 2026-08-29) — il se referme au défilement
+- [x] **Bandeau de mise à jour repensé** (§updateBanner, 2026-08-29) — il annonçait la version à installer **sans jamais dire de quelle version on part**. Il affiche désormais les deux, la nouvelle se « décodant » à la manière de Matrix avec **la partie qui change en surbrillance**. La pluie Matrix couvre tout le bandeau au lieu de la seule barre de téléchargement, et le changelog brut est remplacé par un lien vers la release GitHub
+- [x] **Les compteurs des listes ne tombent plus à zéro** (§secondaryCounts, 2026-08-29) — les totaux films/séries/chaînes étaient recomptés en mémoire : dès qu'une liste secondaire était déchargée pour libérer de la RAM, ils affichaient 0 et laissaient croire à une liste vide. Ils sont désormais enregistrés dans le cache et restent exacts, même liste déchargée
 - [x] **Recharger toutes les listes d'un seul geste** (§reloadAll, 2026-08-29) — un bouton dans la barre des comptes enchaîne les listes une par une, avec **une seule** confirmation, une progression nommée (« Liste 2/4 — Xeno ») et un bilan. Un compte injoignable n'empêche plus les autres d'aboutir : il est signalé par son nom
 - [x] **Plus de vague de recherches TMDB au lancement** (§tmdbUrlPersist, 2026-08-29) — les affiches résolues à la volée étaient oubliées à chaque fermeture : tout repartait de zéro au démarrage suivant. Elles sont désormais conservées, **y compris les recherches infructueuses** (68 % du cache mesuré), qui évitent de re-chercher indéfiniment un titre que TMDB ne connaît pas. Mesuré : 25 recherches réseau au premier passage, **0 au second**
 - [x] **Les affiches ne disparaissent plus** (§logoFallback, 2026-08-29) — il suffisait qu'une seule de vos listes fournisse une adresse d'image **morte** pour que la vignette reste vide, alors qu'une autre liste en proposait une valide. L'application essaie désormais toutes les adresses du titre, puis TMDB en dernier recours

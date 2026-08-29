@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 
 /// Résultat complet du parsing d'une playlist M3U pour un compte donné.
@@ -47,4 +48,24 @@ class ParsedPlaylist {
         .map((e) => M3uEntry.fromJson(e as Map<String, dynamic>))
         .toList(),
   );
+}
+
+/// §secondaryCounts — Totaux par type d'une playlist.
+///
+/// Existe pour que les compteurs d'`AccountsPage` ne dépendent plus de la
+/// présence du compte EN MÉMOIRE : ils sont écrits dans l'en-tête du cache et
+/// restent donc exacts même après un déchargement.
+@immutable
+class PlaylistCounts {
+  final int films;
+  final int series;
+  final int tv;
+
+  const PlaylistCounts({
+    required this.films,
+    required this.series,
+    required this.tv,
+  });
+
+  int get total => films + series + tv;
 }

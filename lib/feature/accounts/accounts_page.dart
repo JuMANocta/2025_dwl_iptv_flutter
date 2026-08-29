@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
-import 'package:aetherStream/data/models/m3u_entry.dart';
+import 'package:aetherStream/data/models/parsed_playlist.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/services/expiration_alert_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
@@ -964,35 +964,44 @@ class _AccountCardState extends State<_AccountCard> {
                     ),
                     const SizedBox(height: 14),
                     // ── Stats playlist (live via ParsedPlaylistService) ─────
+                    // §secondaryCounts — Les compteurs ne dépendent plus de la
+                    // présence du compte EN MÉMOIRE.
+                    //
+                    // ⚠️ Deux défauts corrigés d'un coup :
+                    //   1. `getAccount()` **touche `_lastAccess`** — consulter
+                    //      les stats repoussait le déchargement du compte,
+                    //      alors que la page n'est pas un usage de la liste.
+                    //   2. On parcourait jusqu'à 153 000 entrées à CHAQUE
+                    //      reconstruction, juste pour compter — et le résultat
+                    //      tombait à **zéro** dès que le compte était déchargé,
+                    //      donnant l'impression d'une liste vide.
+                    //
+                    // `countsOf` lit les listes pré-splittées si le compte est
+                    // en mémoire, sinon l'EN-TÊTE du cache disque (une seule
+                    // ligne décompressée, mémoïsée).
                     ListenableBuilder(
                       listenable: ParsedPlaylistService.version,
                       builder: (context, _) {
-                        final parsed = ParsedPlaylistService.getAccount(
-                            widget.account.id);
-                        final entries = parsed?.entries ?? const <M3uEntry>[];
-                        int films = 0, series = 0, tv = 0;
-                        for (final e in entries) {
-                          switch (e.type) {
-                            case M3uContentType.movie:
-                              films++;
-                              break;
-                            case M3uContentType.series:
-                              series++;
-                              break;
-                            case M3uContentType.tv:
-                              tv++;
-                              break;
-                          }
-                        }
-                        return Column(
-                          children: [
-                            _CountsRow(films: films, series: series, tv: tv),
-                            const SizedBox(height: 12),
-                            _FileStatsBlock(
-                              accountId: widget.account.id,
-                              hasParsed: parsed != null,
-                            ),
-                          ],
+                        return FutureBuilder<PlaylistCounts?>(
+                          future:
+                              ParsedPlaylistService.countsOf(widget.account.id),
+                          builder: (context, snap) {
+                            final c = snap.data;
+                            return Column(
+                              children: [
+                                _CountsRow(
+                                  films: c?.films,
+                                  series: c?.series,
+                                  tv: c?.tv,
+                                ),
+                                const SizedBox(height: 12),
+                                _FileStatsBlock(
+                                  accountId: widget.account.id,
+                                  hasParsed: c != null,
+                                ),
+                              ],
+                            );
+                          },
                         );
                       },
                     ),
@@ -1218,9 +1227,12 @@ class _Chip extends StatelessWidget {
 // PlaylistManagementPage) ────────────────────────────────────────────────────
 
 class _CountsRow extends StatelessWidget {
-  final int films;
-  final int series;
-  final int tv;
+  /// §secondaryCounts — `null` = total INCONNU (cache d'avant §secondaryCounts,
+  /// ou aucun cache). On affiche « — » : un faux « 0 » se lit comme une liste
+  /// vide, ce qui était précisément le bug.
+  final int? films;
+  final int? series;
+  final int? tv;
   const _CountsRow({required this.films, required this.series, required this.tv});
 
   @override
@@ -1239,7 +1251,7 @@ class _CountsRow extends StatelessWidget {
 
 class _CountTile extends StatelessWidget {
   final IconData icon;
-  final int value;
+  final int? value;
   final String label;
   final Color color;
   const _CountTile({
@@ -1264,7 +1276,7 @@ class _CountTile extends StatelessWidget {
           Icon(icon, color: color, size: 18),
           const SizedBox(height: 4),
           Text(
-            _formatCount(value),
+            value == null ? '—' : _formatCount(value!),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
