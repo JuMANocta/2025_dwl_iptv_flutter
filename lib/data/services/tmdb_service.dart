@@ -20,6 +20,31 @@ class TrendingTitle {
 /// §personSearch — Résultat léger de `/search/person`, juste ce qu'il faut pour
 /// la rangée « Personnes » (le détail complet vient ensuite de
 /// `getPersonDetails` quand on ouvre la fiche).
+/// §searchTmdb — Un titre trouvé sur TMDB, candidat à l'affichage dans la
+/// recherche quand il est ABSENT des listes de l'utilisateur.
+class TmdbTitleHit {
+  final int id;
+  final String title;
+
+  /// Titre original — sert au rapprochement quand la liste d'un fournisseur
+  /// utilise la VO là où TMDB rend le titre français (ou l'inverse).
+  final String? originalTitle;
+  final String? year;
+  final String? posterPath;
+  final bool isTv;
+  final double popularity;
+
+  const TmdbTitleHit({
+    required this.id,
+    required this.title,
+    required this.isTv,
+    this.originalTitle,
+    this.year,
+    this.posterPath,
+    this.popularity = 0,
+  });
+}
+
 class PersonHit {
   final int id;
   final String name;
@@ -410,9 +435,16 @@ class TmdbService {
   /// LISTE avec ce qu'il faut pour l'afficher (nom, photo, métier). Trié par
   /// popularité décroissante, plafonné à [limit].
   /// Contrat maison : jamais d'exception, `const []` sans clé TMDB.
+  /// §searchByPerson — Mémo d'UNE entrée : la rangée « Personnes » et la
+  /// rangée « … dans tes listes » interrogent la même requête à la même
+  /// frappe. Sans ça, chaque caractère tapé partait en double sur le réseau.
+  String? _lastPersonQuery;
+  List<PersonHit> _lastPersonHits = const [];
+
   Future<List<PersonHit>> searchPersons(String query, {int limit = 10}) async {
     final q = query.trim();
     if (q.length < 2) return const [];
+    if (q == _lastPersonQuery) return _lastPersonHits;
     if (!await _init()) return const [];
 
     try {
@@ -437,9 +469,67 @@ class TmdbService {
       }
       hits.sort((a, b) => b.popularity.compareTo(a.popularity));
       if (hits.length > limit) hits.length = limit;
+      _lastPersonQuery = q;
+      _lastPersonHits = hits;
       return hits;
     } catch (e) {
       debugPrint('❌ §personSearch — recherche personne échouée : $e');
+      return const [];
+    }
+  }
+
+  /// §searchTmdb — Recherche de TITRES (films et séries en un seul appel).
+  ///
+  /// Sert à montrer ce qui existe **mais n'est dans aucune liste** : sans ça,
+  /// rien ne distingue « ça n'existe pas » de « tu ne l'as pas ».
+  ///
+  /// ⚠️ `/search/multi` retourne aussi des PERSONNES : elles sont écartées
+  /// ici, la rangée « Personnes » (§personSearch) les traite déjà et les
+  /// afficher deux fois n'apprendrait rien.
+  ///
+  /// ⚠️ Tri par popularité : TMDB rend volontiers des obscurités homonymes en
+  /// tête. Sur une rangée de quelques vignettes, montrer d'abord ce que
+  /// l'utilisateur avait probablement en tête est ce qui compte.
+  Future<List<TmdbTitleHit>> searchTitles(String query, {int limit = 12}) async {
+    final q = query.trim();
+    if (q.length < 3) return const [];
+    if (!await _init()) return const [];
+
+    try {
+      final response = await _dio!.get('/search/multi', queryParameters: {
+        'query': q,
+        'language': 'fr-FR',
+        'include_adult': 'false',
+      });
+      final results = (response.data?['results'] as List<dynamic>?) ?? const [];
+      final hits = <TmdbTitleHit>[];
+      for (final r in results) {
+        if (r is! Map) continue;
+        final mediaType = r['media_type'];
+        final isTv = mediaType == 'tv';
+        if (!isTv && mediaType != 'movie') continue; // personnes écartées
+        final id = r['id'];
+        final title = (isTv ? r['name'] : r['title']) as String?;
+        if (id is! int || title == null || title.isEmpty) continue;
+        final rawDate = (isTv ? r['first_air_date'] : r['release_date']) as String?;
+        hits.add(TmdbTitleHit(
+          id: id,
+          title: title,
+          originalTitle:
+              (isTv ? r['original_name'] : r['original_title']) as String?,
+          year: (rawDate != null && rawDate.length >= 4)
+              ? rawDate.substring(0, 4)
+              : null,
+          posterPath: r['poster_path'] as String?,
+          isTv: isTv,
+          popularity: (r['popularity'] as num?)?.toDouble() ?? 0,
+        ));
+      }
+      hits.sort((a, b) => b.popularity.compareTo(a.popularity));
+      if (hits.length > limit) hits.length = limit;
+      return hits;
+    } catch (e) {
+      debugPrint('❌ §searchTmdb — recherche de titres échouée : $e');
       return const [];
     }
   }

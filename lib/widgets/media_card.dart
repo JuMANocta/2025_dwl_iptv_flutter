@@ -13,7 +13,9 @@ Widget _poster(BuildContext context, List<M3uEntry> versions,
     IconData fallbackIcon, Color accentColor) {
   // §23 — image de la version du compte le plus riche (politique « plus
   // grosse liste »), fallback par taille décroissante.
-  final logoUrl = ParsedPlaylistService.bestLogoUrl(versions);
+  // §logoFallback — liste de replis : une adresse morte ne vide plus la carte.
+  final logoCandidates = ParsedPlaylistService.logoCandidates(versions);
+  final logoUrl = logoCandidates.isEmpty ? null : logoCandidates.first;
   return ClipRRect(
     borderRadius: BorderRadius.circular(8),
     child: SizedBox(
@@ -22,6 +24,7 @@ Widget _poster(BuildContext context, List<M3uEntry> versions,
       // décodage (seul des 14) → ajout de `cacheWidth` pour un poster 70×105.
       child: AetherImage(
         url: logoUrl,
+      alternates: logoCandidates.skip(1).toList(),
         width: 70,
         height: 105,
         fit: BoxFit.cover,

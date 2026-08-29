@@ -30,9 +30,27 @@ class _SearchView extends StatelessWidget {
     }
 
     final q = query.trim().toLowerCase();
-    final filmsHits  = _filterAndGroup(byType[M3uContentType.movie]!,  q, M3uContentType.movie);
-    final seriesHits = _filterAndGroup(byType[M3uContentType.series]!, q, M3uContentType.series);
-    final tvHits     = _filterAndGroup(byType[M3uContentType.tv]!,     q, M3uContentType.tv);
+
+    // §searchMinLen — En dessous du seuil, on ne balaie PAS les films et les
+    // séries. Avec quatre listes, chaque frappe parcourait 323 373 entrées
+    // trois fois pour un résultat qui ne veut rien dire.
+    //
+    // ⚠️ **Les chaînes sont exemptées** : « TF1 », « M6 », « W9 », « C8 » font
+    // deux ou trois caractères et sont des recherches parfaitement légitimes.
+    // Aucun titre de film utile ne tient en deux lettres — l'asymétrie est
+    // voulue, pas un oubli.
+    //
+    // ⚠️ L'incohérence historique était dans ce fichier : la rangée
+    // « Personnes » s'imposait déjà `q.length < 2` (partie RÉSEAU), alors que
+    // le balayage LOCAL, bien plus coûteux, ne se protégeait pas.
+    final deepSearch = q.length >= _kMinQueryLength;
+    final filmsHits = deepSearch
+        ? _filterAndGroup(byType[M3uContentType.movie]!, q, M3uContentType.movie)
+        : const <List<M3uEntry>>[];
+    final seriesHits = deepSearch
+        ? _filterAndGroup(byType[M3uContentType.series]!, q, M3uContentType.series)
+        : const <List<M3uEntry>>[];
+    final tvHits = _filterAndGroup(byType[M3uContentType.tv]!, q, M3uContentType.tv);
 
     final totalGroups = filmsHits.length + seriesHits.length + tvHits.length;
 
@@ -49,6 +67,7 @@ class _SearchView extends StatelessWidget {
         icon: Icons.movie_outlined,
         groups: filmsHits,
         type: M3uContentType.movie,
+        query: query,
       ));
     }
     if (seriesHits.isNotEmpty) {
@@ -57,6 +76,7 @@ class _SearchView extends StatelessWidget {
         icon: Icons.tv_outlined,
         groups: seriesHits,
         type: M3uContentType.series,
+        query: query,
       ));
     }
     if (tvHits.isNotEmpty) {
@@ -65,22 +85,55 @@ class _SearchView extends StatelessWidget {
         icon: Icons.live_tv_outlined,
         groups: tvHits,
         type: M3uContentType.tv,
+        query: query,
+      ));
+    }
+
+    // §searchByPerson — « Films de X dans tes listes ». Rangée EN PLUS, jamais
+    // à la place de la recherche par titre : « Ford » doit continuer à trouver
+    // *Ford v Ferrari*. Placée après les résultats par titre (ce que la requête
+    // demande littéralement) et avant les indisponibles.
+    if (deepSearch) {
+      sections.add(_PersonTitlesSection(query: query));
+    }
+
+    // §searchTmdb — Ce qui existe sur TMDB mais n'est dans AUCUNE liste.
+    // ⚠️ Placée en DERNIER, toujours : ce qu'on peut regarder passe avant ce
+    // qu'on ne peut pas. Une rangée de titres injouables en tête des résultats
+    // serait une régression, pas une fonctionnalité.
+    if (deepSearch) {
+      sections.add(_TmdbOnlySection(
+        query: query,
+        // Les clés déjà trouvées localement, pour ne montrer que le MANQUANT.
+        localKeys: {
+          for (final g in [...filmsHits, ...seriesHits])
+            contentGroupKey(g.first),
+        },
       ));
     }
 
     if (totalGroups == 0) {
-      // §12-b — Empty state unifié. §personSearch : placé APRÈS la rangée
-      // Personnes (qui peut, elle, avoir trouvé quelqu'un) et centré sur la
-      // hauteur restante plutôt que sur tout l'écran.
+      // §searchMinLen — Sous le seuil, ne PAS afficher « aucun résultat » :
+      // l'utilisateur croirait que ses listes ne contiennent rien, alors qu'on
+      // n'a simplement pas encore cherché. On dit ce qu'il se passe.
       sections.add(Padding(
         padding: const EdgeInsets.only(top: 32),
-        child: EmptyState(
-          icon: Icons.search_off,
-          title: 'Aucun titre trouvé',
-          subtitle:
-              'Rien dans vos listes pour "$query". Essaie un autre mot-clé ou '
-              'vérifie l\'orthographe.',
-        ),
+        child: deepSearch
+            ? EmptyState(
+                icon: Icons.search_off,
+                title: 'Aucun titre trouvé',
+                subtitle:
+                    'Rien dans vos listes pour "$query". Essaie un autre '
+                    'mot-clé ou vérifie l\'orthographe.',
+              )
+            : const EmptyState(
+                icon: Icons.keyboard_outlined,
+                title: 'Continue à taper…',
+                subtitle:
+                    'Au moins $_kMinQueryLength lettres pour chercher un film '
+                    'ou une série. Les chaînes, elles, se cherchent dès la '
+                    'première lettre.',
+              ),
       ));
     }
 
@@ -92,16 +145,31 @@ class _SearchView extends StatelessWidget {
     // du `top: 4` de `_SearchSectionHeader`.
     return ListView(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 24),
+      // §searchKeyboard — Le clavier occupait environ 60 % de la zone de
+      // résultats et ne se fermait jamais : on ne voyait que deux rangées.
+      // ⚠️ `onDrag` et pas `onDrag`-au-changement-de-texte : l'utilisateur
+      // affine souvent sa requête après un coup d'œil, fermer le clavier à la
+      // frappe l'obligerait à le rouvrir sans arrêt.
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: sections,
     );
   }
 
-  /// §searchCount — Plafond de groupes affichés par type.
+  /// §searchMinLen — Longueur minimale d'une requête avant de balayer les
+  /// films et les séries.
   ///
-  /// ⚠️ C'est un PLAFOND, pas un total : l'en-tête doit donc écrire « 30+ » et
-  /// non « 30 ». Sur une playlist de 80 000 entrées, une recherche courante
-  /// dépasse largement ce chiffre, et l'afficher nu revenait à annoncer un
-  /// total faux.
+  /// Trois caractères : en dessous, le résultat est un bruit de milliers de
+  /// groupes qui n'apprend rien, pour un balayage complet de la playlist à
+  /// chaque frappe.
+  static const int _kMinQueryLength = 3;
+
+  /// §searchCount + §searchMore — Nombre de groupes AFFICHÉS d'emblée par
+  /// type.
+  ///
+  /// ⚠️ Ce n'est plus un plafond de résultats mais une limite d'AFFICHAGE : la
+  /// recherche remonte tout, la rangée en montre 30 et propose « Voir tout »
+  /// pour le reste. Le compteur de l'en-tête peut donc redevenir un vrai
+  /// total, au lieu du « 30+ » approximatif qu'imposait la troncature.
   static const int _kMaxGroupsPerType = 30;
 
   /// Filtre par texte + regroupe par titre (= toutes variantes d'un même film/série/chaîne).
@@ -111,7 +179,13 @@ class _SearchView extends StatelessWidget {
     String q,
     M3uContentType type,
   ) {
+    // §searchAccents — La requête est repliée une seule fois, et confrontée à
+    // `groupKey`, qui est PRÉ-CALCULÉ et désormais lui aussi sans accents.
+    // Replier les 320 000 titres à chaque frappe était exclu ; ici le repli ne
+    // coûte rien à l'exécution.
+    final qFolded = TitleMetadata.foldAccents(q);
     bool match(M3uEntry e) =>
+        e.title.groupKey.contains(qFolded) ||
         e.displayName.toLowerCase().contains(q) ||
         e.rawTitle.toLowerCase().contains(q);
 
@@ -136,10 +210,338 @@ class _SearchView extends StatelessWidget {
     final groups = type != M3uContentType.tv
         ? _TypePageState._splitGroupsByYear(byGroup.values)
         : byGroup.values.toList();
-    if (groups.length > _kMaxGroupsPerType) {
-      groups.length = _kMaxGroupsPerType;
-    }
+    // §searchMore — Plus de troncature ICI : la liste complète remonte, et
+    // c'est `_ResultSection` qui décide combien en montrer. Sans ça, il n'y
+    // avait aucun moyen d'accéder au-delà des 30 premiers, et le compteur ne
+    // pouvait annoncer qu'un « 30+ » approximatif.
     return groups;
+  }
+}
+
+
+
+/// §searchByPerson — « Films de X dans tes listes ».
+///
+/// **Le manque.** Taper « Nolan » remontait sa vignette de personne, mais aucun
+/// de ses films **présents dans les listes** : pour les voir, il fallait ouvrir
+/// sa fiche. Or `ActorDetailsPage` sait déjà faire ce rapprochement — il ne
+/// manquait qu'un raccourci depuis la recherche.
+///
+/// ⚠️ **Rangée EN PLUS, jamais à la place de la recherche par titre.**
+/// « Ford » doit continuer à trouver *Ford v Ferrari* : une requête est un
+/// texte avant d'être un nom propre.
+///
+/// ⚠️ **Seule la personne la plus probable est exploitée** (le 1er résultat,
+/// TMDB triant déjà par pertinence) : une fiche complète par personne, ce
+/// serait dix requêtes réseau à chaque frappe.
+class _PersonTitlesSection extends StatefulWidget {
+  final String query;
+  const _PersonTitlesSection({required this.query});
+
+  @override
+  State<_PersonTitlesSection> createState() => _PersonTitlesSectionState();
+}
+
+class _PersonTitlesSectionState extends State<_PersonTitlesSection> {
+  /// Index titre normalisé → entrées, construit UNE fois par version de
+  /// playlist et partagé par toutes les instances.
+  ///
+  /// ⚠️ Statique délibérément : la rangée est reconstruite à chaque frappe, et
+  /// indexer 320 000 entrées à chaque fois serait ruineux. Le même motif existe
+  /// dans `ActorDetailsPage` (§tmdbOnlyDetails), pour la même raison.
+  static Map<String, List<M3uEntry>> _index = const {};
+  static int _indexVersion = -1;
+
+  static Map<String, List<M3uEntry>> _lookup() {
+    final v = ParsedPlaylistService.version.value;
+    if (_indexVersion == v) return _index;
+    final map = <String, List<M3uEntry>>{};
+    for (final e in ParsedPlaylistService.entries) {
+      if (e.type == M3uContentType.tv) continue; // une chaîne n'a pas d'acteurs
+      map.putIfAbsent(contentGroupKey(e), () => []).add(e);
+    }
+    _index = map;
+    _indexVersion = v;
+    return map;
+  }
+
+  String? _personName;
+  List<List<M3uEntry>> _groups = const [];
+  int _requestId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _search();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PersonTitlesSection old) {
+    super.didUpdateWidget(old);
+    if (old.query != widget.query) _search();
+  }
+
+  Future<void> _search() async {
+    final token = ++_requestId;
+    final q = widget.query.trim();
+    void clear() {
+      if (mounted && _groups.isNotEmpty) {
+        setState(() {
+          _groups = const [];
+          _personName = null;
+        });
+      }
+    }
+
+    if (q.length < 3) return clear();
+    if (!await TmdbApiService.hasApiKey()) return;
+
+    final persons = await TmdbService.instance.searchPersons(q, limit: 1);
+    if (!mounted || token != _requestId) return;
+    if (persons.isEmpty) return clear();
+
+    final person = await TmdbService.instance.getPersonDetails(persons.first.id);
+    if (!mounted || token != _requestId) return;
+    if (person == null || person.filmography.isEmpty) return clear();
+
+    // Rapprochement par clé de groupe — même règle que partout ailleurs.
+    final index = _lookup();
+    final found = <List<M3uEntry>>[];
+    final seen = <String>{};
+    for (final f in person.filmography) {
+      final k = TitleMetadata.computeGroupKey(f.title);
+      if (k.isEmpty || !seen.add(k)) continue;
+      final hit = index[k];
+      if (hit != null && hit.isNotEmpty) found.add(hit);
+    }
+    if (found.isEmpty) return clear();
+
+    setState(() {
+      _personName = persons.first.name;
+      _groups = found;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_groups.isEmpty || _personName == null) return const SizedBox.shrink();
+    return _ResultSection(
+      title: 'De $_personName, dans tes listes',
+      icon: Icons.person_search_outlined,
+      groups: _groups,
+      type: M3uContentType.movie,
+      query: widget.query,
+    );
+  }
+}
+
+/// §searchTmdb — Rangée « Sur TMDB, absent de tes listes ».
+///
+/// **Ce qu'elle répond.** Jusqu'ici, un titre introuvable ne disait rien : on
+/// ne savait pas si le film n'existait pas, ou si aucun fournisseur ne le
+/// proposait. La rangée tranche, et donne accès à la fiche complète (synopsis,
+/// casting, bande-annonce) via `DetailsPage.fromTmdb` (§tmdbOnlyDetails), dont
+/// les boutons de lecture sont déjà neutralisés pour une entrée sans source.
+///
+/// ⚠️ **Le rapprochement passe par `computeGroupKey`, jamais par une
+/// comparaison de chaînes.** Un titre présent sous une variante
+/// (`|FR| Le Titre (2024) MULTI`) serait sinon annoncé comme absent —
+/// exactement le genre d'erreur que §cleanQuery vient de coûter cher.
+///
+/// ⚠️ On compare AUSSI le titre original : un fournisseur peut lister la VO
+/// (« The Handmaid's Tale ») là où TMDB rend le titre français. Sans ça, on
+/// présenterait comme manquant un titre qu'on possède.
+///
+/// Se retire complètement sans clé TMDB : l'app reste pleinement utilisable
+/// sans elle.
+class _TmdbOnlySection extends StatefulWidget {
+  final String query;
+
+  /// Clés de groupe DÉJÀ trouvées dans les listes — le complément de ce que la
+  /// rangée doit montrer.
+  final Set<String> localKeys;
+
+  const _TmdbOnlySection({required this.query, required this.localKeys});
+
+  @override
+  State<_TmdbOnlySection> createState() => _TmdbOnlySectionState();
+}
+
+class _TmdbOnlySectionState extends State<_TmdbOnlySection> {
+  List<TmdbTitleHit> _hits = const [];
+  int _requestId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _search();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TmdbOnlySection old) {
+    super.didUpdateWidget(old);
+    if (old.query != widget.query) _search();
+  }
+
+  Future<void> _search() async {
+    // Même garde-fou que §personSearch : un jeton par requête, pour jeter les
+    // réponses qui arrivent dans le désordre pendant que l'utilisateur tape.
+    final token = ++_requestId;
+    final q = widget.query.trim();
+    if (q.length < 3) {
+      if (_hits.isNotEmpty && mounted) setState(() => _hits = const []);
+      return;
+    }
+    if (!await TmdbApiService.hasApiKey()) return;
+    final res = await TmdbService.instance.searchTitles(q);
+    if (!mounted || token != _requestId) return;
+    setState(() => _hits = res);
+  }
+
+  /// Ne garde que ce qui n'est dans aucune liste.
+  List<TmdbTitleHit> get _missing => _hits.where((h) {
+        final k = TitleMetadata.computeGroupKey(h.title);
+        if (widget.localKeys.contains(k)) return false;
+        final orig = h.originalTitle;
+        if (orig != null && orig.isNotEmpty) {
+          if (widget.localKeys.contains(TitleMetadata.computeGroupKey(orig))) {
+            return false;
+          }
+        }
+        return true;
+      }).toList();
+
+  @override
+  Widget build(BuildContext context) {
+    final missing = _missing;
+    if (missing.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SearchSectionHeader(
+            title: 'Sur TMDB, absent de tes listes',
+            icon: Icons.cloud_off_outlined,
+            count: missing.length,
+          ),
+          SizedBox(
+            height: 250,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: missing.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (_, i) => _TmdbOnlyCard(hit: missing[i]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// §searchTmdb — Vignette d'un titre NON disponible.
+///
+/// ⚠️ Volontairement **assombrie et marquée** : sans distinction visuelle, elle
+/// se confondrait avec les résultats jouables et l'utilisateur cliquerait en
+/// s'attendant à regarder. Le code couleur de l'app est déjà pris pour la
+/// qualité ; on passe donc par l'opacité et une étiquette explicite.
+class _TmdbOnlyCard extends StatelessWidget {
+  final TmdbTitleHit hit;
+  const _TmdbOnlyCard({required this.hit});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final poster = TmdbService.getPosterUrl(hit.posterPath, size: 'w342');
+
+    return FocusableCard(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => DetailsPage.fromTmdb(
+            tmdbId: hit.id,
+            title: hit.title,
+            type: hit.isTv ? M3uContentType.series : M3uContentType.movie,
+          ),
+        ),
+      ),
+      child: SizedBox(
+        width: 124,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Opacity(
+                      opacity: 0.45,
+                      child: AetherImage(
+                        url: poster,
+                        fit: BoxFit.cover,
+                        cacheWidth: decodeWidthFor(context, 124),
+                        fallback: (_) => Container(
+                          color: cs.surfaceContainerHighest,
+                          alignment: Alignment.center,
+                          child: Icon(Icons.movie_outlined,
+                              color: cs.onSurfaceVariant.withAlpha(120)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withAlpha(190),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: kWarning.withAlpha(140)),
+                      ),
+                      child: Text(
+                        'NON DISPO',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                          color: kWarning,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hit.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface.withAlpha(190),
+                height: 1.2,
+              ),
+            ),
+            if (hit.year != null)
+              Text(
+                hit.year!,
+                style: TextStyle(
+                    fontSize: 10, color: cs.onSurfaceVariant.withAlpha(160)),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -302,14 +704,9 @@ class _SearchSectionHeader extends StatelessWidget {
   final IconData icon;
   final int count;
 
-  /// §searchCount — Vrai quand [count] est le plafond d'affichage et non le
-  /// nombre réel de résultats → on écrit « 30+ ».
-  final bool capped;
-
   const _SearchSectionHeader({
     required this.title,
     required this.icon,
-    this.capped = false,
     required this.count,
   });
 
@@ -349,7 +746,7 @@ class _SearchSectionHeader extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              capped ? '$count+' : '$count',
+              '$count',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
@@ -369,11 +766,15 @@ class _ResultSection extends StatelessWidget {
   final List<List<M3uEntry>> groups;
   final M3uContentType type;
 
+  /// §searchMore — Sert à titrer la page « Voir tout » : « Films · "dune" ».
+  final String query;
+
   const _ResultSection({
     required this.title,
     required this.icon,
     required this.groups,
     required this.type,
+    required this.query,
   });
 
   @override
@@ -385,12 +786,8 @@ class _ResultSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // §personSearch — en-tête factorisé (partagé avec _PersonSection).
-          _SearchSectionHeader(
-            title: title,
-            icon: icon,
-            count: groups.length,
-            capped: groups.length >= _SearchView._kMaxGroupsPerType,
-          ),
+          // §searchMore — Vrai total : la liste n'est plus tronquée en amont.
+          _SearchSectionHeader(title: title, icon: icon, count: groups.length),
           // §tvZoom — Largeur de vignette + hauteur pilotées par la largeur
           // réelle (poster 2:3 ou logo carré pour les chaînes).
           LayoutBuilder(
@@ -398,18 +795,46 @@ class _ResultSection extends StatelessWidget {
               final channel = type == M3uContentType.tv;
               final cardW =
                   _responsiveTileWidth(constraints.maxWidth, channel: channel);
+              // §searchMore — On n'affiche que les premiers, et on offre une
+              // porte de sortie vers la liste complète. Le plafond reste utile
+              // (une rangée de 4 000 vignettes ne sert personne) ; c'est
+              // l'ABSENCE de « Voir tout » qui était le vrai défaut.
+              const max = _SearchView._kMaxGroupsPerType;
+              final shown = groups.length > max ? max : groups.length;
+              final hasMore = groups.length > shown;
               return SizedBox(
                 height: (channel ? cardW : cardW * 1.5) + 20,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: groups.length,
+                  itemCount: shown + (hasMore ? 1 : 0),
                   separatorBuilder: (_, __) => const SizedBox(width: 10),
-                  itemBuilder: (ctx, i) => _HomeCard(
-                    versions: groups[i],
-                    type: type,
-                    width: cardW,
-                  ),
+                  itemBuilder: (ctx, i) {
+                    if (hasMore && i == shown) {
+                      // Réutilise la tuile de l'accueil : même geste, même
+                      // rendu, et `CategoryListPage` fait déjà tout le travail.
+                      return _SeeAllTile(
+                        type: type,
+                        remaining: groups.length - shown,
+                        width: cardW,
+                        onTap: () => Navigator.of(ctx).push(
+                          MaterialPageRoute(
+                            builder: (_) => CategoryListPage(
+                              category: '$title · "$query"',
+                              groups: groups,
+                              type: type,
+                              icon: icon,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    return _HomeCard(
+                      versions: groups[i],
+                      type: type,
+                      width: cardW,
+                    );
+                  },
                 ),
               );
             },

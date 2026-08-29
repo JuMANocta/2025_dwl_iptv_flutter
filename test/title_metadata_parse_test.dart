@@ -140,13 +140,27 @@ void main() {
     });
   });
 
-  group('computeGroupKey — accents préservés (Constat n°2)', () {
-    test('les accents ne sont PAS strippés (contrairement à l\'ancienne '
-        'regex ASCII-only de HomePage._normTitle/ActorDetailsPage._norm, '
-        'désormais unifiées sur cette fonction)', () {
-      expect(TitleMetadata.computeGroupKey('Café'), 'café');
-      expect(TitleMetadata.computeGroupKey('Élite'), 'élite');
+  group('computeGroupKey — accents REPLIÉS (§searchAccents, ex-Constat n°2)', () {
+    test('les accents sont repliés sur leur lettre de base, jamais tronqués',
+        () {
+      // ⚠️ Ce test remplace « accents préservés » (Constat n°2, 2026-06-30) —
+      // et ne le contredit PAS. Ce qui avait été rejeté à l'époque, c'était la
+      // regex ASCII-only de `HomePage._normTitle`, qui **tronquait** au premier
+      // caractère non-ASCII : « Café » devenait « caf ». Elle DÉTRUISAIT de
+      // l'information et faisait échouer silencieusement le matching TMDB.
+      //
+      // §searchAccents **replie** au lieu de tronquer : « Café » → « cafe ».
+      // L'information est conservée, et la clé devient insensible aux accents —
+      // ce dont la recherche a besoin, puisque 18 % des titres des listes
+      // réelles en portent un et que personne ne les tape au clavier.
+      expect(TitleMetadata.computeGroupKey('Café'), 'cafe');
+      expect(TitleMetadata.computeGroupKey('Élite'), 'elite');
       expect(TitleMetadata.computeGroupKey("L'affaire X"), 'l affaire x');
+    });
+
+    test("rien n'est TRONQUÉ — c'était le vrai défaut de l'ancienne regex", () {
+      expect(TitleMetadata.computeGroupKey('Café').length, 4);
+      expect(TitleMetadata.computeGroupKey('Élite').length, 5);
     });
   });
 
