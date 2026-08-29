@@ -36,6 +36,12 @@ class FocusableChip extends StatefulWidget {
   /// carrousel horizontal.
   final bool anchorRowStart;
 
+  /// §dpadRowEntry — Marque ce chip comme **point d'entrée** de sa `DpadRegion`
+  /// (1re saison, 1er épisode…) : en arrivant du dessus, le focus se cale ici au
+  /// lieu de l'élément géométriquement le plus proche, qui pouvait tomber en
+  /// plein milieu de la rangée.
+  final bool entry;
+
   const FocusableChip({
     super.key,
     required this.child,
@@ -47,6 +53,7 @@ class FocusableChip extends StatefulWidget {
     this.onArrowLeft,
     this.onArrowRight,
     this.anchorRowStart = false,
+    this.entry = false,
   });
 
   @override
@@ -89,6 +96,7 @@ class _FocusableChipState extends State<FocusableChip> {
     return DpadFocusable(
       autofocus: widget.autofocus,
       enabled: widget.enabled,
+      entry: widget.entry,
       onSelect: widget.onTap,
       tapToSelect: false,
       // §rowAnchorDetails — l'auto-scroll dpad (reveal au bord le plus proche)

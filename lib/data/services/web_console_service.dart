@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../core/diagnostics/log_buffer.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
 import '../models/stream_account.dart';
@@ -36,6 +37,34 @@ import '../../feature/settings/web_console/web_console_html.dart' as html;
 /// Sécurité : HTTP clair LAN uniquement, token 8 chars requis sur toute requête,
 /// serveur fermé sur `stop()` (dispose de l'écran) ou timeout 30 min. Le `.aether`
 /// reste chiffré — le mot de passe est exigé côté navigateur pour appliquer.
+///
+/// §webConsoleOnly (2026-08-05) — La Console web est devenue le **seul** canal
+/// QR de l'app (l'ancien `PairingService` mono-formulaire a été supprimé : sur
+/// TV, les entrées les plus visibles y menaient, et l'utilisateur se retrouvait
+/// avec un formulaire de saisie de playlist au lieu du panneau complet). Deux
+/// ajouts rendent ce remplacement possible :
+///   - [start] accepte un `initialView` → le QR pointe directement sur la bonne
+///     page (comptes, TMDB…), donc scanner depuis « Ajouter une playlist » reste
+///     aussi direct qu'avant tout en gardant le reste du panneau accessible ;
+///   - [lastEvent] notifie l'app native de chaque action appliquée depuis le
+///     navigateur, ce qui permet à l'onboarding TV d'avancer tout seul et aux
+///     écrans natifs de se rafraîchir.
+/// §webConsoleOnly — Action appliquée depuis le navigateur, poussée vers l'app
+/// native via [WebConsoleService.lastEvent].
+///
+/// [seq] s'incrémente à chaque événement : il garantit que le `ValueNotifier`
+/// notifie même quand la **même** action est répétée (deux comptes ajoutés à la
+/// suite, par exemple), ce qu'une simple `String` ne ferait pas.
+class WebConsoleEvent {
+  /// Route API appelée, ex. `/api/account/save`.
+  final String path;
+  final int seq;
+  const WebConsoleEvent(this.seq, this.path);
+
+  bool get isAccountChange => path.startsWith('/api/account/');
+  bool get isTmdbChange => path == '/api/tmdb/save';
+}
+
 class WebConsoleService {
   WebConsoleService._();
   static final WebConsoleService instance = WebConsoleService._();
@@ -46,6 +75,17 @@ class WebConsoleService {
   AppThemeConfig _theme = AppThemeConfig.defaults;
   Timer? _timeout;
 
+  /// §webConsoleOnly — Vue sur laquelle le QR ouvre le navigateur (`accounts`,
+  /// `tmdb`…). `null` = tableau de bord complet.
+  String? _initialView;
+
+  /// §webConsoleOnly — Dernière action appliquée depuis le navigateur.
+  /// Jamais remis à `null` après coup : les écrans s'abonnent et filtrent sur
+  /// le type d'événement qui les concerne.
+  final ValueNotifier<WebConsoleEvent?> lastEvent =
+      ValueNotifier<WebConsoleEvent?>(null);
+  int _eventSeq = 0;
+
   static const Duration _autoStopDuration = Duration(minutes: 30);
 
   bool get isRunning => _server != null;
@@ -55,14 +95,27 @@ class WebConsoleService {
   /// URL à afficher / encoder en QR, ou null si non démarré.
   String? get consoleUrl {
     if (_server == null || _localIp == null || _token == null) return null;
-    return 'http://$_localIp:${_server!.port}/?t=$_token';
+    final view = _initialView;
+    final suffix = (view == null || view.isEmpty) ? '' : '&view=$view';
+    return 'http://$_localIp:${_server!.port}/?t=$_token$suffix';
   }
 
   String? get token => _token;
 
-  Future<void> start({required AppThemeConfig theme}) async {
+  /// §webConsoleOnly — Change la vue cible **sans** redémarrer une session déjà
+  /// active. Indispensable : redémarrer régénérerait le token et invaliderait
+  /// l'onglet déjà ouvert sur le téléphone (cas de la télécommande en cours).
+  void setInitialView(String? view) {
+    _initialView = view;
+  }
+
+  Future<void> start({
+    required AppThemeConfig theme,
+    String? initialView,
+  }) async {
     if (_server != null) await stop();
     _theme = theme;
+    _initialView = initialView;
     _token = _generateToken();
     _localIp = await _detectLocalIp();
 
@@ -93,7 +146,13 @@ class WebConsoleService {
     _server = null;
     _token = null;
     _localIp = null;
+    _initialView = null;
     debugPrint('🛑 WebConsoleService: arrêté');
+  }
+
+  /// §webConsoleOnly — Pousse l'action appliquée vers les écrans natifs abonnés.
+  void _emit(String path) {
+    lastEvent.value = WebConsoleEvent(++_eventSeq, path);
   }
 
   // ── Routage ────────────────────────────────────────────────────────────────
@@ -122,6 +181,15 @@ class WebConsoleService {
 
       if (req.method == 'GET' && uri.path == '/') {
         await _serveView(req, uri.queryParameters['view']);
+        return;
+      }
+
+      // §tvLogs — Export texte du journal (téléchargeable, et rechargé toutes
+      // les 2 s par la vue « Journal » pour un suivi en direct).
+      if (req.method == 'GET' && uri.path == '/logs.txt') {
+        res.headers.contentType = ContentType.text;
+        res.write(DiagnosticLog.dump());
+        await res.close();
         return;
       }
 
@@ -178,6 +246,10 @@ class WebConsoleService {
         final info = await PackageInfo.fromPlatform();
         page = html.buildAbout(_theme, tk, '${info.version}+${info.buildNumber}');
         break;
+      case 'logs':
+        page = html.buildLogs(_theme, tk, DiagnosticLog.dump(),
+            DiagnosticLog.keyTrace, DiagnosticLog.lineCount);
+        break;
       default:
         page = html.buildDashboard(_theme, tk);
     }
@@ -222,10 +294,28 @@ class WebConsoleService {
           final id = payload['id'] as String?;
           if (id == null) throw 'ID manquant';
           await StreamAccountService.setCurrentAccount(id);
+          // §secondaryRefresh — Même traitement que la bascule côté TV : si la
+          // playlist du nouveau principal est périmée, on la rafraîchit en
+          // arrière-plan (la réponse HTTP ne l'attend pas).
+          final newPrimary = await StreamAccountService.getAccount(id);
+          if (newPrimary != null) {
+            unawaited(PlaylistService.refreshIfStale(newPrimary));
+          }
           _json(req, 200, {'ok': true});
           break;
         case '/api/account/reload':
           await _reloadAccount(payload['id'] as String?);
+          _json(req, 200, {'ok': true});
+          break;
+        // §tvLogs — Traceur de touches : montre ce que la télécommande émet
+        // réellement (indispensable pour les touches média, invisibles sans
+        // logcat sur TV).
+        case '/api/logs/keytrace':
+          DiagnosticLog.keyTrace = payload['on'] == true;
+          _json(req, 200, {'ok': true});
+          break;
+        case '/api/logs/clear':
+          DiagnosticLog.clear();
           _json(req, 200, {'ok': true});
           break;
         case '/api/tmdb/save':
@@ -264,7 +354,14 @@ class WebConsoleService {
           break;
         default:
           _json(req, 404, {'ok': false, 'error': 'Route inconnue.'});
+          return; // Route inconnue : rien à notifier.
       }
+      // §webConsoleOnly — On n'arrive ici que si l'action a réussi (toute erreur
+      // est levée et interceptée ci-dessous). `/api/remote` est exclu : il part
+      // à CHAQUE appui de touche de la télécommande et noierait les abonnés.
+      // §tvLogs — `/api/logs/*` est exclu pour la même raison : consulter le
+      // journal est une action de diagnostic, elle ne change pas la config.
+      if (path != '/api/remote' && !path.startsWith('/api/logs/')) _emit(path);
     } catch (e) {
       debugPrint('❌ WebConsoleService API $path: $e');
       _json(req, 400, {'ok': false, 'error': e.toString()});
@@ -337,7 +434,7 @@ class WebConsoleService {
     if (cur?.id == id) {
       path = await PlaylistService.downloadCurrentM3U();
     } else {
-      path = await PlaylistService.ensureDownloadedForAccount(acc);
+      path = (await PlaylistService.ensureDownloadedForAccount(acc)).path;
     }
     if (path == null) throw 'Téléchargement impossible (URL/connexion ?).';
     await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
@@ -436,7 +533,7 @@ class WebConsoleService {
   /// Télécharge + parse un compte en arrière-plan (silencieux).
   Future<void> _hydrate(StreamAccount acc) async {
     try {
-      final path = await PlaylistService.ensureDownloadedForAccount(acc);
+      final path = (await PlaylistService.ensureDownloadedForAccount(acc)).path;
       if (path != null) {
         await ParsedPlaylistService.loadSecondary(acc.id, acc.label, path);
       }

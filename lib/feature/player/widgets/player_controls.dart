@@ -39,6 +39,17 @@ class PlayerControls extends StatefulWidget {
   /// audio / sous-titres (géré par [PlayerPage] pour suspendre l'auto-hide).
   final VoidCallback? onShowTracks;
 
+  /// §playerOptionsTouch — Ouvre le panneau d'options du lecteur (format
+  /// d'image, infos vidéo, pistes, vitesse…).
+  ///
+  /// ⚠️ Ce panneau n'avait qu'une porte D-pad (↑ / appui long sur la vidéo) :
+  /// au tactile, il était **inatteignable**, et avec lui tout ce qui n'a pas
+  /// de bouton inline — dont « Infos vidéo » (§videoStats). D'où ce bouton,
+  /// posé côté mobile uniquement : sur TV les boutons inline sont des
+  /// `GestureDetector` non focusables, un icône de plus ne ferait qu'encombrer
+  /// une barre qu'on ne peut pas atteindre.
+  final VoidCallback? onShowOptions;
+
   const PlayerControls({
     super.key,
     required this.player,
@@ -56,6 +67,7 @@ class PlayerControls extends StatefulWidget {
     this.onLockChanged,
     this.onNextEpisode,
     this.onShowTracks,
+    this.onShowOptions,
   });
 
   @override
@@ -407,6 +419,22 @@ class _PlayerControlsState extends State<PlayerControls> {
                         ),
                       ),
                       const Spacer(),
+                      // §playerOptionsTouch — Accès tactile au panneau
+                      // d'options (format d'image, infos vidéo…).
+                      if (widget.onShowOptions != null) ...[
+                        GestureDetector(
+                          onTap: () {
+                            widget.onShowOptions?.call();
+                            widget.onInteraction();
+                          },
+                          child: const Icon(
+                            Icons.tune_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                      ],
                       // §5 — Bouton CC : ouvre le sélecteur de pistes audio /
                       // sous-titres (PlayerPage suspend l'auto-hide pendant).
                       if (widget.onShowTracks != null) ...[

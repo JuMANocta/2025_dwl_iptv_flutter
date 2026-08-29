@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/data/models/quality_scale.dart';
+import 'package:aetherStream/data/services/measured_quality_service.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 
 /// Trie les versions par qualité décroissante et génère un label lisible.
@@ -12,17 +14,32 @@ import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 /// MÊME compte), on suffixe par le **nom du compte** (multi-comptes) ou, à
 /// défaut, un index → l'utilisateur distingue clairement les flux.
 List<(M3uEntry, String)> labeledVersions(List<M3uEntry> versions) {
-  const order = {'4K': 0, 'UHD': 0, 'FHD': 1, 'HD': 2, 'SD': 3};
+  // §camQuality — CAM classé APRÈS SD : un rip de salle est le pire flux
+  // disponible, il ne doit jamais être proposé en premier.
+  const order = {'4K': 0, 'UHD': 0, 'FHD': 1, 'HD': 2, 'SD': 3, 'CAM': 4};
   final sorted = List<M3uEntry>.from(versions)
     ..sort((a, b) => (order[a.title.quality] ?? 99)
         .compareTo(order[b.title.quality] ?? 99));
 
-  // 1) Label de base (qualité > langue > versionLabel > « Flux N »).
-  String baseLabel(M3uEntry v, int i) =>
-      v.title.quality ??
-      (v.title.languages.isNotEmpty ? v.title.languages.first : null) ??
-      v.title.versionLabel ??
-      'Flux ${i + 1}';
+  // 1) Label de base (qualité > langue > versionLabel > marqueur > « Flux N »).
+  // §providerTag — Le marqueur du fournisseur (FR, US, IT…) reste le DERNIER
+  // recours avant « Flux N » : il distingue réellement deux versions, mais ce
+  // n'est pas une qualité — d'où le libellé « version » et non « qualité » sur
+  // le déroulant ci-dessous.
+  // §versionLabel — Même ordre que les pastilles de la fiche : qualité, puis
+  // langue, puis marqueur fournisseur. Quand la liste n'annonce aucune qualité,
+  // on utilise celle qu'on a MESURÉE à la lecture (§qualityTruth), préfixée
+  // d'un `~` : c'est ce que ce flux a servi, pas une promesse du fournisseur.
+  String baseLabel(M3uEntry v, int i) {
+    final q = v.title.quality;
+    if (q != null) return q;
+    final measured = MeasuredQualityService.get(v.url);
+    if (measured != null) return '~${measured.definitionLabel}';
+    return (v.title.languages.isNotEmpty ? v.title.languages.first : null) ??
+        v.title.versionLabel ??
+        v.title.providerTag ??
+        'Flux ${i + 1}';
+  }
   final bases = sorted.indexed.map((e) => baseLabel(e.$2, e.$1)).toList();
 
   // 2) Compte les collisions de label.
@@ -56,6 +73,8 @@ Color _qualityColor(String? q) {
       return kQualityHD;
     case 'SD':
       return kQualitySD;
+    case 'CAM': // §camQuality — rip de salle
+      return kQualityCam;
     default:
       return kQualityUnknown;
   }
@@ -84,6 +103,15 @@ class _QualityButtonsRowState extends State<QualityButtonsRow> {
 
   @override
   Widget build(BuildContext context) {
+    // §qualityTruth — Revenir du lecteur doit suffire à faire apparaître la
+    // mesure : la feuille reste montée pendant la lecture.
+    return ValueListenableBuilder<int>(
+      valueListenable: MeasuredQualityService.version,
+      builder: (_, __, ___) => _buildInner(context),
+    );
+  }
+
+  Widget _buildInner(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final labeled = labeledVersions(widget.versions);
     if (labeled.isEmpty) return const SizedBox.shrink();
@@ -131,8 +159,8 @@ class _QualityButtonsRowState extends State<QualityButtonsRow> {
                       const SizedBox(width: 4),
                       Text(
                         _expanded
-                            ? 'Masquer les qualités'
-                            : 'Changer la qualité',
+                            ? 'Masquer les versions'
+                            : 'Changer de version',
                         style: TextStyle(
                             color: cs.onSurfaceVariant,
                             fontSize: 13,
@@ -187,6 +215,10 @@ class _QualityButtonsRowState extends State<QualityButtonsRow> {
                           color: kWhite,
                           fontWeight: FontWeight.bold,
                           fontSize: 15)),
+                  // §qualityTruth — Ce que ce flux a réellement servi la
+                  // dernière fois. Sur une chaîne annoncée FHD qui sert du
+                  // 720p, c'est ici que ça se voit — avant de lancer.
+                  ..._measuredSuffix(v, onGradient: true),
                 ],
               ),
             ),
@@ -194,6 +226,41 @@ class _QualityButtonsRowState extends State<QualityButtonsRow> {
         ),
       ),
     );
+  }
+
+  /// §qualityTruth — Suffixe « réel … » collé au libellé d'un flux.
+  ///
+  /// Ne dit rien tant que le flux n'a jamais été lu, et ne dit rien non plus
+  /// quand la mesure CONFIRME l'annonce : le libellé porte déjà l'information,
+  /// la répéter n'apprendrait rien et alourdirait chaque ligne. On ne parle que
+  /// pour signaler un écart.
+  ///
+  /// [onGradient] : sur le bouton principal, le fond est le dégradé de l'app —
+  /// une couleur de texte sombre y serait illisible.
+  List<Widget> _measuredSuffix(M3uEntry v, {bool onGradient = false}) {
+    final measured = MeasuredQualityService.get(v.url);
+    if (measured == null) return const [];
+    final verdict = measured.verdictFor(v.title.quality);
+    if (verdict == QualityVerdict.conforme ||
+        verdict == QualityVerdict.unknown) {
+      return const [];
+    }
+    final survendu = verdict == QualityVerdict.survendu;
+    return [
+      const SizedBox(width: 6),
+      Text(
+        survendu
+            ? '⚠ réel ${measured.definitionLabel}'
+            : 'réel ${measured.definitionLabel}',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: onGradient
+              ? kWhite.withAlpha(survendu ? 255 : 200)
+              : (survendu ? kError : kAccentSecondary),
+        ),
+      ),
+    ];
   }
 
   /// Pastille colorée par qualité pour les flux alternatifs.
@@ -224,6 +291,7 @@ class _QualityButtonsRowState extends State<QualityButtonsRow> {
                         color: color,
                         fontWeight: FontWeight.bold,
                         fontSize: 13)),
+                ..._measuredSuffix(v),
               ],
             ),
           ),

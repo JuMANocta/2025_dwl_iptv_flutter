@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/themes/colors.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
+import '../video_fit.dart';
 
 /// §tvPlayerNav — Panneau d'OPTIONS du lecteur : le « centre de contrôle » TV
 /// ouvert via ↑ à la télécommande (mobile peut aussi y accéder). Tous les items
@@ -13,8 +14,12 @@ Future<void> showPlayerOptions(
   BuildContext context, {
   required bool hasNext,
   required String speedLabel,
+  required VideoFitMode fitMode,
+  required bool statsEnabled,
   required VoidCallback onTracks,
   required VoidCallback onSpeed,
+  required VoidCallback onFit,
+  required VoidCallback onToggleStats,
   VoidCallback? onNext,
 }) {
   return showAdaptiveActionSheet<void>(
@@ -49,6 +54,58 @@ Future<void> showPlayerOptions(
           subtitle: speedLabel,
           onTap: onSpeed,
         ),
+        // §videoFit — Format d'image : le sous-titre annonce le mode ACTIF,
+        // pas l'action. Sur TV c'est le seul endroit où on peut lire l'état
+        // courant (le bouton inline du lecteur n'existe qu'au tactile).
+        _OptionRow(
+          icon: fitMode.icon,
+          accent: kAccentSecondary,
+          title: "Format d'image",
+          subtitle: '${fitMode.label} · ${fitMode.description}',
+          onTap: onFit,
+        ),
+        // §videoStats — Interrupteur de l'encart de diagnostic. EN DERNIER :
+        // c'est un outil de mise au point, pas une action de lecture, il ne
+        // doit pas passer devant « Épisode suivant » au focus D-pad.
+        _OptionRow(
+          icon: statsEnabled
+              ? Icons.speed_outlined
+              : Icons.query_stats_rounded,
+          accent: kAccentTertiary,
+          title: 'Infos vidéo',
+          subtitle: statsEnabled
+              ? 'Affichées · toucher pour masquer'
+              : 'Décodage, résolution, images/s, pertes',
+          selected: statsEnabled,
+          onTap: onToggleStats,
+        ),
+      ],
+    ),
+  );
+}
+
+/// §videoFit — Sous-menu Format d'image, focusable D-pad.
+Future<void> showVideoFitMenu(
+  BuildContext context, {
+  required VideoFitMode current,
+  required ValueChanged<VideoFitMode> onSelect,
+}) {
+  return showAdaptiveActionSheet<void>(
+    context: context,
+    scrollable: false,
+    builder: (_) => _OptionsBody(
+      title: "Format d'image",
+      icon: Icons.aspect_ratio_rounded,
+      children: [
+        for (final mode in VideoFitMode.values)
+          _OptionRow(
+            icon: mode == current ? Icons.check_circle_rounded : mode.icon,
+            accent: kAccentSecondary,
+            title: mode.label,
+            subtitle: mode.description,
+            selected: mode == current,
+            onTap: () => onSelect(mode),
+          ),
       ],
     ),
   );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
+import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
@@ -8,7 +9,8 @@ import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 
 // ─── Poster partagé ──────────────────────────────────────────────────────────
 
-Widget _poster(List<M3uEntry> versions, IconData fallbackIcon, Color accentColor) {
+Widget _poster(BuildContext context, List<M3uEntry> versions,
+    IconData fallbackIcon, Color accentColor) {
   // §23 — image de la version du compte le plus riche (politique « plus
   // grosse liste »), fallback par taille décroissante.
   final logoUrl = ParsedPlaylistService.bestLogoUrl(versions);
@@ -16,15 +18,18 @@ Widget _poster(List<M3uEntry> versions, IconData fallbackIcon, Color accentColor
     borderRadius: BorderRadius.circular(8),
     child: SizedBox(
       width: 70, height: 105,
-      child: logoUrl != null && logoUrl.isNotEmpty
-          ? Image.network(
-              logoUrl,
-              width: 70, height: 105, fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _posterFallback(fallbackIcon, accentColor),
-              loadingBuilder: (_, child, progress) =>
-                  progress == null ? child : _posterFallback(fallbackIcon, accentColor),
-            )
-          : _posterFallback(fallbackIcon, accentColor),
+      // §imgDiskCache — cache disque partagé. Ce site n'avait AUCUN cap de
+      // décodage (seul des 14) → ajout de `cacheWidth` pour un poster 70×105.
+      child: AetherImage(
+        url: logoUrl,
+        width: 70,
+        height: 105,
+        fit: BoxFit.cover,
+        // §imgThrash — décodage calé sur les 70 px réels.
+        cacheWidth: decodeWidthFor(context, 70),
+        fallback: (_) => _posterFallback(fallbackIcon, accentColor),
+        showFallbackWhileLoading: true,
+      ),
     ),
   );
 }
@@ -112,7 +117,7 @@ class FilmCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(children: [
-          _poster(versions, Icons.movie_outlined, kAccentPrimary),
+          _poster(context, versions, Icons.movie_outlined, kAccentPrimary),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -215,7 +220,8 @@ class SerieCard extends StatelessWidget {
                   child: ExpansionTile(
                     tilePadding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
                     childrenPadding: EdgeInsets.zero,
-                    leading: _poster(allVersions, Icons.tv_outlined, kAccentTertiary),
+                    leading: _poster(
+                        context, allVersions, Icons.tv_outlined, kAccentTertiary),
                     title: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Expanded(
                         child: Text(
@@ -321,7 +327,7 @@ class TvCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(children: [
-          _poster(versions, Icons.live_tv_outlined, kAccentSecondary),
+          _poster(context, versions, Icons.live_tv_outlined, kAccentSecondary),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

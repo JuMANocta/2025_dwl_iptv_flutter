@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../core/themes/colors.dart';
-import '../../core/utils/platform_tv.dart';
 import '../../data/services/hidden_regions_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/services/playlist_service.dart';
 import '../../data/services/stream_account_service.dart';
 import '../search/m3u_filter.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 /// §langFilter — Réglage des langues/régions à MASQUER du catalogue.
 ///
@@ -21,7 +21,7 @@ class RegionFilterPage extends StatefulWidget {
   State<RegionFilterPage> createState() => _RegionFilterPageState();
 }
 
-class _RegionFilterPageState extends State<RegionFilterPage> {
+class _RegionFilterPageState extends State<RegionFilterPage> with TvInitialFocus {
   late Set<String> _selected;
   bool _busy = false;
 
@@ -29,11 +29,6 @@ class _RegionFilterPageState extends State<RegionFilterPage> {
   void initState() {
     super.initState();
     _selected = {...HiddenRegionsService.hidden};
-    if (PlatformTv.isTv) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-    }
   }
 
   bool get _dirty =>

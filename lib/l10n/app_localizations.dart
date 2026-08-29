@@ -344,6 +344,18 @@ abstract class AppLocalizations {
   /// **'Episode'**
   String get episode;
 
+  /// No description provided for @favoriteAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to favorites'**
+  String get favoriteAdd;
+
+  /// No description provided for @favoriteRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from favorites'**
+  String get favoriteRemove;
+
   /// No description provided for @actionSheetPlay.
   ///
   /// In en, this message translates to:

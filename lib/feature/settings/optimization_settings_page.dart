@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
-import 'package:aetherStream/core/utils/platform_tv.dart';
+import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/widgets/memory_stats_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 /// §perfSettings — Page « Optimisation » (Fire Stick / terminaux faibles).
 ///
@@ -23,7 +24,7 @@ class OptimizationSettingsPage extends StatefulWidget {
       _OptimizationSettingsPageState();
 }
 
-class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> {
+class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> with TvInitialFocus {
   late PerfConfig _config;
 
   /// Change de valeur après « Libérer la mémoire » → recrée la MemoryStatsCard
@@ -34,12 +35,6 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> {
   void initState() {
     super.initState();
     _config = PerformanceSettingsService.config.value;
-    // §19 — Auto-focus initial sur TV.
-    if (PlatformTv.isTv) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-    }
   }
 
   /// Applique la config en live (ValueNotifier → rebuild home) et la persiste.
@@ -63,6 +58,19 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> {
       content: Text(n > 0
           ? '💤 $n compte(s) secondaire(s) déchargé(s) de la mémoire'
           : 'Rien à libérer (un seul compte chargé)'),
+    ));
+  }
+
+  /// §imgDiskCache — Vide le cache disque des vignettes. Utile si une image a
+  /// changé côté provider ou si le stockage sature ; elles se re-téléchargeront
+  /// à la demande.
+  Future<void> _clearImageCache() async {
+    final messenger = ScaffoldMessenger.of(context);
+    await AetherImageCache.emptyAll();
+    if (!mounted) return;
+    setState(() => _memCardEpoch++);
+    messenger.showSnackBar(const SnackBar(
+      content: Text('🧹 Cache images vidé'),
     ));
   }
 
@@ -150,7 +158,41 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> {
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
+              // §autoNextEp — Réglage de CONFORT, volontairement hors des
+              // profils de performance (les 3 presets le laissent intact).
+              _sectionLabel('Lecture', cs),
+              _switchTile(
+                icon: Icons.skip_next_rounded,
+                title: 'Épisode suivant automatique',
+                subtitle:
+                    'Enchaîne l\'épisode suivant en fin de lecture, après un '
+                    'décompte annulable. Un changement de saison demande '
+                    'toujours confirmation.',
+                value: _config.autoNextEpisode,
+                onChanged: (v) => _apply(_config.copyWith(autoNextEpisode: v)),
+              ),
               _sectionLabel('Mémoire & usage', cs),
+              // §imgMemCache — plafond du cache image EN RAM.
+              _buildStepper(
+                label: 'Images (RAM)',
+                value: _config.imageCacheMb,
+                min: PerfConfig.minImageCacheMb,
+                max: PerfConfig.maxImageCacheMb,
+                step: 10,
+                suffix: ' Mo',
+                onChanged: (v) => _apply(_config.copyWith(imageCacheMb: v)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  'Mémoire vive réservée aux images déjà affichées (défaut '
+                  'Flutter : 100 Mo). ⚠️ Baisser ne rend pas l\'app plus '
+                  'fluide : trop bas, les vignettes sont re-décodées en '
+                  'permanence et l\'affichage se met à saccader. À n\'ajuster '
+                  'que si la mémoire manque vraiment.',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: MemoryStatsCard(key: ValueKey(_memCardEpoch)),
@@ -177,6 +219,34 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> {
                 child: Text(
                   'Les caches disque sont conservés : un compte déchargé se '
                   'recharge en ~50 ms au prochain accès.',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // §imgDiskCache — purge manuelle du cache des vignettes.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: FocusableCard(
+                  scaleOnFocus: false,
+                  onTap: _clearImageCache,
+                  decorateOnly: true,
+                  child: FilledButton.tonalIcon(
+                    onPressed: _clearImageCache,
+                    icon: const Icon(Icons.image_not_supported_outlined,
+                        size: 18),
+                    label: const Text('Vider le cache images'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                child: Text(
+                  'Les vignettes sont gardées sur le disque pour éviter de les '
+                  're-télécharger. À vider si une affiche a changé côté '
+                  'fournisseur ou si le stockage sature.',
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
@@ -330,6 +400,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> {
     required int step,
     required ValueChanged<int> onChanged,
     bool enabled = true,
+    String suffix = '',
   }) {
     final ratio = ((value - min) / (max - min)).clamp(0.0, 1.0);
     final color = enabled ? kAccentSecondary : kAccentSecondary.withAlpha(90);
@@ -381,9 +452,9 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> {
               tooltip: 'Augmenter',
             ),
             SizedBox(
-              width: 26,
+              width: suffix.isEmpty ? 26 : 52,
               child: Text(
-                '$value',
+                '$value$suffix',
                 style: TextStyle(
                   fontSize: 12,
                   color: color,

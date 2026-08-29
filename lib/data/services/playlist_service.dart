@@ -75,7 +75,13 @@ class PlaylistService {
     }
   }
 
-  static Future<String> getOrDownloadPlaylist() async {
+  /// §bootStatus — [onDownloadStart] est appelé UNIQUEMENT si un téléchargement
+  /// réseau va réellement démarrer (cache absent ou périmé). L'appelant peut
+  /// ainsi afficher « téléchargement… » au lieu de « lecture du cache… » sans
+  /// que ce service connaisse l'UI.
+  static Future<String> getOrDownloadPlaylist({
+    void Function()? onDownloadStart,
+  }) async {
     final path = await playlistPath();
     final file = File(path);
 
@@ -92,25 +98,70 @@ class PlaylistService {
     } else {
       debugPrint("ℹ️ Aucune playlist en cache. Téléchargement initial...");
     }
+    onDownloadStart?.call();
     return downloadCurrentM3U();
   }
 
-  /// Télécharge la playlist d'un compte spécifique (utile pour les comptes
-  /// non-actifs en multi-comptes). Retourne le chemin du fichier ou `null` en
-  /// cas d'échec — silencieux : aucune exception ne remonte.
+  /// §secondaryRefresh — Décision « faut-il (re)télécharger ? », isolée en
+  /// fonction PURE pour être testable sans système de fichiers.
   ///
-  /// Si un cache existe déjà (frais ou périmé), il est conservé : on ne
-  /// re-télécharge que s'il n'y a aucun fichier. Le but est de _peupler_ les
-  /// playlists manquantes sans rejouer un téléchargement déjà fait.
-  static Future<String?> ensureDownloadedForAccount(StreamAccount acc) async {
+  /// [age] est l'âge du cache (`null` si le fichier n'existe pas).
+  /// [respectTtl] à `false` = on ne télécharge que si le fichier manque
+  /// (ancien comportement de [ensureDownloadedForAccount], conservé pour les
+  /// appelants qui veulent seulement *peupler* un compte).
+  @visibleForTesting
+  static bool needsDownload({
+    required bool exists,
+    required int lengthBytes,
+    required Duration? age,
+    bool respectTtl = true,
+  }) {
+    if (!exists || lengthBytes <= 0) return true;
+    if (!respectTtl || age == null) return false;
+    return age >= playlistCacheDuration;
+  }
+
+  /// Télécharge la playlist d'un compte spécifique (comptes non-actifs en
+  /// multi-comptes). Ne lève jamais : renvoie `path: null` en cas d'échec.
+  ///
+  /// §secondaryRefresh — **Le TTL s'applique désormais ici aussi.** Avant, la
+  /// seule condition était l'existence physique du fichier : une playlist
+  /// secondaire téléchargée une fois restait figée indéfiniment (le TTL de 24 h
+  /// n'était lu que dans [getOrDownloadPlaylist], qui ne concerne que le compte
+  /// actif). Coût quand le cache est frais : un `stat`, rien de plus.
+  ///
+  /// `downloaded` dit à l'appelant s'il doit recharger le cache parsé en
+  /// mémoire (`ParsedPlaylistService.reloadFromDisk`) — sans ça, l'app
+  /// continuerait d'afficher l'ancienne liste jusqu'au prochain démarrage.
+  static Future<({String? path, bool downloaded})> ensureDownloadedForAccount(
+    StreamAccount acc, {
+    bool respectTtl = true,
+  }) async {
     final existing = await pathForAccountId(acc.id);
     final file = File(existing);
-    if (await file.exists() && await file.length() > 0) return existing;
+    final exists = await file.exists();
+    final int length = exists ? await file.length() : 0;
+    final Duration? age = exists
+        ? DateTime.now().difference(await file.lastModified())
+        : null;
+
+    if (!needsDownload(
+      exists: exists,
+      lengthBytes: length,
+      age: age,
+      respectTtl: respectTtl,
+    )) {
+      return (path: existing, downloaded: false);
+    }
+    if (exists) {
+      debugPrint('⏳ Playlist « ${acc.label} » périmée '
+          '(${age!.inHours} h) → rafraîchissement.');
+    }
 
     final url = acc.buildM3uUrl();
     if (url == null || url.isEmpty) {
       debugPrint("⚠️ ensureDownloadedForAccount: URL invalide pour ${acc.label}");
-      return null;
+      return (path: null, downloaded: false);
     }
 
     // §23 — Tentative 1 : catalogue JSON direct. Si OK, on évite get.php.
@@ -120,7 +171,7 @@ class PlaylistService {
         await _deleteIfExists(await m3uPathForAccountId(acc.id));
         ParsedPlaylistService.invalidate(acc.id);
         debugPrint('✅ Catalogue JSON téléchargé pour ${acc.label}.');
-        return jsonPath;
+        return (path: jsonPath, downloaded: true);
       }
     } catch (e) {
       debugPrint('⚠️ Catalogue JSON ${acc.label} échec ($e), fallback get.php');
@@ -143,20 +194,45 @@ class PlaylistService {
       final temp = File(tempPath);
       if (!await temp.exists() || await temp.length() == 0) {
         if (await temp.exists()) await temp.delete();
-        return null;
+        // Échec : on garde le cache précédent s'il y en avait un — mieux vaut
+        // une liste périmée qu'une liste vide.
+        return (path: exists ? existing : null, downloaded: false);
       }
       await temp.rename(m3uPath);
       await _deleteIfExists(await jsonPathForAccountId(acc.id));
       ParsedPlaylistService.invalidate(acc.id);
       debugPrint("✅ Playlist via get.php (fallback) pour ${acc.label}.");
-      return m3uPath;
+      return (path: m3uPath, downloaded: true);
     } catch (e) {
       debugPrint("❌ ensureDownloadedForAccount(${acc.label}): $e");
       try {
         final temp = File(tempPath);
         if (await temp.exists()) await temp.delete();
       } catch (_) {}
-      return null;
+      return (path: exists ? existing : null, downloaded: false);
+    }
+  }
+
+  /// §secondaryRefresh — Contrôle de fraîcheur + rechargement mémoire pour UN
+  /// compte, quel qu'il soit. Silencieux (aucune exception ne remonte), pensé
+  /// pour un appel en arrière-plan : la home se met à jour d'elle-même via
+  /// `ParsedPlaylistService.version` quand le rechargement aboutit.
+  ///
+  /// Retourne `true` si la playlist a réellement été renouvelée.
+  ///
+  /// Utile après une bascule de compte principal : `setCurrentAccount` n'écrit
+  /// qu'une préférence et ne déclenche aucun téléchargement — sans ça, le
+  /// nouveau principal n'était confronté au TTL qu'au redémarrage suivant.
+  static Future<bool> refreshIfStale(StreamAccount acc) async {
+    try {
+      final res = await ensureDownloadedForAccount(acc);
+      if (!res.downloaded || res.path == null) return false;
+      await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, res.path!);
+      debugPrint('🔄 §secondaryRefresh : « ${acc.label} » rafraîchie.');
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ refreshIfStale(${acc.label}) : $e');
+      return false;
     }
   }
 

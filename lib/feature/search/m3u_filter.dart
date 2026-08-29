@@ -215,18 +215,26 @@ String contentGroupKey(M3uEntry e) => e.title.groupKey.isNotEmpty
     ? e.title.groupKey
     : TitleMetadata.computeGroupKey(e.displayName);
 
+// §favAudit — Regex de `tvGroupKey` HISSÉES en constantes de fichier : elles
+// étaient reconstruites (et donc recompilées) à CHAQUE appel, or la fonction
+// est appelée par `FavoritesService.keyFor` pour chaque chaîne, et par le
+// groupement de la home pour chaque entrée TV.
+final RegExp _kTvSuffixNoise = RegExp(
+  r'\s+(R[eé]solution\b.*|Exclu[a-z]*|Backup|Bkp|Bak|Back)\s*$',
+  caseSensitive: false,
+);
+final RegExp _kTvSuffixQuality = RegExp(
+  r'\s+(4K|UHD|FHD|HD|SD|1080p|720p|480p)\s*$',
+  caseSensitive: false,
+);
+final RegExp _kWhitespaceRun = RegExp(r'\s+');
+
 /// Clé de regroupement pour les chaînes TV.
 String tvGroupKey(String name) {
   var key = name;
-  key = key.replaceAll(
-    RegExp(r'\s+(R[eé]solution\b.*|Exclu[a-z]*|Backup|Bkp|Bak|Back)\s*$', caseSensitive: false),
-    '',
-  );
-  key = key.replaceAll(
-    RegExp(r'\s+(4K|UHD|FHD|HD|SD|1080p|720p|480p)\s*$', caseSensitive: false),
-    '',
-  );
-  return key.trim().replaceAll(RegExp(r'\s+'), ' ');
+  key = key.replaceAll(_kTvSuffixNoise, '');
+  key = key.replaceAll(_kTvSuffixQuality, '');
+  return key.trim().replaceAll(_kWhitespaceRun, ' ');
 }
 
 /// Dédoublonne les variantes d'une chaîne TV partageant la même qualité.

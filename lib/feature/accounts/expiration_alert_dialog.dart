@@ -5,6 +5,7 @@ import '../../data/models/account_info.dart';
 import '../../data/models/stream_account.dart';
 import '../../data/services/expiration_alert_service.dart';
 import 'accounts_page.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
 /// AlertDialog §17b — popup au démarrage si au moins un compte expire <30j.
 ///
@@ -28,7 +29,7 @@ class ExpirationAlertDialog extends StatelessWidget {
   ) async {
     if (alerts.isEmpty) return;
     final blocking = alerts.any((a) => a.daysLeft < 0);
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       barrierDismissible: !blocking,
       builder: (_) => ExpirationAlertDialog(alerts: alerts),

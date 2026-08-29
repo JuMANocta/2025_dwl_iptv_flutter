@@ -8,63 +8,208 @@ import 'package:aetherStream/main.dart';
 import 'package:aetherStream/data/models/download_task.dart';
 import 'package:aetherStream/data/services/download_manager_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
+import 'package:aetherStream/feature/downloads/logic/download_tile_actions.dart';
 import 'package:aetherStream/widgets/info_row.dart';
 import 'package:aetherStream/widgets/terminal_download_dialog.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
-import 'package:aetherStream/core/platform/storage_service.dart';
+import 'package:media_store_plus/media_store_plus.dart';
 
 class DownloadTaskTile extends StatelessWidget {
   final DownloadTask task;
 
   const DownloadTaskTile({super.key, required this.task});
 
-  Future<void> _handleTap(BuildContext context) async {
+  /// §dlErgo — Exécute une action de la table [downloadTileActions].
+  ///
+  /// Le tap de la tuile n'appelle plus que l'action PRINCIPALE, garantie non
+  /// destructive : avant, taper un téléchargement en cours l'annulait sans
+  /// confirmation (et sur TV c'était la touche OK).
+  Future<void> _run(BuildContext context, DownloadAction action) async {
     final downloadManager = DownloadManagerService();
-    switch (task.status) {
-      case DownloadStatus.downloading:
-      // ACTION : Annuler (logique correcte)
-        await downloadManager.cancelTask(task.id);
-        break;
-
-      case DownloadStatus.completed:
-      // ACTION : Lire (logique correcte)
+    switch (action) {
+      case DownloadAction.play:
         _openFile(context);
-        break;
 
-      case DownloadStatus.failed:
-      case DownloadStatus.canceled:
-        debugPrint("🔄 Reprise du téléchargement pour la tâche : ${task.displayName}");
+      case DownloadAction.monitor:
+        _openMonitor();
 
-        // On ne supprime PAS la tâche.
-        // On demande simplement au manager de relancer CETTE tâche existante.
-        // Lancement intentionnel en arrière-plan — les erreurs sont gérées dans startDownloadTask.
-        unawaited(downloadManager.startDownloadTask(task));
+      case DownloadAction.restart:
+        debugPrint("🔄 Relance du téléchargement : ${task.displayName}");
+        // `restartTask` coupe le transfert en cours ET attend sa fin réelle
+        // avant de reprendre (sinon deux handles écriraient dans le même
+        // fichier partiel). Progression conservée via la reprise `Range`.
+        // Arrière-plan intentionnel : les erreurs sont gérées dans le service.
+        unawaited(downloadManager.restartTask(task));
+        _openMonitor(isResume: true);
 
-        // On affiche le moniteur pour que l'utilisateur voie la reprise.
-        final rootContext = navigatorKey.currentContext;
-        if (rootContext != null && rootContext.mounted) {
-          showDialog(
-              context: rootContext,
-              builder: (_) => TerminalDownloadDialog(
-                taskId: task.id,
-                isResume: true,
-              ) // On utilise l'ID de la tâche existante + l'état
-          );
-        }
-        break;
+      case DownloadAction.cancel:
+        if (!context.mounted) return;
+        final confirmed = await _confirmCancel(context);
+        if (confirmed) await downloadManager.cancelTask(task.id);
 
-      default:
-      // Pour les autres statuts (queued, paused), on ne fait rien pour l'instant
-        break;
+      case DownloadAction.delete:
+        if (context.mounted) await _deleteTask(context);
     }
   }
+
+  /// Ouvre le moniteur depuis le navigator racine (la tuile peut vivre dans un
+  /// onglet, le dialogue doit couvrir toute l'app).
+  void _openMonitor({bool isResume = false}) {
+    final rootContext = navigatorKey.currentContext;
+    if (rootContext == null || !rootContext.mounted) return;
+    showAppDialog(
+      context: rootContext,
+      builder: (_) =>
+          TerminalDownloadDialog(taskId: task.id, isResume: isResume),
+    );
+  }
+
+  /// §dlErgo — L'annulation était la seule action destructive SANS garde-fou
+  /// (la suppression, elle, en avait déjà une).
+  Future<bool> _confirmCancel(BuildContext context) async {
+    final l10n = AppLocalizations.of(context)!;
+    final ok = await showAppDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.stop_circle_outlined, color: kWarning),
+            const SizedBox(width: 12),
+            const Expanded(child: Text('Arrêter le téléchargement ?')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              task.displayName,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(ctx)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Ce qui est déjà téléchargé est conservé : tu pourras reprendre '
+              'là où ça s\'est arrêté.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: kWarning,
+              foregroundColor: kBlack,
+            ),
+            icon: const Icon(Icons.stop_rounded),
+            label: const Text('Arrêter'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  /// §dlErgo — Menu ⋯ : toutes les actions secondaires, dont les destructives.
+  Future<void> _openMenu(BuildContext context) async {
+    final actions = downloadTileActions(task.status).menu;
+    if (actions.isEmpty) return;
+    final choice = await showAdaptiveActionSheet<DownloadAction>(
+      context: context,
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final a in actions)
+              ListTile(
+                autofocus: a == actions.first,
+                leading: Icon(_actionIcon(a),
+                    color: a.isDestructive ? kError : null),
+                title: Text(
+                  _actionLabel(a),
+                  style: TextStyle(color: a.isDestructive ? kError : null),
+                ),
+                onTap: () => Navigator.of(sheetCtx).pop(a),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && context.mounted) await _run(context, choice);
+  }
+
+  /// §dlErgo — Action de relance disponible pour ce statut, s'il y en a une.
+  /// Sortie du menu ⋯ pour être visible directement sur la tuile.
+  ///
+  /// `null` sur un téléchargement TERMINÉ : il n'y a plus de fichier partiel à
+  /// reprendre, relancer repartirait de zéro.
+  DownloadAction? get _restartAction {
+    final a = downloadTileActions(task.status);
+    if (a.primary == DownloadAction.restart) return null; // déjà sur le tap
+    return a.menu.contains(DownloadAction.restart)
+        ? DownloadAction.restart
+        : null;
+  }
+
+  /// Bouton d'action bordé : sans contour, deux `IconButton` côte à côte se
+  /// lisaient comme un seul élément.
+  Widget _outlinedAction(
+    BuildContext context, {
+    required IconData icon,
+    required String tooltip,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: BorderSide(color: color.withAlpha(120)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          minimumSize: const Size(44, 44),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Icon(icon, size: 20),
+      ),
+    );
+  }
+
+  static IconData _actionIcon(DownloadAction a) => switch (a) {
+        DownloadAction.play => Icons.play_arrow_rounded,
+        DownloadAction.monitor => Icons.terminal,
+        DownloadAction.restart => Icons.refresh,
+        DownloadAction.cancel => Icons.stop_circle_outlined,
+        DownloadAction.delete => Icons.delete_forever_outlined,
+      };
+
+  static String _actionLabel(DownloadAction a) => switch (a) {
+        DownloadAction.play => 'Lire',
+        DownloadAction.monitor => 'Voir la progression',
+        DownloadAction.restart => 'Relancer',
+        DownloadAction.cancel => 'Arrêter le téléchargement',
+        DownloadAction.delete => 'Supprimer',
+      };
 
   Future<void> _deleteTask(BuildContext context) async {
     final l10n = AppLocalizations.of(context)!;
     final downloadManager = DownloadManagerService();
-    final bool? confirm = await showDialog<bool>(
+    final bool? confirm = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         // 1. Un titre avec une icône d'avertissement claire
@@ -111,7 +256,7 @@ class DownloadTaskTile extends StatelessWidget {
             // On donne au bouton un style "destructif"
             style: FilledButton.styleFrom(
               backgroundColor: kError,
-              foregroundColor: Colors.white, // Pour que le texte et l'icône soient blancs
+              foregroundColor: kWhite, // Pour que le texte et l'icône soient blancs
             ),
             icon: const Icon(Icons.delete_forever),
             label: Text(l10n.deleteDialogConfirmButton),
@@ -124,15 +269,39 @@ class DownloadTaskTile extends StatelessWidget {
     if (confirm == true) {
       await downloadManager.removeTask(task.id);
 
-      // Suppression du fichier final via le service multi-plateforme
-      await StorageService.deleteVideo(task.finalPath);
+      // §dlDirectWrite — Le fichier final est désormais écrit DIRECTEMENT dans
+      // le dossier public : on l'efface par son chemin. MediaStore reste
+      // ensuite appelé sur Android pour purger l'entrée d'index.
+      try {
+        final finalFile = File(task.finalPath);
+        if (await finalFile.exists()) await finalFile.delete();
+      } catch (e) {
+        debugPrint("⚠️ Suppression du fichier final échouée : $e");
+      }
 
-      // Suppression du fichier temporaire s'il existe encore
+      if (Platform.isAndroid) {
+        // Suppression du fichier final via MediaStore (Android 10+)
+        try {
+          final fileName = task.finalPath.split('/').last;
+          if (fileName.isNotEmpty) {
+            await MediaStore().deleteFile(
+              fileName: fileName,
+              dirType: DirType.video,
+              dirName: DirName.movies,
+            );
+          }
+        } catch (e) {
+          debugPrint("⚠️ Suppression MediaStore échouée : $e");
+        }
+      }
+
+      // Suppression du fichier partiel (`.<nom>.part` à côté du final, ou
+      // résidu dans le cache privé quand le repli a servi).
       try {
         final tempFile = File(task.tempPath);
         if (await tempFile.exists()) await tempFile.delete();
       } catch (e) {
-        debugPrint("⚠️ Suppression fichier temporaire échouée : $e");
+        debugPrint("⚠️ Suppression fichier partiel échouée : $e");
       }
     }
   }
@@ -191,7 +360,9 @@ class DownloadTaskTile extends StatelessWidget {
       case DownloadStatus.canceled:
         return Icon(Icons.cancel, color: kWarning);
       case DownloadStatus.paused:
-        return const Icon(Icons.pause_circle, color: Colors.blueGrey);
+        // §dlTheme — était `Colors.blueGrey` : une couleur hors palette, qui
+        // ne bougeait pas d'un preset à l'autre.
+        return Icon(Icons.pause_circle, color: cs.onSurfaceVariant);
       case DownloadStatus.queued:
         return Icon(Icons.hourglass_top, color: cs.onSurfaceVariant);
       case DownloadStatus.finalizing:
@@ -285,27 +456,50 @@ class DownloadTaskTile extends StatelessWidget {
       titleText = '$titleText (${task.releaseYear})';
     }
 
-    final l10n = AppLocalizations.of(context)!;
+    // §dlErgo — Le tap ne déclenche plus que l'action PRINCIPALE (jamais
+    // destructive) ; tout le reste passe par le menu ⋯, focusable séparément
+    // au D-pad (même motif que les cartes de comptes).
+    final primary = downloadTileActions(task.status).primary;
     // §3c-3 — Wrap focus TV (decorateOnly = on garde le ListTile et son tap
-    // mobile/souris ; sur TV, la touche OK télécommande déclenche aussi le
-    // _handleTap).
+    // mobile/souris ; sur TV, la touche OK télécommande déclenche la même
+    // action principale).
     return FocusableCard(
       decorateOnly: true,
       // §tvErgo — tuile pleine largeur : pas de scale (sinon débordement écran).
       scaleOnFocus: false,
-      onTap: () => _handleTap(context),
+      onTap: () => _run(context, primary),
       borderRadius: BorderRadius.circular(8),
       child: ListTile(
         leading: _getLeadingIcon(context),
         title: Text(titleText, maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: _buildSubtitle(context),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_forever_outlined),
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          tooltip: l10n.deleteTooltip,
-          onPressed: () => _deleteTask(context),
+        // §dlErgo — Les actions portent un CONTOUR : sans lui, l'œil ne
+        // repérait qu'un seul bouton et « Relancer » restait introuvable.
+        // Relancer est sorti du menu ⋯ : c'est l'action qu'on cherche quand le
+        // débit s'effondre, elle doit être atteignable en un geste.
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_restartAction != null) ...[
+              _outlinedAction(
+                context,
+                icon: Icons.refresh,
+                tooltip: _actionLabel(_restartAction!),
+                color: kAccentSecondary,
+                onPressed: () => _run(context, _restartAction!),
+              ),
+              const SizedBox(width: 8),
+            ],
+            _outlinedAction(
+              context,
+              icon: Icons.more_vert,
+              tooltip: 'Autres actions',
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              onPressed: () => _openMenu(context),
+            ),
+          ],
         ),
-        onTap: () => _handleTap(context),
+        onTap: () => _run(context, primary),
         isThreeLine: task.status == DownloadStatus.downloading,
       ),
     );

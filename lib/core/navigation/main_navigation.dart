@@ -11,6 +11,8 @@ import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
+import 'package:aetherStream/core/navigation/focus_route_memory.dart';
+import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/main.dart' show checkForUpdate;
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
@@ -85,13 +87,34 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
       _maybeShowBackExitHint();
     }
 
-    // §lazyUnload — Le compte actif est dans `widget.initialData.accountId` ;
-    // il est marqué comme accédé avant chaque check pour ne JAMAIS être
-    // déchargé (la home le lit en permanence de toute façon).
+    // §lazyUnload + §unloadGuard — Décharge les listes secondaires restées
+    // inutilisées, MAIS jamais pendant que l'accueil est affiché.
+    //
+    // ⚠️ **Le bug que ça corrige** (constaté sur appareil avec 4 listes) : les
+    // accesseurs ne « touchent » les comptes qu'à chaque RECONSTRUCTION de
+    // l'accueil. Une home simplement laissée à l'écran, sans interaction,
+    // n'en reconstruit aucune — au bout de 5 minutes le timer déchargeait donc
+    // 3 comptes sur 4 **sous les yeux de l'utilisateur**. Résultat observé :
+    // toutes les catégories disparaissent et il ne reste que « Autres », parce
+    // que le seul compte encore chargé n'apporte aucun libellé de catégorie.
+    // Et rien ne revient : la ré-hydratation §lazyUnload est accrochée à
+    // `didPopNext`, qui ne se déclenche que si on QUITTE la page.
+    //
+    // Le déchargement garde tout son sens quand on est ailleurs (lecteur,
+    // téléchargements, réglages) : c'est là qu'il libère de la mémoire sans que
+    // personne ne regarde, et le retour re-précharge depuis le cache disque.
+    //
+    // ⚠️ On protège le compte principal **COURANT** et non celui du lancement :
+    // `widget.initialData.accountId` est figé, alors que l'utilisateur peut
+    // changer de principal depuis AccountsPage — l'ancien code protégeait alors
+    // le mauvais compte.
     _idleUnloadTimer = Timer.periodic(_idleCheckInterval, (_) {
-      ParsedPlaylistService.markAccessed(widget.initialData.accountId);
+      final activeId = StreamAccountService.currentAccountIdNotifier.value ??
+          widget.initialData.accountId;
+      ParsedPlaylistService.markAccessed(activeId);
+      if (HomePage.isForeground && _navIndex == 0) return;
       ParsedPlaylistService.unloadIdleSecondaries(
-        activeAccountId: widget.initialData.accountId,
+        activeAccountId: activeId,
         idle: _idleThreshold,
       );
     });
@@ -151,9 +174,20 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
     } catch (_) {/* silent */}
   }
 
+  /// §dpadRestore — Focus mémorisé pour chaque onglet, au moment où on le quitte.
+  ///
+  /// La bascule d'onglet ne pousse aucune route, mais elle détruit quand même
+  /// les focusables (l'`IndexedStack` et les `ExcludeFocus` de la home) : le
+  /// nœud focalisé meurt, et le filet de `dpad` retombe sur la 1re carte de
+  /// l'accueil en faisant défiler la liste tout en haut. On rend donc le focus
+  /// nous-mêmes, exactement comme [FocusRouteMemory] le fait pour les routes.
+  final Map<int, FocusSnapshot> _tabFocus = <int, FocusSnapshot>{};
+
   void _onTap(int i) {
     if (i == _navIndex) return;
+    _tabFocus[_navIndex] = FocusSnapshot.capture();
     setState(() => _navIndex = i);
+    _tabFocus[i]?.restore();
   }
 
   /// Ouvre le hub Settings natif. §18 — Depuis que la navigation D-pad du hub
@@ -250,7 +284,7 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
 
         // Pas sur l'accueil → y revenir (sort recherche / téléchargements).
         if (_navIndex != 0) {
-          setState(() => _navIndex = 0);
+          _onTap(0); // §dpadRestore — passe par la mémoire de focus d'onglet
           return;
         }
 
@@ -299,7 +333,17 @@ class _AppNavigationRail extends StatelessWidget {
     final isTv = PlatformTv.isTv;
     // §dpadNav — Le franchissement vers le contenu (→) est géré par la
     // `DpadRegion` parente (edge: leave). Plus de `Focus` custom ici.
-    return NavigationRail(
+    //
+    // §dpadAlign — Le rail garde volontairement le focus NATIF de Material
+    // (pas de `FocusableCard` par destination) : §railRevert documente qu'une
+    // personnalisation du focus ici avait déjà empêché de sortir du menu à la
+    // télécommande. On se limite donc au visuel : `focusColor` très marqué, pour
+    // que la destination focusée se voie à 3 m comme le reste de l'application.
+    return Theme(
+      data: Theme.of(context).copyWith(
+        focusColor: cs.primary.withAlpha(90),
+      ),
+      child: NavigationRail(
         selectedIndex: selectedIndex,
         minWidth: 64,
         groupAlignment: isTv ? 0.0 : -1.0,
@@ -351,6 +395,7 @@ class _AppNavigationRail extends StatelessWidget {
             label: Text('Paramètres'),
           ),
         ],
-      );
+      ),
+    );
   }
 }

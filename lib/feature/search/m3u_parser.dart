@@ -80,6 +80,30 @@ class M3uParser {
             logoUrl    = regExpLogo.firstMatch(meta)?.group(1);
             tvgId      = regExpTvgId.firstMatch(meta)?.group(1)?.trim();
             groupTitle = regExpGroupTitle.firstMatch(meta)?.group(1)?.trim();
+            // §m3uAttrAudit — Diagnostic : quand AUCUN `group-title` n'est
+            // trouvé, on journalise les NOMS d'attributs présents sur la ligne
+            // (jamais leurs valeurs).
+            //
+            // Question à laquelle rien ne répondait : une liste sans aucune
+            // catégorie (mesuré : 153 062 entrées sur 153 062) est-elle un M3U
+            // réellement dépourvu de groupes, ou un M3U qui les écrit
+            // autrement — `tvg-group`, ou `group-title=Action` sans guillemets,
+            // que la regex actuelle exige ? Les deux appellent des correctifs
+            // opposés : inférer une catégorie, ou simplement lire le bon champ.
+            //
+            // ⚠️ On ne logue QUE les noms d'attributs : une valeur peut porter
+            // une URL de logo du fournisseur, et le journal est servi sur le
+            // LAN par la console web (§tvLogs).
+            if (groupTitle == null && _attrAuditRemaining > 0) {
+              _attrAuditRemaining--;
+              final attrs = _reAttrName
+                  .allMatches(meta)
+                  .map((m) => m.group(1))
+                  .toSet()
+                  .join(', ');
+              debugPrint('🔎 §m3uAttrAudit — ligne sans group-title, '
+                  'attributs présents : [$attrs]');
+            }
             final catchupValue = regExpCatchup.firstMatch(meta)?.group(1)?.toLowerCase() ?? '';
             final hasCatchup = catchupValue.isNotEmpty
                 && catchupValue != 'false'
@@ -133,6 +157,14 @@ class M3uParser {
 
   /// Retourne l'index de la virgule séparatrice entre les attributs EXTINF et le titre.
   /// Parcourt la ligne caractère par caractère pour ignorer les virgules à l'intérieur
+  /// §m3uAttrAudit — Noms d'attributs d'une ligne `#EXTINF` (`clef=`).
+  static final RegExp _reAttrName = RegExp(r'([a-zA-Z0-9_-]+)=');
+
+  /// §m3uAttrAudit — Nombre d'exemples restant à journaliser. Volontairement
+  /// minuscule : trois lignes suffisent à identifier la convention d'un
+  /// fournisseur, et une playlist en compte des centaines de milliers.
+  static int _attrAuditRemaining = 3;
+
   /// des valeurs entre guillemets (ex: group-title="Action, Thriller").
   static int _findSeparatorComma(String meta) {
     bool inQuotes = false;

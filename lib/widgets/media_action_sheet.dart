@@ -17,6 +17,7 @@ import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/main.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
+import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/quality_buttons.dart';
 import 'package:aetherStream/widgets/epg_block.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
@@ -172,15 +173,13 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          imageUrl,
+                        // §imgDiskCache — cache disque ; §imgPerf cap 720 px.
+                        child: AetherImage(
+                          url: imageUrl,
                           height: stillPath != null ? 160 : 140,
                           width: double.infinity,
                           fit: stillPath != null ? BoxFit.cover : BoxFit.contain,
-                          // §imgPerf — bandeau ~full-width × 160 → cap décodage.
                           cacheWidth: 720,
-                          gaplessPlayback: true,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                         ),
                       ),
                     ),
@@ -253,7 +252,9 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(entry.logoUrl!, height: 150, cacheWidth: 320, gaplessPlayback: true, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                  // §imgDiskCache — cache disque partagé (AetherImage).
+                  child: AetherImage(
+                      url: entry.logoUrl, height: 150, cacheWidth: 320),
                 ),
               ),
             Padding(
@@ -263,11 +264,24 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
             const SizedBox(height: 8),
           ],
           // ── Chips qualité/langue ─────────────────────────────────────────────
-          Wrap(
-            spacing: 8,
-            children: [qualityChip(entry.title), ...languageChips(entry.title)],
-          ),
-          const SizedBox(height: 24),
+          // §sheetGap — Le `Wrap` et son `SizedBox(24)` étaient posés sans
+          // condition. Or `qualityChip` renvoie un `SizedBox.shrink()` quand
+          // aucune qualité n'est détectée, et `languageChips` une liste vide :
+          // sur un titre sans marqueur, la feuille gardait donc un trou d'une
+          // trentaine de pixels plus la marge — un vide inexpliqué entre le
+          // titre et « Lire ». On ne réserve la place que s'il y a quelque
+          // chose à y mettre.
+          ...(() {
+            final chips = <Widget>[
+              if (entry.title.quality != null) qualityChip(entry.title),
+              ...languageChips(entry.title),
+            ];
+            if (chips.isEmpty) return const <Widget>[SizedBox(height: 8)];
+            return <Widget>[
+              Wrap(spacing: 8, children: chips),
+              const SizedBox(height: 24),
+            ];
+          })(),
           // ── Bouton Fiche détaillée (masqué si pas de clé TMDB) ──────────────
           FutureBuilder<bool>(
             future: TmdbApiService.hasApiKey(),
@@ -636,7 +650,14 @@ class _FavoriteToggleTile extends StatelessWidget {
             color: isFav ? kFavorite : null,
           ),
           title: Text(
-            isFav ? 'Retirer des favoris' : 'Ajouter aux favoris',
+            // §l10nMix — Ces deux libellés étaient écrits EN DUR en français,
+            // au milieu d'une feuille dont tous les autres passent par l10n.
+            // Sur un appareil non francophone, la même feuille affichait donc
+            // « Play » / « Download in background » à côté d'« Ajouter aux
+            // favoris » (constaté sur l'émulateur, locale en-US).
+            isFav
+                ? AppLocalizations.of(ctx)!.favoriteRemove
+                : AppLocalizations.of(ctx)!.favoriteAdd,
             style: TextStyle(
               color: isFav ? kFavorite : null,
               fontWeight: isFav ? FontWeight.w600 : FontWeight.normal,

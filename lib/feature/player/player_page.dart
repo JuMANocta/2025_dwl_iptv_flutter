@@ -10,14 +10,24 @@ import 'package:window_manager/window_manager.dart';
 import 'package:aetherStream/data/services/track_preferences_service.dart';
 import 'package:aetherStream/data/services/remote_control_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/app_snackbar.dart';
+import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'player_controller.dart';
 import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
 import 'widgets/track_selector_sheet.dart';
+import '../../data/services/measured_quality_service.dart';
+import 'player_error.dart';
+import 'video_fit.dart';
+import 'video_stats.dart';
 import 'widgets/player_options_sheet.dart';
+import 'widgets/video_stats_overlay.dart';
+import 'widgets/next_episode_overlay.dart';
+import 'player_media.dart';
 import 'player_action_handlers.dart';
 import 'package:dpad/dpad.dart';
+import '../../core/navigation/focus_route_memory.dart';
 import '../../core/utils/platform_tv.dart';
 import '../../core/platform/brightness_service.dart';
 
@@ -38,12 +48,11 @@ enum PlayerBadgeType {
 }
 
 class PlayerPage extends StatefulWidget {
-  /// §nextEpPortrait — Quand on enchaîne sur l'épisode suivant, on POP le player
-  /// courant puis on en PUSH un nouveau. Le `dispose()` du player poppé restaure
-  /// le portrait (mobile) ~300 ms plus tard (fin d'anim de pop), donc APRÈS
-  /// l'`initState` landscape du nouveau player → l'épisode suivant s'ouvrait en
-  /// portrait. Ce flag, levé par l'appelant avant le pop, fait sauter la
-  /// restauration portrait du dispose (puis se réarme tout seul).
+  /// §nextEpPortrait — Vestige de l'ancien enchaînement pop/push d'épisodes,
+  /// devenu **inutile** depuis §episodeMeta : on ne démonte plus le player pour
+  /// changer d'épisode, donc plus de `dispose()` qui restaurait le portrait par
+  /// dessus l'`initState` landscape du suivant. Conservé (toujours `false`) le
+  /// temps de valider sur appareil, à retirer ensuite.
   static bool suppressOrientationRestore = false;
 
   final String path;
@@ -76,9 +85,24 @@ class PlayerPage extends StatefulWidget {
   /// même film) en passant une clé canonique commune.
   final String? progressKey;
 
-  /// §1i — Callback "épisode suivant". Si défini, un bouton ▶▶ apparaît dans
-  /// les contrôles du player. À utiliser pour les séries depuis [DetailsPage].
-  final VoidCallback? onNextEpisode;
+  /// §episodeMeta — Fournit le contenu à lire ENSUITE (séries).
+  ///
+  /// Si défini, le bouton ▶▶ apparaît dans les contrôles et l'enchaînement
+  /// automatique de fin d'épisode s'active. **Asynchrone à dessein** : l'appelant
+  /// ([DetailsPage]) en profite pour aller chercher les métadonnées TMDB du
+  /// prochain épisode — le player n'affiche donc jamais les infos du précédent.
+  /// Retourne `null` quand il n'y a plus rien à lire (fin de série).
+  ///
+  /// ⚠️ Cet appel **fait avancer l'état de l'appelant**. Le player met le
+  /// résultat en cache (`_pendingNext`) : si l'utilisateur annule
+  /// l'enchaînement, un ⏭ ultérieur réutilise ce cache au lieu de rappeler la
+  /// fonction, sinon on sauterait un épisode.
+  final Future<PlayerMedia?> Function()? onRequestNext;
+
+  /// §autoNextEp — Saison du contenu lancé (séries), pour détecter le
+  /// franchissement de saison. `null` hors séries.
+  final int? seasonNumber;
+
   const PlayerPage({
     super.key,
     required this.path,
@@ -93,8 +117,26 @@ class PlayerPage extends StatefulWidget {
     this.replayDuration,
     this.startPosition,
     this.progressKey,
-    this.onNextEpisode,
+    this.onRequestNext,
+    this.seasonNumber,
   });
+
+  /// §episodeMeta — Contenu initial, assemblé depuis les champs du widget.
+  PlayerMedia get initialMedia => PlayerMedia(
+        path: path,
+        title: title,
+        qualityTag: qualityTag,
+        episodeTag: episodeTag,
+        seriesName: seriesName,
+        synopsis: synopsis,
+        sourceType: sourceType,
+        badgeType: badgeType,
+        replayStart: replayStart,
+        replayDuration: replayDuration,
+        startPosition: startPosition,
+        progressKey: progressKey,
+        seasonNumber: seasonNumber,
+      );
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -102,6 +144,18 @@ class PlayerPage extends StatefulWidget {
 
 class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   late final AetherPlayerController _ctrl;
+
+  /// §episodeMeta — Contenu courant. Remplacé par [_switchTo] sans démonter la
+  /// page : c'est ce qui permet aux infos affichées de suivre l'épisode lu.
+  late PlayerMedia _media;
+
+  /// Prochain contenu déjà résolu (métadonnées comprises), mis en cache pour ne
+  /// pas rappeler `onRequestNext` — qui fait avancer l'état de l'appelant — si
+  /// l'utilisateur annule puis redemande l'épisode suivant.
+  PlayerMedia? _pendingNext;
+
+  /// Vrai pendant l'attente de `onRequestNext` (affiche « chargement… »).
+  bool _loadingNext = false;
 
   bool _controlsVisible = true;
   Timer? _hideTimer;
@@ -119,13 +173,20 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   /// Vrai pour les sources qui ne doivent PAS sauvegarder de progression
   /// (chaînes TV live = durée infinie, replay timeshift = pas de reprise utile).
-  bool get _skipProgress =>
-      widget.badgeType == PlayerBadgeType.live ||
-      widget.sourceType == VideoSourceType.networkReplay;
+  bool get _skipProgress => _media.skipProgress;
 
   // ── §1h Wakelock + Lifecycle ─────────────────────────────────────────────
   /// Souscription à `stream.playing` pour activer/désactiver le wakelock.
   StreamSubscription<bool>? _playingSub;
+
+  /// §qualityTruth — Écoute des paramètres vidéo, pour mesurer la définition
+  /// RÉELLEMENT servie par le flux.
+  StreamSubscription<VideoParams>? _videoParamsSub;
+
+  /// Clé du flux déjà mesuré pendant cette lecture. Remise à zéro par
+  /// [_switchTo] : sans ça, l'épisode suivant hériterait de la mesure du
+  /// précédent et ne serait jamais enregistré.
+  String? _measuredKey;
 
   /// Souscription au stream d'erreur, à canceller pour éviter une fuite.
   StreamSubscription<String>? _errorSub;
@@ -140,6 +201,24 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// §1i — Mode lock partagé entre [PlayerControls] et [PlayerGestures].
   /// `true` → tous les gestes (sauf tap simple pour révéler le cadenas) sont ignorés.
   bool _isLocked = false;
+
+  /// §videoFit — Format d'image courant. Initialisé sur le dernier choix de
+  /// l'utilisateur (mémorisé d'une vidéo à l'autre) plutôt que remis à
+  /// « Original » à chaque lecture.
+  VideoFitMode _fit = VideoFitPreference.current;
+
+  /// §videoStats — Encart de diagnostic vidéo. L'état est repris du dernier
+  /// choix : un diagnostic se mène sur plusieurs films d'affilée.
+  bool _statsEnabled = VideoStatsPreference.enabled;
+
+  /// §audioFallback — Pistes audio déjà écartées parce qu'elles ont fait
+  /// échouer le décodage, pour ne jamais y revenir en boucle sur ce média.
+  final Set<String> _rejectedAudioIds = <String>{};
+
+  /// Vrai quand on a dû se rabattre sur une lecture muette (aucune piste
+  /// audio décodable). Sert à le DIRE à l'utilisateur : un film sans son sans
+  /// explication passe pour une panne.
+  bool _audioGaveUp = false;
 
   /// §tvPlayerNav — Vitesse courante, pilotée par le sous-menu Vitesse du
   /// panneau d'options TV (reflète la coche du menu).
@@ -174,14 +253,17 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    _currentPath = widget.path;
+    _media = widget.initialMedia;
+    _currentPath = _media.path;
     // §replayBuffer — profil mpv timeshift (buffering propre aux frontières
     // de segments HLS longs) quand on lit un replay.
     _ctrl = AetherPlayerController(
-      timeshift: widget.sourceType == VideoSourceType.networkReplay,
+      timeshift: _media.sourceType == VideoSourceType.networkReplay,
     );
     _listenErrors();
     _listenPlaybackForWakelock();
+    _listenVideoParamsForQuality();
+    _listenCompleted();
     WidgetsBinding.instance.addObserver(this);
     _openMedia();
     _startHideTimer();
@@ -190,17 +272,41 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
     _remoteHandlers = PlayerActionHandlers(
       togglePlayPause: _togglePlayPause,
+      setPlaying: _setPlaying,
+      nextEpisode: widget.onRequestNext == null ? null : _requestNextEpisode,
       seek: _handleSeek,
       changeVolume: _handleVolumeChange,
       toggleControls: _toggleControls,
       showControls: _showControls,
-      showOptions: _showTvOptions,
+      showOptions: _showPlayerOptionsPanel,
       toggleFullscreen: _toggleFullscreen,
-      exitPlayer: () {
-        if (mounted) Navigator.of(context).maybePop();
-      },
+      exitPlayer: AppBack.popFromUi,
     );
     RemoteControlService.instance.registerPlayer(_remoteHandlers);
+    _releaseImageCache();
+  }
+
+  /// §playerMem — Rend au décodeur vidéo la RAM immobilisée par les vignettes.
+  ///
+  /// L'accueil reste MONTÉ derrière le player (route conservée) : son arbre de
+  /// widgets, et surtout les images déjà décodées, continuent d'occuper la
+  /// mémoire pendant tout le film — jusqu'à ~120 Mo au profil Confort. Or
+  /// aucune de ces vignettes n'est visible derrière une vidéo plein écran.
+  ///
+  /// `imageCache.clear()` ne vide que les entrées **conservées pour plus tard**
+  /// : les images encore référencées par des widgets vivants sont suivies à
+  /// part (`liveImages`) et ne sont pas jetées. Au retour, les vignettes
+  /// évincées se relisent depuis le cache DISQUE (§imgDiskCache) — donc sans
+  /// re-téléchargement.
+  ///
+  /// Particulièrement utile sur box TV, où cette RAM manque au décodage 4K.
+  void _releaseImageCache() {
+    try {
+      PaintingBinding.instance.imageCache.clear();
+      debugPrint('🖼️ §playerMem : cache image RAM libéré pour la lecture');
+    } catch (_) {
+      // Non critique : au pire on garde le comportement précédent.
+    }
   }
 
   // ── §1h Wakelock — actif uniquement quand le player joue ─────────────────
@@ -215,6 +321,28 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       } else {
         _releaseWakelock();
       }
+    });
+  }
+
+  /// §qualityTruth — Enregistre la définition réellement décodée, à chaque
+  /// lecture.
+  ///
+  /// ⚠️ Volontairement **indépendant de l'encart §videoStats** : celui-ci
+  /// s'active à la demande, alors que la mesure n'a de valeur que si elle
+  /// s'accumule toute seule, sur tous les flux lus. Elle ne coûte rien de plus
+  /// — `videoParams` est un flux que media_kit publie déjà.
+  ///
+  /// Une seule écriture par lecture (`_measuredKey`) : mpv republie ces
+  /// paramètres à chaque reconfiguration de la chaîne vidéo.
+  void _listenVideoParamsForQuality() {
+    _videoParamsSub = _ctrl.player.stream.videoParams.listen((params) {
+      final h = params.h;
+      final w = params.w;
+      if (h == null || w == null || h <= 0 || w <= 0) return;
+      final key = _media.resumeKey;
+      if (key == _measuredKey) return;
+      _measuredKey = key;
+      MeasuredQualityService.record(key, width: w, height: h);
     });
   }
 
@@ -284,9 +412,175 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     final pos = _ctrl.player.state.position;
     final dur = _ctrl.player.state.duration;
     if (dur <= Duration.zero) return;
-    final key = widget.progressKey ?? widget.path;
+    // §episodeMeta — clé du contenu COURANT, pas celle du widget : après une
+    // bascule d'épisode, écrire sur l'ancienne clé fausserait les reprises.
     // saveProgress applique ses propres règles (min duration, threshold 95%, etc.).
-    WatchProgressService.saveProgress(key, pos, dur);
+    WatchProgressService.saveProgress(_media.resumeKey, pos, dur);
+  }
+
+  // ── §episodeMeta / §autoNextEp — Enchaînement d'épisodes ─────────────────
+
+  /// Souscription à la fin de lecture (déclenche l'enchaînement).
+  StreamSubscription<bool>? _completedSub;
+
+  /// Décompte avant bascule automatique ; `null` = aucun encart affiché.
+  Timer? _autoNextTimer;
+  int _autoNextRemaining = 0;
+
+  /// État de l'encart de fin, `null` tant que la lecture est en cours.
+  EndOfPlaybackKind? _endOfPlayback;
+
+  static const int _autoNextCountdownSeconds = 8;
+
+  /// Garde de ré-entrance : `completed` peut réémettre (notamment au moment où
+  /// l'on ouvre le média suivant) et `_onPlaybackCompleted` est asynchrone.
+  bool _handlingCompletion = false;
+
+  void _listenCompleted() {
+    _completedSub = _ctrl.player.stream.completed.listen((done) {
+      if (!done || !mounted) return;
+      // Live et replay n'ont pas de « fin » exploitable.
+      if (_skipProgress) return;
+      if (_handlingCompletion || _endOfPlayback != null) return;
+      // Une durée nulle = flux pas encore chargé : `completed` peut passer à
+      // `true` transitoirement à l'ouverture, ce n'est pas une vraie fin.
+      if (_ctrl.player.state.duration <= Duration.zero) return;
+      _onPlaybackCompleted();
+    });
+  }
+
+  /// Résout le prochain contenu (une seule fois — le résultat est mis en cache,
+  /// cf. [PlayerPage.onRequestNext]).
+  Future<PlayerMedia?> _resolveNext() async {
+    if (_pendingNext != null) return _pendingNext;
+    final request = widget.onRequestNext;
+    if (request == null) return null;
+    if (mounted) setState(() => _loadingNext = true);
+    try {
+      final next = await request();
+      _pendingNext = next;
+      return next;
+    } catch (e) {
+      debugPrint('⚠️ §episodeMeta onRequestNext : $e');
+      return null;
+    } finally {
+      if (mounted) setState(() => _loadingNext = false);
+    }
+  }
+
+  /// Bouton ⏭ / panneau d'options / touche média « piste suivante ».
+  Future<void> _requestNextEpisode() async {
+    if (_loadingNext) return;
+    _cancelAutoNext();
+    final next = await _resolveNext();
+    if (!mounted) return;
+    if (next == null) {
+      AppSnackBar.show(context, 'Dernier épisode disponible.');
+      return;
+    }
+    await _switchTo(next);
+  }
+
+  /// §episodeMeta — Change de contenu **sans changer de route**.
+  ///
+  /// L'ancien enchaînement démontait le player et en poussait un nouveau :
+  /// contrôleur `media_kit` détruit puis recréé (écran noir + re-buffering
+  /// complet, très visible sur box TV) et métadonnées figées à la construction.
+  Future<void> _switchTo(PlayerMedia next) async {
+    // Clore proprement le contenu courant avant d'écraser `_media`.
+    _saveProgress();
+    _progressTimer?.cancel();
+    _pendingRetryTimer?.cancel();
+    _cancelAutoNext();
+
+    if (!mounted) return;
+    setState(() {
+      _media = next;
+      _pendingNext = null;
+      _endOfPlayback = null;
+      _currentPath = next.path; // sinon un retry .ts/.m3u8 de l'épisode
+      _retryCount = 0; //        précédent contaminerait le suivant
+      _measuredKey = null; // §qualityTruth — le suivant doit être mesuré aussi
+      _hasError = false;
+      _errorMessage = '';
+      _seekAccumSeconds = 0;
+      _seekOverlayVisible = false;
+    });
+
+    // §audioFallback — Les pistes écartées valaient pour le média PRÉCÉDENT.
+    _rejectedAudioIds.clear();
+    _audioGaveUp = false;
+
+    await _openMedia();
+    if (!mounted) return;
+    _startProgressTracking();
+    _showControls();
+    debugPrint('▶️ §episodeMeta : bascule sur « ${next.title} ».');
+  }
+
+  Future<void> _onPlaybackCompleted() async {
+    if (widget.onRequestNext == null) return;
+    _handlingCompletion = true;
+    try {
+      await _resolveAndShowEndOverlay();
+    } finally {
+      _handlingCompletion = false;
+    }
+  }
+
+  Future<void> _resolveAndShowEndOverlay() async {
+    final next = await _resolveNext();
+    if (!mounted) return;
+
+    if (next == null) {
+      // Fin de série : rien à enchaîner.
+      setState(() => _endOfPlayback = EndOfPlaybackKind.endOfSeries);
+      return;
+    }
+
+    if (_media.crossesSeasonTo(next)) {
+      // Changer de saison est une décision : on attend une action explicite,
+      // pas de décompte.
+      setState(() => _endOfPlayback = EndOfPlaybackKind.endOfSeason);
+      return;
+    }
+
+    if (!PerformanceSettingsService.config.value.autoNextEpisode) {
+      setState(() => _endOfPlayback = EndOfPlaybackKind.manual);
+      return;
+    }
+    _startAutoNextCountdown(next);
+  }
+
+  void _startAutoNextCountdown(PlayerMedia next) {
+    setState(() {
+      _endOfPlayback = EndOfPlaybackKind.countdown;
+      _autoNextRemaining = _autoNextCountdownSeconds;
+    });
+    _autoNextTimer?.cancel();
+    _autoNextTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_autoNextRemaining <= 1) {
+        t.cancel();
+        _switchTo(next);
+        return;
+      }
+      setState(() => _autoNextRemaining--);
+    });
+  }
+
+  void _cancelAutoNext() {
+    _autoNextTimer?.cancel();
+    _autoNextTimer = null;
+  }
+
+  /// « Annuler » : on reste sur l'écran de fin sans enchaîner.
+  void _dismissEndOverlay() {
+    _cancelAutoNext();
+    if (mounted) setState(() => _endOfPlayback = null);
   }
 
   Future<void> _initBrightness() async {
@@ -301,13 +595,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       // `Media(start:)` (cf. AetherPlayerController.open) → fini la lecture qui
       // repart à 0 (le seek post-open était avalé par media_kit v2). Pas de
       // reprise pour les sources live/replay (`_skipProgress`).
-      final start = (_skipProgress) ? null : widget.startPosition;
+      final start = (_skipProgress) ? null : _media.startPosition;
       // §trackLangPref — Préférence de langue posée AVANT l'open (mpv choisit la
       // piste au chargement → plus de switch/re-demux ~3 s = « le film se
       // relance »). Pas pour live/replay.
       final audioLang = _skipProgress ? null : TrackPreferencesService.audio;
       final subLang = _skipProgress ? null : TrackPreferencesService.subtitle;
-      if (widget.sourceType == VideoSourceType.file) {
+      if (_media.sourceType == VideoSourceType.file) {
         await _ctrl.openFile(_currentPath,
             start: start, audioLang: audioLang, subLang: subLang);
       } else {
@@ -331,14 +625,29 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (mounted) _startHideTimer();
   }
 
-  /// §tvPlayerNav — Panneau d'options (centre de contrôle TV, ouvert via ↑) :
-  /// pistes audio/sous-titres, vitesse, épisode suivant. Tout focusable au D-pad.
-  Future<void> _showTvOptions() async {
+  /// §tvPlayerNav + §playerOptionsTouch — Panneau d'options du lecteur :
+  /// pistes audio/sous-titres, vitesse, format d'image, infos vidéo, épisode
+  /// suivant. Tout focusable au D-pad.
+  ///
+  /// Ouvert par ↑ / appui long sur TV, et par le bouton ⚙ des contrôles au
+  /// tactile — l'ancien nom `_showPlayerOptionsPanel` laissait croire à un chemin
+  /// réservé à la télécommande, ce qui est précisément l'oubli qu'on corrige.
+  Future<void> _showPlayerOptionsPanel() async {
     _hideTimer?.cancel();
     await showPlayerOptions(
       context,
-      hasNext: widget.onNextEpisode != null,
+      hasNext: widget.onRequestNext != null,
       speedLabel: _speed == 1.0 ? 'Normale (1.0×)' : '$_speed×',
+      fitMode: _fit,
+      statsEnabled: _statsEnabled,
+      onToggleStats: () {
+        Navigator.of(context).pop();
+        _toggleStats();
+      },
+      onFit: () {
+        Navigator.of(context).pop();
+        _showFitMenu();
+      },
       onTracks: () {
         Navigator.of(context).pop();
         _showTrackSelector();
@@ -347,12 +656,39 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         Navigator.of(context).pop();
         _showSpeedMenu();
       },
-      onNext: widget.onNextEpisode == null
+      onNext: widget.onRequestNext == null
           ? null
           : () {
               Navigator.of(context).pop();
-              widget.onNextEpisode!.call();
+              _requestNextEpisode();
             },
+    );
+    if (mounted) _startHideTimer();
+  }
+
+  /// §videoStats — Bascule l'encart de diagnostic vidéo.
+  void _toggleStats() {
+    final next = !_statsEnabled;
+    setState(() => _statsEnabled = next);
+    VideoStatsPreference.set(next);
+  }
+
+  /// §videoFit — Sous-menu Format d'image (Original / Zoom / Plein écran).
+  ///
+  /// Même chemin sur mobile et sur TV : un menu qui NOMME les trois modes,
+  /// plutôt qu'un bouton qui cycle en aveugle. Sur une image déjà plein cadre
+  /// (source 16/9 sur écran 16/9), les trois rendus sont identiques — sans
+  /// libellé, l'utilisateur croirait le bouton cassé.
+  Future<void> _showFitMenu() async {
+    _hideTimer?.cancel();
+    await showVideoFitMenu(
+      context,
+      current: _fit,
+      onSelect: (mode) {
+        setState(() => _fit = mode);
+        VideoFitPreference.set(mode);
+        Navigator.of(context).pop();
+      },
     );
     if (mounted) _startHideTimer();
   }
@@ -368,6 +704,57 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         Navigator.of(context).pop();
       },
     );
+  }
+
+  /// §audioFallback — Bascule sur une autre piste audio, sinon coupe le son.
+  ///
+  /// Retourne `true` si on a pris la main (donc pas de retry réseau : le flux
+  /// n'a rien fait de mal, c'est la piste choisie qui ne se décode pas).
+  ///
+  /// ⚠️ La piste fautive est mémorisée dans [_rejectedAudioIds] : sans ça, mpv
+  /// peut la re-sélectionner et on tournerait en rond entre deux pistes
+  /// indécodables. ⚠️ En dernier recours on lit **sans son** plutôt que
+  /// d'abandonner : une image sans audio reste regardable, un écran d'erreur
+  /// non — mais on le DIT, sinon ça passe pour une panne.
+  bool _recoverFromAudioError() {
+    final player = _ctrl.player;
+    final current = player.state.track.audio;
+    _rejectedAudioIds.add(current.id);
+
+    final candidates = player.state.tracks.audio.where((t) {
+      if (t.id == 'no' || t.id == 'auto') return false;
+      return !_rejectedAudioIds.contains(t.id);
+    }).toList();
+
+    if (candidates.isNotEmpty) {
+      final next = candidates.first;
+      debugPrint('🔈 §audioFallback — piste « ${current.id} » indécodable, '
+          'bascule sur « ${next.id} » (${next.language ?? "langue inconnue"})');
+      player.setAudioTrack(next);
+      if (mounted) {
+        AppSnackBar.show(
+          context,
+          'Piste audio incompatible — bascule sur '
+          '${next.title ?? next.language ?? "une autre piste"}',
+          duration: const Duration(seconds: 3),
+        );
+      }
+      return true;
+    }
+
+    if (_audioGaveUp) return false; // déjà muet et ça échoue encore → vrai échec
+    _audioGaveUp = true;
+    debugPrint('🔇 §audioFallback — aucune piste audio décodable, '
+        'lecture sans son');
+    player.setAudioTrack(AudioTrack.no());
+    if (mounted) {
+      AppSnackBar.show(
+        context,
+        'Aucune piste audio lisible sur ce fichier — lecture sans son',
+        duration: const Duration(seconds: 4),
+      );
+    }
+    return true;
   }
 
   /// Retourne l'URL avec l'extension alternative (.m3u8 ↔ .ts), ou null si non applicable.
@@ -392,18 +779,33 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// Retry 2 : extension alternative (.m3u8 ↔ .ts) — certains serveurs ne supportent qu'un format.
   /// Retry 3 : retour à l'URL originale.
   void _handleError(String error) {
+    // §retryBurst — mpv émet la MÊME erreur plusieurs fois d'affilée (mesuré
+    // sur device : 4 événements dans la même milliseconde). Chaque événement
+    // incrémentait `_retryCount` et ré-armait le timer, qui n'avait donc jamais
+    // le temps de se déclencher : les 3 tentatives étaient brûlées d'un coup et
+    // la reconnexion « ×3, délai 5 s » ne servait à RIEN — pas même pour les
+    // coupures réseau pour lesquelles elle a été écrite.
+    // Tant qu'un retry est armé, ou qu'on a déjà rendu les armes, on ignore.
+    if (_pendingRetryTimer != null || _hasError) return;
+
+    // §audioFallback — Un échec de DÉCODAGE AUDIO ne doit pas tuer la lecture.
+    // Mesuré sur device : sur un fichier 4K, mpv rendait déjà la vidéo
+    // (`VideoOutput.Resize 3832x1604`) quand la piste TrueHD l'a fait échouer.
+    // Ces fichiers embarquent presque toujours une piste de secours (AC3/EAC3).
+    if (isAudioDecodeError(error) && _recoverFromAudioError()) return;
+
     if (_retryCount < _maxRetries) {
       _retryCount++;
       // Retry 2 : tente l'extension alternative
       if (_retryCount == 2) {
-        final alt = _altExtUrl(widget.path);
+        final alt = _altExtUrl(_media.path);
         if (alt != null) {
           _currentPath = alt;
           debugPrint(
               '⚠️ PlayerPage: retry $_retryCount/$_maxRetries — extension alternative: $alt');
         }
       } else {
-        _currentPath = widget.path; // retour à l'URL originale
+        _currentPath = _media.path; // retour à l'URL originale
       }
       debugPrint(
           '⚠️ PlayerPage: erreur stream — retry $_retryCount/$_maxRetries dans 5s\n$error');
@@ -489,6 +891,18 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _showControls();
   }
 
+  /// §mediaKeys — Lecture/pause explicite (touches PLAY et PAUSE séparées de la
+  /// télécommande). Basculer serait faux : PAUSE sur une vidéo déjà en pause la
+  /// relancerait.
+  void _setPlaying(bool play) {
+    if (play) {
+      _ctrl.player.play();
+    } else {
+      _ctrl.player.pause();
+    }
+    _showControls();
+  }
+
   void _toggleControls() {
     if (_controlsVisible) {
       _hideTimer?.cancel();
@@ -508,7 +922,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     setState(() {
       _hasError = false;
       _retryCount = 0;
-      _currentPath = widget.path;
+      _currentPath = _media.path;
     });
     _openMedia();
   }
@@ -523,7 +937,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     RemoteControlService.instance.clearPlayer(_remoteHandlers);
     _saveProgress(); // dernière sauvegarde à la sortie du player
     _playingSub?.cancel();
+    _videoParamsSub?.cancel();
     _errorSub?.cancel();
+    _completedSub?.cancel();
+    _autoNextTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _releaseWakelock();
     _ctrl.dispose();
@@ -571,7 +988,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         tapToSelect: false,
         effects: const [],
         onSelect: _togglePlayPause,
-        onLongSelect: _showTvOptions,
+        onLongSelect: _showPlayerOptionsPanel,
         onDirection: (dir) {
           if (dir == TraversalDirection.left) {
             _handleSeek(const Duration(seconds: -10));
@@ -582,7 +999,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             return true;
           }
           if (dir == TraversalDirection.up) {
-            _showTvOptions();
+            _showPlayerOptionsPanel();
             return true;
           }
           if (dir == TraversalDirection.down) {
@@ -604,6 +1021,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             Video(
               controller: _ctrl.videoController,
               controls: NoVideoControls,
+              // §videoFit — `cover` rogne les bords pour effacer les bandes
+              // noires, `fill` déforme pour remplir. Le rognage se fait à
+              // l'affichage de la texture : mpv décode toujours l'image
+              // entière, donc changer de format est instantané et n'entraîne
+              // aucun re-décodage.
+              fit: _fit.boxFit,
             ),
 
             // 2. Couche gesture (transparente, capte tout sauf les contrôles).
@@ -628,26 +1051,62 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // 3. Overlay contrôles.
             PlayerControls(
               player: _ctrl.player,
-              title: widget.title,
-              qualityTag: widget.qualityTag,
-              episodeTag: widget.episodeTag,
-              seriesName: widget.seriesName,
-              synopsis: widget.synopsis,
+              title: _media.title,
+              qualityTag: _media.qualityTag,
+              episodeTag: _media.episodeTag,
+              seriesName: _media.seriesName,
+              synopsis: _media.synopsis,
               visible: _controlsVisible,
               isFullScreen: _isFullScreen,
-              badgeType: widget.badgeType,
-              onBack: () => Navigator.of(context).pop(),
+              badgeType: _media.badgeType,
+              // §dpadBack — Même chemin que la touche Retour physique (debounce
+              // partagé) : un `pop()` direct doublonnait avec elle.
+              onBack: AppBack.popFromUi,
               onInteraction: _showControls,
               onToggleFullScreen: _toggleFullscreen,
               onLockChanged: (locked) => setState(() => _isLocked = locked),
-              onNextEpisode: widget.onNextEpisode,
+              onNextEpisode:
+                  widget.onRequestNext == null ? null : _requestNextEpisode,
               onShowTracks: _showTrackSelector,
+              // §playerOptionsTouch — Sur TV, les boutons inline ne sont pas
+              // focusables : le panneau s'ouvre déjà par ↑ / appui long, un
+              // icône de plus n'y serait qu'un ornement inatteignable.
+              onShowOptions: isTv ? null : _showPlayerOptionsPanel,
             ),
+
+            // §autoNextEp — Encart de fin (décompte / fin de saison / fin de
+            // série). Masqué en mode lock, comme le reste des overlays.
+            if (_endOfPlayback != null && !_isLocked)
+              NextEpisodeOverlay(
+                kind: _endOfPlayback!,
+                nextTitle: _pendingNext?.title,
+                nextEpisodeTag: _pendingNext?.episodeTag,
+                nextSeason: _pendingNext?.seasonNumber,
+                remainingSeconds: _autoNextRemaining,
+                loading: _loadingNext,
+                onPlayNow: _pendingNext == null
+                    ? null
+                    : () => _switchTo(_pendingNext!),
+                onDismiss: _dismissEndOverlay,
+                onLeave: AppBack.popFromUi,
+              ),
 
             // §1i — Overlay buffering central : visible quand le player charge
             // un nouveau segment HLS. Désactivé en mode lock pour ne pas troubler
             // la zone cliquable du cadenas.
             _BufferingOverlay(player: _ctrl.player, hidden: _isLocked),
+
+            // §videoStats — Encart de diagnostic, au-dessus des contrôles pour
+            // rester lisible quand ils apparaissent. Rien n'est construit tant
+            // que l'utilisateur ne l'a pas activé.
+            if (_statsEnabled)
+              VideoStatsOverlay(
+                player: _ctrl.player,
+                hidden: _isLocked,
+                // §qualityTruth — la qualité que la LISTE annonce, à confronter
+                // à ce qui est réellement décodé.
+                announcedQuality: _media.qualityTag,
+              ),
 
             // §seekAccum — Badge central du saut cumulé (ex: « ⏩ +30s »).
             if (_seekOverlayVisible && _seekAccumSeconds != 0)
@@ -660,15 +1119,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               ),
 
             // 4. Barre replay (uniquement en mode networkReplay).
-            if (widget.sourceType == VideoSourceType.networkReplay)
+            if (_media.sourceType == VideoSourceType.networkReplay)
               Positioned(
                 left: 16,
                 right: 16,
                 bottom: 90,
                 child: PlayerReplayBar(
                   player: _ctrl.player,
-                  replayStart: widget.replayStart,
-                  replayDuration: widget.replayDuration,
+                  replayStart: _media.replayStart,
+                  replayDuration: _media.replayDuration,
                   visible: _controlsVisible,
                 ),
               ),

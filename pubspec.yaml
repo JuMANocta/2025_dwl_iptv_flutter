@@ -2,7 +2,7 @@ name: aetherStream
 description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
-version: 1.13.2+89
+version: 1.15.8+101
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -42,6 +42,8 @@ dependencies:
   file_picker: ^8.1.7               # sélection fichier .aether (import §10)
   qr_flutter: ^4.1.0                # génération QR code (§3c-8 pairing mobile→TV)
   window_manager: ^0.5.1
+  cached_network_image: ^3.4.1      # §imgDiskCache — cache DISQUE des vignettes
+  flutter_cache_manager: ^3.4.1     # §imgDiskCache — politiques de rétention (TMDB/provider)
   dpad: ^3.0.0
 
 dev_dependencies:
@@ -64,12 +66,21 @@ flutter_launcher_icons:
   image_path: "assets/icon/AetherStreamIcon.png"
   min_sdk_android: 24
 
-# §splashOff — Splash custom DÉSACTIVÉ. Les drawables `launch_background.xml`
-# (Android ≤11) et styles `windowSplashScreenAnimatedIcon` (Android 12+) ont été
-# édités à la main pour ne montrer qu'un fond uni (plus de logo). Ne PAS relancer
-# `dart run flutter_native_splash:create` sans réactiver cette config — ça
-# remplacerait nos drawables. Pour réactiver : décommenter le bloc ci-dessous +
-# regénérer.
+# §splashOff + §splashHandoff — Splash custom DÉSACTIVÉ. Les drawables
+# `launch_background.xml` (Android ≤11) et styles `windowSplashScreenAnimatedIcon`
+# (Android 12+) ont été édités à la main pour ne montrer qu'un fond uni (plus de
+# logo).
+#
+# §splashHandoff (2026-08-17) : ce fond uni ne suit PLUS le mode clair/sombre du
+# système. Il est aligné sur `@color/aether_boot_background` (#121212 =
+# `ColorScheme.dark().surface`), la couleur exacte de l'écran de démarrage
+# Flutter — sinon on voyait une marche à l'arrivée de l'app, et carrément un
+# flash blanc en mode clair. Idem pour `NormalTheme`, dont le
+# `?android:colorBackground` par défaut était une SECONDE source de flash.
+#
+# Ne PAS relancer `dart run flutter_native_splash:create` sans réactiver cette
+# config — ça remplacerait nos drawables ET nos couleurs. Pour réactiver :
+# décommenter le bloc ci-dessous + regénérer.
 #
 # flutter_native_splash:
 #   android: true

@@ -142,6 +142,19 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
         _collapseRecentErrors();
         _logs.add({'message': '> RETRY #$_retryCount — RECONNECTING...', 'type': 'retry'});
       }
+      // §dlRestartFix — `_isDownloadComplete` était un drapeau qui ne se
+      // RÉARMAIT JAMAIS : après un téléchargement terminé, le moniteur restait
+      // verrouillé sur son état final et ne proposait plus que « Fermer », même
+      // si un retéléchargement venait d'être lancé. On le remet à zéro dès
+      // qu'un transfert repart (symétrique du traitement de `_hasFatalError`).
+      if (_isDownloadComplete) {
+        _isDownloadComplete = false;
+        _stopwatch = null; // vitesse/ETA recalculés pour la nouvelle session
+        _logs.add({
+          'message': '> RESTART — NEW TRANSFER INITIATED...',
+          'type': 'retry',
+        });
+      }
       _stopwatch ??= Stopwatch()..start();
       const barLength = 20;
       final filled = (task.progress * barLength).clamp(0, barLength).toInt();
@@ -246,6 +259,31 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
     super.dispose();
   }
 
+  /// §dlErgo — Bouton du moniteur, avec CONTOUR : en simples `TextButton` sur
+  /// le fond noir du terminal, les actions se fondaient les unes dans les
+  /// autres et l'œil n'en repérait qu'une seule.
+  Widget _terminalButton({
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        side: BorderSide(color: color.withAlpha(160)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        minimumSize: const Size(0, 38),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.vt323(color: color, fontSize: 18),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Mettre en cache l10n dès le premier build pour utilisation dans _updateLogs
@@ -287,10 +325,18 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.black.withAlpha((255 * 0.9).round()),
-          border: Border.all(color: kSuccess.withAlpha(50)),
+          // §dlTheme — Fond sombre volontaire (identité « terminal »), mais tiré
+          // de la palette du projet plutôt que d'un `Colors.black` brut ; la
+          // bordure et le halo suivent l'accent du preset.
+          color: kDeepDarkGrey.withAlpha(235),
+          border: Border.all(color: kAccentPrimary.withAlpha(70)),
           borderRadius: BorderRadius.circular(8),
-          boxShadow: [BoxShadow(color: kSuccess.withAlpha(20), blurRadius: 10, spreadRadius: 2)],
+          boxShadow: [
+            BoxShadow(
+                color: kAccentPrimary.withAlpha(30),
+                blurRadius: 10,
+                spreadRadius: 2)
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -352,7 +398,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                                       child: Text(
                                         msg,
                                         style: GoogleFonts.sourceCodePro(
-                                          color: const Color(0xFFFF5555).withAlpha(140),
+                                          color: kError.withAlpha(140),
                                           fontSize: 11,
                                         ),
                                       ),
@@ -363,14 +409,18 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                           );
                         }
 
+                        // §dlTheme — Ces couleurs étaient des hex CODÉS EN DUR
+                        // (verts Matrix, rouge fixe) : le moniteur restait vert
+                        // même en preset Tron, Synthwave ou Blade Runner. Elles
+                        // suivent désormais la palette sémantique.
                         final Color color;
                         switch (type) {
-                          case 'stats':  color = const Color(0xFF33FF33); break;
-                          case 'error':  color = const Color(0xFFFF5555); break;
-                          case 'matrix': color = Colors.white; break;
-                          case 'boot':   color = const Color(0xFF00AA00); break;
+                          case 'stats':  color = kAccentPrimary; break;
+                          case 'error':  color = kError; break;
+                          case 'matrix': color = kAccentSecondary; break;
+                          case 'boot':   color = kAccentPrimary.withAlpha(150); break;
                           case 'retry':  color = kWarning; break;
-                          default:       color = const Color(0xFFADFF2F); break;
+                          default:       color = kSuccess; break;
                         }
                         return Text(
                           log['message'],
@@ -385,33 +435,94 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
             if (!_isDownloadComplete &&
                 !_hasFatalError &&
                 _lastTaskState?.status == DownloadStatus.downloading)
-              const Row(
+              Row(
                 children: [
-                  Text('>', style: TextStyle(color: Color(0xFF33FF33))),
-                  BlinkingCursor(),
+                  Text('>', style: TextStyle(color: kAccentPrimary)),
+                  const BlinkingCursor(),
                 ],
               ),
             Divider(color: kSuccess),
+            // §dlErgo — Pendant le téléchargement, le SEUL bouton était
+            // « ABORT » : pour laisser tourner en fond il fallait deviner
+            // qu'on pouvait fermer en tapant hors du dialogue — impraticable à
+            // la télécommande. On sépare donc les deux intentions, « Fermer »
+            // (le cas courant) restant à droite, sous le pouce.
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {
-                  if (_isDownloadComplete || _hasFatalError || _isAborting) {
-                    Navigator.of(context).pop();
-                  } else {
-                    setState(() => _isAborting = true);
-                    _downloadManager.cancelTask(widget.taskId);
+              child: Builder(builder: (context) {
+                final finished =
+                    _isDownloadComplete || _hasFatalError || _isAborting;
+                final closeButton = _terminalButton(
+                  label: l10n.terminalCloseButton,
+                  color: kTextDarkPrimary,
+                  onPressed: () => Navigator.of(context).pop(),
+                );
+                if (finished) {
+                  // Annulation en cours : le dialogue va se fermer tout seul.
+                  if (_isAborting) {
+                    return Text(
+                      l10n.terminalAbortingButton,
+                      style: GoogleFonts.vt323(
+                          color: kTextDarkPrimary, fontSize: 18),
+                    );
                   }
-                },
-                child: Text(
-                  _isDownloadComplete || _hasFatalError
-                      ? l10n.terminalCloseButton
-                      : _isAborting
-                          ? l10n.terminalAbortingButton
-                          : l10n.terminalAbortButton,
-                  style: GoogleFonts.vt323(color: Colors.white, fontSize: 18),
-                ),
-              ),
+                  // ⚠️ Téléchargement TERMINÉ : pas de relance. Le fichier
+                  // partiel a été renommé en fichier final, il n'y a plus rien
+                  // à reprendre — un « relancer » referait plusieurs Go depuis
+                  // zéro. Pour refaire un fichier : le supprimer, puis relancer
+                  // depuis sa fiche.
+                  if (_isDownloadComplete) return closeButton;
+                  // En ERREUR, en revanche, le `.part` est toujours là : la
+                  // relance reprend au même octet (`Range`).
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.end,
+                    children: [
+                      _terminalButton(
+                        label: 'RELANCER',
+                        color: kAccentSecondary,
+                        onPressed: () {
+                          final t = _lastTaskState;
+                          if (t == null) return;
+                          _downloadManager.restartTask(t);
+                        },
+                      ),
+                      closeButton,
+                    ],
+                  );
+                }
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    // §dlErgo — RELANCER en tête : c'est l'action qu'on cherche
+                    // en regardant le moniteur quand le débit s'effondre
+                    // (bridage fournisseur). Rétablir la connexion repart
+                    // souvent à pleine vitesse, et la reprise `Range` fait
+                    // repartir du même octet — rien n'est perdu.
+                    _terminalButton(
+                      label: 'RELANCER',
+                      color: kAccentSecondary,
+                      onPressed: () {
+                        final t = _lastTaskState;
+                        if (t == null) return;
+                        _downloadManager.restartTask(t);
+                      },
+                    ),
+                    _terminalButton(
+                      label: l10n.terminalAbortButton,
+                      color: kWarning,
+                      onPressed: () {
+                        setState(() => _isAborting = true);
+                        _downloadManager.cancelTask(widget.taskId);
+                      },
+                    ),
+                    closeButton,
+                  ],
+                );
+              }),
             ),
           ],
         ),
@@ -578,9 +689,10 @@ class _BlinkingCursorState extends State<BlinkingCursor>
   @override
   Widget build(BuildContext context) => FadeTransition(
         opacity: _controller,
-        child: const Text(
+        child: Text(
           '_',
-          style: TextStyle(color: Color(0xFF33FF33), fontWeight: FontWeight.bold),
+          // §dlTheme — suit l'accent du preset (était un vert Matrix figé).
+          style: TextStyle(color: kAccentPrimary, fontWeight: FontWeight.bold),
         ),
       );
 }

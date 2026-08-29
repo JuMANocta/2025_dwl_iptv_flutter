@@ -16,6 +16,10 @@ void main() {
         heroAutoRotate: false,
         heroCardCount: 8,
         maxItemsPerRow: 10,
+        // Valeur DANS les bornes : sous le plancher, la lecture clampe et le
+        // roundtrip ne peut pas être l'identité (§imgThrash a relevé le
+        // plancher de 20 à 60).
+        imageCacheMb: 80,
       );
       expect(PerfConfig.fromJson(cfg.toJson()), cfg);
     });
@@ -32,9 +36,40 @@ void main() {
     });
 
     test('valeurs hors bornes → clampées à la lecture', () {
-      final cfg = PerfConfig.fromJson(const {'hcc': 999, 'mir': 0});
+      final cfg = PerfConfig.fromJson(const {'hcc': 999, 'mir': 0, 'icm': 9999});
       expect(cfg.heroCardCount, PerfConfig.maxHeroCards);
       expect(cfg.maxItemsPerRow, PerfConfig.minItemsPerRow);
+      expect(cfg.imageCacheMb, PerfConfig.maxImageCacheMb);
+    });
+
+    test('§imgMemCache — cache image RAM jamais nul (plancher)', () {
+      // À 0 Mo le scroll re-décoderait chaque vignette à chaque frame :
+      // le plancher protège d'un réglage (ou d'un JSON) destructeur.
+      final cfg = PerfConfig.fromJson(const {'icm': 0});
+      expect(cfg.imageCacheMb, PerfConfig.minImageCacheMb);
+      expect(cfg.imageCacheMb, greaterThan(0));
+    });
+
+    test('§imgThrash — aucun profil ne descend au niveau qui provoque le thrash',
+        () {
+      // ⚠️ Ce test verrouillait EXACTEMENT l'inverse : il exigeait que les
+      // profils passent SOUS le défaut Flutter (100 Mo), au motif que le cache
+      // disque absorbait les évictions. C'était faux — réduire ce cache ne
+      // réduit pas la mémoire nécessaire pour afficher un écran, ça force à
+      // re-décoder en boucle. Résultat : TV saccadée et vignettes qui
+      // clignotaient, surtout au profil « Performance » que l'app propose
+      // justement sur box TV.
+      for (final p in PerfConfig.presets) {
+        expect(p.config.imageCacheMb,
+            greaterThanOrEqualTo(PerfConfig.minImageCacheMb),
+            reason: '${p.name} sous le plancher anti-thrash');
+      }
+      // Le profil le plus léger doit rester dans l'ordre de grandeur du défaut
+      // Flutter : on allège par le hero et les vignettes, pas par le cache.
+      expect(PerfConfig.performance.imageCacheMb, greaterThanOrEqualTo(80));
+      // Confort reste le plus généreux des trois.
+      expect(PerfConfig.performance.imageCacheMb,
+          lessThanOrEqualTo(PerfConfig.defaults.imageCacheMb));
     });
   });
 
@@ -52,6 +87,38 @@ void main() {
       final custom = PerfConfig.defaults.copyWith(maxItemsPerRow: 20);
       for (final p in PerfConfig.presets) {
         expect(custom == p.config, false);
+      }
+    });
+  });
+
+  group('PerfConfig — §autoNextEp', () {
+    test('activé par défaut', () {
+      expect(PerfConfig.defaults.autoNextEpisode, isTrue);
+    });
+
+    test('clé absente (backup antérieur) → défaut, pas de crash', () {
+      final cfg = PerfConfig.fromJson({'he': false});
+      expect(cfg.autoNextEpisode, PerfConfig.defaults.autoNextEpisode);
+    });
+
+    test('roundtrip toJson/fromJson conserve la valeur', () {
+      final off = PerfConfig.defaults.copyWith(autoNextEpisode: false);
+      expect(PerfConfig.fromJson(off.toJson()).autoNextEpisode, isFalse);
+    });
+
+    test('exclu de l\'égalité : couper l\'enchaînement ne bascule PAS en '
+        '« Personnalisé »', () {
+      // C'est un réglage de confort, pas un levier de performance : les 3
+      // profils doivent rester sélectionnables quel qu'en soit l'état.
+      final off = PerfConfig.defaults.copyWith(autoNextEpisode: false);
+      expect(off, PerfConfig.defaults);
+      expect(off.hashCode, PerfConfig.defaults.hashCode);
+    });
+
+    test('les presets ne touchent pas au réglage', () {
+      for (final p in PerfConfig.presets) {
+        expect(p.config.autoNextEpisode, isTrue,
+            reason: '${p.name} ne doit pas désactiver l\'enchaînement');
       }
     });
   });

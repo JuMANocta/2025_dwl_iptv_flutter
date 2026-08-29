@@ -74,6 +74,10 @@ class _HomeCardState extends State<_HomeCard> {
       isTv: isTv,
       year: year,
       groupTitle: entry.groupTitle,
+      // §inferredCat — Même clé que le regroupement de l'accueil : la catégorie
+      // apprise ici s'applique donc à TOUTES les variantes du titre, quel que
+      // soit le compte d'où elles viennent.
+      categoryKey: contentGroupKey(entry),
     ).then((url) {
       if (!mounted || url == null) return;
       setState(() => _tmdbPoster = url);
@@ -125,9 +129,13 @@ class _HomeCardState extends State<_HomeCard> {
                     child: SizedBox(
                       width: 50,
                       height: widget.type == M3uContentType.tv ? 50 : 75,
-                      child: (entry.logoUrl != null && entry.logoUrl!.isNotEmpty)
-                          ? Image.network(entry.logoUrl!, fit: BoxFit.cover, cacheWidth: 150, gaplessPlayback: true, errorBuilder: (_, __, ___) => const SizedBox.shrink())
-                          : const SizedBox.shrink(),
+                      // §imgDiskCache — cache disque partagé (AetherImage).
+                      // §imgThrash — décodage calé sur les 50 px réels.
+                      child: AetherImage(
+                        url: entry.logoUrl,
+                        fit: BoxFit.cover,
+                        cacheWidth: decodeWidthFor(context, 50),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -382,24 +390,22 @@ class _HomeCardState extends State<_HomeCard> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Image
-                    if (logoUrl != null && logoUrl.isNotEmpty)
-                      Image.network(
-                        logoUrl,
-                        fit: isTv ? BoxFit.contain : BoxFit.cover,
-                        // §imgPerf — Carte poster ~120-200 px ; on cap le
-                        // décodage à 360 px. Combiné à `gaplessPlayback`, plus
-                        // de flash blanc / re-décodage au rebuild (focus, auto-
-                        // rotation, version bumps).
-                        cacheWidth: 360,
-                        gaplessPlayback: true,
-                        errorBuilder: (_, __, ___) =>
-                            _fallback(fallbackIcon, cs),
-                        loadingBuilder: (_, child, progress) =>
-                            progress == null ? child : _fallback(fallbackIcon, cs),
-                      )
-                    else
-                      _fallback(fallbackIcon, cs),
+                    // Image — §imgDiskCache : cache DISQUE (les vignettes se
+                    // re-téléchargeaient à chaque affichage, le cache mémoire
+                    // étant évincé sous pression sur box faible).
+                    // §imgPerf — cap de décodage conservé à 360 px (carte
+                    // poster ~120-200 px).
+                    AetherImage(
+                      url: logoUrl,
+                      fit: isTv ? BoxFit.contain : BoxFit.cover,
+                      // §imgThrash — était 360 en dur, pour une vignette qui
+                      // mesure ~120-145 px logiques : ~3× de RAM gaspillée par
+                      // image, d'où la saturation du cache et le re-décodage
+                      // permanent sur TV.
+                      cacheWidth: decodeWidthFor(context, cardWidth),
+                      fallback: (_) => _fallback(fallbackIcon, cs),
+                      showFallbackWhileLoading: true,
+                    ),
                     // Gradient bottom overlay pour la lisibilité du titre
                     Positioned.fill(
                       child: DecoratedBox(
@@ -456,6 +462,15 @@ class _HomeCardState extends State<_HomeCard> {
                             ),
                         ],
                       ),
+                    ),
+                    // §qualityTruth — Pastille « qualité réellement servie »,
+                    // en haut à droite. Muette tant que le contenu n'a jamais
+                    // été lu. Vaut aussi pour les chaînes TV : une chaîne
+                    // annoncée FHD qui sert du 720p se voit ici.
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: MeasuredQualityBadge(versions: widget.versions),
                     ),
                     // §1e — Barre de progression "reprendre depuis…" :
                     // visible si l'utilisateur a regardé l'une des variantes du

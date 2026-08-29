@@ -81,6 +81,17 @@ class AetherPlayerController {
       // que le décodeur s'en aperçoive et lag).
       await np.setProperty('correct-pts', 'yes');
 
+      // §playerBackBuffer — `PlayerConfiguration.bufferSize` (64 Mo) est appliqué
+      // par media_kit aux DEUX sens : `demuxer-max-bytes` ET
+      // `demuxer-max-back-bytes` (media_kit real.dart:2425-2426). Soit 128 Mo de
+      // demuxer, dont 64 Mo de données DÉJÀ LUES — qui ne servent qu'à reculer
+      // sans retélécharger. Ce buffer arrière se remplit au fil de la lecture :
+      // sur une box TV, c'est autant de RAM qui disparaît pendant un long film,
+      // en plus de la playlist en mémoire et du cache d'images.
+      // On garde la marge AVANT (anti-désync sur HLS instable) et on ramène
+      // l'arrière à 16 Mo : largement de quoi absorber un retour en arrière.
+      await np.setProperty('demuxer-max-back-bytes', '${16 * 1024 * 1024}');
+
       if (timeshift) {
         // §replayBuffer — Profil TIMESHIFT : le différé n'a aucune contrainte
         // de latence, on privilégie la fluidité aux frontières de segments.

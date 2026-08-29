@@ -20,6 +20,7 @@ Widget qualityChip(TitleMetadata meta) {
     case 'FHD':  return tagChip('FHD', kQualityFHD);
     case 'HD':   return tagChip('HD',  kQualityHD);
     case 'SD':   return tagChip('SD',  kQualitySD);
+    case 'CAM':  return tagChip('CAM', kQualityCam); // §camQuality
     default:     return const SizedBox.shrink();
   }
 }
@@ -69,6 +70,8 @@ String episodeName(M3uEntry entry) {
 List<Widget> uniqueChipsForVersions(List<M3uEntry> versions) {
   final qualities = versions.map((v) => v.title.quality).whereType<String>().toSet();
   final languages = versions.expand((v) => v.title.languages).toSet();
+  final providerTags =
+      versions.map((v) => v.title.providerTag).whereType<String>().toSet();
   return [
     for (final q in qualities)
       switch (q) {
@@ -76,8 +79,13 @@ List<Widget> uniqueChipsForVersions(List<M3uEntry> versions) {
         'FHD' => tagChip('FHD', kQualityFHD),
         'HD'  => tagChip('HD',  kQualityHD),
         'SD'  => tagChip('SD',  kQualitySD),
+        'CAM' => tagChip('CAM', kQualityCam), // §camQuality
         _     => null,
       },
+    // §providerTag — Marqueur du fournisseur (FR, US, IT…) dans sa PROPRE
+    // pastille : il distinguait déjà les versions, mais en squattant le slot
+    // qualité. Couleur neutre = on voit tout de suite que ce n'en est pas une.
+    for (final t in providerTags) tagChip(t, kProviderTag),
     for (final l in languages)
       switch (l) {
         'MULTI'  => tagChip('MULTI',  kLangMulti),
@@ -97,5 +105,8 @@ String buildDownloadName(M3uEntry entry) {
   if (entry.title.versionLabel != null && entry.title.versionLabel!.isNotEmpty) {
     parts.add(entry.title.versionLabel!);
   }
+  // §providerTag — Conserve le marqueur dans le NOM DE FICHIER : il portait
+  // l'info de langue/région et vivait dans versionLabel avant d'être typé.
+  if (entry.title.providerTag != null) parts.add(entry.title.providerTag!);
   return parts.join(' ').trim();
 }

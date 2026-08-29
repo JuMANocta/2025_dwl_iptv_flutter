@@ -164,10 +164,26 @@ class _CategoryRow extends StatelessWidget {
                 // ListView rogne le contour aux bords de la rangée.
                 final vSlack = PlatformTv.isTv ? 48.0 : 20.0;
                 return DpadRegion(
-                  // §dpadNav — mémoire de colonne par rangée (façon Netflix) :
-                  // ↑/↓ revient sur la colonne mémorisée ; ← au bord part vers
-                  // le rail (edge: leave par défaut).
-                  memoryKey: 'row_${type.name}_$category',
+                  // §carouselScrollDir — Entrée par la GAUCHE, décision
+                  // INVERSÉE par rapport à §dpadNav.
+                  //
+                  // La rangée avait une mémoire de colonne persistante
+                  // (`memoryKey` + `DpadEnterBehavior.restore` par défaut) :
+                  // ↑/↓ y ramenait la carte quittée, façon Netflix. En
+                  // pratique, remonter la page rouvrait donc les carrousels
+                  // loin à droite, sur les derniers titres, au lieu de leur
+                  // début — c'est le bug §carouselScrollDir.
+                  //
+                  // ⚠️ `isEntry: i == 0` (plus bas) était déjà posé mais
+                  // n'était JAMAIS consulté : dans `resolveEnter`, le mode
+                  // `restore` court-circuite l'item d'entrée tant qu'il a une
+                  // mémoire — et `memoryKey` la faisait justement survivre à
+                  // tous les rebuilds. Passer en `entry` est ce qui lui rend
+                  // la main ; retirer la clé évite d'entretenir une mémoire
+                  // que plus personne ne lit.
+                  //
+                  // ← au bord part toujours vers le rail (edge: leave défaut).
+                  enter: DpadEnterBehavior.entry,
                   child: SizedBox(
                     height: cardW * 1.5 + vSlack,
                     child: ListView.separated(
@@ -341,7 +357,7 @@ class CategoryListPage extends StatefulWidget {
   State<CategoryListPage> createState() => _CategoryListPageState();
 }
 
-class _CategoryListPageState extends State<CategoryListPage> {
+class _CategoryListPageState extends State<CategoryListPage> with TvInitialFocus {
   // §quickwin — scroll-to-top sur les grosses catégories (2000+ items) :
   // remonter au D-pad sur TV/Fire Stick était pénible.
   final ScrollController _scrollController = ScrollController();
@@ -401,6 +417,8 @@ class _CategoryListPageState extends State<CategoryListPage> {
         ),
       ),
       extendBodyBehindAppBar: true,
+      // §dpadAlign — La grille « Voir tout » n'avait pas de région propre : elle
+      // naviguait dans le scope global, sans mémoire de colonne ni bord défini.
       floatingActionButton: _showScrollTop
           ? FloatingActionButton.small(
               backgroundColor: kAccentPrimary,
@@ -430,7 +448,10 @@ class _CategoryListPageState extends State<CategoryListPage> {
               : null,
         ),
         child: SafeArea(
-          child: LayoutBuilder(
+          child: DpadRegion(
+            debugLabel: 'categoryGrid',
+            memoryKey: 'category_${widget.type.name}_${widget.category}',
+            child: LayoutBuilder(
             builder: (ctx, constraints) {
               const spacing = 10.0;
               // §tvZoom — Colonnes pilotées par la largeur réelle (3 sur
@@ -462,9 +483,11 @@ class _CategoryListPageState extends State<CategoryListPage> {
                   versions: widget.groups[i],
                   type: widget.type,
                   width: tileWidth,
+                  isEntry: i == 0,
                 ),
               );
             },
+            ),
           ),
         ),
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dpad/dpad.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
 import '../../core/utils/platform_tv.dart';
@@ -10,13 +11,18 @@ import '../../data/services/parsed_playlist_service.dart';
 import '../../data/services/stream_account_service.dart';
 import '../../data/services/watch_progress_service.dart';
 import '../../data/services/xtream_api_service.dart';
+import '../../data/models/quality_scale.dart';
+import '../../data/services/measured_quality_service.dart';
 import '../../core/utils/app_snackbar.dart';
 import '../../data/models/media_model.dart';
 import '../player/player_page.dart';
+import '../player/player_media.dart';
 import '../downloads/logic/download_initiator.dart';
 import '../../data/models/m3u_entry.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/tv/focusable_chip.dart';
+import '../../widgets/aether_image.dart';
+import '../../widgets/playlist_search_sheet.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'actor_details_page.dart';
 import 'm3u_filter.dart';
@@ -36,6 +42,42 @@ class DetailsPage extends StatefulWidget {
   final List<M3uEntry> versions;
 
   const DetailsPage({super.key, required this.entry, this.versions = const []});
+
+  /// §tmdbOnlyDetails — Fiche d'un titre ABSENT des listes, alimentée par TMDB
+  /// seul (typiquement depuis une filmographie, où ces titres ne menaient
+  /// jusqu'ici nulle part).
+  ///
+  /// On réutilise volontairement cette page plutôt que d'en écrire une seconde :
+  /// tout son rendu (header, tagline, note, section Infos, casting, similaires,
+  /// bande-annonce) est déjà piloté par les données TMDB. Une page jumelle
+  /// divergerait dès la première retouche visuelle.
+  factory DetailsPage.fromTmdb({
+    Key? key,
+    required int tmdbId,
+    required String title,
+    required M3uContentType type,
+  }) =>
+      DetailsPage(
+        key: key,
+        entry: buildTmdbOnlyEntry(tmdbId: tmdbId, title: title, type: type),
+      );
+
+  /// Entrée SYNTHÉTIQUE : `url` vide = marqueur « aucune source jouable », lu
+  /// par `_isTmdbOnly`. Le `tmdbId` renseigné fait passer `_loadData` par
+  /// `getFullDetailsById` — donc aucune recherche floue, aucun homonyme.
+  @visibleForTesting
+  static M3uEntry buildTmdbOnlyEntry({
+    required int tmdbId,
+    required String title,
+    required M3uContentType type,
+  }) =>
+      M3uEntry(
+        url: '',
+        accountId: '',
+        type: type,
+        title: TitleMetadata.parse(title),
+        tmdbId: tmdbId.toString(),
+      );
 
   @override
   State<DetailsPage> createState() => _DetailsPageState();
@@ -83,6 +125,13 @@ class _DetailsPageState extends State<DetailsPage> {
   List<M3uEntry> _apiSeriesStubs = const [];
 
   final ScrollController _episodeScrollController = ScrollController();
+
+  /// §tmdbOnlyDetails — Aucune source jouable : la fiche vit sur TMDB seul.
+  ///
+  /// On teste l'entrée RÉELLEMENT sélectionnée plutôt que `widget.entry` : elle
+  /// suit la sélection d'épisode et vaut `widget.versions.first` dès qu'une
+  /// version existe. C'est donc la seule mesure fiable de « peut-on lire ? ».
+  bool get _isTmdbOnly => _selectedEntry.url.isEmpty;
 
   bool get _isEpisode =>
       _episodeSelected &&
@@ -133,28 +182,6 @@ class _DetailsPageState extends State<DetailsPage> {
 
   /// §1i — Sélectionne l'épisode suivant + recharge les métadonnées TMDB +
   /// rebascule sur la fiche détaillée. Utilisé par le bouton "next" du player.
-  void _goToNextEpisode() {
-    final next = _nextEpisode;
-    if (next == null) return;
-    final epNum  = next.title.episodeNumber;
-    final season = next.title.seasonNumber;
-    if (epNum == null || season == null) return;
-    final group = _seasonEpisodes[season]
-        ?.where((g) => g.episodeNumber == epNum)
-        .firstOrNull;
-    if (group == null) return;
-    setState(() {
-      _selectedSeason = season;
-      _episodeSelected = true;
-      _autoDefaultSelection = false; // enchaînement épisode suivant
-      _currentEpisode = group.best;
-      _uniqueVersions = _deduplicateVersions(group.versions);
-      _selectedEntry = _uniqueVersions.isNotEmpty
-          ? _uniqueVersions.first
-          : group.best;
-    });
-    _loadData();
-  }
 
   @override
   void initState() {
@@ -422,7 +449,16 @@ class _DetailsPageState extends State<DetailsPage> {
     // deux séries de même titre mais d'époques différentes. Si pas d'année, on
     // matche par titre seul (comportement historique).
     final seriesYear = widget.entry.title.year;
-    final all = ParsedPlaylistService.entriesWithPriority(widget.entry.accountId)
+    // §seriesScan — On part des entrées DÉJÀ splittées par type au lieu de
+    // `entriesWithPriority`, qui matérialisait une copie de TOUTES les entrées
+    // de TOUS les comptes (`[...priority, ...others]`) avant de filtrer.
+    // Mesuré sur l'émulateur avec 4 listes : 323 373 entrées copiées à chaque
+    // ouverture d'une fiche de série, pour n'en garder qu'une poignée. Les
+    // séries seules en représentent environ un cinquième.
+    final all = (ParsedPlaylistService
+                .byTypeWithPriority(widget.entry.accountId)[
+            M3uContentType.series] ??
+        const <M3uEntry>[])
         .where((e) =>
             e.type == M3uContentType.series &&
             contentGroupKey(e) == seriesKey &&
@@ -700,14 +736,27 @@ class _DetailsPageState extends State<DetailsPage> {
         SizedBox(
           // poster 104×156 + gap + titre 2 lignes + marge textScaler TV ×1.3.
           height: 230,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            // ignore: deprecated_member_use
-            cacheExtent: 600,
-            itemCount: groups.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (_, i) => _RelatedCard(group: groups[i]),
+          // §dpadRowEntry — Région propre à la rangée : en descendant depuis le
+          // bloc du dessus, le focus se cale sur la 1re carte au lieu de tomber
+          // au milieu (le repli géométrique atterrissait sous la colonne d'où
+          // l'on venait, donc en pleine rangée).
+          // ⚠️ Pas de `memoryKey` ici : c'est une mémoire STATIQUE GLOBALE au
+          // package, partagée entre toutes les fiches — la colonne mémorisée
+          // sur un film serait rejouée sur le suivant, dont le casting n'a rien
+          // à voir. La mémoire d'instance (une région par fiche montée) est
+          // exactement ce qu'on veut.
+          child: DpadRegion(
+            debugLabel: 'detailsRelated',
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              // ignore: deprecated_member_use
+              cacheExtent: 600,
+              itemCount: groups.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (_, i) =>
+                  _RelatedCard(group: groups[i], isEntry: i == 0),
+            ),
           ),
         ),
         const SizedBox(height: 24),
@@ -845,9 +894,13 @@ class _DetailsPageState extends State<DetailsPage> {
       _currentEpisode.logoUrl,
       widget.entry.logoUrl,
     ].firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
+    // §imgDiskCache — le backdrop demandait `original` (2000-3800 px, plusieurs
+    // Mo) alors qu'il s'affiche sur 360 px de haut max (180-300 sur TV). Avec
+    // un cache DISQUE, chaque fiche visitée serait stockée en pleine résolution
+    // → `w1280`, largement au-dessus du besoin, ~5× plus léger.
     final String? headerUrl    = headerPath != null
         ? TmdbService.getPosterUrl(headerPath,
-            size: (showEpisodeContext && stillPath != null) ? 'w780' : 'original')
+            size: (showEpisodeContext && stillPath != null) ? 'w780' : 'w1280')
         : playlistPoster;
 
     // §epTitleProvider — nom d'épisode : TMDB prioritaire, sinon le titre
@@ -934,13 +987,15 @@ class _DetailsPageState extends State<DetailsPage> {
                 fit: StackFit.expand,
                 children: [
                   if (headerUrl != null)
-                    Image.network(
-                      headerUrl,
+                    AetherImage(
+                      url: headerUrl,
                       fit: BoxFit.cover,
-                      // §imgPerf — backdrop header full-width → cap décodage.
+                      // §imgPerf — cap de DÉCODAGE uniquement. Le poids stocké
+                      // est déjà borné par la taille demandée dans l'URL
+                      // (`w1280`) : cf. l'avertissement sur `AetherImage` quant
+                      // à `maxWidthDiskCache`, qui cassait cette image.
                       cacheWidth: 720,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, __, ___) =>
+                      fallback: (_) =>
                           Container(color: cs.surfaceContainerHighest),
                     )
                   else
@@ -991,6 +1046,20 @@ class _DetailsPageState extends State<DetailsPage> {
                       letterSpacing: 0.3,
                     ),
                   ),
+                  // §tmdbMore — Accroche officielle sous le titre (italique).
+                  if (_tmdbData?.tagline?.isNotEmpty == true) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      _tmdbData!.tagline!,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontStyle: FontStyle.italic,
+                        color: cs.onSurfaceVariant,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                   const SizedBox(height: 6),
 
                   // MÉTADONNÉES
@@ -998,7 +1067,10 @@ class _DetailsPageState extends State<DetailsPage> {
                     children: [
                       if (releaseDate != null)
                         _buildMetaTag(releaseDate, cs.onSurfaceVariant),
-                      if (_tmdbData?.runtimeOrEpisodeLength != null && !isSeries) ...[
+                      // §tmdbMore — la durée était CALCULÉE puis masquée pour
+                      // les séries (`&& !isSeries`) : « 45m/épisode » est une
+                      // info utile, on l'affiche aussi.
+                      if (_tmdbData?.runtimeOrEpisodeLength != null) ...[
                         const SizedBox(width: 8),
                         Text('•', style: TextStyle(color: cs.onSurfaceVariant)),
                         const SizedBox(width: 8),
@@ -1020,9 +1092,21 @@ class _DetailsPageState extends State<DetailsPage> {
                           style: TextStyle(
                               fontWeight: FontWeight.bold, color: kWarning, fontSize: 14),
                         ),
+                        // §tmdbMore — nombre de votes : crédibilise la note.
+                        if ((_tmdbData?.voteCount ?? 0) > 0)
+                          Text(
+                            ' · ${_formatCount(_tmdbData!.voteCount!)}',
+                            style: TextStyle(
+                                fontSize: 11, color: cs.onSurfaceVariant),
+                          ),
                       ],
                     ],
                   ),
+
+                  // §directorView — Réalisateur / créateur sur sa PROPRE ligne :
+                  // la Row ci-dessus n'est ni scrollable ni Wrap (elle contient
+                  // un Spacer), y glisser un nom long provoquerait un overflow.
+                  _buildDirectorLine(cs),
                   const SizedBox(height: 10),
 
                   // §tmdbBadges — Badges des langues dispo (MULTI/VF/VOSTFR).
@@ -1034,29 +1118,10 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 16),
                   ],
 
-                  // ── SÉRIES : navigation immédiate ──────────────────────────
-                  if (isSeries) ...[
-                    _buildSeriesNavigator(cs, l10n),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // ── FILMS : qualités + actions ──────────────────────────────
-                  if (!isSeries) ...[
-                    if (_uniqueVersions.isNotEmpty) ...[
-                      _buildQualityChips(cs),
-                      const SizedBox(height: 12),
-                    ],
-                    _buildActionButtons(l10n),
-                    if (_tmdbData?.trailerKey != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12.0),
-                        child: SizedBox(
-                            width: double.infinity, child: _buildTrailerButton()),
-                      ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // SYNOPSIS : épisode si sélectionné, série sinon
+                  // §detailsLayout — SYNOPSIS REMONTÉ : on lit de quoi ça parle
+                  // AVANT de décider (ordre Netflix/Disney+). Il passe donc
+                  // aussi devant le navigateur de saisons, ce qui est cohérent :
+                  // on choisit son épisode après avoir lu le pitch.
                   if (displayOverview?.isNotEmpty == true) ...[
                     Text('Synopsis',
                         style: Theme.of(context)
@@ -1072,9 +1137,52 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 16),
                   ],
 
+                  // §tmdbOnlyDetails — Titre absent des listes : on remplace
+                  // TOUTE la zone d'actions (et le navigateur série, qui n'a
+                  // aucune saison à lister) par le panneau d'indisponibilité.
+                  // Indispensable : `_buildActionButtons` câble « Lire » et
+                  // « Télécharger » sur `_selectedEntry.url`, ici vide.
+                  if (_isTmdbOnly) ...[
+                    _buildUnavailablePanel(cs),
+                    if (_tmdbData?.trailerKey != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: SizedBox(
+                            width: double.infinity, child: _buildTrailerButton()),
+                      ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // ── SÉRIES : navigation immédiate ──────────────────────────
+                  if (isSeries && !_isTmdbOnly) ...[
+                    _buildSeriesNavigator(cs, l10n),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // ── FILMS : qualités + actions ──────────────────────────────
+                  if (!isSeries && !_isTmdbOnly) ...[
+                    if (_uniqueVersions.isNotEmpty) ...[
+                      _buildQualityChips(cs),
+                      const SizedBox(height: 12),
+                    ],
+                    _buildActionButtons(l10n),
+                    if (_tmdbData?.trailerKey != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: SizedBox(
+                            width: double.infinity, child: _buildTrailerButton()),
+                      ),
+                    const SizedBox(height: 16),
+                  ],
+
                   // BANDE-ANNONCE — série tant qu'on est en contexte SÉRIE
                   // (aucun épisode en contexte épisode : défaut E01 inclus).
-                  if (isSeries && !showEpisodeContext && _tmdbData?.trailerKey != null) ...[
+                  // (`!_isTmdbOnly` : le panneau d'indisponibilité porte déjà
+                  // son propre bouton bande-annonce → évite le doublon.)
+                  if (isSeries &&
+                      !_isTmdbOnly &&
+                      !showEpisodeContext &&
+                      _tmdbData?.trailerKey != null) ...[
                     SizedBox(width: double.infinity, child: _buildTrailerButton()),
                     const SizedBox(height: 16),
                   ],
@@ -1091,17 +1199,25 @@ class _DetailsPageState extends State<DetailsPage> {
                       // §castPhotos — hauteur = photo portrait 2:3 (92×138) + nom
                       // (2 lignes) + rôle + marge pour le textScaler TV ×1.3.
                       height: 218,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        // §focusScroll — cache plus large pour que la nav D-pad
-                        // trouve toujours la card suivante dans l'arbre de focus.
-                        // ignore: deprecated_member_use
-                        cacheExtent: 600,
-                        itemCount: _tmdbData!.castMembers.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 12),
-                        itemBuilder: (_, i) =>
-                            _CastCard(member: _tmdbData!.castMembers[i]),
+                      // §dpadRowEntry — Sans région propre, descendre depuis la
+                      // bande-annonce atterrissait sur le 3e acteur (repli
+                      // géométrique) ; repartir vers la gauche faisait alors
+                      // sauter toute la rangée d'un coup.
+                      child: DpadRegion(
+                        debugLabel: 'detailsCast',
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          // §focusScroll — cache plus large pour que la nav D-pad
+                          // trouve toujours la card suivante dans l'arbre de focus.
+                          // ignore: deprecated_member_use
+                          cacheExtent: 600,
+                          itemCount: _tmdbData!.castMembers.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 12),
+                          itemBuilder: (_, i) => _CastCard(
+                              member: _tmdbData!.castMembers[i],
+                              isEntry: i == 0),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -1134,24 +1250,9 @@ class _DetailsPageState extends State<DetailsPage> {
                     const SizedBox(height: 16),
                   ],
 
-                  // GENRES (toujours — TMDB ou provider §23)
-                  if (displayGenres.isNotEmpty) ...[
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: displayGenres
-                          .map((g) => Chip(
-                                label: Text(g),
-                                backgroundColor: cs.surfaceContainerHighest,
-                                labelStyle: TextStyle(
-                                    color: cs.onSurfaceVariant, fontSize: 12),
-                                side: BorderSide.none,
-                                padding: EdgeInsets.zero,
-                              ))
-                          .toList(),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  // §infoGenre — Les genres ne forment plus une rangée de chips
+                  // isolée ici : ils sont devenus la 1re ligne de « Infos »
+                  // (voir `_buildInfoSection`), où ils sont enfin étiquetés.
 
                   // PLATEFORMES (toujours)
                   Builder(builder: (context) {
@@ -1188,16 +1289,10 @@ class _DetailsPageState extends State<DetailsPage> {
                     );
                   }),
 
-                  // PRODUCTION (toujours)
-                  if (_tmdbData?.productionCompanies?.isNotEmpty == true) ...[
-                    Divider(color: cs.outlineVariant),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Production: ${_tmdbData!.productionCompanies}',
-                      style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  // §tmdbMore — Section « Infos » (remplace l'ancienne ligne
+                  // brute « Production: A, B, C ») : genre, réalisateur, pays,
+                  // studios, statut, durée.
+                  _buildInfoSection(cs, isSeries, displayGenres),
 
                   // ── À DÉCOUVRIR (en fin de fiche) ──────────────────────────
                   // §tmdbReco — Saga (collection) puis titres similaires dispo :
@@ -1335,10 +1430,14 @@ class _DetailsPageState extends State<DetailsPage> {
             ),
           )
         else
-          SingleChildScrollView(
+          // §dpadRowEntry — Région propre : on entre par la 1re saison.
+          DpadRegion(
+            debugLabel: 'detailsSeasons',
+            child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: _seasonEpisodes.entries.map((entry) {
+              children: _seasonEpisodes.entries.toList().asMap().entries.map((e) {
+                final entry = e.value;
                 final sNum = entry.key;
                 final epCount = entry.value.length;
                 final isSelected = sNum == _selectedSeason;
@@ -1349,6 +1448,7 @@ class _DetailsPageState extends State<DetailsPage> {
                   child: FocusableChip(
                     onTap: () => _selectSeason(sNum),
                     anchorRowStart: true,
+                    entry: e.key == 0,
                     borderRadius: BorderRadius.circular(14),
                     child: GestureDetector(
                       onTap: isSelected ? null : () => _selectSeason(sNum),
@@ -1416,17 +1516,29 @@ class _DetailsPageState extends State<DetailsPage> {
                 );
               }).toList(),
             ),
+            ),
           ),
 
         // ÉPISODES (scroll horizontal, apparaît dès qu'une saison est choisie)
         if (_selectedSeason != null &&
             _seasonEpisodes[_selectedSeason] != null) ...[
           const SizedBox(height: 12),
-          SingleChildScrollView(
+          // §dpadRowEntry — Région propre : on entre par le 1er épisode.
+          // La `key` sur la saison recrée la région à chaque changement de
+          // saison : sans elle, la région resterait montée avec la mémoire de
+          // l'ancienne saison et ferait atterrir le focus en plein milieu.
+          DpadRegion(
+            key: ValueKey<int?>(_selectedSeason),
+            debugLabel: 'detailsEpisodes',
+            child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             controller: _episodeScrollController,
             child: Row(
-              children: _seasonEpisodes[_selectedSeason]!.map((group) {
+              children: _seasonEpisodes[_selectedSeason]!
+                  .asMap()
+                  .entries
+                  .map((e) {
+                final group = e.value;
                 final isCurrent = _episodeSelected &&
                     group.episodeNumber ==
                         _currentEpisode.title.episodeNumber &&
@@ -1440,6 +1552,7 @@ class _DetailsPageState extends State<DetailsPage> {
                   child: FocusableChip(
                     onTap: () => _selectEpisode(group),
                     anchorRowStart: true,
+                    entry: e.key == 0,
                     borderRadius: BorderRadius.circular(8),
                     child: GestureDetector(
                     onTap: isCurrent ? null : () => _selectEpisode(group),
@@ -1477,6 +1590,7 @@ class _DetailsPageState extends State<DetailsPage> {
                   ),
                 );
               }).toList(),
+            ),
             ),
           ),
         ],
@@ -1579,6 +1693,16 @@ class _DetailsPageState extends State<DetailsPage> {
   // ── Widgets partagés ───────────────────────────────────────────────────────
 
   Widget _buildQualityChips(ColorScheme cs) {
+    // §qualityTruth — Une mesure peut tomber pendant qu'on est DANS le lecteur,
+    // fiche encore montée derrière : sans cet abonnement, la vraie qualité
+    // n'apparaîtrait qu'à la réouverture de la fiche.
+    return ValueListenableBuilder<int>(
+      valueListenable: MeasuredQualityService.version,
+      builder: (_, __, ___) => _buildQualityChipsInner(cs),
+    );
+  }
+
+  Widget _buildQualityChipsInner(ColorScheme cs) {
     return Wrap(
       spacing: 8,
       runSpacing: 6,
@@ -1605,21 +1729,71 @@ class _DetailsPageState extends State<DetailsPage> {
               ),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                color: color,
-                height: 1.3,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                    color: color,
+                    height: 1.3,
+                  ),
+                ),
+                // §qualityTruth — Ce que ce flux a RÉELLEMENT servi la
+                // dernière fois qu'on l'a lu. Rien tant qu'il n'a pas été
+                // mesuré : mieux vaut ne rien dire qu'affirmer sans preuve.
+                ..._measuredSuffix(v),
+              ],
             ),
           ),
           ),
         );
       }).toList(),
     );
+  }
+
+  /// §qualityTruth — Ligne « mesuré » sous la pastille de version.
+  ///
+  /// Trois écritures, parce que les trois situations n'ont pas la même valeur
+  /// pour l'utilisateur : une liste qui **survend** est une alerte, une liste
+  /// conforme est une confirmation discrète, une liste qui sous-estime est une
+  /// bonne surprise. Un flux jamais lu n'affiche rien.
+  ///
+  /// ⚠️ Une mesure existe aussi quand la qualité annoncée n'est PAS une
+  /// définition (`CAM`, ou aucune) : on affiche alors la résolution seule, sans
+  /// verdict — il n'y a rien à confronter (cf. [QualityScale.rankOf]).
+  List<Widget> _measuredSuffix(M3uEntry v) {
+    final measured = MeasuredQualityService.get(v.url);
+    if (measured == null) return const [];
+
+    final verdict = measured.verdictFor(v.title.quality);
+    final (String text, Color tint) = switch (verdict) {
+      QualityVerdict.survendu =>
+        ('⚠ réel ${measured.definitionLabel}', kError),
+      QualityVerdict.sousEstime =>
+        ('réel ${measured.definitionLabel}', kAccentSecondary),
+      QualityVerdict.conforme => ('✓ ${measured.height}p', kSuccess),
+      QualityVerdict.unknown => ('${measured.height}p', kQualityUnknown),
+    };
+
+    return [
+      const SizedBox(height: 2),
+      Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: verdict == QualityVerdict.survendu
+              ? FontWeight.bold
+              : FontWeight.w500,
+          color: tint,
+          height: 1.1,
+        ),
+      ),
+    ];
   }
 
   /// Format Duration → "1h23" ou "12:34" pour libellé court de reprise.
@@ -1690,23 +1864,67 @@ class _DetailsPageState extends State<DetailsPage> {
             ? PlayerBadgeType.series
             : PlayerBadgeType.movie,
         startPosition: from,
-        onNextEpisode: hasNext
-            ? () {
-                // Retour à DetailsPage + sélection auto épisode suivant +
-                // relance du player. Évite d'empiler des PlayerPage.
-                // §nextEpPortrait — On supprime la restauration portrait du
-                // dispose du player courant (qui sinon écraserait, ~300 ms plus
-                // tard, le landscape du player suivant → épisode en portrait).
-                PlayerPage.suppressOrientationRestore = true;
-                Navigator.of(context).pop();
-                _goToNextEpisode();
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) _launchSelected();
-                });
-              }
-            : null,
+        seasonNumber: _selectedEntry.title.seasonNumber,
+        // §episodeMeta — Le player ne pousse plus de nouvelle route pour changer
+        // d'épisode : il demande le contenu suivant et bascule en place.
+        onRequestNext: hasNext ? _prepareNextEpisode : null,
       ),
     ));
+  }
+
+  /// §episodeMeta — Prépare l'épisode suivant **métadonnées comprises**.
+  ///
+  /// L'ancien chemin (`_goToNextEpisode` + pop/push) lançait la lecture à la
+  /// frame suivante, bien avant que `_loadData()` — qui interroge TMDB — n'ait
+  /// résolu : le nouveau player naissait donc avec le titre et le synopsis de
+  /// l'épisode **précédent**, et ses champs étant `final`, ils ne pouvaient plus
+  /// jamais être corrigés.
+  ///
+  /// Ici on **attend** le chargement avant de rendre la main. Le player couvre
+  /// cette latence par son décompte de fin d'épisode (ou un bref « chargement… »
+  /// sur un appui manuel).
+  Future<PlayerMedia?> _prepareNextEpisode() async {
+    final next = _nextEpisode;
+    if (next == null) return null;
+    final epNum = next.title.episodeNumber;
+    final season = next.title.seasonNumber;
+    if (epNum == null || season == null) return null;
+    final group = _seasonEpisodes[season]
+        ?.where((g) => g.episodeNumber == epNum)
+        .firstOrNull;
+    if (group == null) return null;
+
+    setState(() {
+      _selectedSeason = season;
+      _episodeSelected = true;
+      _autoDefaultSelection = false; // enchaînement épisode suivant
+      _currentEpisode = group.best;
+      _uniqueVersions = _deduplicateVersions(group.versions);
+      _selectedEntry = _uniqueVersions.isNotEmpty
+          ? _uniqueVersions.first
+          : group.best;
+      _isLoading = true;
+      // LA correction : sans ça, `_playerTitle`/`_playerSynopsis` reliraient les
+      // données TMDB de l'épisode précédent. `_selectEpisode` le faisait déjà,
+      // ce chemin-ci l'avait oublié.
+      _episodeData = null;
+    });
+
+    await _loadData();
+    if (!mounted) return null;
+
+    FavoritesService.addEntry(_selectedEntry);
+    return PlayerMedia(
+      path: _selectedEntry.url,
+      title: _playerTitle,
+      qualityTag: _selectedEntry.title.qualityOrDefault,
+      episodeTag: _selectedEntry.title.seasonEpisodeLabel,
+      seriesName: _playerSeriesName,
+      synopsis: _playerSynopsis,
+      sourceType: VideoSourceType.network,
+      badgeType: PlayerBadgeType.series,
+      seasonNumber: season,
+    );
   }
 
   Widget _buildActionButtons(AppLocalizations l10n) {
@@ -1806,51 +2024,20 @@ class _DetailsPageState extends State<DetailsPage> {
     );
   }
 
-  /// §detailsActions — Bouton d'action style **contour néon** : bordure ET texte
-  /// à la couleur du thème [color], fond quasi transparent (léger voile teinté),
-  /// + glow coloré. [active] `false` ou `onPressed == null` → bouton **grisé**
-  /// (bord + texte éteints, pas de glow) tout en gardant le gabarit. Sert aussi
-  /// d'indicateur d'état (ex. favori allumé/éteint).
+  /// §detailsActions + §detailsFocusFill — Bouton d'action **contour néon au
+  /// repos, plein au focus**. Cf. [_ActionButton].
   Widget _glowButton({
     required Color color,
     required VoidCallback? onPressed,
     required Widget child,
     bool active = true,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lit = active && onPressed != null;
-    // Éteint : gris discret adapté au mode (nuit/jour).
-    final dimmed = isDark ? Colors.white38 : Colors.black38;
-    final fg = lit ? color : dimmed; // bordure + texte + icône
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: lit
-            ? [
-                BoxShadow(
-                  color: color.withAlpha(70),
-                  blurRadius: 14,
-                  spreadRadius: -2,
-                ),
-              ]
-            : null,
-      ),
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          foregroundColor: fg,
-          disabledForegroundColor: dimmed,
-          // Léger voile teinté quand allumé pour un peu de corps, sinon transparent.
-          backgroundColor:
-              lit ? color.withAlpha(isDark ? 26 : 16) : Colors.transparent,
-          side: BorderSide(color: fg, width: 1.6),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
+  }) =>
+      _ActionButton(
+        color: color,
         onPressed: onPressed,
+        active: active,
         child: child,
-      ),
-    );
-  }
+      );
 
   /// Contenu icône + libellé centré pour un [_glowButton] (le texte s'ellipse).
   Widget _btnContent(IconData icon, String label) => Row(
@@ -1941,11 +2128,46 @@ class _DetailsPageState extends State<DetailsPage> {
     return base;
   }
 
+  /// §versionLabel — Ce que la pastille doit répondre : **« qu'est-ce que je
+  /// vais obtenir ? »**
+  ///
+  /// Ordre imposé : qualité → langue → marqueur fournisseur. Constaté sur
+  /// appareil avec 4 listes, un même film affichait 7 pastilles dont trois
+  /// n'annonçaient qu'un pays (`FR`, `DE`) : impossible de choisir. Un pays
+  /// n'est pas une qualité, il ne doit jamais tenir la place principale tant
+  /// qu'une qualité est connue.
+  ///
+  /// §qualityTruth — Quand la liste n'annonce AUCUNE qualité, on utilise celle
+  /// qu'on a **mesurée** à la lecture. C'est la seule information certaine dont
+  /// on dispose, et elle vient précisément combler le cas où le fournisseur
+  /// reste muet. La mesure est marquée d'un `~` : elle décrit ce que ce flux a
+  /// servi la dernière fois, pas une promesse du fournisseur.
+  ///
+  /// ⚠️ On ne remplace JAMAIS une qualité annoncée par la mesure ici : la
+  /// confrontation des deux est le rôle de la ligne « Annoncé » (§qualityTruth),
+  /// qui l'affiche avec son verdict. Écraser l'annonce ferait disparaître le
+  /// mensonge au lieu de le montrer.
   static String _buildQualityLabel(M3uEntry v, int index) {
-    final q  = v.title.quality;
-    final vl = v.title.versionLabel;
-    if (q != null && vl != null) return '$q · $vl';
-    if (q != null) return q;
+    final q = v.title.quality;
+    if (q != null) {
+      final lang = v.title.languages.isNotEmpty ? v.title.languages.first : null;
+      final extra = lang ?? v.title.versionLabel ?? v.title.providerTag;
+      return extra != null ? '$q · $extra' : q;
+    }
+
+    // Pas de qualité annoncée → la mesure prend le relais.
+    final measured = MeasuredQualityService.get(v.url);
+    if (measured != null) {
+      final extra = v.title.languages.isNotEmpty
+          ? v.title.languages.first
+          : (v.title.versionLabel ?? v.title.providerTag);
+      final label = '~${measured.definitionLabel}';
+      return extra != null ? '$label · $extra' : label;
+    }
+
+    // Ni annonce ni mesure : la langue reste plus parlante qu'un code pays.
+    if (v.title.languages.isNotEmpty) return v.title.languages.first;
+    final vl = v.title.versionLabel ?? v.title.providerTag;
     if (vl != null) return vl;
     // §watchContext — défaut « FHD » (au lieu de « Standard ») : plus parlant.
     return 'FHD';
@@ -2008,15 +2230,305 @@ class _DetailsPageState extends State<DetailsPage> {
               color: color, fontSize: 12, fontWeight: FontWeight.bold)),
     );
   }
+
+  /// §tmdbMore — « 12 400 votes » (séparateur d'espace, comme MemoryStatsCard).
+  String _formatCount(int n) {
+    final s = n.toString();
+    final grouped =
+        s.replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]} ');
+    return '$grouped vote${n > 1 ? 's' : ''}';
+  }
+
+  /// §directorView — « De **Christopher Nolan** » (film) / « Créé par … »
+  /// (série), cliquable vers sa fiche et ses autres titres disponibles.
+  /// Rien du tout si TMDB ne fournit pas l'info.
+  Widget _buildDirectorLine(ColorScheme cs) {
+    final d = _tmdbData?.director;
+    if (d == null || d.name.trim().isEmpty) return const SizedBox.shrink();
+    final label = (d.character == 'Créateur') ? 'Créé par' : 'De';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: FocusableCard(
+        scaleOnFocus: false,
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: d.id)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: [
+              Icon(Icons.movie_creation_outlined,
+                  size: 14, color: cs.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text('$label ',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Flexible(
+                child: Text(
+                  d.name,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: kAccentSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(Icons.chevron_right, size: 14, color: kAccentSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// §tmdbMore — Section « Infos » : remplace l'ancienne ligne brute
+  /// `Production: A, B, C` (texte 12 px sans titre de section) par une grille
+  /// libellé/valeur, alignée sur le style des autres sections de la fiche.
+  /// Chaque ligne absente est omise ; la section disparaît si tout est vide.
+  /// §tmdbOnlyDetails — Zone d'actions d'un titre absent des listes.
+  ///
+  /// Sans issue, cette fiche ne serait que décorative : le bouton de recherche
+  /// est ce qui la rend utile. Le repérage automatique
+  /// (`ActorDetailsPage._findMatches`) est **exact par choix**, pour ne jamais
+  /// produire de faux positif — il rate donc les titres présents sous une autre
+  /// graphie. On laisse l'utilisateur chercher et trancher lui-même.
+  Widget _buildUnavailablePanel(ColorScheme cs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainer,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.video_library_outlined,
+                  size: 20, color: cs.onSurfaceVariant),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Pas dans vos listes — fiche affichée depuis TMDB.',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        _glowButton(
+          color: kAccentSecondary,
+          onPressed: _searchInPlaylists,
+          child: _btnContent(Icons.search, 'CHERCHER DANS MES LISTES'),
+        ),
+      ],
+    );
+  }
+
+  /// Ouvre la recherche manuelle ; un résultat choisi rouvre la fiche NORMALE
+  /// (entrée réelle + versions), donc avec lecture et téléchargement.
+  Future<void> _searchInPlaylists() async {
+    final group = await PlaylistSearchSheet.show(
+      context,
+      title: _tmdbData?.title.isNotEmpty == true
+          ? _tmdbData!.title
+          : widget.entry.displayName,
+      originalTitle: _tmdbData?.originalTitle,
+      type: widget.entry.type,
+    );
+    if (group == null || group.isEmpty || !mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => DetailsPage(entry: group.first, versions: group),
+      ),
+    );
+  }
+
+  Widget _buildInfoSection(
+    ColorScheme cs,
+    bool isSeries,
+    List<String> genres,
+  ) {
+    final m = _tmdbData;
+    final rows = <(String, String)>[];
+
+    // §infoGenre — Le genre ouvre la section : c'est la classification la plus
+    // parlante. Il vivait avant en rangée de chips ISOLÉE entre le casting et
+    // « Infos », ce qui en faisait un bloc orphelin sans libellé.
+    if (genres.isNotEmpty) {
+      rows.add(('Genre', genres.take(4).join(', ')));
+    }
+
+    final d = m?.director;
+    if (d != null && d.name.trim().isNotEmpty) {
+      rows.add(((d.character == 'Créateur') ? 'Créateur' : 'Réalisateur', d.name));
+    }
+    if (m?.productionCountries.isNotEmpty == true) {
+      rows.add(('Pays', m!.productionCountries.take(3).join(', ')));
+    }
+    if (m?.productionCompanies?.trim().isNotEmpty == true) {
+      rows.add(('Studios', m!.productionCompanies!.trim()));
+    }
+    if (m?.status?.trim().isNotEmpty == true) {
+      rows.add(('Statut', _statusLabel(m!.status!)));
+    }
+    if (m?.runtimeOrEpisodeLength?.trim().isNotEmpty == true) {
+      rows.add((isSeries ? 'Épisode' : 'Durée', m!.runtimeOrEpisodeLength!));
+    }
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Infos',
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.bold)),
+        Divider(color: cs.outlineVariant),
+        const SizedBox(height: 4),
+        for (final r in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 92,
+                  child: Text(
+                    r.$1,
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    r.$2,
+                    style: TextStyle(fontSize: 12, color: cs.onSurface),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  /// Traduit le `status` TMDB (anglais) pour l'affichage.
+  String _statusLabel(String raw) => switch (raw) {
+        'Released' => 'Sorti',
+        'Post Production' => 'Post-production',
+        'In Production' => 'En production',
+        'Planned' => 'Annoncé',
+        'Returning Series' => 'En cours',
+        'Ended' => 'Terminée',
+        'Canceled' => 'Annulée',
+        _ => raw,
+      };
 }
 
 /// §castPhotos — Vignette d'acteur (photo + nom + rôle) du carrousel casting de
 /// la fiche détail. Tap → [ActorDetailsPage] (id direct, sans recherche par nom).
 /// Mobile + TV (focus glow via [FocusableCard], sans scale pour ne pas déborder
 /// la rangée à hauteur fixe).
+/// §detailsFocusFill — Bouton d'action de la fiche : **vide au repos, plein au
+/// focus**.
+///
+/// Avant, les 4 boutons (Lire / Oublier / Télécharger / Favori) portaient tous
+/// un voile teinté permanent : à la télécommande, on ne distinguait pas celui
+/// qui était sélectionné de ses voisins. Ils sont désormais en contour pur, et
+/// **seul le bouton focusé se remplit** — le déplacement ⬆⬇ devient lisible à
+/// 3 m d'un coup d'œil.
+///
+/// L'état éteint ([active] `false` ou `onPressed` nul) reste gris et sans glow,
+/// tout en gardant le gabarit : il sert aussi d'indicateur (favori allumé /
+/// éteint).
+class _ActionButton extends StatefulWidget {
+  final Color color;
+  final VoidCallback? onPressed;
+  final Widget child;
+  final bool active;
+
+  const _ActionButton({
+    required this.color,
+    required this.onPressed,
+    required this.child,
+    this.active = true,
+  });
+
+  @override
+  State<_ActionButton> createState() => _ActionButtonState();
+}
+
+class _ActionButtonState extends State<_ActionButton> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lit = widget.active && widget.onPressed != null;
+    final dimmed = isDark ? Colors.white38 : Colors.black38;
+    final filled = _focused && lit;
+
+    // Rempli : fond à la couleur pleine, contenu en négatif pour le contraste.
+    // Au repos : fond transparent, contour et texte colorés.
+    final fg = filled
+        ? (isDark ? Colors.black : Colors.white)
+        : (lit ? widget.color : dimmed);
+    final bg = filled ? widget.color : Colors.transparent;
+    final border = lit ? widget.color : dimmed;
+
+    return FocusableChip(
+      onTap: widget.onPressed,
+      enabled: widget.onPressed != null,
+      borderRadius: BorderRadius.circular(14),
+      onFocusChange: (f) {
+        if (mounted) setState(() => _focused = f);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: lit
+              ? [
+                  BoxShadow(
+                    color: widget.color.withAlpha(filled ? 120 : 70),
+                    blurRadius: filled ? 20 : 14,
+                    spreadRadius: -2,
+                  ),
+                ]
+              : null,
+        ),
+        child: OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            foregroundColor: fg,
+            disabledForegroundColor: dimmed,
+            backgroundColor: bg,
+            side: BorderSide(color: border, width: 1.6),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          onPressed: widget.onPressed,
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 class _CastCard extends StatelessWidget {
   final CastMember member;
-  const _CastCard({required this.member});
+
+  /// §dpadRowEntry — 1re carte de la rangée = point d'entrée vertical.
+  final bool isEntry;
+  const _CastCard({required this.member, this.isEntry = false});
 
   @override
   Widget build(BuildContext context) {
@@ -2036,6 +2548,7 @@ class _CastCard extends StatelessWidget {
     return FocusableCard(
       scaleOnFocus: false,
       anchorRowStart: true,
+      entry: isEntry,
       borderRadius: BorderRadius.circular(10),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: member.id)),
@@ -2047,21 +2560,20 @@ class _CastCard extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: photoUrl != null
-                  ? Image.network(
-                      photoUrl,
-                      width: 92,
-                      height: 138,
-                      fit: BoxFit.cover,
-                      // §imgPerf — photo casting 92×138 → cap décodage (2×).
-                      cacheWidth: 220,
-                      gaplessPlayback: true,
-                      // Cadre sur le haut → garde le visage (yeux) plutôt que de
-                      // recentrer sur le bas (bouche/menton).
-                      alignment: Alignment.topCenter,
-                      errorBuilder: (_, __, ___) => placeholder(),
-                    )
-                  : placeholder(),
+              // §imgDiskCache — cache disque ; §imgThrash — décodage calé sur
+              // les 92 px réels (rangée de casting = beaucoup d'images d'un
+              // coup, donc le sur-décodage y coûtait cher).
+              child: AetherImage(
+                url: photoUrl,
+                width: 92,
+                height: 138,
+                fit: BoxFit.cover,
+                cacheWidth: decodeWidthFor(context, 92),
+                // Cadre sur le haut → garde le visage (yeux) plutôt que de
+                // recentrer sur le bas (bouche/menton).
+                alignment: Alignment.topCenter,
+                fallback: (_) => placeholder(),
+              ),
             ),
             const SizedBox(height: 6),
             // §tvRails — Le texte est mis en retrait (horizontal + bas) pour ne
@@ -2101,7 +2613,10 @@ class _CastCard extends StatelessWidget {
 /// tap → ouvre la fiche du titre. Focusable au D-pad.
 class _RelatedCard extends StatelessWidget {
   final List<M3uEntry> group;
-  const _RelatedCard({required this.group});
+
+  /// §dpadRowEntry — 1re carte de la rangée = point d'entrée vertical.
+  final bool isEntry;
+  const _RelatedCard({required this.group, this.isEntry = false});
 
   @override
   Widget build(BuildContext context) {
@@ -2124,6 +2639,7 @@ class _RelatedCard extends StatelessWidget {
       // §rowAnchorDetails — carte focusée calée à gauche (saga/similaires).
       child: FocusableCard(
         anchorRowStart: true,
+        entry: isEntry,
         borderRadius: BorderRadius.circular(12),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
@@ -2136,17 +2652,16 @@ class _RelatedCard extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: (poster != null && poster.isNotEmpty)
-                  ? Image.network(
-                      poster,
-                      width: w,
-                      height: h,
-                      fit: BoxFit.cover,
-                      cacheWidth: 240,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, __, ___) => placeholder(),
-                    )
-                  : placeholder(),
+              // §imgDiskCache — cache disque partagé (AetherImage).
+              child: AetherImage(
+                url: poster,
+                width: w,
+                height: h,
+                fit: BoxFit.cover,
+                // §imgThrash — largeur de rendu réelle.
+                cacheWidth: decodeWidthFor(context, w),
+                fallback: (_) => placeholder(),
+              ),
             ),
             const SizedBox(height: 6),
             Padding(

@@ -73,3 +73,6 @@ android/.gradle/
 /android/key.properties
 android/build/
 /.artifacts/
+
+# §splashIdentity — aperçu jetable du générateur d'icône (tool/gen_splash_icon.py --preview)
+tool/_splash_preview.png

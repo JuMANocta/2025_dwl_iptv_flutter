@@ -1,8 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:dpad/dpad.dart';
 
-import '../../main.dart' show navigatorKey;
+import '../../core/navigation/focus_route_memory.dart';
 import '../../feature/player/player_action_handlers.dart';
+import '../../main.dart' show navigatorKey;
+
+/// §mediaKeys — Touches média des télécommandes TV → actions [RemoteControlService].
+///
+/// Aucune de ces touches n'était captée nulle part dans l'application (ni Dart,
+/// ni Android natif) : PLAY, PAUSE, STOP et l'avance rapide ne faisaient
+/// strictement rien. On les branche sur le vocabulaire d'actions qui existe
+/// déjà pour la télécommande web, plutôt que de créer un second chemin.
+///
+/// Table pure (donc testable sans widget) consommée par le `Dpad` racine.
+/// Non `const` : `LogicalKeyboardKey` redéfinit `==`, ce qu'une map constante
+/// n'accepte pas comme clé.
+final Map<LogicalKeyboardKey, String> kMediaKeyActions =
+    <LogicalKeyboardKey, String>{
+  LogicalKeyboardKey.mediaPlayPause: 'playpause',
+  LogicalKeyboardKey.mediaPlay: 'play',
+  LogicalKeyboardKey.mediaPause: 'pause',
+  LogicalKeyboardKey.mediaStop: 'stop',
+  LogicalKeyboardKey.mediaFastForward: 'seekfwd',
+  LogicalKeyboardKey.mediaRewind: 'seekback',
+  LogicalKeyboardKey.mediaTrackNext: 'next',
+  LogicalKeyboardKey.mediaTrackPrevious: 'prev',
+};
 
 /// §webConsole Phase 2 — Pont "téléphone = télécommande".
 ///
@@ -86,6 +110,23 @@ class RemoteControlService {
       case 'playpause':
         p.togglePlayPause();
         break;
+      // §mediaKeys — PLAY et PAUSE séparés : état explicite, pas une bascule.
+      case 'play':
+        p.setPlaying(true);
+        break;
+      case 'pause':
+        p.setPlaying(false);
+        break;
+      case 'stop':
+        p.exitPlayer();
+        break;
+      case 'next':
+        p.nextEpisode?.call();
+        break;
+      case 'prev':
+        // Pas d'« épisode précédent » dans l'app : on n'invente pas de
+        // comportement surprenant, la touche reste sans effet.
+        break;
       case 'left':
       case 'seekback':
         p.seek(const Duration(seconds: -10));
@@ -136,7 +177,8 @@ class RemoteControlService {
         _longPress?.call();
         break;
       case 'back':
-        navigatorKey.currentState?.maybePop();
+        // §dpadBack — Même chemin (et même debounce) que la touche physique.
+        AppBack.popFromUi();
         break;
     }
   }

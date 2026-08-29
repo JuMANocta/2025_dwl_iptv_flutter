@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 
@@ -22,7 +23,16 @@ class MemoryStatsCard extends StatefulWidget {
 }
 
 class _MemoryStatsCardState extends State<MemoryStatsCard> {
-  ({int rssMb, int maxRssMb, List<({String label, int entries, int diskMb})> accounts})? _stats;
+  ({
+    int rssMb,
+    int maxRssMb,
+    int imgCacheMb,
+    int ramUsedMb,
+    int ramMaxMb,
+    int ramCount,
+    int ramMaxCount,
+    List<({String label, int entries, int diskMb})> accounts
+  })? _stats;
   bool _busy = false;
 
   @override
@@ -58,8 +68,22 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
           diskMb: (disk / (1024 * 1024)).round(),
         ));
       }
+      // §imgDiskCache — poids du cache disque des vignettes.
+      final imgBytes = await AetherImageCache.totalSizeBytes();
+      // §imgThrash — état du cache image EN RAM. La TV n'ayant pas de logcat,
+      // c'est le SEUL moyen de vérifier sur l'appareil que le thrash a cessé.
+      final ram = PaintingBinding.instance.imageCache;
       if (!mounted) return;
-      setState(() => _stats = (rssMb: rss, maxRssMb: maxRss, accounts: list));
+      setState(() => _stats = (
+            rssMb: rss,
+            maxRssMb: maxRss,
+            imgCacheMb: (imgBytes / (1024 * 1024)).round(),
+            ramUsedMb: (ram.currentSizeBytes / (1024 * 1024)).round(),
+            ramMaxMb: (ram.maximumSizeBytes / (1024 * 1024)).round(),
+            ramCount: ram.currentSize,
+            ramMaxCount: ram.maximumSize,
+            accounts: list,
+          ));
     } catch (_) {
       // silencieux
     } finally {
@@ -123,6 +147,18 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
           else ...[
             _statRow(context, 'RAM process',
                 '${s.rssMb} Mo (peak ${s.maxRssMb} Mo)'),
+            const SizedBox(height: 4),
+            // §imgDiskCache — vignettes persistées (évite les re-téléchargements).
+            _statRow(context, 'Cache images (disque)', '${s.imgCacheMb} Mo'),
+            const SizedBox(height: 4),
+            // §imgThrash — Lecture : proche du plafond et STABLE = sain. Une
+            // valeur qui retombe sans cesse près de zéro pendant qu'on scrolle
+            // signale que les vignettes sont re-décodées en boucle.
+            _statRow(
+              context,
+              'Cache images (RAM)',
+              '${s.ramUsedMb} / ${s.ramMaxMb} Mo · ${s.ramCount} / ${s.ramMaxCount} img',
+            ),
             const SizedBox(height: 6),
             for (final a in s.accounts)
               Padding(

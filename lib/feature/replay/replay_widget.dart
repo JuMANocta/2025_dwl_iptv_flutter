@@ -3,6 +3,7 @@ import 'package:aetherStream/core/themes/colors.dart';
 import '../../core/utils/log_sanitizer.dart';
 import '../../data/services/replay_service.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/tv/focusable_card.dart';
 
 /// Feuille affichant les programmes en replay pour un stream donné.
 class ReplaySheet extends StatelessWidget {
@@ -50,7 +51,10 @@ class ReplaySheet extends StatelessWidget {
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (context, i) {
               final p = programs[i];
-              return ListTile(
+              // §dpadAlign — Cette liste n'avait aucun focusable : à la
+              // télécommande, on ne voyait pas quel programme était sélectionné.
+              // Les entrées sans archive restent non focusables (rien à lancer).
+              final tile = ListTile(
                 leading: Icon(
                   p.hasArchive ? Icons.replay_circle_filled : Icons.replay,
                   color: p.hasArchive ? null : Colors.grey,
@@ -63,6 +67,13 @@ class ReplaySheet extends StatelessWidget {
                 ),
                 subtitle: Text('${p.startLabel}  •  ${p.durationLabel}${p.hasArchive ? '' : '  • non disponible'}'),
                 onTap: p.hasArchive ? () => Navigator.of(context).pop(p) : null,
+              );
+              if (!p.hasArchive) return tile;
+              return FocusableCard(
+                onTap: () => Navigator.of(context).pop(p),
+                scaleOnFocus: false,
+                decorateOnly: true,
+                child: tile,
               );
             },
           );

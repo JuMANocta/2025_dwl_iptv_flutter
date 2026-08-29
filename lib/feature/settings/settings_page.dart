@@ -16,6 +16,8 @@ import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/data/services/search_history_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
 ///
@@ -34,19 +36,7 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
-  @override
-  void initState() {
-    super.initState();
-    // §19 — Sur TV, force le focus sur le 1er tile au mount pour qu'on voie
-    // immédiatement l'indicateur de focus au D-pad.
-    if (PlatformTv.isTv) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-    }
-  }
-
+class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
   Future<void> _openAccounts() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AccountsPage()),
@@ -112,7 +102,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// (ex. après corruption). Action destructive → confirmation obligatoire.
   Future<void> _resetUsageData() async {
     final cs = Theme.of(context).colorScheme;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: cs.surfaceContainerHigh,

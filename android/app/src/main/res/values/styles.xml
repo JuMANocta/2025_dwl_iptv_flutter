@@ -17,6 +17,10 @@
 
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- §splashHandoff — Fond explicite plutôt que `?android:colorBackground`,
+             qui vaut BLANC sous Theme.Light : c'était une SECONDE source de
+             flash, juste après le splash, et elle reste visible derrière
+             l'UI Flutter. -->
+        <item name="android:windowBackground">@color/aether_boot_background</item>
     </style>
 </resources>

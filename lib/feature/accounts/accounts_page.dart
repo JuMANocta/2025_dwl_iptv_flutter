@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
@@ -5,19 +6,17 @@ import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/services/expiration_alert_service.dart';
-import 'package:aetherStream/data/services/pairing_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
-import 'package:aetherStream/data/services/tmdb_api_service.dart';
-import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
-import 'package:aetherStream/feature/pairing/pairing_page.dart';
+import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 /// Page de gestion des comptes IPTV (§1g — refonte).
 ///
@@ -42,7 +41,7 @@ class AccountsPage extends StatefulWidget {
   State<AccountsPage> createState() => _AccountsPageState();
 }
 
-class _AccountsPageState extends State<AccountsPage> {
+class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
   late Future<List<StreamAccount>> _accountsFuture;
   String? _priorityAccountId;
   bool _priorityChanged = false;
@@ -51,12 +50,6 @@ class _AccountsPageState extends State<AccountsPage> {
   void initState() {
     super.initState();
     _accountsFuture = _loadAccounts();
-    // §19 — Auto-focus initial sur TV (1ère tile compte ou bouton +).
-    if (PlatformTv.isTv) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-    }
   }
 
   Future<List<StreamAccount>> _loadAccounts() async {
@@ -87,6 +80,12 @@ class _AccountsPageState extends State<AccountsPage> {
       _priorityAccountId = id;
       _priorityChanged = true;
     });
+    // §secondaryRefresh — En arrière-plan : si la playlist du nouveau principal
+    // est périmée, elle est retéléchargée maintenant au lieu d'attendre le
+    // prochain démarrage. Non attendu volontairement — la home se remet à jour
+    // toute seule via `ParsedPlaylistService.version`.
+    final acc = await StreamAccountService.getAccount(id);
+    if (acc != null) unawaited(PlaylistService.refreshIfStale(acc));
   }
 
   Future<void> _openEditor({StreamAccount? initial}) async {
@@ -107,32 +106,23 @@ class _AccountsPageState extends State<AccountsPage> {
     }
   }
 
-  /// §3c-8 — Ajout d'un compte via pairing QR mobile→TV.
-  Future<void> _openPairing() async {
-    final result = await Navigator.of(context).push<PairingResult>(
+  /// §webConsoleOnly — Gestion des comptes depuis le téléphone via la Console
+  /// web (remplace l'ancien pairing QR mono-formulaire).
+  ///
+  /// Le QR ouvre directement la page « Comptes » du panneau : on y ajoute un
+  /// compte comme avant, mais on peut aussi le modifier, le recharger, le
+  /// supprimer ou basculer le compte principal — ce que le formulaire de
+  /// pairing ne permettait pas. La console enregistre elle-même côté service,
+  /// d'où le simple `_refresh()` au retour (aucun résultat à récupérer).
+  Future<void> _openPhoneConfig() async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PairingPage(
-          kind: PairingKind.account,
-          onManualFallback: () {
-            Navigator.of(context).pop();
-            _openEditor();
-          },
-        ),
+        builder: (_) => const WebConsolePage(initialView: 'accounts'),
       ),
     );
-    if (result is PairingAccountResult) {
-      await StreamAccountService.saveAccount(result.account);
-      await StreamAccountService.setCurrentAccount(result.account.id);
-      // §3c-8b — TMDB optionnel saisi dans le même form mobile.
-      final t = result.tmdbToken;
-      if (t != null && t.isNotEmpty) {
-        await TmdbApiService.saveApiKey(t);
-        TmdbService.resetInstance();
-      }
-      if (!mounted) return;
-      _priorityChanged = true;
-      _refresh();
-    }
+    if (!mounted) return;
+    _priorityChanged = true;
+    _refresh();
   }
 
   /// §3c-8 — Bifurcation du bouton "+" sur TV : mobile vs télécommande.
@@ -141,7 +131,7 @@ class _AccountsPageState extends State<AccountsPage> {
       _openEditor();
       return;
     }
-    final choice = await showDialog<String>(
+    final choice = await showAppDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Comment ajouter une playlist ?'),
@@ -153,8 +143,10 @@ class _AccountsPageState extends State<AccountsPage> {
               autofocus: true,
               leading: Icon(Icons.phone_iphone, color: kAccentPrimary),
               title: const Text('Depuis mon téléphone'),
-              subtitle: const Text('Recommandé — QR + saisie confortable'),
-              onTap: () => Navigator.of(ctx).pop('pairing'),
+              subtitle: const Text(
+                  'Recommandé — QR vers le panneau complet (ajout, édition, '
+                  'rechargement)'),
+              onTap: () => Navigator.of(ctx).pop('console'),
             ),
             ListTile(
               leading: Icon(Icons.keyboard_alt_outlined,
@@ -173,8 +165,8 @@ class _AccountsPageState extends State<AccountsPage> {
         ],
       ),
     );
-    if (choice == 'pairing') {
-      await _openPairing();
+    if (choice == 'console') {
+      await _openPhoneConfig();
     } else if (choice == 'manual') {
       await _openEditor();
     }
@@ -183,14 +175,13 @@ class _AccountsPageState extends State<AccountsPage> {
   Future<void> _clearCache(StreamAccount acc) async {
     final l10n = AppLocalizations.of(context)!;
     final isActive = acc.id == _priorityAccountId;
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Vider le cache ?'),
         content: Text(
-          isActive
-              ? 'La playlist du compte "${acc.label}" sera re-téléchargée depuis le serveur maintenant.'
-              : 'La playlist du compte "${acc.label}" sera re-téléchargée au prochain chargement de ce compte.',
+          'La playlist du compte "${acc.label}" sera re-téléchargée depuis le '
+          'serveur maintenant.',
         ),
         actions: [
           TextButton(
@@ -223,10 +214,26 @@ class _AccountsPageState extends State<AccountsPage> {
       }
       _priorityChanged = true;
     } else {
-      // Compte secondaire : invalidation lazy, le DL se fera quand l'utilisateur
-      // basculera dessus (pas de home à rebuilder dans l'immédiat).
-      await PlaylistService.deleteForAccountId(acc.id);
-      ParsedPlaylistService.invalidate(acc.id);
+      // §secondaryRefresh — Avant, on se contentait d'invalider en pariant sur
+      // « le DL se fera quand l'utilisateur basculera dessus » — or basculer de
+      // compte principal ne télécharge rien : la liste restait vide jusqu'au
+      // redémarrage suivant. On retélécharge donc tout de suite, comme pour le
+      // compte actif.
+      try {
+        await PlaylistService.deleteForAccountId(acc.id);
+        ParsedPlaylistService.invalidate(acc.id);
+        final res = await PlaylistService.ensureDownloadedForAccount(acc);
+        if (res.path != null) {
+          await ParsedPlaylistService.reloadFromDisk(
+              acc.id, acc.label, res.path!);
+        }
+      } catch (e) {
+        if (!mounted) return;
+        messenger..hideCurrentSnackBar()..showSnackBar(
+          SnackBar(content: Text('Échec : $e')),
+        );
+        return;
+      }
     }
     if (!mounted) return;
     messenger..hideCurrentSnackBar()..showSnackBar(
@@ -236,7 +243,7 @@ class _AccountsPageState extends State<AccountsPage> {
 
   Future<void> _delete(StreamAccount acc) async {
     final l10n = AppLocalizations.of(context)!;
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(l10n.deleteAccountDialogTitle),
@@ -402,7 +409,7 @@ class _AccountsPageState extends State<AccountsPage> {
 
   Widget _buildEmptyState(ColorScheme cs) {
     // §12-b — Widget EmptyState unifié.
-    // §3c-8 — Sur TV, CTA = pairing QR mobile (la saisie au D-pad est piégeante).
+    // §webConsoleOnly — Sur TV, CTA = Console web (la saisie au D-pad est piégeante).
     final isTv = PlatformTv.isTv;
     return EmptyState(
       icon: isTv ? Icons.qr_code_2 : Icons.account_circle_outlined,
@@ -412,7 +419,7 @@ class _AccountsPageState extends State<AccountsPage> {
           : 'Ajoute une URL M3U complète ou un compte Xtream Codes pour commencer à streamer.',
       ctaLabel: isTv ? 'Configurer depuis mon téléphone' : 'Ajouter une playlist',
       ctaIcon: isTv ? Icons.phone_iphone : Icons.add,
-      onCtaTap: isTv ? _openPairing : () => _openEditor(),
+      onCtaTap: isTv ? _openPhoneConfig : () => _openEditor(),
     );
   }
 
@@ -597,8 +604,9 @@ class _AccountCardState extends State<_AccountCard> {
         // Compte principal → downloadCurrentM3U (messages d'erreur précis).
         newPath = await PlaylistService.downloadCurrentM3U();
       } else {
-        newPath =
-            await PlaylistService.ensureDownloadedForAccount(widget.account);
+        newPath = (await PlaylistService
+                .ensureDownloadedForAccount(widget.account))
+            .path;
       }
       if (newPath == null) {
         throw const HttpException(
@@ -629,7 +637,7 @@ class _AccountCardState extends State<_AccountCard> {
     final h = age.inHours;
     final m = age.inMinutes % 60;
     final ageStr = h > 0 ? '${h}h${m > 0 ? ' ${m}min' : ''}' : '${m}min';
-    return showDialog<bool>(
+    return showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Recharger ?'),
@@ -801,7 +809,24 @@ class _AccountCardState extends State<_AccountCard> {
                           );
                         },
                       ),
-                      if (widget.account.mode == StreamAuthMode.separate) ...[
+                      // §17c — Le bloc « Expiration / Connexions » était réservé
+                      // aux comptes en mode `separate`. Ce garde-fou est resté en
+                      // place alors que §17a a justement appris à
+                      // `fetchAccountInfo` à extraire les identifiants d'une URL
+                      // COMPLÈTE (la plupart des « .m3u complets » sont du Xtream
+                      // déguisé, `get.php?username=…&password=…`).
+                      //
+                      // Constaté sur appareil avec 4 listes : le journal dit
+                      // « ✅ Infos du compte 'Platinium' récupérées », mais la
+                      // carte n'affichait ni expiration ni connexions — parce
+                      // qu'elle est en mode URL complète. Seul Xeno, en mode
+                      // separate, les montrait.
+                      //
+                      // On s'aligne donc sur la vraie condition : le compte
+                      // sait-il produire une URL `player_api.php` ? Un M3U qui
+                      // n'est pas du Xtream déguisé renvoie `null` et reste,
+                      // comme avant, sans bloc.
+                      if (widget.account.buildPlayerApiUrl() != null) ...[
                         const SizedBox(height: 10),
                         _XtreamInfoBlock(future: _accountInfoFuture),
                       ],

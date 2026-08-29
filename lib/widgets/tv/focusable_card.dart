@@ -73,7 +73,14 @@ class FocusableCard extends StatefulWidget {
     this.scaleOnFocus = true,
     this.entry = false,
     this.anchorRowStart = false,
+    this.enabled = true,
   });
+
+  /// §dpadAlign — `false` retire la carte des arrêts du D-pad, sans changer son
+  /// rendu. Pour les items affichés mais non actionnables (programme replay sans
+  /// archive, par ex.) : sans ça, la télécommande s'arrête sur des éléments où
+  /// OK ne fait rien.
+  final bool enabled;
 
   @override
   State<FocusableCard> createState() => _FocusableCardState();
@@ -131,6 +138,7 @@ class _FocusableCardState extends State<FocusableCard> {
 
     return DpadFocusable(
       autofocus: widget.autofocus,
+      enabled: widget.enabled,
       entry: widget.entry,
       onSelect: widget.onTap,
       onLongSelect: widget.onLongPress,

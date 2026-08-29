@@ -17,6 +17,17 @@ class TitleMetadata {
   final List<String> languages;
   final String? versionLabel;
 
+  /// §providerTag — Marqueur de tête du fournisseur (`|FR| TF1`, `US| CNN`).
+  ///
+  /// Le plus souvent un code pays/langue (FR, US, IT, RU…), parfois une
+  /// rubrique du bouquet (PPV, XXX, DSTV, 24/7-AR). **Ce n'est JAMAIS une
+  /// qualité** — c'est tout le point de ce champ : §xenoFormat versait ce
+  /// marqueur dans [versionLabel], un fourre-tout que l'UI lit comme une
+  /// qualité, d'où le « Regarder · FR » vu à l'écran. Le typer à part permet
+  /// de garder l'information (elle distingue deux versions d'un même titre)
+  /// sans la faire passer pour ce qu'elle n'est pas.
+  final String? providerTag;
+
   bool get isSeriesEpisode => seasonNumber != null && episodeNumber != null;
 
   /// §watchContext — Libellé court « S01 E04 » si saison + épisode connus,
@@ -40,6 +51,7 @@ class TitleMetadata {
     this.quality,
     this.languages = const [],
     this.versionLabel,
+    this.providerTag,
   });
 
   /// §23b — Normalisation de la clé de regroupement (unicode-aware : les
@@ -59,6 +71,18 @@ class TitleMetadata {
   // une série). La classification reste sur `_reSeason` strict (voir m3u_parser).
   static final _reSeasonAlt    = RegExp(r'(?<!\d)(\d{1,2})\s*x\s*(\d{1,2})(?!\d)', caseSensitive: false);
   static final _reYear         = RegExp(r'\b(19|20)\d{2}\b');
+  // §camQuality — Rips de salle : HDTS (TeleSync), HDCAM, CAMRIP, TELECINE,
+  // DVDSCR. C'EST une qualité — et la plus basse — mais aucune des quatre
+  // regex de résolution ne la voyait : `\bhd\b` ne matche pas « HDTS » (pas de
+  // frontière de mot après « HD »), donc `Spider-Man … |HDTS]` ressortait sans
+  // qualité du tout. ~190 titres réels sur les 4 listes.
+  //
+  // ⚠️ `TS` et `TC` NUS sont volontairement exclus : trop de faux positifs sur
+  // de vrais mots de titres. On ne garde que les formes non ambiguës.
+  static final _reQCam         = RegExp(
+    r'\b(hdts|hdcam|camrip|cam|telesync|telecine|dvdscr)\b',
+    caseSensitive: false,
+  );
   static final _reQ4K          = RegExp(r'\b(4k|uhd|2160p)\b', caseSensitive: false);
   static final _reQFhd         = RegExp(r'\b(fhd|1080p)\b', caseSensitive: false);
   static final _reQHd          = RegExp(r'\b(hd|720p)\b', caseSensitive: false);
@@ -105,6 +129,31 @@ class TitleMetadata {
     r'\s*',
     caseSensitive: false,
   );
+
+  // §xenoFormat — Préfixe à pipe FERMANT SEUL : `FR| Lanterns`, `US| CNN HD`.
+  //
+  // Forme du fournisseur xenoIptv, que `_rePrefix` ratait entièrement puisqu'il
+  // exige un pipe OUVRANT. Résultat : `FR| Lanterns` gardait sa clé `fr lanterns`
+  // et ne fusionnait jamais avec le `Lanterns` des autres listes → doublon.
+  // Mesuré sur cette liste : 62 % des films, 66 % des séries, 97 % des chaînes.
+  //
+  // ⚠️ **L'ESPACE APRÈS LE PIPE EST LE GARDE-FOU, PAS UN DÉTAIL.** Sans elle, la
+  // règle mange de vrais titres : PREMIUM contient `Sneakers|BRUTX|(FR) FHD 2022`
+  // et `Requin|BRUTX| (FR) FHD 2021`, où le TITRE est « Sneakers »/« Requin ».
+  // Mesures sur les 4 dumps réels :
+  //     forme « XXX| » suivie d'une espace : 48 956 (xenoIptv) + 8 (PLATINIUM)
+  //                                          + 0 (PREMIUM) + 0 (VOD)
+  //     forme « XXX| » SANS espace         : 18 + 0 + **7** + 0
+  // Les 7 sans espace sont exactement les titres à ne pas casser. Les 18 ratés
+  // (`KU|Aro Drama`, `CAR|(FLOW) CBN HD`) sont sciemment abandonnés : les
+  // rattraper obligerait à accepter `Pone|BRUTX|`, donc à détruire un titre.
+  //
+  // Le charset autorise `/` et `-` pour couvrir les codes composés réels
+  // (`24/7-AR`), et la casse est libre (`Fr|` existe dans les données).
+  static final _reNewPrefix    = RegExp(
+    r'^\s*[A-Za-z0-9/.+\-]{1,8}\|[ \t]+',
+    caseSensitive: false,
+  );
   static final _reLabelPrefix  = RegExp(
     r'^\s*\|[A-Za-z0-9 .+\-]{1,12}\|'
     r'(?:[A-Za-z0-9.+\-][A-Za-z0-9 .+\-]{0,5}\||\s+\|[A-Za-z0-9 .+\-]{1,6}\|)?',
@@ -122,6 +171,11 @@ class TitleMetadata {
   // couvertes par les 5 combos précédents → restaient en garbage visible
   // dans baseTitle (les caractères exposants sont \p{L}/\p{N} valides, donc
   // JAMAIS nettoyés par computeGroupKey).
+  // §invisibleLead — Caractères de contrôle bidi / espaces exotiques trouvés en
+  // tête de titre dans les dumps réels (LRM, RLM, BOM, ZWSP, NBSP, isolats).
+  static final _reInvisibleLead =
+      RegExp(r'^[\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u00A0]+');
+
   static const _superscripts = {
     'ᶠᴴᴰ': ' FHD', 'ᴴᴰ': ' HD', 'ˢᴰ': ' SD', '⁴ᴷ': ' 4K', 'ᵁᴴᴰ': ' UHD',
     'ᴴ²⁶⁵': ' H265', 'ᴴ²⁶⁴': ' H264',
@@ -138,7 +192,7 @@ class TitleMetadata {
   // par des non-word chars comme "HDR10+" (le "+" briserait \b).
   static final _reQualityTags  = RegExp(
     r'(?<!\w)('
-    r'4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|3D|IMAX'
+    r'4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|IMAX'
     r'|HEVC|H\.?265|H\.?264|X\.?265|X\.?264|AVC|AV1'
     r'|AAC|EAC3|AC3|DTS(?:[-.](?:HD|MA|X))?|TrueHD|TRUEHD'
     r'|HDR10\+|HDR10|HDR|DV|HLG|SDR|ATMOS'
@@ -158,11 +212,33 @@ class TitleMetadata {
   // Placé après _reQualityTags pour ne pas interférer avec (4K), (3D) etc. déjà retirés.
   static final _reLangParens   = RegExp(r'[\(\[]\s*[A-Z]{2,6}(?:\s+[A-Z]{2,6})?\s*[\)\]]', caseSensitive: false);
 
+  // §xenoFormat — Tag composé `[MULTI-SUB]` et sa famille.
+  //
+  // ⚠️ **Doit passer AVANT `_reLangTags`**, sinon celui-ci retire `MULTI` seul et
+  // laisse `[-SUB]` dans le titre : `Lanterns [MULTI-SUB]` donnait la clé
+  // `lanterns sub`, qui ne fusionnait pas avec `lanterns` — le doublon signalé.
+  //
+  // Volontairement CIBLÉ sur les formes réellement mesurées plutôt que
+  // généralisé aux séparateurs : une règle « jetons séparés par un tiret entre
+  // parenthèses » mangerait aussi un vrai intitulé du genre « (Jean-Pierre) ».
+  // Couverture : `MULTI-SUB` (10 331 occurrences), `MULTI-SUB-AUDIO` (584),
+  // `MULTI-SUB/AUDIO` (56), `MULTI-AUDIO` (30), `MULTI_SUB` (18).
+  static final _reMultiSubTag  = RegExp(
+    r'[\(\[]\s*MULTI[\-_/](?:SUB|AUDIO)(?:[\-_/](?:SUB|AUDIO))?\s*[\)\]]',
+    caseSensitive: false,
+  );
+
   // §parseAudit2026-06-30 — Tag "(50 FPS)"/"(60FPS)" (chaînes sport type BEIN
   // SPORTS, quelques VOD) : 35 occurrences réelles mesurées. `_reLangParens`
   // exige un contenu 100% alphabétique donc ne matche jamais un chiffre en tête.
   static final _reFpsParens    = RegExp(r'[\(\[]\s*\d{2,3}\s*fps\s*[\)\]]', caseSensitive: false);
 
+  // §midYear — Une année AVEC ses délimiteurs éventuels. Distinguer `(2025)` de
+  // `2025` est ce qui permet de savoir si l'année est une date de sortie ou un
+  // morceau du titre (cf. [_isReleaseDate]).
+  static final _reYearToken = RegExp(
+    r'[(\[]\s*(?:19|20)\d{2}\s*[)\]]|(?<!\d)(?:19|20)\d{2}(?!\d)');
+  static final _reAlnum = RegExp(r'[\p{L}\p{N}]', unicode: true);
   static final _reYearClean    = RegExp(r'\(?(19|20)\d{2}\)?');
   // §23b — Paires de parenthèses/crochets vidées par le strip des tags
   // ("[4K DV HDR MULTi]" → "[ ]") : à effacer du titre d'affichage.
@@ -172,7 +248,7 @@ class TitleMetadata {
   static final _reSeasonFb     = RegExp(r'S\s*\d{1,2}', caseSensitive: false);
   static final _reAllTags      = RegExp(
     r'(?<!\w)('
-    r'4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|3D|IMAX'
+    r'4K|UHD|2160p|1080p|720p|480p|FHD|HD|SD|IMAX'
     r'|HEVC|H\.?265|H\.?264|X\.?265|X\.?264|AVC|AV1'
     r'|AAC|EAC3|AC3|DTS(?:[-.](?:HD|MA|X))?|TrueHD|TRUEHD'
     r'|HDR10\+|HDR10|HDR|DV|HLG|SDR|ATMOS|DOLBY'
@@ -192,10 +268,252 @@ class TitleMetadata {
   static final _reTrimBaseStart = RegExp(r'^[ \t\-_.]+');
   static final _reTrimBaseEnd   = RegExp(r'[ \t\-_.]+$');
 
+  /// §orphanBracket — Retire les parenthèses/crochets SANS partenaire.
+  ///
+  /// Certains fournisseurs referment un tag avec un délimiteur qu'ils n'ont
+  /// jamais ouvert (`Spider-Man : Brand New Day - 2026 |HDTS]` : un pipe pour
+  /// ouvrir, un crochet pour fermer). Une fois `HDTS` puis les pipes retirés,
+  /// il reste un `]` seul — que rien ne ramasse : [_reEmptyBrackets] exige une
+  /// PAIRE, et [_reTrimBaseEnd] épargne volontairement les crochets (§23b,
+  /// sinon « Totally Killer (Dezesseis Facadas) » perdrait sa fermante).
+  ///
+  /// D'où ce nettoyage à la pince : on n'enlève QUE les délimiteurs non
+  /// appariés, les paires légitimes restent intactes. Effet de bord utile : le
+  /// titre affiché redevient une sous-chaîne exacte du titre brut, donc le
+  /// calcul de `versionLabel` (une soustraction littérale) retrouve prise — un
+  /// résidu ici laissait TOUT le titre dans le libellé (« FR Spider-Man… »).
+  static String _dropOrphanBrackets(String value) {
+    final orphans = <int>{};
+    final round = <int>[];
+    final square = <int>[];
+    for (var i = 0; i < value.length; i++) {
+      switch (value[i]) {
+        case '(':
+          round.add(i);
+        case '[':
+          square.add(i);
+        case ')':
+          round.isEmpty ? orphans.add(i) : round.removeLast();
+        case ']':
+          square.isEmpty ? orphans.add(i) : square.removeLast();
+      }
+    }
+    orphans.addAll(round); // ouvrants jamais refermés
+    orphans.addAll(square);
+    if (orphans.isEmpty) return value;
+    final buffer = StringBuffer();
+    for (var i = 0; i < value.length; i++) {
+      if (!orphans.contains(i)) buffer.write(value[i]);
+    }
+    return buffer.toString();
+  }
+
+  /// §yearTitle — Retire les années d'un titre, SAUF une qui l'ouvre.
+  ///
+  /// L'ancien `replaceAll(_reYearClean, '')` effaçait tout : sur
+  /// `2067 (FR) FHD 2020`, il emportait le titre en même temps que la date, ne
+  /// laissant que des tags — d'où l'affichage « (FR HD) ».
+  static String _stripYears(String value) => value.replaceAllMapped(
+      _reYearToken, (m) => _isReleaseDate(value, m) ? '' : m.group(0)!);
+
+  // §midYear — Suffixe « PART n » : c'est un marqueur de découpage du
+  // fournisseur, pas la suite du titre (`… FHD 2024 PART 1`). Sans lui,
+  // l'année passait pour être au milieu du titre et la date était perdue.
+  static final _rePartSuffix =
+      RegExp(r'\bPART\s*\d+\b', caseSensitive: false);
+
+  // §midYear — Deux séparateurs identiques que seule l'année séparait.
+  static final _reDupSeparator = RegExp(r'([-.])\s*\1');
+
+  // §midYear — Groupe entre crochets/parenthèses qui ne contient PAS d'année :
+  // c'est de la métadonnée fournisseur (`[Prelims]`, `[VOSTFR]`, `[4K]`), pas
+  // la suite du titre. On ne peut pas se contenter de la liste des tags connus :
+  // les fournisseurs en inventent (et les écrivent avec des typos).
+  //
+  // ⚠️ Un groupe QUI contient une année est conservé — sinon, sur
+  // `Île d'Amrum, 1945 (2025)`, le « (2025)` disparaîtrait du reste et 1945
+  // passerait pour la date de sortie.
+  static final _reBracketGroup = RegExp(r'[\(\[][^()\[\]]*[\)\]]');
+  static String _dropMetaBrackets(String value) =>
+      value.replaceAllMapped(_reBracketGroup,
+          (m) => _reYear.hasMatch(m.group(0)!) ? m.group(0)! : ' ');
+
+  /// §midYear — Une année fait-elle partie du TITRE, ou est-ce la date ?
+  ///
+  /// Règle, tirée des dumps réels : une date de sortie est **entre
+  /// délimiteurs** (`(2025)`, `[2025]`) ou **nue en fin de chaîne**
+  /// (`Adios Amigos | 2016`, 16 128 cas). Une année nue au MILIEU appartient au
+  /// titre — 4 603 cas, sans contre-exemple : `Valensole 1965`,
+  /// `Île d'Amrum, 1945`, `WWE SummerSlam 2025 - Sunday`,
+  /// `Roland-Garros, une édition 2025 inoubliable`. L'ancienne règle les
+  /// amputait toutes (`Star Ac Tour 2026, le concert` → `Star Ac Tour , le
+  /// concert`).
+  ///
+  /// Une année qui OUVRE le titre reste le titre (§yearTitle : `1917`) — sauf
+  /// si elle est délimitée, auquel cas c'est bien une date (`(2023)ملك الحلبة`).
+  static bool _isReleaseDate(String source, Match m) {
+    final token = m.group(0)!;
+    if (token.startsWith('(') || token.startsWith('[')) return true;
+    // Délimiteur non apparié juste avant/après (`(2020 - DOC)`).
+    final before = source.substring(0, m.start).trimRight();
+    if (before.endsWith('(') || before.endsWith('[')) return true;
+    final after = source.substring(m.end);
+    final afterTrimmed = after.trimLeft();
+    if (afterTrimmed.startsWith(')') || afterTrimmed.startsWith(']')) {
+      return true;
+    }
+    // Encadrée par des PIPES : dans ces playlists le pipe est un séparateur de
+    // CHAMPS, jamais de la prose (`Midterm | 2025 | ميد تيرم` = titre, année,
+    // titre arabe). C'est le seul contre-exemple réel à la règle « année nue au
+    // milieu = titre » — et il se reconnaît à son délimiteur.
+    if (before.endsWith('|') || afterTrimmed.startsWith('|')) return true;
+    // Même raisonnement pour un SÉPARATEUR SYMÉTRIQUE : `Lees Baghdad - 2020 -
+    // لص بغداد` (titre, année, titre arabe) ou `Wrong.Place.2022.lati`. Le
+    // séparateur doit encadrer l'année DES DEUX CÔTÉS — sinon la règle mange
+    // `WWE SummerSlam 2025 - Sunday`, où le tiret ne suit que l'année.
+    for (final sep in const ['-', '.']) {
+      if (before.endsWith(sep) && afterTrimmed.startsWith(sep)) return true;
+    }
+    if (m.start == 0) return false; // le titre EST l'année
+    // Nue : date de sortie seulement si plus rien de signifiant ne suit. Les
+    // tags peuvent encore être présents à ce stade (`Film 2020 MULTi`) — on les
+    // neutralise avant de juger.
+    //
+    // ⚠️ Cette liste doit couvrir TOUT ce que le pipeline de `baseTitle` retire
+    // AVANT `_stripYears` — sinon les deux appelants de cette fonction jugent
+    // la même année différemment : `_stripYears` reçoit un titre déjà nettoyé,
+    // `_extractYear` le titre BRUT. C'est exactement ce qui s'est produit en
+    // oubliant `_reMultiSubTag` : sur `The Whisper Man - 2026 [MULTI-SUB]`,
+    // `_reAllTags` retirait `MULTI` mais laissait `-SUB]`, donc « du texte
+    // suit » → année ignorée. 94 % des films d'une liste perdaient leur date,
+    // et avec elle la désambiguïsation des recherches TMDB.
+    final rest = _dropMetaBrackets(after)
+        .replaceAll(_rePartSuffix, ' ')
+        .replaceAll(_reMultiSubTag, ' ')
+        .replaceAll(_reSubSuffix, ' ')
+        .replaceAll(_reAllTags, '')
+        .replaceAll(_reDolby, '')
+        .replaceAll(_reLangParens, ' ')
+        .replaceAll(_reFpsParens, ' ');
+    return !_reAlnum.hasMatch(rest);
+  }
+
+  /// §yearTitle — Année de SORTIE, en ignorant une année qui ouvre le titre.
+  ///
+  /// [source] est le titre brut (préfixe compris) : on retire le préfixe ici
+  /// pour savoir ce qui est réellement « en tête » — sur `|FR| 2067 (2020)`,
+  /// c'est bien 2067 qui ouvre le titre, pas le code pays.
+  ///
+  /// Renvoie `null` quand le seul candidat est ce nombre de tête : le titre EST
+  /// l'année (`1917`), il n'y a pas de date de sortie à afficher.
+  static String? _extractYear(String source) {
+    final core = source
+        .replaceFirst(_rePrefix, '')
+        .replaceFirst(_reNewPrefix, '')
+        .trimLeft();
+    for (final m in _reYearToken.allMatches(core)) {
+      if (_isReleaseDate(core, m)) {
+        // Le jeton peut porter ses délimiteurs : on ne rend que les 4 chiffres.
+        return _reYear.firstMatch(m.group(0)!)?.group(0);
+      }
+    }
+    return null;
+  }
+
+  // §providerTag — Bruit de QUALITÉ à retirer d'un marqueur de tête. Sous-
+  // ensemble strict de `_reAllTags` : résolutions, HDR, codecs — jamais les
+  // langues, qui sont l'information utile d'un marqueur.
+  static final _reTagNoise = RegExp(
+    r'(?<!\w)(4K|UHD|2160P|1080P|720P|480P|FHD|HD|SD|HDR10\+|HDR10|HDR|DV|HLG'
+    r'|SDR|HEVC|H\.?265|H\.?264|X\.?265|X\.?264|AVC|AV1)(?!\w)',
+    caseSensitive: false,
+  );
+
+  // §labelLeak — Ponctuation de BORD d'un mot, ignorée pour la comparaison :
+  // le titre affiché perd son point final (`_reTrimBaseEnd`) là où le titre
+  // brut le garde, donc « Franz K. » vs « Franz K » ne s'appariaient pas et le
+  // « K » ressortait en libellé de version. 1 154 titres réels.
+  static final _reWordEdge = RegExp(r'^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$', unicode: true);
+  static String _wordKey(String token) =>
+      token.replaceAll(_reWordEdge, '').toLowerCase();
+
+  /// §labelLeak — Retire de [label] les mots de [base], en différence de
+  /// multiensemble (ordre indifférent, casse ignorée).
+  ///
+  /// Robuste à tout ce qui casse une comparaison littérale : espaces
+  /// recollapsés, année ou tag retirés au MILIEU du titre. Ce qui subsiste est
+  /// ce que le titre ne contenait pas — la définition même d'un libellé de
+  /// version.
+  static String _subtractWords(String label, String base) {
+    final pending = base
+        .split(_reSpaces)
+        .map(_wordKey)
+        .where((t) => t.isNotEmpty)
+        .toList();
+    final kept = <String>[];
+    for (final token in label.split(_reSpaces)) {
+      final key = _wordKey(token);
+      // Miette de ponctuation isolée (« , », « - ») : jamais un libellé de
+      // version, et elle survivrait à toute soustraction. On la jette.
+      if (key.isEmpty) continue;
+      final i = pending.indexOf(key);
+      if (i >= 0) {
+        pending.removeAt(i); // consommé : un mot du titre ne compte qu'une fois
+        continue;
+      }
+      kept.add(token);
+    }
+    return kept.join(' ');
+  }
+
+  /// §providerTag — Isole le marqueur de tête du fournisseur.
+  ///
+  /// Couvre les DEUX formes reconnues par le parseur : encadrée (`|FR| TF1`,
+  /// historique) et à pipe fermant seul (`FR| CNN`, §xenoFormat). Elles étaient
+  /// traitées de façon incohérente — la première perdait le code, la seconde le
+  /// laissait filer dans `versionLabel` — donc deux versions d'un même titre
+  /// n'étaient distinguables que dans un cas sur deux.
+  ///
+  /// Sur un préfixe à plusieurs segments (`|FR|VOST|`), seul le PREMIER est
+  /// retenu : les suivants sont des langues/qualités, déjà extraites ailleurs.
+  static String? _extractProviderTag(String source) {
+    final m = _rePrefix.matchAsPrefix(source) ??
+        _reNewPrefix.matchAsPrefix(source);
+    if (m == null) return null;
+    var tag = m.group(0)!.trim();
+    while (tag.startsWith('|')) {
+      tag = tag.substring(1);
+    }
+    final cut = tag.indexOf('|');
+    if (cut >= 0) tag = tag.substring(0, cut);
+    // §providerTag — On retire du marqueur les tokens de QUALITÉ/HDR/codec :
+    // `|FR-4K DV|` doit donner « FR », pas « FR-4K DV ». Sans ça le même
+    // fournisseur produisait trois marqueurs distincts (FR, FR-4K, FR-4K DV,
+    // ~4 200 titres) qui fragmentaient l'affichage — et la résolution est de
+    // toute façon déjà extraite dans [quality].
+    //
+    // ⚠️ Volontairement PAS `_reAllTags` : il emporterait VO, MULTI, VF, qui
+    // sont ici de vrais marqueurs de version (4 528 titres en `VO|`) et que
+    // rien d'autre ne capterait.
+    tag = tag.replaceAll(_reTagNoise, ' ');
+    tag = tag.replaceAll(_reSpaces, ' ').trim();
+    while (tag.isNotEmpty && (tag.endsWith('-') || tag.endsWith('.'))) {
+      tag = tag.substring(0, tag.length - 1).trim();
+    }
+    tag = tag.toUpperCase();
+    return tag.isEmpty ? null : tag;
+  }
+
   factory TitleMetadata.parse(String rawTitle) {
     // §23 — Pré-normalisation : superscripts Unicode → ASCII (live "GEO ᶠᴴᴰ")
     // pour que la détection qualité/le nettoyage fonctionnent dessus.
     String work = rawTitle;
+    // §invisibleLead — Marques de direction/BOM en TÊTE (U+200E, U+202B…) :
+    // Dart ne les considère pas comme des espaces, donc le `^\s*` des regex de
+    // préfixe ne les franchit pas et le préfixe n'est plus reconnu du tout
+    // (`‎|FR-4K DV| On s'attache ?` gardait « FR- » dans son titre). 9 titres
+    // réels, mais le symptôme est illisible sans inspection hexadécimale.
+    work = work.replaceAll(_reInvisibleLead, '');
     for (final e in _superscripts.entries) {
       if (work.contains(e.key)) work = work.replaceAll(e.key, e.value);
     }
@@ -213,10 +531,22 @@ class TitleMetadata {
     final epMatch       = seasonMatch ?? altMatch;
     final seasonNumber  = epMatch != null ? int.tryParse(epMatch.group(1) ?? '') : null;
     final episodeNumber = epMatch != null ? int.tryParse(epMatch.group(2) ?? '') : null;
-    final year          = _reYear.firstMatch(rawTitle)?.group(0);
+    // §yearTitle — Une année EN TÊTE de titre n'est PAS une date de sortie.
+    //
+    // Le film « 2067 » s'affichait « (FR HD) » : sur `2067 (FR) FHD 2020`,
+    // `firstMatch` retenait 2067 comme année, puis le nettoyage effaçait par
+    // `replaceAll` le titre ET la vraie année — il ne restait que les tags.
+    // 215 titres réels commencent ainsi par un nombre de forme année (`1917`,
+    // `1992`, `2046`, `2001 Maniacs`, `1941 (1979)`…) et, sur TOUS, le nombre
+    // de tête est le titre : la date, elle, est entre parenthèses ou en fin.
+    final year = _extractYear(work);
 
     String? quality;
-    if (_reQ4K.hasMatch(lower))       { quality = '4K'; }
+    // §camQuality — Testé EN PREMIER : sur un rip de salle, la résolution
+    // annoncée ne veut rien dire (un « 1080p HDCAM » reste filmé dans une
+    // salle). C'est l'information que l'utilisateur doit voir en premier.
+    if (_reQCam.hasMatch(lower))      { quality = 'CAM'; }
+    else if (_reQ4K.hasMatch(lower))       { quality = '4K'; }
     else if (_reQFhd.hasMatch(lower)) { quality = 'FHD'; }
     else if (_reQHd.hasMatch(lower))  { quality = 'HD'; }
     else if (_reQSd.hasMatch(lower))  { quality = 'SD'; }
@@ -232,6 +562,7 @@ class TitleMetadata {
 
     String base = work;
     base = base.replaceAll(_rePrefix, '');
+    base = base.replaceAll(_reNewPrefix, ''); // §xenoFormat
     base = base.replaceAll(_reSubSuffix, '');
     // §23 — Coupe au marqueur SxxExx recalculé SUR base (post-préfixe).
     // L'ancien code réutilisait l'index calculé sur rawTitle, décalé dès que
@@ -248,12 +579,17 @@ class TitleMetadata {
         base = base.substring(0, sFb.start).trim();
       }
     }
+    base = base.replaceAll(_reMultiSubTag, ' '); // §xenoFormat — avant _reLangTags
     base = base.replaceAll(_reDolby, '');        // multi-mots en premier
     base = base.replaceAll(_reQualityTags, '');
     base = base.replaceAll(_reLangTags, '');
     base = base.replaceAll(_reLangParens, ' '); // (FR), (AR), (VOST FR), (MUET)…
     base = base.replaceAll(_reFpsParens, ' ');  // §parseAudit2026-06-30 — (50 FPS), (60FPS)
-    base = base.replaceAll(_reYearClean, '');
+    base = _stripYears(base); // §yearTitle — préserve une année de tête
+    // §midYear — Retirer une année ENCADRÉE par un séparateur laisse les deux
+    // délimiteurs collés (`Lees Baghdad - - لص بغداد`, `Wrong.Place..lati`).
+    // (`replaceAll` ne fait PAS de rétro-référence en Dart, d'où le Mapped.)
+    base = base.replaceAllMapped(_reDupSeparator, (m) => m.group(1)!);
     // §23b — La PONCTUATION INTERNE est CONSERVÉE pour l'affichage
     // ("M.A.S.H", "Cape Fear - Les Nerfs à vif", "Narcos: Mexico").
     // L'ancien `_rePunct → espace` produisait "M A S H" à l'écran. Le
@@ -271,6 +607,7 @@ class TitleMetadata {
     // nettoyer les séparateurs pipe résiduels ("All My Life || MULTI" →
     // "All My Life" une fois MULTI retiré). ~6 900 titres réels concernés.
     base = base.replaceAll('|', '');
+    base = _dropOrphanBrackets(base); // §orphanBracket
     base = base.replaceAll(_reSpaces, ' ').trim();
     base = base.replaceAll(_reTrimBaseStart, '').replaceAll(_reTrimBaseEnd, '');
     if (base.isEmpty) {
@@ -281,10 +618,11 @@ class TitleMetadata {
       // ponctuation conservée ; brut seulement en dernier recours.
       var fb = work
           .replaceAll(_rePrefix, '')
-          .replaceAll(_reYearClean, '')
+          .replaceAll(_reNewPrefix, '') // §xenoFormat
           .replaceAll('|', '')
           .replaceAll(_reSpaces, ' ')
           .trim();
+      fb = _dropOrphanBrackets(fb); // §orphanBracket
       fb = fb.replaceAll(_reTrimBaseStart, '').replaceAll(_reTrimBaseEnd, '');
       base = fb.isNotEmpty ? fb : work.trim();
     }
@@ -292,19 +630,44 @@ class TitleMetadata {
     String? versionLabel;
     if (base.isNotEmpty) {
       String label = work;
-      label = label.replaceAll(RegExp(RegExp.escape(base), caseSensitive: false), '');
       label = label.replaceAll(_reLabelPrefix, '');
+      // §providerTag — Le marqueur de tête part dans son propre champ :
+      // le laisser ici le faisait afficher comme une QUALITÉ.
+      label = label.replaceAll(_reNewPrefix, '');
       label = label.replaceAll(_reSubSuffix, '');
       label = label.replaceAll(_reYearClean, '');
+      label = label.replaceAll(_reMultiSubTag, ' '); // §xenoFormat
       label = label.replaceAll(_reDolby, '');    // multi-mots en premier
       label = label.replaceAll(_reAllTags, '');
       label = label.replaceAll(_reLangParens, ' ');
       label = label.replaceAll(_reFpsParens, ' '); // §parseAudit2026-06-30
       label = label.replaceAll('|', '');            // §parseAudit2026-06-30
+      // §labelLeak — Soustraction du titre par MOTS, et non par sous-chaîne
+      // littérale. L'ancien `replaceAll(RegExp.escape(base))` supposait que le
+      // titre nettoyé soit resté une sous-chaîne EXACTE du brut : un double
+      // espace (« Flicka 3  Meilleures amies »), une année en MILIEU de titre
+      // (« Star Ac Tour 2026, le concert ») ou un tag interne (« Winx Club
+      // 3D: … ») suffisaient à la faire échouer — et le titre ENTIER restait
+      // dans le libellé. 11 375 des 11 389 libellés restants étaient dans ce
+      // cas.
+      //
+      // ⚠️ Placée EN DERNIER, pas en tête : sur le titre encore brut, les mots
+      // portent leur ponctuation collée (« 2026, ») et ne correspondent à aucun
+      // mot du titre nettoyé — la soustraction laissait alors des miettes.
+      label = _subtractWords(label, base);
       label = label.replaceAll(_reTrimStart, '');
       label = label.replaceAll(_reTrimEnd, '');
       label = label.trim().replaceAll(_reSpaces, ' ');
-      if (label.isNotEmpty) versionLabel = label;
+      // §labelLeak — Filet final : un libellé de VERSION ne répète jamais le
+      // titre. Il reste quelques tokenisations impossibles à apparier mot à mot
+      // (titres arabes dont l'année est collée au 1er mot : « (2023)ملك الحلبة »
+      // — 11 titres réels). Plutôt qu'une règle de plus, on vérifie l'invariant
+      // sur la clé normalisée : si le libellé est déjà dans le titre, ce n'est
+      // pas un libellé.
+      if (label.isNotEmpty &&
+          !computeGroupKey(base).contains(computeGroupKey(label))) {
+        versionLabel = label;
+      }
     }
 
     return TitleMetadata(
@@ -317,6 +680,7 @@ class TitleMetadata {
       quality: quality,
       languages: langs,
       versionLabel: versionLabel,
+      providerTag: _extractProviderTag(work),
     );
   }
 
@@ -332,6 +696,7 @@ class TitleMetadata {
     quality:       j['q']  as String?,
     languages:     (j['l'] as List?)?.cast<String>() ?? const [],
     versionLabel:  j['v']  as String?,
+    providerTag:   j['p']  as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -344,6 +709,7 @@ class TitleMetadata {
     if (quality       != null) 'q': quality,
     if (languages.isNotEmpty)  'l': languages,
     if (versionLabel  != null) 'v': versionLabel,
+    if (providerTag   != null) 'p': providerTag,
   };
 }
 
@@ -369,6 +735,18 @@ class M3uEntry {
   /// ID TMDB fourni par le provider (string brute, ex: "506971"). Films + séries.
   final String? tmdbId;
   /// Synopsis (séries uniquement — la liste VOD ne le transporte pas).
+  /// §heavyFields — ⚠️ `castNames` (clé JSON `'ca'`) a été RETIRÉ : il était
+  /// désérialisé, gardé en mémoire pour chaque entrée, et **lu nulle part**.
+  /// Mesuré sur les listes réelles : ~20 octets par entrée, soit ~13 Mo de
+  /// heap Dart (UTF-16) sur 323 373 entrées, pour rien. Les anciens caches
+  /// contiennent encore la clé `'ca'` : elle est simplement ignorée à la
+  /// lecture, aucun changement de `schemaVersion` n'est nécessaire.
+  ///
+  /// ⚠️ `plot` et `genre`, eux, sont CONSERVÉS malgré leur poids (~79 et
+  /// ~6 o/entrée) : ce sont les replis documentés §23b quand TMDB ne rend rien
+  /// — ce qui arrive aussi **avec** une clé configurée, quand le titre n'est
+  /// pas trouvé. Les décharger ferait disparaître le synopsis dans exactement
+  /// les cas où c'est la seule source disponible.
   final String? plot;
   /// §epTitleProvider — Titre d'ÉPISODE fourni par le panel (champ `title` de
   /// `get_series_info`, nettoyé du nom de série/SxxExx). Fallback du nom TMDB
@@ -378,7 +756,6 @@ class M3uEntry {
   /// Genres bruts provider (ex: "Science-Fiction / Action / Drame").
   final String? genre;
   /// Casting brut provider (noms séparés par des virgules).
-  final String? castNames;
   /// Note /10 (champ `rating` provider).
   final double? rating;
   /// Date de sortie ISO (ex: "2018-04-13").
@@ -408,7 +785,6 @@ class M3uEntry {
     this.plot,
     this.episodeTitle,
     this.genre,
-    this.castNames,
     this.rating,
     this.releaseDate,
     this.backdropUrl,
@@ -439,7 +815,6 @@ class M3uEntry {
     plot:          j['p']   as String?,
     episodeTitle:  j['et']  as String?,
     genre:         j['ge']  as String?,
-    castNames:     j['ca']  as String?,
     rating:        (j['ra'] as num?)?.toDouble(),
     releaseDate:   j['rd']  as String?,
     backdropUrl:   j['bd']  as String?,
@@ -462,7 +837,6 @@ class M3uEntry {
     if (plot          != null) 'p':   plot,
     if (episodeTitle  != null) 'et':  episodeTitle,
     if (genre         != null) 'ge':  genre,
-    if (castNames     != null) 'ca':  castNames,
     if (rating        != null) 'ra':  rating,
     if (releaseDate   != null) 'rd':  releaseDate,
     if (backdropUrl   != null) 'bd':  backdropUrl,

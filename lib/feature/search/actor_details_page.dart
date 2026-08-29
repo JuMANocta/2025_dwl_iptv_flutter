@@ -6,8 +6,10 @@ import '../../data/services/tmdb_api_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/models/person_model.dart';
 import '../../data/models/m3u_entry.dart';
+import '../../widgets/aether_image.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'details_page.dart';
+import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
 class ActorDetailsPage extends StatefulWidget {
   final int personId;
@@ -17,19 +19,54 @@ class ActorDetailsPage extends StatefulWidget {
   State<ActorDetailsPage> createState() => _ActorDetailsPageState();
 }
 
-class _ActorDetailsPageState extends State<ActorDetailsPage> {
-  // Lookup construit une fois depuis la mémoire ParsedPlaylistService :
-  // titre normalisé → toutes les entrées correspondantes (toutes qualités).
-  late final Map<String, List<M3uEntry>> _lookup;
+class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus {
+  // Index depuis la mémoire ParsedPlaylistService : titre normalisé → toutes
+  // les entrées correspondantes (toutes qualités). Reconstruit quand la
+  // playlist change (cf. `_refreshLookup`).
+  Map<String, List<M3uEntry>> _lookup = const {};
   bool _hasTmdbKey = false;
+
+  /// §directorView — Future MÉMOÏSÉ. Avant, `getPersonDetails` était appelé
+  /// directement dans `build()` → une requête réseau relancée à CHAQUE rebuild
+  /// (scroll, focus, setState de la clé TMDB…).
+  late final Future<Person?> _personFuture;
+
+  /// §tmdbOnlyDetails — Version de playlist ayant servi à bâtir [_lookup].
+  /// Les comptes SECONDAIRES sont hydratés en arrière-plan au boot
+  /// (`main.dart:_hydrateSecondaryAccounts`) : un index figé en `initState`
+  /// marquait « non dispo » à vie les titres de ces comptes quand la fiche
+  /// était ouverte pendant le chargement.
+  int _lookupVersion = -1;
 
   @override
   void initState() {
     super.initState();
-    _lookup = _buildLookup();
+    _refreshLookup();
+    ParsedPlaylistService.version.addListener(_onPlaylistChanged);
+    _personFuture = TmdbService.instance.getPersonDetails(widget.personId);
     TmdbApiService.hasApiKey().then((v) {
       if (mounted) setState(() => _hasTmdbKey = v);
     });
+  }
+
+  @override
+  void dispose() {
+    ParsedPlaylistService.version.removeListener(_onPlaylistChanged);
+    super.dispose();
+  }
+
+  void _onPlaylistChanged() {
+    if (!mounted) return;
+    setState(_refreshLookup);
+  }
+
+  /// Reconstruit l'index seulement si la playlist a changé (l'index couvre
+  /// TOUTES les entrées : à ne pas refaire à chaque rebuild).
+  void _refreshLookup() {
+    final v = ParsedPlaylistService.version.value;
+    if (_lookupVersion == v) return;
+    _lookupVersion = v;
+    _lookup = _buildLookup();
   }
 
   // ── Helpers de matching ────────────────────────────────────────────────────
@@ -106,14 +143,14 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
     return Scaffold(
       backgroundColor: cs.surface,
       body: FutureBuilder<Person?>(
-        future: TmdbService.instance.getPersonDetails(widget.personId),
+        future: _personFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
             return Center(
-              child: Text('Erreur : Fiche Acteur non trouvée.',
+              child: Text('Erreur : fiche introuvable sur TMDB.',
                   style: TextStyle(color: kError)),
             );
           }
@@ -145,18 +182,14 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (profileUrl != null)
-                        Image.network(
-                          profileUrl,
-                          fit: BoxFit.cover,
-                          // §imgPerf — header full-width → cap décodage.
-                          cacheWidth: 720,
-                          gaplessPlayback: true,
-                          errorBuilder: (_, __, ___) =>
-                              Container(color: cs.surfaceContainerHighest),
-                        )
-                      else
-                        Container(color: cs.surfaceContainerHighest),
+                      // §imgDiskCache — cache disque ; §imgPerf cap 720 px.
+                      AetherImage(
+                        url: profileUrl,
+                        fit: BoxFit.cover,
+                        cacheWidth: 720,
+                        fallback: (_) =>
+                            Container(color: cs.surfaceContainerHighest),
+                      ),
                       DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -199,8 +232,13 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                         ),
                         const SizedBox(height: 32),
 
-                        // FILMOGRAPHIE
-                        Text('Filmographie (Rôles)',
+                        // FILMOGRAPHIE — §directorView : intitulé selon le
+                        // métier principal (la page sert acteurs ET
+                        // réalisateurs depuis la recherche par personne).
+                        Text(
+                            person.isDirector
+                                ? 'Filmographie (Réalisation)'
+                                : 'Filmographie (Rôles)',
                             style: Theme.of(context)
                                 .textTheme
                                 .titleLarge
@@ -210,8 +248,33 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                         ...person.filmography.map((credit) {
                           final matches = _findMatches(credit);
                           final isAvailable = matches.isNotEmpty;
-                          // Films ET séries : tappable → DetailsPage (si clé TMDB configurée)
-                          final canNavigate = isAvailable && _hasTmdbKey;
+                          // §tmdbOnlyDetails — TOUTE ligne est désormais
+                          // ouvrable : dispo → fiche normale (lecture,
+                          // téléchargement) ; absente → fiche TMDB seule.
+                          // Avant, `canNavigate = isAvailable && _hasTmdbKey`
+                          // rendait les lignes non-dispo inertes : on appuyait,
+                          // il ne se passait rien. La rangée « Personnes » de la
+                          // recherche (§personSearch) y menant très souvent, ce
+                          // cul-de-sac était devenu le cas fréquent.
+                          final canNavigate = _hasTmdbKey;
+                          void openDetails() {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => isAvailable
+                                    ? DetailsPage(
+                                        entry: matches.first,
+                                        versions: matches,
+                                      )
+                                    : DetailsPage.fromTmdb(
+                                        tmdbId: credit.id,
+                                        title: credit.title,
+                                        type: credit.mediaType == 'movie'
+                                            ? M3uContentType.movie
+                                            : M3uContentType.series,
+                                      ),
+                              ),
+                            );
+                          }
 
                           final tile = ListTile(
                             contentPadding: EdgeInsets.zero,
@@ -240,22 +303,27 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                                         color: cs.onSurfaceVariant,
                                         fontStyle: FontStyle.italic),
                                   ),
-                                Text(
-                                  'Rôle : ${credit.character ?? 'N/A'}',
-                                  style: TextStyle(color: cs.onSurfaceVariant),
-                                ),
+                                // §directorView — « Réalisateur » sur un crédit
+                                // de réalisation, « Rôle : X » sur un crédit
+                                // de casting. La ligne disparaît si aucun des
+                                // deux n'est renseigné (au lieu de « N/A »).
+                                if (credit.job != null)
+                                  Text(
+                                    credit.job == 'Director'
+                                        ? 'Réalisateur'
+                                        : credit.job!,
+                                    style: TextStyle(color: kAccentSecondary),
+                                  )
+                                else if (credit.character?.trim().isNotEmpty ==
+                                    true)
+                                  Text(
+                                    'Rôle : ${credit.character}',
+                                    style:
+                                        TextStyle(color: cs.onSurfaceVariant),
+                                  ),
                               ],
                             ),
-                            onTap: canNavigate
-                                ? () => Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => DetailsPage(
-                                          entry: matches.first,
-                                          versions: matches,
-                                        ),
-                                      ),
-                                    )
-                                : null,
+                            onTap: canNavigate ? openDetails : null,
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -281,16 +349,7 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> {
                             scaleOnFocus: false,
                             decorateOnly: true,
                             borderRadius: BorderRadius.circular(8),
-                            onTap: canNavigate
-                                ? () => Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => DetailsPage(
-                                          entry: matches.first,
-                                          versions: matches,
-                                        ),
-                                      ),
-                                    )
-                                : null,
+                            onTap: canNavigate ? openDetails : null,
                             child: tile,
                           );
                         }),
