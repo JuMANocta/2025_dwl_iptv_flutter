@@ -28,6 +28,28 @@ abstract final class DpadRowAnchor {
   /// sous les yeux — le « saut au milieu d'un carrousel ».
   static ScrollableState? _lastRow;
 
+  /// §carouselRewindTouch — Signale qu'une rangée devient ACTIVE au doigt.
+  ///
+  /// **Le manque.** Le rembobinage §carouselScrollDir n'était branché que sur
+  /// le FOCUS : au doigt, aucun événement de focus n'est émis, donc une rangée
+  /// avancée à la main restait avancée indéfiniment. On la retrouvait « au
+  /// milieu » en revenant dessus, exactement le défaut que §carouselScrollDir
+  /// avait corrigé pour la télécommande.
+  ///
+  /// Appelée au démarrage d'un défilement horizontal
+  /// (`ScrollStartNotification`), elle applique la MÊME règle : la rangée
+  /// qu'on quitte revient à son début. Les deux modes d'entrée partagent donc
+  /// `_lastRow` et `_rewind`, et ne peuvent pas diverger.
+  ///
+  /// ⚠️ Ne fait rien si la rangée est déjà l'active : reprendre son propre
+  /// défilement ne doit surtout pas le rembobiner sous les doigts.
+  static void noteTouchScroll(ScrollableState row) {
+    if (axisDirectionToAxis(row.axisDirection) != Axis.horizontal) return;
+    if (identical(row, _lastRow)) return;
+    _rewind(_lastRow);
+    _lastRow = row;
+  }
+
   /// À appeler en post-frame quand le widget gagne le focus. [context] =
   /// contexte du widget focusé (son RenderBox donne la géométrie).
   static void anchor(BuildContext context) {

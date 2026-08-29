@@ -420,7 +420,10 @@ class _HeroFanCard extends StatelessWidget {
     );
     final hasResume = progress != null && progress.ratio < 0.95;
     // §23 — politique image « plus grosse liste ».
-    final logoUrl = ParsedPlaylistService.bestLogoUrl(versions);
+    // §logoFallback — toutes les adresses du groupe, pas seulement la
+    // « meilleure » : une adresse morte ne doit plus vider la carte.
+    final logoCandidates = ParsedPlaylistService.logoCandidates(versions);
+    final logoUrl = logoCandidates.isEmpty ? null : logoCandidates.first;
 
     final fallbackIcon = switch (type) {
       M3uContentType.movie => Icons.movie_outlined,
@@ -497,6 +500,7 @@ class _HeroFanCard extends StatelessWidget {
                         heightFactor: 0.52,
                         child: AetherImage(
                           url: logoUrl,
+                          alternates: logoCandidates.skip(1).toList(),
                           fit: BoxFit.contain,
                           cacheWidth: decodeWidthFor(context, width, max: 640),
                           fallback: (_) => _fallback(fallbackIcon),
@@ -505,6 +509,7 @@ class _HeroFanCard extends StatelessWidget {
                     )
                   : AetherImage(
                       url: logoUrl,
+                      alternates: logoCandidates.skip(1).toList(),
                       fit: BoxFit.cover,
                       cacheWidth: decodeWidthFor(context, width, max: 640),
                       fallback: (_) => _fallback(fallbackIcon),

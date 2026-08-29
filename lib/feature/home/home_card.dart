@@ -32,14 +32,24 @@ class _HomeCardState extends State<_HomeCard> {
   /// déjà pourvues d'un logo.
   String? _tmdbPoster;
 
-  /// True dès que les versions portent un `tvg-logo` exploitable.
-  bool get _hasM3uLogo => widget.versions
-      .any((e) => e.logoUrl != null && e.logoUrl!.isNotEmpty);
+  /// §logoFallback — Adresses d'image du groupe, dans l'ordre de préférence.
+  ///
+  /// ⚠️ Remplace l'ancien test `_hasM3uLogo` (« au moins une version porte un
+  /// `tvg-logo` »), qui **court-circuitait TMDB dès qu'une seule adresse
+  /// existait, même MORTE** : on perdait alors l'affiche ET, depuis
+  /// §inferredCat, la catégorie. C'est désormais l'ÉCHEC de chargement qui
+  /// décide, pas la simple présence d'une chaîne de caractères.
+  List<String> get _logoCandidates =>
+      ParsedPlaylistService.logoCandidates(widget.versions);
 
   @override
   void initState() {
     super.initState();
-    _resolveTmdbPosterIfNeeded();
+    // §logoFallback — Sans aucune adresse, inutile d'attendre un échec de
+    // chargement qui n'arrivera jamais : on résout tout de suite. Sinon on
+    // laisse `AetherImage` essayer les adresses, et son `onAllFailed` nous
+    // rappellera si toutes échouent.
+    if (_logoCandidates.isEmpty) _resolveTmdbPosterIfNeeded();
   }
 
   @override
@@ -49,13 +59,18 @@ class _HomeCardState extends State<_HomeCard> {
     // versions → on relance la résolution si le groupe a changé.
     if (oldWidget.versions.first.url != widget.versions.first.url) {
       _tmdbPoster = null;
-      _resolveTmdbPosterIfNeeded();
+      if (_logoCandidates.isEmpty) _resolveTmdbPosterIfNeeded();
     }
   }
 
-  /// Lance un fallback TMDB uniquement pour films/séries sans logo M3U.
+  /// §logoFallback — Repli TMDB : soit aucune adresse n'existe, soit toutes ont
+  /// échoué à charger. Films et séries uniquement.
+  ///
+  /// ⚠️ Idempotent : `TmdbPosterCache` dédoublonne les appels concurrents et
+  /// met même les résultats négatifs en cache, donc être rappelé plusieurs fois
+  /// pour un même titre ne coûte rien.
   void _resolveTmdbPosterIfNeeded() {
-    if (_hasM3uLogo) return;
+    if (_tmdbPoster != null) return;
     if (widget.type == M3uContentType.tv) return; // les chaînes ont leur logo
     final entry = widget.versions.first;
     final query = entry.displayName;
@@ -328,8 +343,13 @@ class _HomeCardState extends State<_HomeCard> {
     final entry = widget.versions.first;
     // §23 — politique image « plus grosse liste ».
     // §Ultimate — fallback affiche TMDB quand le M3U ne fournit aucun tvg-logo.
-    final logoUrl = ParsedPlaylistService.bestLogoUrl(widget.versions)
-        ?? _tmdbPoster;
+    // §logoFallback — Toutes les adresses du groupe, puis l'affiche TMDB une
+    // fois résolue. `AetherImage` descend la liste à chaque échec.
+    final logoCandidates = <String>[
+      ..._logoCandidates,
+      if (_tmdbPoster != null) _tmdbPoster!,
+    ];
+    final logoUrl = logoCandidates.isEmpty ? null : logoCandidates.first;
 
     final isTv = widget.type == M3uContentType.tv;
     final cardWidth = widget.width ?? (isTv ? 120.0 : 130.0);
@@ -397,6 +417,11 @@ class _HomeCardState extends State<_HomeCard> {
                     // poster ~120-200 px).
                     AetherImage(
                       url: logoUrl,
+                      alternates: logoCandidates.skip(1).toList(),
+                      // §logoFallback — Toutes les adresses du fournisseur ont
+                      // échoué : c'est le moment de demander l'affiche à TMDB
+                      // (et, au passage, la catégorie — cf. §inferredCat).
+                      onAllFailed: _resolveTmdbPosterIfNeeded,
                       fit: isTv ? BoxFit.contain : BoxFit.cover,
                       // §imgThrash — était 360 en dur, pour une vignette qui
                       // mesure ~120-145 px logiques : ~3× de RAM gaspillée par

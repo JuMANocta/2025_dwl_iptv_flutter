@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.15.8+101-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.15.9+102-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -289,12 +289,6 @@ lib/
 - [x] **Plafond du cache image en RAM** (§imgMemCache) — réglable dans Optimisation (20-150 Mo, 40 Mo en profil Performance) au lieu des 100 Mo par défaut de Flutter ; rendu possible par le cache disque
 - [x] **Cache disque des images** (§imgDiskCache) — vignettes persistées sur disque (widget partagé `AetherImage`, rétention 60 j TMDB / 7 j provider), backdrop de fiche en w1280, ligne « Cache images » + bouton de purge dans Optimisation
 - [x] **Statut de démarrage parlant** (§bootStatus) — l'écran de lancement affiche l'étape réelle au lieu du « // initialisation… » figé : vérification du compte, lecture **ou** téléchargement de la playlist, analyse du catalogue **avec pourcentage** (barre déterminée), chargement des autres comptes
-- [ ] **La recherche ne part plus dès la première lettre** (§searchMinLen) — taper « s » déclenche aujourd'hui un balayage de toutes les entrées chargées (plus de 320 000 avec quatre listes) pour un résultat qui ne veut rien dire ; un seuil de trois caractères sur les films et séries, et un délai qui s'adapte à la longueur de la requête
-- [ ] **Voir ce qui existe sur TMDB mais pas dans vos listes** (§searchTmdb) — une rangée en fin de résultats pour les titres introuvables chez vos fournisseurs, avec leur fiche complète (synopsis, casting, bande-annonce) : on distingue enfin « ça n'existe pas » de « vous ne l'avez pas »
-- [ ] **Recherche insensible aux accents** (§searchAccents) — « piece montee » ne trouve pas « Pièce Montée », ce qui pénalise surtout la saisie à la télécommande
-- [ ] **Voir tous les résultats de recherche** (§searchMore) — l'affichage s'arrête à 30 par type, sans moyen d'aller plus loin
-- [ ] **Le clavier ne masque plus les résultats** (§searchKeyboard) — il occupe 60 % de l'écran et ne se referme pas au défilement
-- [ ] **Chercher un acteur et voir ses films présents dans vos listes** (§searchByPerson) — aujourd'hui la recherche par personne ouvre sa fiche, sans remonter ce que vous possédez de lui
 - [ ] **Cache d'URL TMDB persistant** (§tmdbUrlPersist) — éviter de refaire toutes les recherches TMDB à chaque démarrage pour les titres sans affiche fournie par la liste
 - [x] **Audit de la gestion des favoris** (§favAudit) — la latence venait du groupement de la home, qui se relançait **entièrement à chaque cœur** : la rangée ⭐ (catégorie virtuelle) est désormais recalculée seule. Corrigé aussi : le flag one-shot de réconciliation pouvait n'être jamais posé (scan de la playlist à chaque démarrage) et les regex de `tvGroupKey` étaient recompilées à chaque appel
 - [ ] **Plantage lecture 4K sur TV** (§tv4kCrash) — lecture hachée + UI qui plante, investigation prioritaire (lié §tv4kTexture)
@@ -319,6 +313,13 @@ lib/
 - [x] **Quel « produit »/qualité sur les chaînes** (§watchContext c) — qualité affichée dans le player + labels de boutons suffixés par le compte pour départager les qualités identiques
 - [x] **Découpage `home_page.dart`** — 3 435 → 1 416 lignes via `part`/`part of` (`home_card` / `home_hero_fan` / `home_category` / `home_search`)
 - [ ] **Grille EPG XMLTV pour replay** — sélection programme dans la grille (en complément du picker manuel)
+- [x] **Chercher un acteur et voir ses films dans vos listes** (§searchByPerson, 2026-08-29) — taper « Nolan » remonte désormais une rangée « De Christopher Nolan, dans tes listes », **en plus** des titres contenant le mot
+- [x] **Voir tous les résultats de recherche** (§searchMore, 2026-08-29) — les compteurs annoncent le vrai total (535 films, et non « 30+ ») et une tuile « Voir tout » ouvre la liste complète
+- [x] **Voir ce qui existe sur TMDB mais pas dans vos listes** (§searchTmdb, 2026-08-29) — une rangée en fin de résultats montre les titres qu'aucun de vos fournisseurs ne propose, assombris et marqués « non dispo ». On distingue enfin « ça n'existe pas » de « vous ne l'avez pas », avec la fiche complète (synopsis, casting, bande-annonce) et un bouton pour re-chercher dans vos listes
+- [x] **Recherche insensible aux accents** (§searchAccents, 2026-08-29) — « ecarlate » trouve désormais « La Servante Écarlate ». **18 % des titres** de vos listes portent un accent : ils étaient inatteignables sans clavier accentué, ce qui pénalisait surtout la saisie à la télécommande
+- [x] **La recherche ne part plus dès la première lettre** (§searchMinLen, 2026-08-29) — trois caractères minimum pour les films et séries, au lieu de balayer plus de 320 000 entrées à chaque frappe. Les **chaînes** restent cherchables dès la première lettre (« TF1 », « M6 »)
+- [x] **Le clavier ne masque plus les résultats** (§searchKeyboard, 2026-08-29) — il se referme au défilement
+- [x] **Les affiches ne disparaissent plus** (§logoFallback, 2026-08-29) — il suffisait qu'une seule de vos listes fournisse une adresse d'image **morte** pour que la vignette reste vide, alors qu'une autre liste en proposait une valide. L'application essaie désormais toutes les adresses du titre, puis TMDB en dernier recours
 - [x] **Vérité sur la qualité** (§qualityTruth/§videoStats, 2026-08-29) — la qualité affichée par les listes vient de leur **titre**, et certaines annoncent du 4K pour servir du 1080p. L'app mesure désormais la définition **réellement décodée** à chaque lecture et l'affiche **sur la fiche** (sous la version, épisodes compris), **sur les vignettes d'accueil** et **sur les chaînes TV** : `⚠ réel FHD` quand la liste survend, `✓ 1080p` quand elle dit vrai. Un encart de diagnostic en direct par-dessus l'image donne le détail. Affiche aussi décodage **matériel ou logiciel**, codec, images/s tenu contre annoncé, images perdues, débit. Activable via le bouton ⚙ des contrôles (mobile) ou ↑ → Options (TV) → « Infos vidéo » ; le relevé part aussi dans le journal de diagnostic, lisible depuis la console web
 - [x] **Format d'image du lecteur** (§videoFit, 2026-08-29) — **Original** (image entière), **Zoom** (efface les bandes noires en rognant les bords) ou **Plein écran** (remplit en déformant). Choix mémorisé d'une vidéo à l'autre ; accessible via le bouton ⚙ des contrôles (mobile) ou ↑ → Options (TV) → « Format d'image »
 - [x] **Piste audio de secours** (§audioFallback, 2026-08-29) — quand une piste TrueHD/Atmos ne se décode pas (fréquent sur les rips 4K), le lecteur bascule sur une autre piste au lieu d'abandonner, et lit sans son en dernier recours plutôt que d'afficher une erreur

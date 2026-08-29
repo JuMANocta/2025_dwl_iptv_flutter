@@ -378,6 +378,34 @@ class ParsedPlaylistService {
   static String? bestBackdropUrl(List<M3uEntry> versions) =>
       _bestImage(versions, (e) => e.backdropUrl);
 
+  /// §logoFallback — TOUTES les adresses d'image du groupe, dans l'ordre de
+  /// préférence (compte le plus fourni d'abord), sans doublon ni valeur vide.
+  ///
+  /// [bestLogoUrl] n'en retournait qu'une, et rien ne réessayait les autres si
+  /// elle ne chargeait pas. Or une adresse peut être **présente et morte** :
+  /// le groupe perdait alors son affiche alors qu'une autre liste en proposait
+  /// une valide.
+  static List<String> logoCandidates(List<M3uEntry> versions) =>
+      _imageCandidates(versions, (e) => e.logoUrl);
+
+  static List<String> _imageCandidates(
+    List<M3uEntry> versions,
+    String? Function(M3uEntry) pick,
+  ) {
+    if (versions.isEmpty) return const [];
+    final sorted = versions.length == 1
+        ? versions
+        : ([...versions]..sort((a, b) =>
+            entriesCountOf(b.accountId).compareTo(entriesCountOf(a.accountId))));
+    final out = <String>[];
+    for (final v in sorted) {
+      final img = pick(v);
+      if (img == null || img.isEmpty) continue;
+      if (!out.contains(img)) out.add(img);
+    }
+    return out;
+  }
+
   static String? _bestImage(
     List<M3uEntry> versions,
     String? Function(M3uEntry) pick,

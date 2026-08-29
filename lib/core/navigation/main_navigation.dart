@@ -206,6 +206,14 @@ class _MainNavigationState extends State<MainNavigation> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navIndex,
         onDestinationSelected: _onTap,
+        // §navBarSlim — La barre Material 3 fait 80 px de haut par défaut, ce
+        // qui est beaucoup sur un téléphone où l'écran sert surtout à afficher
+        // des affiches. Ramenée à 68 (−15 %).
+        //
+        // ⚠️ On garde les libellés : les retirer aurait gagné plus de place,
+        // mais trois icônes seules (maison / loupe / flèche) se devinent moins
+        // bien qu'on ne le croit, et c'est un repère permanent de l'app.
+        height: 68,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
