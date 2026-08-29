@@ -459,6 +459,10 @@ class _HomePageState extends State<HomePage> with RouteAware {
               // §3c-bis — Sur TV, l'icône ⚙️ est redondante avec la destination
               // "Paramètres" du NavigationRail latéral.
               actions: [
+                // §loadingLine — Le décompte des listes en cours de chargement
+                // a quitté le bandeau pour venir ici : même information, zéro
+                // hauteur prise à l'accueil.
+                const SecondaryAccountsCounter(),
                 // §refreshHome — Rafraîchissement du compte actif sans passer
                 // par Paramètres → Comptes IPTV.
                 IconButton(
@@ -570,14 +574,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
                     );
                   }
 
-                  final Widget browseBody = Column(
+                  final Widget browseBody = Stack(
                     children: [
-                      // §loadingBanner — Bandeau discret en haut de la home
-                      // tant que les comptes secondaires se téléchargent/parsent
-                      // en arrière-plan. L'utilisateur sait pourquoi certains
-                      // films/séries d'un compte non-actif "manquent" temporairement.
-                      const _SecondaryAccountsLoadingBanner(),
-                      Expanded(
+                      Positioned.fill(
                         child: PageView(
                     // §tabPersist — restaure la page courante si le PageView est
                     // recréé (ex: cycle `_loading` lors d'un changement de
@@ -657,6 +656,14 @@ class _HomePageState extends State<HomePage> with RouteAware {
                       ),
                     ],
                         ),
+                      ),
+                      // §loadingLine — Témoin de chargement des listes
+                      // secondaires, en SURIMPRESSION (cf. la classe).
+                      const Positioned(
+                        left: 0,
+                        right: 0,
+                        top: 0,
+                        child: _SecondaryAccountsProgressLine(),
                       ),
                     ],
                   );
@@ -887,59 +894,83 @@ double _responsiveTileWidth(double available, {required bool channel}) {
   return available / cols;
 }
 
-/// §loadingBanner — Banner discret en haut de la home : visible uniquement
-/// quand au moins un compte secondaire est en cours de téléchargement / parse
-/// (background `_hydrateSecondaryAccounts`). Disparait dès que tout est chargé.
-/// Permet à l'utilisateur de comprendre pourquoi certains contenus d'un compte
-/// non-actif "manquent" temporairement.
-class _SecondaryAccountsLoadingBanner extends StatelessWidget {
-  const _SecondaryAccountsLoadingBanner();
+/// §loadingLine — Témoin de chargement des listes secondaires.
+///
+/// **Ce que ça remplace, et pourquoi.** C'était un bandeau pleine largeur
+/// (`_SecondaryAccountsLoadingBanner`) posé DANS la colonne, au-dessus du
+/// `PageView` : il réservait la hauteur de la barre d'état + une roue de 14 px
+/// + une phrase de 12 px. Il ne prenait donc pas seulement de la place — il
+/// **décalait toute l'accueil vers le bas**, puis, l'hydratation terminée,
+/// disparaissait d'un coup et la page **remontait**. Ce saut se lit comme un
+/// défaut d'affichage, alors que tout allait bien.
+///
+/// Ici, le témoin est en **surimpression** : un filet de 2 px sous la barre
+/// d'état. Coût vertical **zéro**, donc plus rien ne bouge quand il s'en va.
+/// Le décompte, lui, vit dans la barre du haut ([SecondaryAccountsCounter]) —
+/// il n'a pas disparu, il a changé de place.
+class _SecondaryAccountsProgressLine extends StatelessWidget {
+  const _SecondaryAccountsProgressLine();
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<Map<String, AccountLoadState>>(
       valueListenable: ParsedPlaylistService.loadStates,
       builder: (ctx, states, _) {
-        final loading = states.entries
-            .where((e) =>
-                e.value == AccountLoadState.downloading ||
-                e.value == AccountLoadState.parsing)
+        final loading = states.values
+            .where((v) =>
+                v == AccountLoadState.downloading ||
+                v == AccountLoadState.parsing)
             .length;
         if (loading == 0) return const SizedBox.shrink();
-        final total = states.length;
-        final loaded = total - loading;
-        return Container(
-          width: double.infinity,
-          padding: EdgeInsets.only(
-            top: MediaQuery.of(context).padding.top + 6,
-            left: 16,
-            right: 16,
-            bottom: 8,
+        return Padding(
+          // Sous la barre d'état : le body passe derrière elle
+          // (`extendBodyBehindAppBar`), un filet à 0 serait invisible.
+          padding: EdgeInsets.only(top: MediaQuery.of(ctx).padding.top),
+          child: SizedBox(
+            height: 2,
+            child: LinearProgressIndicator(
+              minHeight: 2,
+              backgroundColor: kAccentPrimary.withAlpha(30),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                  kAccentPrimary.withAlpha(190)),
+            ),
           ),
-          color: kAccentPrimary.withAlpha(15),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(kAccentPrimary),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Chargement des comptes secondaires… ($loaded/$total prêts)',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: kAccentPrimary,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ),
-            ],
+        );
+      },
+    );
+  }
+}
+
+/// §loadingLine — Décompte « n/N » des listes chargées, dans la barre du haut.
+///
+/// Reprend l'information que portait l'ancien bandeau — savoir pourquoi les
+/// contenus d'une liste « manquent » encore — sans lui rendre sa hauteur. Muet
+/// dès que tout est chargé.
+class SecondaryAccountsCounter extends StatelessWidget {
+  const SecondaryAccountsCounter({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Map<String, AccountLoadState>>(
+      valueListenable: ParsedPlaylistService.loadStates,
+      builder: (ctx, states, _) {
+        final total = states.length;
+        final loading = states.values
+            .where((v) =>
+                v == AccountLoadState.downloading ||
+                v == AccountLoadState.parsing)
+            .length;
+        if (loading == 0 || total == 0) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            '${total - loading}/$total',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+              color: kAccentPrimary.withAlpha(210),
+            ),
           ),
         );
       },

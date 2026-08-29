@@ -7,6 +7,7 @@ import '../../data/services/playlist_service.dart';
 import '../../data/services/stream_account_service.dart';
 import '../search/m3u_filter.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import '../../l10n/app_localizations.dart';
 
 /// §langFilter — Réglage des langues/régions à MASQUER du catalogue.
 ///
@@ -80,7 +81,7 @@ class _RegionFilterPageState extends State<RegionFilterPage> with TvInitialFocus
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Langues / régions'),
+        title: Text(AppLocalizations.of(context)!.regionFilterTitle),
         elevation: 0,
         scrolledUnderElevation: 0,
         actions: [

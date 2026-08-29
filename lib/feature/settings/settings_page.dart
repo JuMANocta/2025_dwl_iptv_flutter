@@ -17,6 +17,7 @@ import 'package:aetherStream/data/services/last_watched_channel_service.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import '../../l10n/app_localizations.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
 ///
@@ -150,7 +151,7 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Paramètres'),
+        title: Text(AppLocalizations.of(context)!.settingsTitle),
         elevation: 0,
         scrolledUnderElevation: 0,
       ),

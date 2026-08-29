@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
+import 'download_stall_policy.dart';
 import '../../core/utils/log_sanitizer.dart';
 import '../../core/utils/network.dart';
 
@@ -162,6 +163,12 @@ class DownloadManagerService {
   /// handles écrivent en parallèle dans le même fichier partiel — corruption
   /// silencieuse, et une taille lue trop courte fausserait la reprise.
   Future<void> restartTask(DownloadTask task) async {
+    // §dlWatchdog — Le compteur est incrémenté AVANT l'annulation, pas après :
+    // `cancelTask` publie `canceled`, et c'est à cet instant que le moniteur
+    // décide quoi écrire. Bumpé après, il affichait « ABORT : annulé par
+    // l'utilisateur » — alors que l'utilisateur venait de demander l'inverse.
+    final bumped = _bumpRetryCount(task.id) ?? task;
+
     final previous = _inFlight[task.id];
     if (previous != null) {
       await cancelTask(task.id);
@@ -176,7 +183,7 @@ class DownloadManagerService {
     }
     // La tâche vient de passer en `canceled` : on repart d'un état propre.
     _cancelTokens.remove(task.id);
-    await startDownloadTask(task);
+    await startDownloadTask(bumped);
   }
 
   Future<void> _runDownload(DownloadTask task) async {
@@ -400,6 +407,8 @@ class DownloadManagerService {
       }
     }
     _lastNotifiedAt[taskId] = now;
+    // §dlWatchdog — Mesure du débit côté SERVICE (cf. `_traceThroughput`).
+    _traceThroughput(taskId, (clamped * totalSize).round());
 
     final currentTasks = List<DownloadTask>.from(tasksNotifier.value);
     final index = currentTasks.indexWhere((t) => t.id == taskId);
@@ -418,6 +427,96 @@ class DownloadManagerService {
     }
   }
 
+
+  /// §dlWatchdog — Incrémente le nombre de relances d'une tâche et renvoie la
+  /// version à jour. `null` si la tâche n'existe plus.
+  DownloadTask? _bumpRetryCount(String taskId) {
+    final tasks = List<DownloadTask>.from(tasksNotifier.value);
+    final i = tasks.indexWhere((t) => t.id == taskId);
+    if (i == -1) return null;
+    final updated = tasks[i].copyWith(retryCount: tasks[i].retryCount + 1);
+    tasks[i] = updated;
+    tasksNotifier.value = tasks;
+    _saveTasksToDisk(); // fire & forget
+    debugPrint('🔁 §dlWatchdog — « ${updated.displayName} » relancée '
+        '(${updated.retryCount}× au total)');
+    return updated;
+  }
+
+  /// §dlWatchdog — Débit moyen observé, par tâche, en octets/seconde.
+  ///
+  /// **Pourquoi dans le SERVICE et pas dans le dialogue.** `_speed` et `_eta`
+  /// vivent aujourd'hui dans `TerminalDownloadDialog`, donc ils disparaissent
+  /// dès qu'on ferme le dialogue — alors que le transfert continue. Une
+  /// détection de bridage ne peut pas s'appuyer là-dessus.
+  ///
+  /// ⚠️ **Instrument, pas encore correctif.** La roadmap (§dlWatchdog, volet A)
+  /// impose de CONFIRMER l'hypothèse avant de coder la relance automatique :
+  /// le serveur bride-t-il vraiment (débit qui décroît), ou coupe-t-il la
+  /// connexion (autre correctif) ? Ce journal donne la réponse ; la relance
+  /// automatique viendra après, sur des faits.
+  final Map<String, ({DateTime at, int bytes, double? peak})> _throughput = {};
+
+  void _traceThroughput(String taskId, int received) {
+    final now = DateTime.now();
+    final prev = _throughput[taskId];
+    if (prev == null) {
+      _throughput[taskId] = (at: now, bytes: received, peak: null);
+      return;
+    }
+    final elapsed = now.difference(prev.at);
+    // Fenêtre de 5 s : assez longue pour lisser les à-coups d'un flux HTTP,
+    // assez courte pour voir un décrochage avant qu'il ne dure des minutes.
+    if (elapsed.inMilliseconds < 5000) return;
+    final delta = received - prev.bytes;
+    final speed = delta / (elapsed.inMilliseconds / 1000);
+    final peak = (prev.peak == null || speed > prev.peak!) ? speed : prev.peak!;
+    _throughput[taskId] = (at: now, bytes: received, peak: peak);
+
+    // On ne journalise QUE le décrochage : un débit stable n'apprend rien et
+    // noierait le journal sur un transfert de plusieurs Go.
+    if (isStalled(speed: speed, peak: prev.peak)) {
+      debugPrint('🐌 §dlWatchdog — décrochage : '
+          '${(speed / 1024).round()} ko/s contre ${(peak / 1024).round()} ko/s '
+          'au mieux (tâche $taskId)');
+      _maybeAutoRestart(taskId, received, now);
+    }
+  }
+
+  final Map<String, DateTime> _lastAutoRestart = {};
+  final Map<String, int> _bytesAtLastAutoRestart = {};
+
+  /// §dlWatchdog — Relance automatiquement un transfert qui décroche.
+  ///
+  /// C'est ce qui rend le bouton « Relancer » inutile : l'utilisateur n'a plus
+  /// à surveiller son débit pour appuyer au bon moment. La relance est
+  /// SILENCIEUSE (même barre de progression, reprise `Range` au même octet) ;
+  /// son seul témoin est le compteur « relancé ×N ».
+  void _maybeAutoRestart(String taskId, int received, DateTime now) {
+    final last = _lastAutoRestart[taskId];
+    final before = _bytesAtLastAutoRestart[taskId];
+    if (!shouldAutoRestart(
+      sinceLastRestart: last == null ? null : now.difference(last),
+      gainSinceLastRestart: before == null ? null : received - before,
+    )) {
+      return;
+    }
+
+    final tasks = tasksNotifier.value;
+    final i = tasks.indexWhere((t) => t.id == taskId);
+    if (i == -1 || tasks[i].status != DownloadStatus.downloading) return;
+
+    _lastAutoRestart[taskId] = now;
+    _bytesAtLastAutoRestart[taskId] = received;
+    // Le plafond repart de zéro : la nouvelle connexion a le sien, et comparer
+    // son débit à celui de la précédente relancerait en boucle.
+    _throughput[taskId] = (at: now, bytes: received, peak: null);
+
+    debugPrint('♻️ §dlWatchdog — relance automatique de '
+        '« ${tasks[i].displayName} »');
+    restartTask(tasks[i]); // fire & forget : la progression reprend seule
+  }
+
   /// Remet à zéro les compteurs de throttle d'une tâche. Le service étant un
   /// SINGLETON, son état statique survit d'un test à l'autre : à appeler en
   /// `setUp` sous peine de faux échecs.
@@ -429,6 +528,9 @@ class DownloadManagerService {
     _lastNotifiedPct.remove(taskId);
     _lastNotifiedAt.remove(taskId);
     _lastPersistedAt.remove(taskId);
+    _throughput.remove(taskId); // §dlWatchdog
+    _lastAutoRestart.remove(taskId);
+    _bytesAtLastAutoRestart.remove(taskId);
   }
 
   /// Met à jour une tâche existante et notifie l'UI.

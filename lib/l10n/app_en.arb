@@ -1,17 +1,15 @@
 {
     "@@locale": "en",
-
     "downloadManagerTitle": "Download Manager",
     "noDownloads": "No downloads",
-
-    "downloadDialogTitle": "Start Download","downloadDialogFileNameLabel": "File name",
+    "downloadDialogTitle": "Start Download",
+    "downloadDialogFileNameLabel": "File name",
     "downloadDialogFileSizeLabel": "File size",
     "downloadDialogFileTypeLabel": "File type",
     "downloadDialogUnknownSize": "Unknown",
     "cancel": "Cancel",
     "download": "Download",
     "denied": "Permission denied. The download cannot begin.",
-
     "terminalTitle": "//:FLUX_DOWNLOAD_INTERFACE",
     "terminalResumeMessage": "🔄 Resuming download:\n🎞️ {fileName}",
     "terminalStartMessage": "🤖 Starting download:\n🎞️ {fileName}",
@@ -20,13 +18,12 @@
     "terminalSuccessMessage": "\n🟢 SUCCESS: Download complete!",
     "terminalFatalErrorMessage": "\n☣️ FATAL: An error occurred",
     "terminalSpeedMessage": "Speed",
+    "terminalRetryCountMessage": "Retries",
     "terminalEtaMessage": "ETA",
     "terminalCancelMessage": "\nℹ️ ABORT: Download cancelled by user",
     "terminalCloseButton": "[ CLOSE ]",
     "terminalAbortingButton": "[ PAUSE... ]",
     "terminalAbortButton": "[ PAUSE ]",
-
-    "searchPageDefaultTitle": "AetherStream",
     "searchPageDownloadsTooltip": "See downloads",
     "searchPageReloadTooltip": "Reload playlist",
     "searchPageAccountsTooltip": "Accounts and Settings",
@@ -39,26 +36,22 @@
     "searchFilterTv": "TV",
     "searchNoResults": "No results found.",
     "searchNoContent": "No content to display.",
-
     "actionSheetChooseVersion": "Choose a version for:",
     "chipSeasons": "{count,plural, =1{1 Season} other{{count} Seasons}}",
     "chipEpisodes": "{count,plural, =1{1 Ep.} other{{count} Ep.}}",
     "season": "Season",
     "episode": "Episode",
-
     "favoriteAdd": "Add to favorites",
     "favoriteRemove": "Remove from favorites",
     "actionSheetPlay": "Play",
     "actionSheetPlaySubtitle": "Starts playback (automatic caching).",
     "actionSheetDownload": "Download in background",
     "actionSheetDownloadSubtitle": "To watch later without a connection.",
-
     "deleteDialogTitle": "Delete file?",
     "deleteDialogSizeLabel": "Size",
     "deleteDialogWarning": "This action is irreversible and the file will be permanently deleted.",
     "deleteDialogConfirmButton": "Delete",
     "deleteTooltip": "Delete permanently",
-
     "taskStatusDownloading": "Downloading...",
     "taskStatusRemaining": " • {remainingSize} left",
     "taskStatusCompleted": "Completed • {size} • {date}",
@@ -66,20 +59,15 @@
     "taskStatusCanceled": "Canceled {progressInfo} • Tap to retry",
     "taskStatusPending": "Pending • {date}",
     "taskStatusUnknownError": "Unknown error",
-
-    "playlistManagementTitle": "Playlist Download",
-    "playlistCardTitle": "Playlist .m3u",
     "playlistCardSubtitleNone": "No playlist downloaded in this context.",
     "playlistCardSubtitleLastFile": "Last file: {path}",
     "playlistDownloadButton": "Download / Update",
     "playlistDeleteButton": "Delete",
     "playlistManagementTip": "Tip: You can also reload the playlist from the settings gear or via the refresh icon on the search screen.",
-
     "accountsTitle": "Account Management",
     "deleteAccountDialogTitle": "Delete account?",
     "deleteAccountDialogContent": "This action is permanent.",
     "deleteAccountConfirm": "Delete",
-    "playlistInfoTitle": "Playlist Info",
     "playlistInfoChecking": "Checking playlist...",
     "playlistInfoUnavailable": "No playlist available or loading error.",
     "playlistInfoTryReload": "Try reloading",
@@ -95,7 +83,6 @@
     "accountActionEdit": "Edit",
     "accountActionDelete": "Delete",
     "accountsFab": "New",
-
     "editAccountTitleAdd": "Add Account",
     "editAccountTitleEdit": "Edit Account",
     "editAccountNameLabel": "Account name (e.g., Living Room, Vacation...)",
@@ -114,9 +101,20 @@
     "editAccountCookiesLabel": "Cookies (optional)",
     "editAccountCookiesHint": "e.g., PHPSESSID=xxxxxx;",
     "editAccountSaveButton": "Save",
-
     "playerGenericError": "Unable to play this media.",
     "playerLoading": "Initializing player...",
-    "playerLoadingError": "Loading error: {error}"
-
+    "playerLoadingError": "Loading error: {error}",
+    "settingsTitle": "Settings",
+    "aboutTitle": "About",
+    "backupTitle": "Backup",
+    "optimizationTitle": "Optimization",
+    "regionFilterTitle": "Languages / regions",
+    "themeSettingsTitle": "Appearance",
+    "tmdbKeyTitle": "TMDB API key",
+    "xmltvTitle": "Channel guide",
+    "webConsoleTitle": "Web console",
+    "navHome": "Home",
+    "navSearch": "Search",
+    "navDownloads": "Downloads",
+    "navSettings": "Settings"
 }

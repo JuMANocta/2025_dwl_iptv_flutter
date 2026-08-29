@@ -40,7 +40,7 @@ class AppLocalizationsFr extends AppLocalizations {
       'Permission refusée. Le téléchargement ne peut pas commencer.';
 
   @override
-  String get terminalTitle => '//:INTERFACE_FLUX_TELECHARGEMENT';
+  String get terminalTitle => '//:FLUX_DOWNLOAD_INTERFACE';
 
   @override
   String terminalResumeMessage(Object fileName) {
@@ -72,6 +72,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get terminalSpeedMessage => 'Vitesse';
 
   @override
+  String get terminalRetryCountMessage => 'Relances';
+
+  @override
   String get terminalEtaMessage => 'Temps restant';
 
   @override
@@ -86,9 +89,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get terminalAbortButton => '[ PAUSE ]';
-
-  @override
-  String get searchPageDefaultTitle => 'AetherStream';
 
   @override
   String get searchPageDownloadsTooltip => 'Voir les téléchargements';
@@ -226,12 +226,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get taskStatusUnknownError => 'Erreur inconnue';
 
   @override
-  String get playlistManagementTitle => 'Téléchargement de la playlist';
-
-  @override
-  String get playlistCardTitle => 'Playlist .m3u';
-
-  @override
   String get playlistCardSubtitleNone =>
       'Aucune playlist téléchargée dans ce contexte.';
 
@@ -261,9 +255,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get deleteAccountConfirm => 'Supprimer';
-
-  @override
-  String get playlistInfoTitle => 'Infos playlist';
 
   @override
   String get playlistInfoChecking => 'Vérification de la playlist...';
@@ -380,4 +371,43 @@ class AppLocalizationsFr extends AppLocalizations {
   String playerLoadingError(Object error) {
     return 'Erreur de chargement: $error';
   }
+
+  @override
+  String get settingsTitle => 'Paramètres';
+
+  @override
+  String get aboutTitle => 'À propos';
+
+  @override
+  String get backupTitle => 'Sauvegarde';
+
+  @override
+  String get optimizationTitle => 'Optimisation';
+
+  @override
+  String get regionFilterTitle => 'Langues / régions';
+
+  @override
+  String get themeSettingsTitle => 'Personnalisation';
+
+  @override
+  String get tmdbKeyTitle => 'Clé API TMDB';
+
+  @override
+  String get xmltvTitle => 'Guide des chaînes';
+
+  @override
+  String get webConsoleTitle => 'Console web';
+
+  @override
+  String get navHome => 'Accueil';
+
+  @override
+  String get navSearch => 'Recherche';
+
+  @override
+  String get navDownloads => 'Téléchargements';
+
+  @override
+  String get navSettings => 'Paramètres';
 }

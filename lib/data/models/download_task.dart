@@ -25,6 +25,14 @@ class DownloadTask {
   final String? errorMessage;
   final String? releaseYear;   // L'année de sortie du contenu
 
+  /// §dlWatchdog — Nombre de relances subies par ce transfert.
+  ///
+  /// ⚠️ Il vivait UNIQUEMENT dans `TerminalDownloadDialog` (`_retryCount`) :
+  /// il disparaissait donc à la fermeture du dialogue, alors que le
+  /// téléchargement, lui, continue. Persisté ici, la tuile de la liste peut
+  /// afficher « relancé ×N » même après un redémarrage de l'app.
+  final int retryCount;
+
   const DownloadTask({
     required this.id,
     required this.url,
@@ -38,6 +46,7 @@ class DownloadTask {
     this.updatedAt,
     this.errorMessage,
     this.releaseYear,
+    this.retryCount = 0,
   });
 
   DownloadTask copyWith({
@@ -48,6 +57,7 @@ class DownloadTask {
     String? finalPath,
     String? tempPath,
     String? releaseYear,
+    int? retryCount,
   }) {
     String? finalErrorMessage = errorMessage;
     if (status == DownloadStatus.failed && errorMessage == null) {
@@ -67,6 +77,7 @@ class DownloadTask {
       totalSize: totalSize ?? this.totalSize,
       errorMessage: finalErrorMessage,
       releaseYear: releaseYear ?? this.releaseYear,
+      retryCount: retryCount ?? this.retryCount,
     );
   }
 
@@ -84,6 +95,8 @@ class DownloadTask {
       updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'] as String) : null,
       errorMessage: json['errorMessage'] as String?,
       releaseYear: json['releaseYear'] as String?,
+      // Tâche enregistrée avant §dlWatchdog : aucune relance connue.
+      retryCount: json['retryCount'] as int? ?? 0,
     );
   }
 
@@ -101,6 +114,7 @@ class DownloadTask {
       'updatedAt': updatedAt?.toIso8601String(),
       'errorMessage': errorMessage,
       'releaseYear': releaseYear,
+      'retryCount': retryCount,
     };
   }
 

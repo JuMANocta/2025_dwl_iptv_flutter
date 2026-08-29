@@ -6,6 +6,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/themes/colors.dart';
 import '../../../core/themes/theme_service.dart';
 import '../../../data/services/web_console_service.dart';
+import '../../../l10n/app_localizations.dart';
 
 /// §webConsole (Phase 1) — Écran "Console web".
 ///
@@ -134,7 +135,7 @@ class _WebConsolePageState extends State<WebConsolePage> {
     );
     if (widget.embedded) return content;
     return Scaffold(
-      appBar: AppBar(title: const Text('Console web'), elevation: 0),
+      appBar: AppBar(title: Text(AppLocalizations.of(context)!.webConsoleTitle), elevation: 0),
       body: content,
     );
   }

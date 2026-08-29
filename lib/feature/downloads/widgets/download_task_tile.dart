@@ -154,7 +154,14 @@ class DownloadTaskTile extends StatelessWidget {
   ///
   /// `null` sur un téléchargement TERMINÉ : il n'y a plus de fichier partiel à
   /// reprendre, relancer repartirait de zéro.
+  ///
+  /// §dlWatchdog — `null` aussi pendant le TRANSFERT : le service reconnecte
+  /// désormais de lui-même quand le débit décroche. Le bouton demandait à
+  /// l'utilisateur de surveiller un chiffre et d'appuyer au bon moment ; le
+  /// compteur « relancé ×N » lui dit maintenant ce qui s'est passé. Il reste
+  /// visible sur `queued`/`paused`, où il veut dire « démarre maintenant ».
   DownloadAction? get _restartAction {
+    if (task.status == DownloadStatus.downloading) return null;
     final a = downloadTileActions(task.status);
     if (a.primary == DownloadAction.restart) return null; // déjà sur le tap
     return a.menu.contains(DownloadAction.restart)
@@ -369,7 +376,43 @@ class DownloadTaskTile extends StatelessWidget {
     }
   }
 
+  /// §dlWatchdog — Sous-titre = état du transfert, précédé du nombre de
+  /// relances quand il y en a eu.
+  ///
+  /// Le compteur ne vivait que dans le moniteur terminal, donc il disparaissait
+  /// dès qu'on le refermait : rien ne disait plus qu'un fichier avait déjà
+  /// décroché cinq fois. C'est pourtant le signal qui distingue « lent » de
+  /// « source qui bride ».
   Widget _buildSubtitle(BuildContext context) {
+    final status = _buildStatusLine(context);
+    if (task.retryCount == 0) return status;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.refresh, size: 12, color: kWarning),
+              const SizedBox(width: 3),
+              Text(
+                'relancé ×${task.retryCount}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: kWarning,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        status,
+      ],
+    );
+  }
+
+  Widget _buildStatusLine(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(task.createdAt);
     switch (task.status) {

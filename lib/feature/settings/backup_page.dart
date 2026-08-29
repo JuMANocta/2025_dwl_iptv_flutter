@@ -4,6 +4,7 @@ import 'package:aetherStream/data/services/backup_service.dart';
 import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import '../../l10n/app_localizations.dart';
 
 /// Page Sauvegarde / Restauration (§10).
 ///
@@ -218,7 +219,7 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sauvegarde'),
+        title: Text(AppLocalizations.of(context)!.backupTitle),
         elevation: 0,
         scrolledUnderElevation: 0,
       ),

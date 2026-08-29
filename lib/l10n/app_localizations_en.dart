@@ -70,6 +70,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalSpeedMessage => 'Speed';
 
   @override
+  String get terminalRetryCountMessage => 'Retries';
+
+  @override
   String get terminalEtaMessage => 'ETA';
 
   @override
@@ -83,9 +86,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get terminalAbortButton => '[ PAUSE ]';
-
-  @override
-  String get searchPageDefaultTitle => 'AetherStream';
 
   @override
   String get searchPageDownloadsTooltip => 'See downloads';
@@ -221,12 +221,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskStatusUnknownError => 'Unknown error';
 
   @override
-  String get playlistManagementTitle => 'Playlist Download';
-
-  @override
-  String get playlistCardTitle => 'Playlist .m3u';
-
-  @override
   String get playlistCardSubtitleNone =>
       'No playlist downloaded in this context.';
 
@@ -256,9 +250,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deleteAccountConfirm => 'Delete';
-
-  @override
-  String get playlistInfoTitle => 'Playlist Info';
 
   @override
   String get playlistInfoChecking => 'Checking playlist...';
@@ -375,4 +366,43 @@ class AppLocalizationsEn extends AppLocalizations {
   String playerLoadingError(Object error) {
     return 'Loading error: $error';
   }
+
+  @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get aboutTitle => 'About';
+
+  @override
+  String get backupTitle => 'Backup';
+
+  @override
+  String get optimizationTitle => 'Optimization';
+
+  @override
+  String get regionFilterTitle => 'Languages / regions';
+
+  @override
+  String get themeSettingsTitle => 'Appearance';
+
+  @override
+  String get tmdbKeyTitle => 'TMDB API key';
+
+  @override
+  String get xmltvTitle => 'Channel guide';
+
+  @override
+  String get webConsoleTitle => 'Web console';
+
+  @override
+  String get navHome => 'Home';
+
+  @override
+  String get navSearch => 'Search';
+
+  @override
+  String get navDownloads => 'Downloads';
+
+  @override
+  String get navSettings => 'Settings';
 }

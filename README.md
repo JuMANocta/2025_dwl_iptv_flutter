@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.15.11+104-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.15.12+105-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -96,6 +96,7 @@
 ### ⬇️ Téléchargements
 - Téléchargement avec suivi de progression
 - Reprise sur interruption (header `Range`)
+- **Relance automatique quand le débit s'effondre** (§dlWatchdog) — un serveur qui bride ne provoque jamais d'erreur, le transfert rampe : l'app détecte le décrochage et reconnecte seule au même octet, sans rien afficher d'autre qu'un compteur de relances
 - Sauvegarde dans `/Movies/AetherStream/` via MediaStore Android
 
 ### 🔄 Mise à jour in-app
@@ -293,7 +294,6 @@ lib/
 - [ ] **Plantage lecture 4K sur TV** (§tv4kCrash) — lecture hachée + UI qui plante, investigation prioritaire (lié §tv4kTexture)
 - [x] **Téléchargement écrit directement à l'emplacement final** (§dlDirectWrite) — le fichier est téléchargé **dans son dossier de destination** puis simplement renommé : plus de copie de plusieurs Go en fin de parcours (elle s'exécutait sur le thread UI d'Android et faisait planter certains téléphones, en exigeant au passage le double d'espace disque). Corrigés aussi : la progression qui réécrivait toute la liste des tâches sur disque **à chaque bloc reçu**, et les tâches qui pouvaient rester bloquées sur « finalisation » indéfiniment
 - [x] **Ergonomie des téléchargements** (§dlErgo) — un appui sur un téléchargement en cours l'**annulait sans confirmation** (et sur TV c'est la touche OK) : le tap déclenche désormais l'action inoffensive (voir la progression / lire / relancer), et tout le reste passe par un **menu ⋯** focusable à la télécommande, avec confirmation avant d'arrêter. Le moniteur gagne un « Fermer » distinct d'« Annuler ». La page reçoit des **filtres avec compteurs** (Tout / En cours / Terminés / Erreurs) et une recherche. Inclut le bouton **Relancer** (§dlRestart)
-- [ ] **Téléchargements : relance auto si le débit s'effondre** (§dlWatchdog) — un transfert bridé par le serveur ne tombe jamais en erreur, il rampe : détecter le décrochage et reprendre au même octet, sans intervention. Les relances s'affichent en une seule ligne « relancé ×N » au lieu d'empiler un message par tentative
 - [x] **Fiche film : réalisateur cliquable + ses films disponibles** (§directorView), **synopsis avant les boutons** (§detailsLayout), **infos TMDB élargies** (§tmdbMore — tagline, nombre de votes, section « Infos » avec pays/studios/statut/durée)
 - [x] **Sens de défilement des carrousels en remontant la page** (§carouselScrollDir) — entrée par la gauche
 - [x] **Recherche par personne** (§personSearch) — rangée « Personnes » en tête des résultats (photos rondes + métier), tap → filmographie avec badges DISPO
@@ -317,6 +317,9 @@ lib/
 - [x] **La recherche ne part plus dès la première lettre** (§searchMinLen, 2026-08-29) — trois caractères minimum pour les films et séries, au lieu de balayer plus de 320 000 entrées à chaque frappe. Les **chaînes** restent cherchables dès la première lettre (« TF1 », « M6 »)
 - [x] **Le clavier ne masque plus les résultats** (§searchKeyboard, 2026-08-29) — il se referme au défilement
 - [x] **Bandeau de mise à jour repensé** (§updateBanner, 2026-08-29) — il annonçait la version à installer **sans jamais dire de quelle version on part**. Il affiche désormais les deux, la nouvelle se « décodant » à la manière de Matrix avec **la partie qui change en surbrillance**. La pluie Matrix couvre tout le bandeau au lieu de la seule barre de téléchargement, et le changelog brut est remplacé par un lien vers la release GitHub
+- [x] **Interface entièrement en français** (§frOnly, 2026-08-29) — l'app suivait la langue de l'appareil : sur un téléphone en anglais, les rares écrans câblés sur l10n basculaient en anglais pendant que le reste de l'interface restait en français. Le français est désormais imposé, et **tous les titres de page** ainsi que les libellés d'onglets passent par l10n
+- [x] **Repères visuels** (2026-08-29) — le témoin de chargement des listes ne décale plus l'accueil (filet de 2 px en surimpression au lieu d'un bandeau), et la barre de navigation du bas se détache du fond noir par un filet dégradé
+- [x] **Un téléchargement bridé se relance tout seul** (§dlWatchdog, 2026-08-29) — un serveur qui bride ne provoque **jamais** d'erreur : le transfert rampe, et rien ne se déclenchait. L'app surveille désormais le débit et reconnecte d'elle-même au même octet. Pour l'utilisateur rien ne se passe — **la même barre continue**, seul un compteur « 🔁 Relances » monte — et la tuile garde « ↻ relancé ×N » après un redémarrage. Le bouton « Relancer » devient inutile et disparaît pendant le transfert
 - [x] **Les compteurs des listes ne tombent plus à zéro** (§secondaryCounts, 2026-08-29) — les totaux films/séries/chaînes étaient recomptés en mémoire : dès qu'une liste secondaire était déchargée pour libérer de la RAM, ils affichaient 0 et laissaient croire à une liste vide. Ils sont désormais enregistrés dans le cache et restent exacts, même liste déchargée
 - [x] **Recharger toutes les listes d'un seul geste** (§reloadAll, 2026-08-29) — un bouton dans la barre des comptes enchaîne les listes une par une, avec **une seule** confirmation, une progression nommée (« Liste 2/4 — Xeno ») et un bilan. Un compte injoignable n'empêche plus les autres d'aboutir : il est signalé par son nom
 - [x] **Plus de vague de recherches TMDB au lancement** (§tmdbUrlPersist, 2026-08-29) — les affiches résolues à la volée étaient oubliées à chaque fermeture : tout repartait de zéro au démarrage suivant. Elles sont désormais conservées, **y compris les recherches infructueuses** (68 % du cache mesuré), qui évitent de re-chercher indéfiniment un titre que TMDB ne connaît pas. Mesuré : 25 recherches réseau au premier passage, **0 au second**

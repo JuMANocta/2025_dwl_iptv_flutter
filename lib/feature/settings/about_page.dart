@@ -7,6 +7,7 @@ import 'package:aetherStream/feature/update/update_dialog.dart';
 import 'package:aetherStream/widgets/memory_stats_card.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import '../../l10n/app_localizations.dart';
 
 /// Page À propos (§1L-e).
 ///
@@ -79,7 +80,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('À propos'),
+        title: Text(AppLocalizations.of(context)!.aboutTitle),
         elevation: 0,
         scrolledUnderElevation: 0,
       ),

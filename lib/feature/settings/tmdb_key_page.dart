@@ -7,6 +7,7 @@ import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import '../../l10n/app_localizations.dart';
 
 /// Sous-page Settings (§1g) : gestion de la clé API TMDB.
 ///
@@ -132,7 +133,7 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> with TvInitialFocus {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Clé API TMDB'),
+        title: Text(AppLocalizations.of(context)!.tmdbKeyTitle),
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
