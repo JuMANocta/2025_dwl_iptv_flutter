@@ -811,7 +811,24 @@ class _AccountCardState extends State<_AccountCard> {
                         );
                       },
                     ),
-                    if (widget.account.mode == StreamAuthMode.separate) ...[
+                    // §17c — Le bloc « Expiration / Connexions » était réservé
+                    // aux comptes en mode `separate`. Ce garde-fou est resté en
+                    // place alors que §17a a justement appris à
+                    // `fetchAccountInfo` à extraire les identifiants d'une URL
+                    // COMPLÈTE (la plupart des « .m3u complets » sont du Xtream
+                    // déguisé, `get.php?username=…&password=…`).
+                    //
+                    // Constaté sur appareil avec 4 listes : le journal dit
+                    // « ✅ Infos du compte 'Platinium' récupérées », mais la
+                    // carte n'affichait ni expiration ni connexions — parce
+                    // qu'elle est en mode URL complète. Seul Xeno, en mode
+                    // separate, les montrait.
+                    //
+                    // On s'aligne donc sur la vraie condition : le compte
+                    // sait-il produire une URL `player_api.php` ? Un M3U qui
+                    // n'est pas du Xtream déguisé renvoie `null` et reste,
+                    // comme avant, sans bloc.
+                    if (widget.account.buildPlayerApiUrl() != null) ...[
                       const SizedBox(height: 10),
                       _XtreamInfoBlock(future: _accountInfoFuture),
                     ],

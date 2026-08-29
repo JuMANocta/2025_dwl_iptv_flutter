@@ -483,13 +483,24 @@ class _HeroFanCard extends StatelessWidget {
               type == M3uContentType.tv
                   ? Container(
                       color: const Color(0xFF15171C),
-                      padding: const EdgeInsets.all(16),
                       alignment: Alignment.center,
-                      child: AetherImage(
-                        url: logoUrl,
-                        fit: BoxFit.contain,
-                        cacheWidth: decodeWidthFor(context, width, max: 640),
-                        fallback: (_) => _fallback(fallbackIcon),
+                      // §heroChannel — Le logo d'une chaîne est large et court ;
+                      // la carte du hero, elle, est un portrait 2:3. En le
+                      // laissant occuper toute la carte moins 16 px, un logo
+                      // panoramique était étiré sur toute la largeur au milieu
+                      // d'un grand vide — l'ensemble passait pour un rendu
+                      // raté. On le contient dans une zone CARRÉE centrée :
+                      // il garde une taille lisible, et le vide autour devient
+                      // une marge assumée plutôt qu'un accident.
+                      child: FractionallySizedBox(
+                        widthFactor: 0.78,
+                        heightFactor: 0.52,
+                        child: AetherImage(
+                          url: logoUrl,
+                          fit: BoxFit.contain,
+                          cacheWidth: decodeWidthFor(context, width, max: 640),
+                          fallback: (_) => _fallback(fallbackIcon),
+                        ),
                       ),
                     )
                   : AetherImage(

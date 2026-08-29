@@ -48,6 +48,8 @@
     "season": "Saison",
     "episode": "Épisode",
 
+    "favoriteAdd": "Ajouter aux favoris",
+    "favoriteRemove": "Retirer des favoris",
     "actionSheetPlay": "Lire",
     "actionSheetPlaySubtitle": "Lance la lecture (mise en cache automatique).",
     "actionSheetDownload": "Télécharger en arrière-plan",

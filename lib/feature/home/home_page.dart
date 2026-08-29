@@ -25,6 +25,7 @@ import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/measured_quality_badge.dart';
+import 'package:aetherStream/data/services/inferred_category_service.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -67,6 +68,16 @@ class HomePage extends StatefulWidget {
   /// barre de saisie en tête, résultats en carrousels par type.
   /// Contrôlé par `MainNavigation` via le bouton 🔍 de la `NavigationBar`.
   final bool searchMode;
+
+  /// §unloadGuard — Vrai tant que l'accueil est la route VISIBLE (aucune route
+  /// empilée par-dessus).
+  ///
+  /// Lu par le timer de déchargement de `MainNavigation` : décharger les listes
+  /// secondaires pendant que l'accueil est affiché le **vide sous les yeux de
+  /// l'utilisateur** — plus de catégories, plus de vignettes — et rien ne les
+  /// recharge, puisque la ré-hydratation §lazyUnload est accrochée à
+  /// `didPopNext`, qui ne se produit jamais si on ne quitte pas la page.
+  static bool isForeground = false;
 
   /// Callback pour sortir du mode recherche (invoqué quand l'utilisateur
   /// clique sur le bouton X dans la barre de recherche).
@@ -148,6 +159,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
       FavoritesService.version,
       WatchProgressService.version,
       PerformanceSettingsService.config,
+      // §inferredCat — notifieur GROUPÉ (une fois toutes les 5 s au plus), donc
+      // sûr à mettre ici : il entre dans la clé de regroupement.
+      InferredCategoryService.version,
     ]);
     _homeListenable.addListener(_onHomeNotifier);
 
@@ -210,11 +224,16 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // notifications playlist/favoris/progression pendant la lecture.
     final route = ModalRoute.of(context);
     if (route is PageRoute) appRouteObserver.subscribe(this, route);
+    // §unloadGuard — L'accueil est visible dès qu'il est monté ; `didPopNext`
+    // n'est appelé qu'au RETOUR d'une autre route, jamais à la première
+    // apparition.
+    HomePage.isForeground = true;
   }
 
   @override
   void didPushNext() {
     _inBackground = true;
+    HomePage.isForeground = false;
     // §perfBgFull — Cancel debounce recherche (timer de 220 ms pendant frappe) :
     // sinon il peut fire pendant la lecture et provoquer un setState dans la
     // home invisible derrière le player → CPU pour rien + contention décodeur.
@@ -225,6 +244,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
   @override
   void didPopNext() {
     _inBackground = false;
+    HomePage.isForeground = true;
     // §lazyUnload — Si des comptes secondaires ont été déchargés pendant qu'on
     // était sur le player, on les re-précharge depuis le cache disque JSON.gz
     // (~50 ms par compte). Idempotent : skip ceux déjà en mémoire.
@@ -331,15 +351,36 @@ class _HomePageState extends State<HomePage> with RouteAware {
     _pageController.jumpToPage(_currentIndex);
   }
 
-  /// §3c Phase 2 — Wrappe une page du PageView pour la navigation TV :
-  /// retire du focus les pages non visibles (offstage) et scope la traversée
-  /// directionnelle à la page courante. Neutre hors TV.
+  /// §3c Phase 2 + §tabBack — Wrappe une page du PageView : retire du focus les
+  /// pages non visibles (offstage) et scope la traversée directionnelle à la
+  /// page courante.
+  ///
+  /// §tabBack — Ce garde-fou était **réservé à la TV** (`if (!PlatformTv.isTv)
+  /// return wrapped;`), et c'est ce qui produisait le bug « Retour = un onglet
+  /// vers la gauche » signalé sur téléphone : on quitte une fiche depuis
+  /// Chaînes et on revient sur Films ; depuis Films, on revient sur Séries.
+  ///
+  /// Mécanique : au dépilement, le repli de focus de `dpad`
+  /// (`DpadMarks.initialCandidate`) vise le **premier nœud marqué `entry` du
+  /// scope**. Les pages voisines de la `PageView` sont construites et, sur
+  /// mobile, restaient **focusables** — le premier `entry` disponible est donc
+  /// celui de la page d'INDEX INFÉRIEUR, c'est-à-dire celle de gauche. Le focus
+  /// y atterrit, `DpadScroll.ensureVisible` remonte tous les scrollables
+  /// ancêtres… dont la `PageView`, qui glisse jusqu'à lui. D'où le décalage
+  /// d'exactement un onglet, toujours vers la gauche.
+  ///
+  /// ⚠️ On active donc `ExcludeFocus` sur **toutes** les plateformes : une page
+  /// hors écran ne doit jamais être candidate au focus, la question n'a rien de
+  /// spécifique à la TV.
+  /// ⚠️ En revanche l'autre garde-fou, `_pinPageOnTv`, reste **TV seulement** :
+  /// il ramène la `PageView` sur `_currentIndex` à chaque frame où elle s'en
+  /// écarte, ce qui combattrait le **glissement au doigt** sur mobile. Retirer
+  /// la cible du focus suffit ; épingler la vue casserait le swipe.
   Widget _pageFocusWrap(int index, Widget child) {
     // §pageSmooth — RepaintBoundary isole le layer de chaque page → pendant le
     // slide horizontal, peindre une page ne re-peint pas l'autre (compositing
     // moins coûteux = moins de saccades sur les pages lourdes carrousels+hero).
     final wrapped = RepaintBoundary(child: child);
-    if (!PlatformTv.isTv) return wrapped;
     // §dpadNav — Chaque page = une `DpadRegion` (nav par régions + mémoire,
     // remplace l'ancienne FocusTraversalGroup/_TvRailsTraversalPolicy qui
     // entrait en conflit avec le moteur dpad). ExcludeFocus garde les pages
@@ -962,6 +1003,10 @@ class _TypePage extends StatefulWidget {
       case 'Box Office':    return 3;
       case 'Oscar':         return 4;
       case 'Cultes':        return 5;
+      // §radioCat — Les webradios passent APRÈS les genres, juste avant
+      // « Autres » : elles restent accessibles, sans plus occuper la tête de
+      // l'onglet Chaînes.
+      case 'Radio':         return 900;
       case 'Autres':        return 1000;
       default:
         // §Ultimate — régions étrangères (Italie, Arabe, Turquie…) reléguées
@@ -986,10 +1031,35 @@ class _TypePage extends StatefulWidget {
     return false;
   }
 
+  /// §radioCat — La chaîne est-elle une **webradio** ?
+  ///
+  /// Les catégories « France » et consorts étaient noyées sous les webradios
+  /// (RADIO CLASSIQUE, ADO FR, ADO @WORK, CHÉRIE FM, ÉVASION FM…), toutes
+  /// affublées du même drapeau tricolore : c'est le PREMIER écran de l'onglet
+  /// Chaînes, et les vraies chaînes y devenaient invisibles.
+  ///
+  /// ⚠️ **Le test porte sur la CATÉGORIE du fournisseur, jamais sur le nom de
+  /// la chaîne.** Mesuré sur les listes réelles, une règle par nom
+  /// (`\bRADIO\b` / `\bFM\b`) masquerait de VRAIES chaînes de télévision :
+  /// `ICI RADIO-CANADA TÉLÉ OTTAWA`, `RADIO CAPITAL TV`, `RADIO BIRIKINA TV`,
+  /// `RADIO MONTE CARLO`… Le fournisseur, lui, range ses radios dans un groupe
+  /// dédié — c'est un signal exact, et il ne coûte rien de le croire.
+  ///
+  /// ⚠️ `CANADA` est exclu explicitement : un groupe « RADIO-CANADA » désigne
+  /// un diffuseur de télévision, pas un bouquet de radios.
+  static final RegExp _reRadioGroup = RegExp(r'\bRADIOS?\b');
+
+  static bool _isRadioChannel(M3uEntry e) {
+    final group = (e.groupTitle ?? '').toUpperCase();
+    if (group.isEmpty || group.contains('CANADA')) return false;
+    return _reRadioGroup.hasMatch(group);
+  }
+
   static IconData categoryIcon(String cat) {
     switch (cat) {
       case 'Favoris':       return Icons.star;
       case 'France':        return Icons.flag_outlined;
+      case 'Radio':         return Icons.radio_outlined; // §radioCat
       case 'New':           return Icons.local_fire_department;
       case 'Coup de cœur':  return Icons.favorite;
       case 'Sélection':     return Icons.star;
@@ -1084,7 +1154,11 @@ class _TypePageState extends State<_TypePage> {
   /// (§favAudit — sinon re-groupement complet à chaque cœur).
   int _groupingKey() =>
       widget.entries.length * 1000003 +
-      ParsedPlaylistService.version.value * 1009;
+      ParsedPlaylistService.version.value * 1009 +
+      // §inferredCat — Les catégories déduites changent le RANGEMENT, donc le
+      // groupement doit être refait quand elles avancent. Sûr uniquement parce
+      // que ce compteur est groupé côté service (cf. §favAudit).
+      InferredCategoryService.version.value * 10007;
 
   /// Tri des catégories : priorité (Favoris → France → New → …) puis alpha.
   static List<String> _sortCategories(Map<String, dynamic> byCategory) =>
@@ -1525,6 +1599,13 @@ class _TypePageState extends State<_TypePage> {
         }
         return c; // vrai genre / région → prioritaire
       }
+      // §inferredCat — Aucune catégorie fournie par la liste : on retombe sur
+      // celle DÉDUITE des genres TMDB, apprise quand la vignette a résolu son
+      // affiche. Indispensable pour les listes au format « Ultimate », qui ne
+      // portent aucun `group-title` (mesuré : 153 062 entrées sur 153 062) et
+      // tombaient donc intégralement dans « Autres ».
+      final inferred = InferredCategoryService.get(contentGroupKey(group.first));
+      if (inferred != null) return inferred;
       if (newLabel != null && !hasAddedData) return newLabel;
       return 'Autres';
     }
@@ -1534,6 +1615,12 @@ class _TypePageState extends State<_TypePage> {
       // Cas spécial chaînes TV : les chaînes françaises remontent dans une
       // catégorie virtuelle "France" — l'ordre M3U est préservé naturellement
       // par l'ordre d'itération de `byGroup.values` (Map insertion order).
+      // §radioCat — Testé AVANT « France » : une webradio française coche les
+      // deux, et c'est bien dans « Radio » qu'elle doit atterrir.
+      if (type == M3uContentType.tv && _TypePage._isRadioChannel(group.first)) {
+        byCategory.putIfAbsent('Radio', () => []).add(group);
+        continue;
+      }
       if (type == M3uContentType.tv && _TypePage._isFrenchChannel(group.first)) {
         byCategory.putIfAbsent('France', () => []).add(group);
         continue;

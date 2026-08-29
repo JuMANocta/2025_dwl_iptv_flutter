@@ -156,7 +156,6 @@ class XtreamCatalogParser {
       tmdbId: _str(item['tmdb_id']),
       plot: _str(item['plot']),
       genre: _htmlDecode(_str(item['genre'])),
-      castNames: _str(item['cast']),
       rating: _rating(item['rating']),
       releaseDate: _str(item['releaseDate']) ?? _str(item['release_date']),
       backdropUrl: (backdrops is List && backdrops.isNotEmpty)

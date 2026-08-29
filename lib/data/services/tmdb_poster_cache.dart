@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'inferred_category_service.dart';
 import 'tmdb_api_service.dart';
 import 'tmdb_service.dart';
 
@@ -33,18 +34,25 @@ class TmdbPosterCache {
       _cache.containsKey(_key(query, isTv, year));
 
   /// Résout l'affiche (réseau si nécessaire) et met le résultat en cache.
+  ///
+  /// §inferredCat — [categoryKey] : clé de groupe sous laquelle mémoriser la
+  /// catégorie déduite des genres TMDB. Facultative : les listes qui rangent
+  /// déjà leurs contenus n'en ont pas besoin, et de toute façon elles
+  /// fournissent une affiche, donc ne passent pas par ici.
   static Future<String?> resolve({
     required String query,
     required bool isTv,
     String? year,
     String? groupTitle,
+    String? categoryKey,
   }) {
     final k = _key(query, isTv, year);
     if (_cache.containsKey(k)) return Future.value(_cache[k]);
     final pending = _inFlight[k];
     if (pending != null) return pending;
 
-    final future = _doResolve(query, isTv, year, groupTitle).then((url) {
+    final future =
+        _doResolve(query, isTv, year, groupTitle, categoryKey).then((url) {
       _cache[k] = url;
       _inFlight.remove(k);
       return url;
@@ -53,14 +61,18 @@ class TmdbPosterCache {
     return future;
   }
 
-  static Future<String?> _doResolve(
-      String query, bool isTv, String? year, String? groupTitle) async {
+  static Future<String?> _doResolve(String query, bool isTv, String? year,
+      String? groupTitle, String? categoryKey) async {
     if (!await TmdbApiService.hasApiKey()) return null;
-    return TmdbService.instance.fetchPosterUrl(
+    final r = await TmdbService.instance.fetchPosterAndGenre(
       query: query,
       isTv: isTv,
       year: year,
       groupTitle: groupTitle,
     );
+    // §inferredCat — On range le titre même quand TMDB n'a pas d'affiche : une
+    // catégorie sans image reste utile, l'inverse aussi.
+    InferredCategoryService.learn(categoryKey, r.category);
+    return r.posterUrl;
   }
 }

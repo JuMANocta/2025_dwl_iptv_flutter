@@ -26,12 +26,20 @@ List<(M3uEntry, String)> labeledVersions(List<M3uEntry> versions) {
   // recours avant « Flux N » : il distingue réellement deux versions, mais ce
   // n'est pas une qualité — d'où le libellé « version » et non « qualité » sur
   // le déroulant ci-dessous.
-  String baseLabel(M3uEntry v, int i) =>
-      v.title.quality ??
-      (v.title.languages.isNotEmpty ? v.title.languages.first : null) ??
-      v.title.versionLabel ??
-      v.title.providerTag ??
-      'Flux ${i + 1}';
+  // §versionLabel — Même ordre que les pastilles de la fiche : qualité, puis
+  // langue, puis marqueur fournisseur. Quand la liste n'annonce aucune qualité,
+  // on utilise celle qu'on a MESURÉE à la lecture (§qualityTruth), préfixée
+  // d'un `~` : c'est ce que ce flux a servi, pas une promesse du fournisseur.
+  String baseLabel(M3uEntry v, int i) {
+    final q = v.title.quality;
+    if (q != null) return q;
+    final measured = MeasuredQualityService.get(v.url);
+    if (measured != null) return '~${measured.definitionLabel}';
+    return (v.title.languages.isNotEmpty ? v.title.languages.first : null) ??
+        v.title.versionLabel ??
+        v.title.providerTag ??
+        'Flux ${i + 1}';
+  }
   final bases = sorted.indexed.map((e) => baseLabel(e.$2, e.$1)).toList();
 
   // 2) Compte les collisions de label.

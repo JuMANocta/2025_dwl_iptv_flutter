@@ -264,11 +264,24 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
             const SizedBox(height: 8),
           ],
           // ── Chips qualité/langue ─────────────────────────────────────────────
-          Wrap(
-            spacing: 8,
-            children: [qualityChip(entry.title), ...languageChips(entry.title)],
-          ),
-          const SizedBox(height: 24),
+          // §sheetGap — Le `Wrap` et son `SizedBox(24)` étaient posés sans
+          // condition. Or `qualityChip` renvoie un `SizedBox.shrink()` quand
+          // aucune qualité n'est détectée, et `languageChips` une liste vide :
+          // sur un titre sans marqueur, la feuille gardait donc un trou d'une
+          // trentaine de pixels plus la marge — un vide inexpliqué entre le
+          // titre et « Lire ». On ne réserve la place que s'il y a quelque
+          // chose à y mettre.
+          ...(() {
+            final chips = <Widget>[
+              if (entry.title.quality != null) qualityChip(entry.title),
+              ...languageChips(entry.title),
+            ];
+            if (chips.isEmpty) return const <Widget>[SizedBox(height: 8)];
+            return <Widget>[
+              Wrap(spacing: 8, children: chips),
+              const SizedBox(height: 24),
+            ];
+          })(),
           // ── Bouton Fiche détaillée (masqué si pas de clé TMDB) ──────────────
           FutureBuilder<bool>(
             future: TmdbApiService.hasApiKey(),
@@ -637,7 +650,14 @@ class _FavoriteToggleTile extends StatelessWidget {
             color: isFav ? kFavorite : null,
           ),
           title: Text(
-            isFav ? 'Retirer des favoris' : 'Ajouter aux favoris',
+            // §l10nMix — Ces deux libellés étaient écrits EN DUR en français,
+            // au milieu d'une feuille dont tous les autres passent par l10n.
+            // Sur un appareil non francophone, la même feuille affichait donc
+            // « Play » / « Download in background » à côté d'« Ajouter aux
+            // favoris » (constaté sur l'émulateur, locale en-US).
+            isFav
+                ? AppLocalizations.of(ctx)!.favoriteRemove
+                : AppLocalizations.of(ctx)!.favoriteAdd,
             style: TextStyle(
               color: isFav ? kFavorite : null,
               fontWeight: isFav ? FontWeight.w600 : FontWeight.normal,

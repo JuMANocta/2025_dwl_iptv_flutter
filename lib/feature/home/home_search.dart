@@ -96,8 +96,16 @@ class _SearchView extends StatelessWidget {
     );
   }
 
+  /// §searchCount — Plafond de groupes affichés par type.
+  ///
+  /// ⚠️ C'est un PLAFOND, pas un total : l'en-tête doit donc écrire « 30+ » et
+  /// non « 30 ». Sur une playlist de 80 000 entrées, une recherche courante
+  /// dépasse largement ce chiffre, et l'afficher nu revenait à annoncer un
+  /// total faux.
+  static const int _kMaxGroupsPerType = 30;
+
   /// Filtre par texte + regroupe par titre (= toutes variantes d'un même film/série/chaîne).
-  /// Limite : 30 groupes par type pour éviter les listes interminables.
+  /// Limite : [_kMaxGroupsPerType] groupes par type pour éviter les listes interminables.
   List<List<M3uEntry>> _filterAndGroup(
     List<M3uEntry> entries,
     String q,
@@ -128,7 +136,9 @@ class _SearchView extends StatelessWidget {
     final groups = type != M3uContentType.tv
         ? _TypePageState._splitGroupsByYear(byGroup.values)
         : byGroup.values.toList();
-    if (groups.length > 30) groups.length = 30;
+    if (groups.length > _kMaxGroupsPerType) {
+      groups.length = _kMaxGroupsPerType;
+    }
     return groups;
   }
 }
@@ -292,9 +302,14 @@ class _SearchSectionHeader extends StatelessWidget {
   final IconData icon;
   final int count;
 
+  /// §searchCount — Vrai quand [count] est le plafond d'affichage et non le
+  /// nombre réel de résultats → on écrit « 30+ ».
+  final bool capped;
+
   const _SearchSectionHeader({
     required this.title,
     required this.icon,
+    this.capped = false,
     required this.count,
   });
 
@@ -334,7 +349,7 @@ class _SearchSectionHeader extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              '$count',
+              capped ? '$count+' : '$count',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
@@ -370,7 +385,12 @@ class _ResultSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // §personSearch — en-tête factorisé (partagé avec _PersonSection).
-          _SearchSectionHeader(title: title, icon: icon, count: groups.length),
+          _SearchSectionHeader(
+            title: title,
+            icon: icon,
+            count: groups.length,
+            capped: groups.length >= _SearchView._kMaxGroupsPerType,
+          ),
           // §tvZoom — Largeur de vignette + hauteur pilotées par la largeur
           // réelle (poster 2:3 ou logo carré pour les chaînes).
           LayoutBuilder(

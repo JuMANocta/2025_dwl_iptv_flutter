@@ -74,6 +74,10 @@ class _HomeCardState extends State<_HomeCard> {
       isTv: isTv,
       year: year,
       groupTitle: entry.groupTitle,
+      // §inferredCat — Même clé que le regroupement de l'accueil : la catégorie
+      // apprise ici s'applique donc à TOUTES les variantes du titre, quel que
+      // soit le compte d'où elles viennent.
+      categoryKey: contentGroupKey(entry),
     ).then((url) {
       if (!mounted || url == null) return;
       setState(() => _tmdbPoster = url);

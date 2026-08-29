@@ -449,7 +449,16 @@ class _DetailsPageState extends State<DetailsPage> {
     // deux séries de même titre mais d'époques différentes. Si pas d'année, on
     // matche par titre seul (comportement historique).
     final seriesYear = widget.entry.title.year;
-    final all = ParsedPlaylistService.entriesWithPriority(widget.entry.accountId)
+    // §seriesScan — On part des entrées DÉJÀ splittées par type au lieu de
+    // `entriesWithPriority`, qui matérialisait une copie de TOUTES les entrées
+    // de TOUS les comptes (`[...priority, ...others]`) avant de filtrer.
+    // Mesuré sur l'émulateur avec 4 listes : 323 373 entrées copiées à chaque
+    // ouverture d'une fiche de série, pour n'en garder qu'une poignée. Les
+    // séries seules en représentent environ un cinquième.
+    final all = (ParsedPlaylistService
+                .byTypeWithPriority(widget.entry.accountId)[
+            M3uContentType.series] ??
+        const <M3uEntry>[])
         .where((e) =>
             e.type == M3uContentType.series &&
             contentGroupKey(e) == seriesKey &&
@@ -2119,14 +2128,46 @@ class _DetailsPageState extends State<DetailsPage> {
     return base;
   }
 
+  /// §versionLabel — Ce que la pastille doit répondre : **« qu'est-ce que je
+  /// vais obtenir ? »**
+  ///
+  /// Ordre imposé : qualité → langue → marqueur fournisseur. Constaté sur
+  /// appareil avec 4 listes, un même film affichait 7 pastilles dont trois
+  /// n'annonçaient qu'un pays (`FR`, `DE`) : impossible de choisir. Un pays
+  /// n'est pas une qualité, il ne doit jamais tenir la place principale tant
+  /// qu'une qualité est connue.
+  ///
+  /// §qualityTruth — Quand la liste n'annonce AUCUNE qualité, on utilise celle
+  /// qu'on a **mesurée** à la lecture. C'est la seule information certaine dont
+  /// on dispose, et elle vient précisément combler le cas où le fournisseur
+  /// reste muet. La mesure est marquée d'un `~` : elle décrit ce que ce flux a
+  /// servi la dernière fois, pas une promesse du fournisseur.
+  ///
+  /// ⚠️ On ne remplace JAMAIS une qualité annoncée par la mesure ici : la
+  /// confrontation des deux est le rôle de la ligne « Annoncé » (§qualityTruth),
+  /// qui l'affiche avec son verdict. Écraser l'annonce ferait disparaître le
+  /// mensonge au lieu de le montrer.
   static String _buildQualityLabel(M3uEntry v, int index) {
-    final q  = v.title.quality;
-    // §providerTag — Le marqueur (FR, US, IT…) complète la qualité au lieu de
-    // s'y substituer : « FHD · FR » se lit, « FR » tout seul se lisait comme
-    // une qualité. Il ne sert de libellé PRINCIPAL qu'en dernier recours.
+    final q = v.title.quality;
+    if (q != null) {
+      final lang = v.title.languages.isNotEmpty ? v.title.languages.first : null;
+      final extra = lang ?? v.title.versionLabel ?? v.title.providerTag;
+      return extra != null ? '$q · $extra' : q;
+    }
+
+    // Pas de qualité annoncée → la mesure prend le relais.
+    final measured = MeasuredQualityService.get(v.url);
+    if (measured != null) {
+      final extra = v.title.languages.isNotEmpty
+          ? v.title.languages.first
+          : (v.title.versionLabel ?? v.title.providerTag);
+      final label = '~${measured.definitionLabel}';
+      return extra != null ? '$label · $extra' : label;
+    }
+
+    // Ni annonce ni mesure : la langue reste plus parlante qu'un code pays.
+    if (v.title.languages.isNotEmpty) return v.title.languages.first;
     final vl = v.title.versionLabel ?? v.title.providerTag;
-    if (q != null && vl != null) return '$q · $vl';
-    if (q != null) return q;
     if (vl != null) return vl;
     // §watchContext — défaut « FHD » (au lieu de « Standard ») : plus parlant.
     return 'FHD';

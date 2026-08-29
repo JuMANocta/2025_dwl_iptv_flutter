@@ -17,6 +17,7 @@ import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
 import 'widgets/track_selector_sheet.dart';
 import '../../data/services/measured_quality_service.dart';
+import 'player_error.dart';
 import 'video_fit.dart';
 import 'video_stats.dart';
 import 'widgets/player_options_sheet.dart';
@@ -207,6 +208,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// §videoStats — Encart de diagnostic vidéo. L'état est repris du dernier
   /// choix : un diagnostic se mène sur plusieurs films d'affilée.
   bool _statsEnabled = VideoStatsPreference.enabled;
+
+  /// §audioFallback — Pistes audio déjà écartées parce qu'elles ont fait
+  /// échouer le décodage, pour ne jamais y revenir en boucle sur ce média.
+  final Set<String> _rejectedAudioIds = <String>{};
+
+  /// Vrai quand on a dû se rabattre sur une lecture muette (aucune piste
+  /// audio décodable). Sert à le DIRE à l'utilisateur : un film sans son sans
+  /// explication passe pour une panne.
+  bool _audioGaveUp = false;
 
   /// §tvPlayerNav — Vitesse courante, pilotée par le sous-menu Vitesse du
   /// panneau d'options TV (reflète la coche du menu).
@@ -492,6 +502,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _seekOverlayVisible = false;
     });
 
+    // §audioFallback — Les pistes écartées valaient pour le média PRÉCÉDENT.
+    _rejectedAudioIds.clear();
+    _audioGaveUp = false;
+
     await _openMedia();
     if (!mounted) return;
     _startProgressTracking();
@@ -687,6 +701,57 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     );
   }
 
+  /// §audioFallback — Bascule sur une autre piste audio, sinon coupe le son.
+  ///
+  /// Retourne `true` si on a pris la main (donc pas de retry réseau : le flux
+  /// n'a rien fait de mal, c'est la piste choisie qui ne se décode pas).
+  ///
+  /// ⚠️ La piste fautive est mémorisée dans [_rejectedAudioIds] : sans ça, mpv
+  /// peut la re-sélectionner et on tournerait en rond entre deux pistes
+  /// indécodables. ⚠️ En dernier recours on lit **sans son** plutôt que
+  /// d'abandonner : une image sans audio reste regardable, un écran d'erreur
+  /// non — mais on le DIT, sinon ça passe pour une panne.
+  bool _recoverFromAudioError() {
+    final player = _ctrl.player;
+    final current = player.state.track.audio;
+    _rejectedAudioIds.add(current.id);
+
+    final candidates = player.state.tracks.audio.where((t) {
+      if (t.id == 'no' || t.id == 'auto') return false;
+      return !_rejectedAudioIds.contains(t.id);
+    }).toList();
+
+    if (candidates.isNotEmpty) {
+      final next = candidates.first;
+      debugPrint('🔈 §audioFallback — piste « ${current.id} » indécodable, '
+          'bascule sur « ${next.id} » (${next.language ?? "langue inconnue"})');
+      player.setAudioTrack(next);
+      if (mounted) {
+        AppSnackBar.show(
+          context,
+          'Piste audio incompatible — bascule sur '
+          '${next.title ?? next.language ?? "une autre piste"}',
+          duration: const Duration(seconds: 3),
+        );
+      }
+      return true;
+    }
+
+    if (_audioGaveUp) return false; // déjà muet et ça échoue encore → vrai échec
+    _audioGaveUp = true;
+    debugPrint('🔇 §audioFallback — aucune piste audio décodable, '
+        'lecture sans son');
+    player.setAudioTrack(AudioTrack.no());
+    if (mounted) {
+      AppSnackBar.show(
+        context,
+        'Aucune piste audio lisible sur ce fichier — lecture sans son',
+        duration: const Duration(seconds: 4),
+      );
+    }
+    return true;
+  }
+
   /// Retourne l'URL avec l'extension alternative (.m3u8 ↔ .ts), ou null si non applicable.
   String? _altExtUrl(String url) {
     if (url.contains('.m3u8')) {
@@ -709,6 +774,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// Retry 2 : extension alternative (.m3u8 ↔ .ts) — certains serveurs ne supportent qu'un format.
   /// Retry 3 : retour à l'URL originale.
   void _handleError(String error) {
+    // §retryBurst — mpv émet la MÊME erreur plusieurs fois d'affilée (mesuré
+    // sur device : 4 événements dans la même milliseconde). Chaque événement
+    // incrémentait `_retryCount` et ré-armait le timer, qui n'avait donc jamais
+    // le temps de se déclencher : les 3 tentatives étaient brûlées d'un coup et
+    // la reconnexion « ×3, délai 5 s » ne servait à RIEN — pas même pour les
+    // coupures réseau pour lesquelles elle a été écrite.
+    // Tant qu'un retry est armé, ou qu'on a déjà rendu les armes, on ignore.
+    if (_pendingRetryTimer != null || _hasError) return;
+
+    // §audioFallback — Un échec de DÉCODAGE AUDIO ne doit pas tuer la lecture.
+    // Mesuré sur device : sur un fichier 4K, mpv rendait déjà la vidéo
+    // (`VideoOutput.Resize 3832x1604`) quand la piste TrueHD l'a fait échouer.
+    // Ces fichiers embarquent presque toujours une piste de secours (AC3/EAC3).
+    if (isAudioDecodeError(error) && _recoverFromAudioError()) return;
+
     if (_retryCount < _maxRetries) {
       _retryCount++;
       // Retry 2 : tente l'extension alternative

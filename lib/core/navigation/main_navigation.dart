@@ -10,6 +10,7 @@ import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/core/navigation/focus_route_memory.dart';
+import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/main.dart' show checkForUpdate;
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
@@ -80,13 +81,34 @@ class _MainNavigationState extends State<MainNavigation> {
       _maybeShowBackExitHint();
     }
 
-    // §lazyUnload — Le compte actif est dans `widget.initialData.accountId` ;
-    // il est marqué comme accédé avant chaque check pour ne JAMAIS être
-    // déchargé (la home le lit en permanence de toute façon).
+    // §lazyUnload + §unloadGuard — Décharge les listes secondaires restées
+    // inutilisées, MAIS jamais pendant que l'accueil est affiché.
+    //
+    // ⚠️ **Le bug que ça corrige** (constaté sur appareil avec 4 listes) : les
+    // accesseurs ne « touchent » les comptes qu'à chaque RECONSTRUCTION de
+    // l'accueil. Une home simplement laissée à l'écran, sans interaction,
+    // n'en reconstruit aucune — au bout de 5 minutes le timer déchargeait donc
+    // 3 comptes sur 4 **sous les yeux de l'utilisateur**. Résultat observé :
+    // toutes les catégories disparaissent et il ne reste que « Autres », parce
+    // que le seul compte encore chargé n'apporte aucun libellé de catégorie.
+    // Et rien ne revient : la ré-hydratation §lazyUnload est accrochée à
+    // `didPopNext`, qui ne se déclenche que si on QUITTE la page.
+    //
+    // Le déchargement garde tout son sens quand on est ailleurs (lecteur,
+    // téléchargements, réglages) : c'est là qu'il libère de la mémoire sans que
+    // personne ne regarde, et le retour re-précharge depuis le cache disque.
+    //
+    // ⚠️ On protège le compte principal **COURANT** et non celui du lancement :
+    // `widget.initialData.accountId` est figé, alors que l'utilisateur peut
+    // changer de principal depuis AccountsPage — l'ancien code protégeait alors
+    // le mauvais compte.
     _idleUnloadTimer = Timer.periodic(_idleCheckInterval, (_) {
-      ParsedPlaylistService.markAccessed(widget.initialData.accountId);
+      final activeId = StreamAccountService.currentAccountIdNotifier.value ??
+          widget.initialData.accountId;
+      ParsedPlaylistService.markAccessed(activeId);
+      if (HomePage.isForeground && _navIndex == 0) return;
       ParsedPlaylistService.unloadIdleSecondaries(
-        activeAccountId: widget.initialData.accountId,
+        activeAccountId: activeId,
         idle: _idleThreshold,
       );
     });

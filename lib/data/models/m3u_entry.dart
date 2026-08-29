@@ -735,6 +735,18 @@ class M3uEntry {
   /// ID TMDB fourni par le provider (string brute, ex: "506971"). Films + séries.
   final String? tmdbId;
   /// Synopsis (séries uniquement — la liste VOD ne le transporte pas).
+  /// §heavyFields — ⚠️ `castNames` (clé JSON `'ca'`) a été RETIRÉ : il était
+  /// désérialisé, gardé en mémoire pour chaque entrée, et **lu nulle part**.
+  /// Mesuré sur les listes réelles : ~20 octets par entrée, soit ~13 Mo de
+  /// heap Dart (UTF-16) sur 323 373 entrées, pour rien. Les anciens caches
+  /// contiennent encore la clé `'ca'` : elle est simplement ignorée à la
+  /// lecture, aucun changement de `schemaVersion` n'est nécessaire.
+  ///
+  /// ⚠️ `plot` et `genre`, eux, sont CONSERVÉS malgré leur poids (~79 et
+  /// ~6 o/entrée) : ce sont les replis documentés §23b quand TMDB ne rend rien
+  /// — ce qui arrive aussi **avec** une clé configurée, quand le titre n'est
+  /// pas trouvé. Les décharger ferait disparaître le synopsis dans exactement
+  /// les cas où c'est la seule source disponible.
   final String? plot;
   /// §epTitleProvider — Titre d'ÉPISODE fourni par le panel (champ `title` de
   /// `get_series_info`, nettoyé du nom de série/SxxExx). Fallback du nom TMDB
@@ -744,7 +756,6 @@ class M3uEntry {
   /// Genres bruts provider (ex: "Science-Fiction / Action / Drame").
   final String? genre;
   /// Casting brut provider (noms séparés par des virgules).
-  final String? castNames;
   /// Note /10 (champ `rating` provider).
   final double? rating;
   /// Date de sortie ISO (ex: "2018-04-13").
@@ -774,7 +785,6 @@ class M3uEntry {
     this.plot,
     this.episodeTitle,
     this.genre,
-    this.castNames,
     this.rating,
     this.releaseDate,
     this.backdropUrl,
@@ -805,7 +815,6 @@ class M3uEntry {
     plot:          j['p']   as String?,
     episodeTitle:  j['et']  as String?,
     genre:         j['ge']  as String?,
-    castNames:     j['ca']  as String?,
     rating:        (j['ra'] as num?)?.toDouble(),
     releaseDate:   j['rd']  as String?,
     backdropUrl:   j['bd']  as String?,
@@ -828,7 +837,6 @@ class M3uEntry {
     if (plot          != null) 'p':   plot,
     if (episodeTitle  != null) 'et':  episodeTitle,
     if (genre         != null) 'ge':  genre,
-    if (castNames     != null) 'ca':  castNames,
     if (rating        != null) 'ra':  rating,
     if (releaseDate   != null) 'rd':  releaseDate,
     if (backdropUrl   != null) 'bd':  backdropUrl,

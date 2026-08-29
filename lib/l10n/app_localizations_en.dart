@@ -155,6 +155,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get episode => 'Episode';
 
   @override
+  String get favoriteAdd => 'Add to favorites';
+
+  @override
+  String get favoriteRemove => 'Remove from favorites';
+
+  @override
   String get actionSheetPlay => 'Play';
 
   @override

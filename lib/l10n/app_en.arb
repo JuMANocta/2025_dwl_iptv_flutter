@@ -46,6 +46,8 @@
     "season": "Season",
     "episode": "Episode",
 
+    "favoriteAdd": "Add to favorites",
+    "favoriteRemove": "Remove from favorites",
     "actionSheetPlay": "Play",
     "actionSheetPlaySubtitle": "Starts playback (automatic caching).",
     "actionSheetDownload": "Download in background",

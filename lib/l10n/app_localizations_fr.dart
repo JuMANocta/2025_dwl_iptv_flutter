@@ -159,6 +159,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get episode => 'Épisode';
 
   @override
+  String get favoriteAdd => 'Ajouter aux favoris';
+
+  @override
+  String get favoriteRemove => 'Retirer des favoris';
+
+  @override
   String get actionSheetPlay => 'Lire';
 
   @override

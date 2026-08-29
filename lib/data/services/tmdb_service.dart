@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import '../models/tmdb_genres.dart';
 import 'tmdb_api_service.dart';
 import 'package:aetherStream/data/models/media_model.dart';
 import 'package:aetherStream/data/models/person_model.dart';
@@ -87,8 +88,36 @@ class TmdbService {
     String clean = rawName.toLowerCase();
 
     // --- ÉTAPE 1: Nettoyage des Préfixes IPTV & Caractères Non-Standard ---
-    // Supprime les tags de pays/langue qui sont au début (ex: |FR|, FR: )
-    clean = clean.replaceAll(RegExp(r'^(\|.*?\||\w{2,}\s*[:-])\s*', caseSensitive: false), ' ');
+    // Supprime un tag de pays/langue ENCADRÉ en tête (ex: |FR|, |FR-4K DV|).
+    //
+    // §cleanQuery — L'alternative `\w{2,}\s*[:-]` a été RETIRÉE. Elle visait
+    // les préfixes non encadrés (`FR: `, `EN- `) mais matchait en réalité
+    // **n'importe quel premier mot suivi de `:` ou `-`**, et décapitait donc le
+    // titre juste avant de l'envoyer à TMDB :
+    //   `Spider-Man : Brand New Day` → « man : brand new day »
+    //   `Ong-Bak` → « bak »   ·   `Mission : Impossible 2` → « impossible 2 »
+    //   `Hadestown: The Musical` → « the musical »
+    //
+    // Mesuré sur les 4 dumps réels (155 463 titres) : **8 259 titres amputés**,
+    // dont 1 730 pour la seule liste XENO. Le retrait en récupère **8 241**.
+    //
+    // ⚠️ Le « coût » supposé est nul : les 276 titres que cette règle
+    // nettoyait encore et que le retrait laisse passer **ne sont pas des
+    // préfixes fournisseur** — ce sont de vrais titres (`ARK: The Animated
+    // Series`, `BTS: Burn the Stage`, `BNA: Brand New Animal`,
+    // `Arn: Tempelriddaren`). Sur 155 463 titres réels, pas UN seul préfixe
+    // fournisseur de la forme `XX: ` / `XX- `. La règle ne protégeait de rien.
+    //
+    // ⚠️ Elle est de toute façon un vestige d'avant §providerTag : les marqueurs
+    // de tête (`|FR|`, `FR| `) sont désormais extraits par `TitleMetadata.parse`
+    // dans `providerTag`, donc le `displayName` qui arrive ici en est déjà purgé.
+    //
+    // Pourquoi ça se voyait surtout avec XENO : une entrée qui porte un
+    // `tmdb_id` prend le chemin direct `getFullDetailsById` et ne passe JAMAIS
+    // ici. PLATINIUM en fournit 93 % — XENO, PREMIUM et VOD **aucun** (0 %).
+    // Ajouter XENO, c'est ajouter 36 000 titres qui dépendent tous de la
+    // recherche par nom.
+    clean = clean.replaceAll(RegExp(r'^\|.*?\|\s*', caseSensitive: false), ' ');
 
     // Ajout du pipe (|) aux séparateurs pour éviter qu'il ne reste seul
     clean = clean.replaceAll(RegExp(r'[|]'), ' ');
@@ -561,16 +590,24 @@ class TmdbService {
   /// entrées dont le M3U ne fournit pas de `tvg-logo` (cas liste Ultimate :
   /// VOD sans poster). Réutilise la smart search (année → souple → bascule type)
   /// mais s'arrête au premier résultat et n'en extrait que `poster_path`.
-  Future<String?> fetchPosterUrl({
+  /// §inferredCat — Renvoie l'affiche **et** la catégorie déduite des
+  /// `genre_ids` du résultat.
+  ///
+  /// Le genre était déjà dans la réponse et partait à la poubelle. Le récupérer
+  /// ne coûte aucune requête supplémentaire, et c'est la seule source de
+  /// rangement disponible pour les listes qui n'en fournissent aucune (format
+  /// « Ultimate » : ni `group-title`, ni catalogue JSON).
+  Future<({String? posterUrl, String? category})> fetchPosterAndGenre({
     required String query,
     required bool isTv,
     String? year,
     String? groupTitle,
     String size = 'w342',
   }) async {
-    if (!await _init()) return null;
+    const empty = (posterUrl: null, category: null);
+    if (!await _init()) return empty;
     final clean = _cleanQuery(query);
-    if (clean.isEmpty) return null;
+    if (clean.isEmpty) return empty;
 
     final bool appearsEnglish =
         RegExp(r'\b(VO|VOST|VOSTFR|ENGLISH)\b', caseSensitive: false).hasMatch(query);
@@ -584,11 +621,15 @@ class TmdbService {
       }
       r ??= await _performSearch(clean, isTv: isTv, language: lang, genreHints: hints);
       r ??= await _performSearch(clean, isTv: !isTv, language: lang, genreHints: hints);
-      if (r == null) return null;
-      return getPosterUrl(r['poster_path'] as String?, size: size);
+      if (r == null) return empty;
+      final ids = (r['genre_ids'] as List?)?.whereType<int>().toList() ?? const <int>[];
+      return (
+        posterUrl: getPosterUrl(r['poster_path'] as String?, size: size),
+        category: tmdbGenreLabel(ids),
+      );
     } catch (e) {
       debugPrint("❌ Glitch TMDB (poster fallback) : $e");
-      return null;
+      return empty;
     }
   }
 

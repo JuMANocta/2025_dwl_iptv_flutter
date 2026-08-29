@@ -131,6 +131,7 @@ class ParsedPlaylistService {
     final disk = await _loadFromDisk(accountId, m3uPath);
     if (disk != null) {
       debugPrint('✅ ParsedPlaylist: cache disque chargé — $accountName (${disk.entries.length} entrées)');
+      _auditCategories(accountName, disk.entries);
       _memory[accountId] = disk;
       _accountNames[accountId] = accountName;
       setLoadState(accountId, AccountLoadState.loaded);
@@ -199,6 +200,7 @@ class ParsedPlaylistService {
         _accountNames[acc.id] = acc.label;
         setLoadState(acc.id, AccountLoadState.loaded);
         debugPrint('✅ ParsedPlaylist: préchargé depuis disque — ${acc.label} (${disk.entries.length} entrées)');
+        _auditCategories(acc.label, disk.entries);
         version.value++;
       }
     }
@@ -254,6 +256,47 @@ class ParsedPlaylistService {
     version.value++;
     _saveToDisk(accountId, playlist);
     debugPrint('✅ ParsedPlaylist secondaire: parse — $accountName (${allEntries.length} entrées)');
+  }
+
+
+  /// §catAudit — Journalise la couverture des CATÉGORIES d'un compte.
+  ///
+  /// Question à laquelle rien ne répondait : quand l'accueil n'affiche que
+  /// « Autres », est-ce que le fournisseur ne donne aucun libellé de groupe, ou
+  /// est-ce que `contentCategoryLabel` ne sait pas les traduire ? Les deux
+  /// appellent des correctifs opposés, et on ne peut pas trancher depuis les
+  /// dumps bruts (le champ `_cat` est ajouté au TÉLÉCHARGEMENT, il n'y figure
+  /// pas).
+  ///
+  /// Une seule passe au chargement (quelques ms sur 150 000 entrées), et on
+  /// n'imprime que les 8 groupes non traduits les plus fréquents — de quoi
+  /// enrichir le mapping sans noyer le journal.
+  static void _auditCategories(String accountName, List<M3uEntry> entries) {
+    var sansGroupe = 0;
+    var sansCategorie = 0;
+    final orphelins = <String, int>{};
+    for (final e in entries) {
+      final g = e.groupTitle;
+      if (g == null || g.isEmpty) {
+        sansGroupe++;
+        continue;
+      }
+      final c = e.category;
+      if (c == null || c.isEmpty) {
+        sansCategorie++;
+        orphelins[g] = (orphelins[g] ?? 0) + 1;
+      }
+    }
+    final total = entries.length;
+    if (total == 0) return;
+    final classes = total - sansGroupe - sansCategorie;
+    final top = orphelins.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    debugPrint('🗂️ §catAudit $accountName : $classes/$total classés · '
+        '$sansGroupe sans groupe · $sansCategorie groupes non traduits');
+    for (final o in top.take(8)) {
+      debugPrint('   ↳ non traduit ×${o.value} : "${o.key}"');
+    }
   }
 
   // ── Accesseurs synchrones ─────────────────────────────────────────────────
