@@ -37,7 +37,10 @@ import 'core/themes/app_theme_config.dart';
 import 'core/settings/performance_settings_service.dart';
 import 'data/services/update_service.dart';
 import 'data/services/xmltv_service.dart';
+import 'data/services/measured_quality_service.dart';
 import 'feature/update/update_dialog.dart';
+import 'feature/player/video_fit.dart';
+import 'feature/player/video_stats.dart';
 import 'core/utils/platform_tv.dart';
 import 'package:dpad/dpad.dart';
 
@@ -136,6 +139,9 @@ Future<void> _initServices() async {
     HiddenRegionsService.init(),
     TrackPreferencesService.init(),
     PerformanceSettingsService.load(), // §perfSettings
+    VideoFitPreference.load(), // §videoFit
+    VideoStatsPreference.load(), // §videoStats
+    MeasuredQualityService.init(), // §qualityTruth
   ]);
 }
 

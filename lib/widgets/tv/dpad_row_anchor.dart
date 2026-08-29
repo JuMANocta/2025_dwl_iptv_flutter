@@ -72,6 +72,7 @@ abstract final class DpadRowAnchor {
         // de rendre la carte visible : sinon elle était ramenée de force à
         // gauche et toute la rangée sautait.
         final sameRow = identical(s, _lastRow);
+        if (!sameRow) _rewind(_lastRow);
         _lastRow = s;
         if (sameRow) {
           // Ancrage début de rangée (le clamp gère les bords : premiers items
@@ -113,5 +114,30 @@ abstract final class DpadRowAnchor {
         curve: Curves.easeOutCubic,
       );
     }
+  }
+
+  /// §carouselScrollDir — Rembobine au début la rangée qu'on vient de
+  /// quitter (↑/↓ vers une autre rangée).
+  ///
+  /// Sans ça, une rangée restait figée là où on l'avait laissée — loin à
+  /// droite — et y revenir rouvrait le carrousel « sur les derniers titres »
+  /// au lieu du début. Deuxième effet, moins visible mais décisif : sa 1re
+  /// carte, non construite parce que hors `cacheExtent`, n'était plus
+  /// candidate au focus — le `DpadEnterBehavior.entry` de la rangée n'avait
+  /// donc rien à viser et retombait sur le voisin géométrique.
+  ///
+  /// Silencieux si la rangée n'est plus montée (route dépilée, ListView
+  /// recyclé) : c'est le cas normal quand le focus revient d'une autre page,
+  /// où la restauration §dpadRestore doit rester maîtresse.
+  static void _rewind(ScrollableState? row) {
+    if (row == null || !row.mounted) return;
+    final position = row.position;
+    if (!position.hasPixels || !position.hasContentDimensions) return;
+    if ((position.pixels - position.minScrollExtent).abs() < 0.5) return;
+    position.animateTo(
+      position.minScrollExtent,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
   }
 }

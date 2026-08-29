@@ -164,10 +164,26 @@ class _CategoryRow extends StatelessWidget {
                 // ListView rogne le contour aux bords de la rangée.
                 final vSlack = PlatformTv.isTv ? 48.0 : 20.0;
                 return DpadRegion(
-                  // §dpadNav — mémoire de colonne par rangée (façon Netflix) :
-                  // ↑/↓ revient sur la colonne mémorisée ; ← au bord part vers
-                  // le rail (edge: leave par défaut).
-                  memoryKey: 'row_${type.name}_$category',
+                  // §carouselScrollDir — Entrée par la GAUCHE, décision
+                  // INVERSÉE par rapport à §dpadNav.
+                  //
+                  // La rangée avait une mémoire de colonne persistante
+                  // (`memoryKey` + `DpadEnterBehavior.restore` par défaut) :
+                  // ↑/↓ y ramenait la carte quittée, façon Netflix. En
+                  // pratique, remonter la page rouvrait donc les carrousels
+                  // loin à droite, sur les derniers titres, au lieu de leur
+                  // début — c'est le bug §carouselScrollDir.
+                  //
+                  // ⚠️ `isEntry: i == 0` (plus bas) était déjà posé mais
+                  // n'était JAMAIS consulté : dans `resolveEnter`, le mode
+                  // `restore` court-circuite l'item d'entrée tant qu'il a une
+                  // mémoire — et `memoryKey` la faisait justement survivre à
+                  // tous les rebuilds. Passer en `entry` est ce qui lui rend
+                  // la main ; retirer la clé évite d'entretenir une mémoire
+                  // que plus personne ne lit.
+                  //
+                  // ← au bord part toujours vers le rail (edge: leave défaut).
+                  enter: DpadEnterBehavior.entry,
                   child: SizedBox(
                     height: cardW * 1.5 + vSlack,
                     child: ListView.separated(

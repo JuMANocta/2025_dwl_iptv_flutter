@@ -459,6 +459,15 @@ class _HomeCardState extends State<_HomeCard> {
                         ],
                       ),
                     ),
+                    // §qualityTruth — Pastille « qualité réellement servie »,
+                    // en haut à droite. Muette tant que le contenu n'a jamais
+                    // été lu. Vaut aussi pour les chaînes TV : une chaîne
+                    // annoncée FHD qui sert du 720p se voit ici.
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: MeasuredQualityBadge(versions: widget.versions),
+                    ),
                     // §1e — Barre de progression "reprendre depuis…" :
                     // visible si l'utilisateur a regardé l'une des variantes du
                     // groupe sans aller jusqu'au bout (TV exclu — pas de durée).

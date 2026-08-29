@@ -16,7 +16,11 @@ import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
 import 'widgets/track_selector_sheet.dart';
+import '../../data/services/measured_quality_service.dart';
+import 'video_fit.dart';
+import 'video_stats.dart';
 import 'widgets/player_options_sheet.dart';
+import 'widgets/video_stats_overlay.dart';
 import 'widgets/next_episode_overlay.dart';
 import 'player_media.dart';
 import 'player_action_handlers.dart';
@@ -172,6 +176,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// Souscription à `stream.playing` pour activer/désactiver le wakelock.
   StreamSubscription<bool>? _playingSub;
 
+  /// §qualityTruth — Écoute des paramètres vidéo, pour mesurer la définition
+  /// RÉELLEMENT servie par le flux.
+  StreamSubscription<VideoParams>? _videoParamsSub;
+
+  /// Clé du flux déjà mesuré pendant cette lecture. Remise à zéro par
+  /// [_switchTo] : sans ça, l'épisode suivant hériterait de la mesure du
+  /// précédent et ne serait jamais enregistré.
+  String? _measuredKey;
+
   /// Souscription au stream d'erreur, à canceller pour éviter une fuite.
   StreamSubscription<String>? _errorSub;
 
@@ -185,6 +198,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// §1i — Mode lock partagé entre [PlayerControls] et [PlayerGestures].
   /// `true` → tous les gestes (sauf tap pour révéler le cadenas) sont ignorés.
   bool _isLocked = false;
+
+  /// §videoFit — Format d'image courant. Initialisé sur le dernier choix de
+  /// l'utilisateur (mémorisé d'une vidéo à l'autre) plutôt que remis à
+  /// « Original » à chaque lecture.
+  VideoFitMode _fit = VideoFitPreference.current;
+
+  /// §videoStats — Encart de diagnostic vidéo. L'état est repris du dernier
+  /// choix : un diagnostic se mène sur plusieurs films d'affilée.
+  bool _statsEnabled = VideoStatsPreference.enabled;
 
   /// §tvPlayerNav — Vitesse courante, pilotée par le sous-menu Vitesse du
   /// panneau d'options TV (reflète la coche du menu).
@@ -226,6 +248,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     );
     _listenErrors();
     _listenPlaybackForWakelock();
+    _listenVideoParamsForQuality();
     _listenCompleted();
     WidgetsBinding.instance.addObserver(this);
     _openMedia();
@@ -241,7 +264,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       changeVolume: _handleVolumeChange,
       toggleControls: _toggleControls,
       showControls: _showControls,
-      showOptions: _showTvOptions,
+      showOptions: _showPlayerOptionsPanel,
       exitPlayer: AppBack.popFromUi,
     );
     RemoteControlService.instance.registerPlayer(_remoteHandlers);
@@ -283,6 +306,28 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       } else {
         _releaseWakelock();
       }
+    });
+  }
+
+  /// §qualityTruth — Enregistre la définition réellement décodée, à chaque
+  /// lecture.
+  ///
+  /// ⚠️ Volontairement **indépendant de l'encart §videoStats** : celui-ci
+  /// s'active à la demande, alors que la mesure n'a de valeur que si elle
+  /// s'accumule toute seule, sur tous les flux lus. Elle ne coûte rien de plus
+  /// — `videoParams` est un flux que media_kit publie déjà.
+  ///
+  /// Une seule écriture par lecture (`_measuredKey`) : mpv republie ces
+  /// paramètres à chaque reconfiguration de la chaîne vidéo.
+  void _listenVideoParamsForQuality() {
+    _videoParamsSub = _ctrl.player.stream.videoParams.listen((params) {
+      final h = params.h;
+      final w = params.w;
+      if (h == null || w == null || h <= 0 || w <= 0) return;
+      final key = _media.resumeKey;
+      if (key == _measuredKey) return;
+      _measuredKey = key;
+      MeasuredQualityService.record(key, width: w, height: h);
     });
   }
 
@@ -440,6 +485,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _endOfPlayback = null;
       _currentPath = next.path; // sinon un retry .ts/.m3u8 de l'épisode
       _retryCount = 0; //        précédent contaminerait le suivant
+      _measuredKey = null; // §qualityTruth — le suivant doit être mesuré aussi
       _hasError = false;
       _errorMessage = '';
       _seekAccumSeconds = 0;
@@ -560,14 +606,29 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (mounted) _startHideTimer();
   }
 
-  /// §tvPlayerNav — Panneau d'options (centre de contrôle TV, ouvert via ↑) :
-  /// pistes audio/sous-titres, vitesse, épisode suivant. Tout focusable au D-pad.
-  Future<void> _showTvOptions() async {
+  /// §tvPlayerNav + §playerOptionsTouch — Panneau d'options du lecteur :
+  /// pistes audio/sous-titres, vitesse, format d'image, infos vidéo, épisode
+  /// suivant. Tout focusable au D-pad.
+  ///
+  /// Ouvert par ↑ / appui long sur TV, et par le bouton ⚙ des contrôles au
+  /// tactile — l'ancien nom `_showPlayerOptionsPanel` laissait croire à un chemin
+  /// réservé à la télécommande, ce qui est précisément l'oubli qu'on corrige.
+  Future<void> _showPlayerOptionsPanel() async {
     _hideTimer?.cancel();
     await showPlayerOptions(
       context,
       hasNext: widget.onRequestNext != null,
       speedLabel: _speed == 1.0 ? 'Normale (1.0×)' : '$_speed×',
+      fitMode: _fit,
+      statsEnabled: _statsEnabled,
+      onToggleStats: () {
+        Navigator.of(context).pop();
+        _toggleStats();
+      },
+      onFit: () {
+        Navigator.of(context).pop();
+        _showFitMenu();
+      },
       onTracks: () {
         Navigator.of(context).pop();
         _showTrackSelector();
@@ -582,6 +643,33 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               Navigator.of(context).pop();
               _requestNextEpisode();
             },
+    );
+    if (mounted) _startHideTimer();
+  }
+
+  /// §videoStats — Bascule l'encart de diagnostic vidéo.
+  void _toggleStats() {
+    final next = !_statsEnabled;
+    setState(() => _statsEnabled = next);
+    VideoStatsPreference.set(next);
+  }
+
+  /// §videoFit — Sous-menu Format d'image (Original / Zoom / Plein écran).
+  ///
+  /// Même chemin sur mobile et sur TV : un menu qui NOMME les trois modes,
+  /// plutôt qu'un bouton qui cycle en aveugle. Sur une image déjà plein cadre
+  /// (source 16/9 sur écran 16/9), les trois rendus sont identiques — sans
+  /// libellé, l'utilisateur croirait le bouton cassé.
+  Future<void> _showFitMenu() async {
+    _hideTimer?.cancel();
+    await showVideoFitMenu(
+      context,
+      current: _fit,
+      onSelect: (mode) {
+        setState(() => _fit = mode);
+        VideoFitPreference.set(mode);
+        Navigator.of(context).pop();
+      },
     );
     if (mounted) _startHideTimer();
   }
@@ -756,6 +844,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     RemoteControlService.instance.clearPlayer(_remoteHandlers);
     _saveProgress(); // dernière sauvegarde à la sortie du player
     _playingSub?.cancel();
+    _videoParamsSub?.cancel();
     _errorSub?.cancel();
     _completedSub?.cancel();
     _autoNextTimer?.cancel();
@@ -804,7 +893,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         tapToSelect: false,
         effects: const [],
         onSelect: _togglePlayPause,
-        onLongSelect: _showTvOptions,
+        onLongSelect: _showPlayerOptionsPanel,
         onDirection: (dir) {
           if (dir == TraversalDirection.left) {
             _handleSeek(const Duration(seconds: -10));
@@ -815,7 +904,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             return true;
           }
           if (dir == TraversalDirection.up) {
-            _showTvOptions();
+            _showPlayerOptionsPanel();
             return true;
           }
           if (dir == TraversalDirection.down) {
@@ -837,6 +926,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             Video(
               controller: _ctrl.videoController,
               controls: NoVideoControls,
+              // §videoFit — `cover` rogne les bords pour effacer les bandes
+              // noires, `fill` déforme pour remplir. Le rognage se fait à
+              // l'affichage de la texture : mpv décode toujours l'image
+              // entière, donc changer de format est instantané et n'entraîne
+              // aucun re-décodage.
+              fit: _fit.boxFit,
             ),
 
             // 2. Couche gesture (transparente, capte tout sauf les contrôles).
@@ -871,6 +966,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               onNextEpisode:
                   widget.onRequestNext == null ? null : _requestNextEpisode,
               onShowTracks: _showTrackSelector,
+              // §playerOptionsTouch — Sur TV, les boutons inline ne sont pas
+              // focusables : le panneau s'ouvre déjà par ↑ / appui long, un
+              // icône de plus n'y serait qu'un ornement inatteignable.
+              onShowOptions: isTv ? null : _showPlayerOptionsPanel,
             ),
 
             // §autoNextEp — Encart de fin (décompte / fin de saison / fin de
@@ -894,6 +993,18 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // un nouveau segment HLS. Désactivé en mode lock pour ne pas troubler
             // la zone cliquable du cadenas.
             _BufferingOverlay(player: _ctrl.player, hidden: _isLocked),
+
+            // §videoStats — Encart de diagnostic, au-dessus des contrôles pour
+            // rester lisible quand ils apparaissent. Rien n'est construit tant
+            // que l'utilisateur ne l'a pas activé.
+            if (_statsEnabled)
+              VideoStatsOverlay(
+                player: _ctrl.player,
+                hidden: _isLocked,
+                // §qualityTruth — la qualité que la LISTE annonce, à confronter
+                // à ce qui est réellement décodé.
+                announcedQuality: _media.qualityTag,
+              ),
 
             // §seekAccum — Badge central du saut cumulé (ex: « ⏩ +30s »).
             if (_seekOverlayVisible && _seekAccumSeconds != 0)

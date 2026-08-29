@@ -11,6 +11,8 @@ import '../../data/services/parsed_playlist_service.dart';
 import '../../data/services/stream_account_service.dart';
 import '../../data/services/watch_progress_service.dart';
 import '../../data/services/xtream_api_service.dart';
+import '../../data/models/quality_scale.dart';
+import '../../data/services/measured_quality_service.dart';
 import '../../core/utils/app_snackbar.dart';
 import '../../data/models/media_model.dart';
 import '../player/player_page.dart';
@@ -1682,6 +1684,16 @@ class _DetailsPageState extends State<DetailsPage> {
   // ── Widgets partagés ───────────────────────────────────────────────────────
 
   Widget _buildQualityChips(ColorScheme cs) {
+    // §qualityTruth — Une mesure peut tomber pendant qu'on est DANS le lecteur,
+    // fiche encore montée derrière : sans cet abonnement, la vraie qualité
+    // n'apparaîtrait qu'à la réouverture de la fiche.
+    return ValueListenableBuilder<int>(
+      valueListenable: MeasuredQualityService.version,
+      builder: (_, __, ___) => _buildQualityChipsInner(cs),
+    );
+  }
+
+  Widget _buildQualityChipsInner(ColorScheme cs) {
     return Wrap(
       spacing: 8,
       runSpacing: 6,
@@ -1708,21 +1720,71 @@ class _DetailsPageState extends State<DetailsPage> {
               ),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                color: color,
-                height: 1.3,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                    color: color,
+                    height: 1.3,
+                  ),
+                ),
+                // §qualityTruth — Ce que ce flux a RÉELLEMENT servi la
+                // dernière fois qu'on l'a lu. Rien tant qu'il n'a pas été
+                // mesuré : mieux vaut ne rien dire qu'affirmer sans preuve.
+                ..._measuredSuffix(v),
+              ],
             ),
           ),
           ),
         );
       }).toList(),
     );
+  }
+
+  /// §qualityTruth — Ligne « mesuré » sous la pastille de version.
+  ///
+  /// Trois écritures, parce que les trois situations n'ont pas la même valeur
+  /// pour l'utilisateur : une liste qui **survend** est une alerte, une liste
+  /// conforme est une confirmation discrète, une liste qui sous-estime est une
+  /// bonne surprise. Un flux jamais lu n'affiche rien.
+  ///
+  /// ⚠️ Une mesure existe aussi quand la qualité annoncée n'est PAS une
+  /// définition (`CAM`, ou aucune) : on affiche alors la résolution seule, sans
+  /// verdict — il n'y a rien à confronter (cf. [QualityScale.rankOf]).
+  List<Widget> _measuredSuffix(M3uEntry v) {
+    final measured = MeasuredQualityService.get(v.url);
+    if (measured == null) return const [];
+
+    final verdict = measured.verdictFor(v.title.quality);
+    final (String text, Color tint) = switch (verdict) {
+      QualityVerdict.survendu =>
+        ('⚠ réel ${measured.definitionLabel}', kError),
+      QualityVerdict.sousEstime =>
+        ('réel ${measured.definitionLabel}', kAccentSecondary),
+      QualityVerdict.conforme => ('✓ ${measured.height}p', kSuccess),
+      QualityVerdict.unknown => ('${measured.height}p', kQualityUnknown),
+    };
+
+    return [
+      const SizedBox(height: 2),
+      Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: verdict == QualityVerdict.survendu
+              ? FontWeight.bold
+              : FontWeight.w500,
+          color: tint,
+          height: 1.1,
+        ),
+      ),
+    ];
   }
 
   /// Format Duration → "1h23" ou "12:34" pour libellé court de reprise.
