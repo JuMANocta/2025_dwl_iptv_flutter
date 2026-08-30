@@ -1982,6 +1982,17 @@ class _DetailsPageState extends State<DetailsPage> {
                   flex: 3,
                   child: _glowButton(
                     color: kAccentPrimary,
+                    // §detailsPlayFocus — Sur TV, l'ordre de traversée donnait le
+                    // focus d'entrée au bouton RETOUR de l'AppBar : le réflexe
+                    // télécommande (OK pour lancer) REFERMAIT la fiche, et le
+                    // bouton de lecture était 3 crans plus bas, derrière une carte
+                    // secondaire. `DetailsPage` était la seule page TV sans focus
+                    // d'entrée maîtrisé — et `TvInitialFocus` n'aurait pas suffi :
+                    // son `nextFocus()` reprend l'ordre de traversée, donc le
+                    // bouton retour. Il faut nommer explicitement la cible.
+                    // ⚠️ TV uniquement (§touchNoFocus : au tactile, donner un
+                    // focus fait apparaître un « faux focus »).
+                    autofocus: PlatformTv.isTv,
                     onPressed: () => _launchSelected(
                         from: hasResume ? progress.position : null),
                     child: _btnContent(
@@ -2058,11 +2069,13 @@ class _DetailsPageState extends State<DetailsPage> {
     required VoidCallback? onPressed,
     required Widget child,
     bool active = true,
+    bool autofocus = false,
   }) =>
       _ActionButton(
         color: color,
         onPressed: onPressed,
         active: active,
+        autofocus: autofocus,
         child: child,
       );
 
@@ -2482,11 +2495,17 @@ class _ActionButton extends StatefulWidget {
   final Widget child;
   final bool active;
 
+  /// §detailsPlayFocus — Réservé au bouton PRINCIPAL de la fiche. Un seul
+  /// bouton doit le porter : deux `autofocus` dans le même scope se disputent
+  /// le focus d'entrée.
+  final bool autofocus;
+
   const _ActionButton({
     required this.color,
     required this.onPressed,
     required this.child,
     this.active = true,
+    this.autofocus = false,
   });
 
   @override
@@ -2514,6 +2533,7 @@ class _ActionButtonState extends State<_ActionButton> {
     return FocusableChip(
       onTap: widget.onPressed,
       enabled: widget.onPressed != null,
+      autofocus: widget.autofocus,
       borderRadius: BorderRadius.circular(14),
       onFocusChange: (f) {
         if (mounted) setState(() => _focused = f);

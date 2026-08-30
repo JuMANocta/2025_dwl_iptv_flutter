@@ -167,12 +167,18 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     // ── Décodage : LA ligne du ticket §video4k ───────────────────────────────
     // Elle est en tête et colorée parce qu'elle tranche à elle seule entre
     // « la box n'y arrive pas » et « mpv décode en logiciel ».
+    // §hwdecUnknown — Tant que mpv n'a pas répondu (1 à 3 s au démarrage de
+    // CHAQUE lecture), on n'affirme rien. Afficher « LOGICIEL » en rouge dans
+    // cette fenêtre était une fausse alerte systématique, sur la ligne même
+    // dont dépend tout le diagnostic §video4k.
     final hw = s.hardwareDecoding;
     rows.add(_StatRow(
       label: 'Décodage',
-      value: hw ? 'matériel · ${s.hwdec}' : 'LOGICIEL',
-      valueColor: hw ? kSuccess : kError,
-      alert: !hw,
+      value: !s.hwdecKnown
+          ? 'en cours…'
+          : (hw ? 'matériel · ${s.hwdec}' : 'LOGICIEL'),
+      valueColor: !s.hwdecKnown ? null : (hw ? kSuccess : kError),
+      alert: s.hwdecKnown && !hw,
     ));
 
     // §video4kBench — La sortie effectivement retenue par mpv. Elle suit

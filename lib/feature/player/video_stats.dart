@@ -110,6 +110,22 @@ class VideoStatsSnapshot {
     return h != 'no' && h != 'none' && h != 'null';
   }
 
+  /// §hwdecUnknown — mpv a-t-il seulement RÉPONDU sur `hwdec-current` ?
+  ///
+  /// ⚠️ Distinction indispensable, et absente de la première version : pendant
+  /// les 1 à 3 premières secondes de CHAQUE lecture, la propriété est encore
+  /// vide — [hardwareDecoding] renvoyait alors `false` et l'encart affichait
+  /// « LOGICIEL » en ROUGE avec une alerte. Sur les quatre relevés §video4k,
+  /// la fausse alerte est apparue quatre fois. C'est le pire endroit possible
+  /// pour se tromper : cette ligne est celle sur laquelle repose tout le
+  /// diagnostic du ticket, et elle annonçait l'inverse de la réalité à qui
+  /// regardait au lancement.
+  ///
+  /// ⚠️ Ne PAS confondre avec la réponse littérale `no`, qui elle est une vraie
+  /// information (décodage logiciel confirmé) — cf. le piège déjà verrouillé
+  /// par test dans [hardwareDecoding].
+  bool get hwdecKnown => (hwdec?.trim().isNotEmpty) ?? false;
+
   /// Source anamorphique (pixels non carrés).
   bool get isAnamorphic {
     final par = pixelAspectRatio;
@@ -157,7 +173,12 @@ class VideoStatsSnapshot {
   /// moments utiles. Le débit et les compteurs de pertes en sont volontairement
   /// exclus : ils bougent en permanence et noieraient le journal.
   String get diagnosticSignature => [
-        hardwareDecoding ? 'hw=${hwdec ?? "?"}' : 'hw=NON (logiciel)',
+        if (!hwdecKnown)
+          'hw=?'
+        else if (hardwareDecoding)
+          'hw=$hwdec'
+        else
+          'hw=NON (logiciel)',
         'codec=${codec ?? "?"}',
         'res=${resolutionLabel ?? "?"}',
         'fps=${containerFps?.toStringAsFixed(1) ?? "?"}',

@@ -159,20 +159,45 @@ enum VideoHdrMode {
     properties: {},
   ),
 
-  /// Coupe le compute shader d'analyse et prend la courbe la moins chère.
-  /// Le rendu HDR est moins fidèle, mais rien d'autre n'est perdu.
+  /// §hdrIsolate — La moitié BON MARCHÉ de l'ancien « Allégé ».
+  ///
+  /// C'est le mode à essayer en premier, et le seul candidat sérieux pour
+  /// devenir un jour le défaut : couper la mesure du pic lumineux revient à
+  /// utiliser une valeur statique au lieu d'une valeur mesurée image par
+  /// image — un écart de rendu quasi invisible, alors que `tone-mapping=clip`
+  /// écrête franchement les hautes lumières.
+  ///
+  /// L'essai du 2026-08-30 a prouvé que la PAIRE supprime 100 % des pertes
+  /// (7,99 img/s → 0). Il n'a pas dit laquelle des deux fait le travail :
+  /// c'est exactement ce que cette entrée sert à trancher.
+  noPeak(
+    label: 'Sans analyse',
+    detail: 'hdr-compute-peak=no — quasi invisible',
+    properties: {
+      'hdr-compute-peak': 'no',
+    },
+  ),
+
+  /// Les DEUX propriétés : la configuration mesurée le 2026-08-30, qui
+  /// supprime toutes les pertes. Plus coûteuse visuellement que [noPeak].
   lightweight(
     label: 'Allégé',
-    detail: 'Sans analyse de pic · courbe simple',
+    detail: 'Sans analyse + courbe simple — 0 perte mesurée',
     properties: {
       'hdr-compute-peak': 'no',
       'tone-mapping': 'clip',
     },
   ),
 
-  /// Demande à envoyer le HDR tel quel à l'écran. Si le téléviseur l'accepte,
-  /// le tone-mapping disparaît entièrement du GPU — et son témoin HDR
-  /// s'allume, ce qui rend l'essai vérifiable À L'ŒIL, sans journal.
+  /// Demande à envoyer le HDR tel quel à l'écran.
+  ///
+  /// ⛔ **Mesuré SANS effet le 2026-08-30** : 7,92 img/s perdues, soit
+  /// exactement le témoin, et le téléviseur ne bascule pas. Le réglage seul ne
+  /// suffit pas à faire sortir du HDR — la texture Flutter dans laquelle
+  /// media_kit compose est en SDR, et seul `mediacodec_embed` (rendu direct
+  /// dans la Surface) pourrait porter du HDR… mais il tue l'application.
+  /// Conservé comme témoin négatif : il isole le coût dans l'analyse de pic
+  /// plutôt que dans la signalisation colorimétrique.
   passthrough(
     label: 'Passthrough',
     detail: 'HDR envoyé tel quel à la TV',

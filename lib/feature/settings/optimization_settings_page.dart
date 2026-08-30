@@ -3,6 +3,8 @@ import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
+import 'package:aetherStream/data/services/watch_progress_service.dart';
+import 'package:aetherStream/feature/player/engine_probe_page.dart';
 import 'package:aetherStream/feature/player/video_render.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
@@ -329,6 +331,35 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
         detailOf: (v) => v.detail,
         onPick: (v) => setState(() => VideoRenderPreference.setHdr(v)),
       ),
+      // §playerEngine — Étape 1, JETABLE : l'essai de vérité du moteur Media3.
+      // Ne teste qu'une chose — le témoin HDR du téléviseur s'allume-t-il ?
+      // À supprimer avec `engine_probe_page.dart` si la réponse est non.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: FocusableCard(
+          scaleOnFocus: false,
+          onTap: _probeMedia3,
+          decorateOnly: true,
+          child: FilledButton.tonalIcon(
+            onPressed: _probeMedia3,
+            icon: const Icon(Icons.science_outlined, size: 18),
+            label: const Text('Essai moteur Media3 (HDR)'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+            ),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+        child: Text(
+          'Rejoue le DERNIER film regardé avec un moteur vidéo différent '
+          '(ExoPlayer sur SurfaceView, au lieu de la texture actuelle). '
+          'Seule question : le témoin HDR du téléviseur s\'allume-t-il ? '
+          'N\'affecte pas la lecture normale.',
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+        ),
+      ),
       // ⚠️ L'avertissement n'apparaît QUE hors configuration d'origine : un
       // relevé fait sur un banc oublié est un relevé faux, et c'est le genre
       // d'oubli qui coûte une session entière.
@@ -362,6 +393,33 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
     ];
   }
 
+  /// §playerEngine — Lance l'essai sur le dernier flux réellement regardé.
+  ///
+  /// ⚠️ L'URL vient de [WatchProgressService], donc du catalogue déjà chargé :
+  /// on ne reconstruit ni ne manipule les identifiants du compte pour un essai.
+  /// Et c'est le MÊME flux que celui de toutes les mesures du jour, donc la
+  /// comparaison reste valable.
+  void _probeMedia3() {
+    final all = WatchProgressService.all;
+    if (all.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'Aucune lecture récente — regarde un film 4K quelques secondes, '
+            'puis reviens.'),
+      ));
+      return;
+    }
+    final latest = all.reduce(
+        (a, b) => a.lastWatched.isAfter(b.lastWatched) ? a : b);
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => EngineProbePage(
+        url: latest.url,
+        title: 'Dernier film lu',
+        startAt: latest.position,
+      ),
+    ));
+  }
+
   void _resetBench() {
     setState(VideoRenderPreference.reset);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -388,66 +446,95 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           child: Text(title,
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         ),
-        SizedBox(
-          height: 62,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            scrollDirection: Axis.horizontal,
-            itemCount: values.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (_, i) {
-              final v = values[i];
-              final active = v == current;
-              return FocusableChip(
-                onTap: () => onPick(v),
-                borderRadius: BorderRadius.circular(10),
-                child: GestureDetector(
-                  onTap: () => onPick(v),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 132,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      color: kAccentSecondary.withAlpha(active ? 40 : 16),
-                      border: Border.all(
-                        color: active
-                            ? kAccentSecondary
-                            : kAccentSecondary.withAlpha(60),
-                        width: active ? 2.0 : 1.0,
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          labelOf(v),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight:
-                                active ? FontWeight.bold : FontWeight.normal,
-                            color: active ? kAccentSecondary : cs.onSurface,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          detailOf(v),
-                          style:
-                              TextStyle(fontSize: 9, color: cs.onSurfaceVariant),
-                          maxLines: 3,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
+        // §benchRowGeom — Rangée à largeur PLEINE, chaque puce en `Expanded`.
+        //
+        // ⚠️ Corrige un vrai défaut de navigation observé deux fois : la
+        // traversée directionnelle de Flutter cherche un candidat qui CHEVAUCHE
+        // la bande perpendiculaire. Avec des puces à largeur fixe, la 4e puce de
+        // « Rendu » se trouvait horizontalement AU-DELÀ de la dernière puce de
+        // « Synchro » (2 entrées seulement) : plus rien sous elle, et ⬇ sautait
+        // par-dessus la rangée entière pour atterrir sur le bouton pleine
+        // largeur d'en dessous. Une rangée pouvait donc devenir inatteignable
+        // selon la colonne mémorisée.
+        //
+        // Des rangées qui occupent toutes la même largeur garantissent qu'une
+        // puce a toujours quelque chose sous elle, quel que soit le nombre
+        // d'entrées de la rangée suivante.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: SizedBox(
+            height: 62,
+            child: Row(
+              children: [
+                for (int i = 0; i < values.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(
+                      child: _benchChip(
+                    cs: cs,
+                    active: values[i] == current,
+                    label: labelOf(values[i]),
+                    detail: detailOf(values[i]),
+                    onPick: () => onPick(values[i]),
+                  )),
+                ],
+              ],
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  /// Une puce du banc. Extraite pour que [_benchRow] reste lisible une fois
+  /// passé en `Row`/`Expanded` (§benchRowGeom).
+  Widget _benchChip({
+    required ColorScheme cs,
+    required bool active,
+    required String label,
+    required String detail,
+    required VoidCallback onPick,
+  }) {
+    return FocusableChip(
+      onTap: onPick,
+      borderRadius: BorderRadius.circular(10),
+      child: GestureDetector(
+        onTap: onPick,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            color: kAccentSecondary.withAlpha(active ? 40 : 16),
+            border: Border.all(
+              color: active ? kAccentSecondary : kAccentSecondary.withAlpha(60),
+              width: active ? 2.0 : 1.0,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                  color: active ? kAccentSecondary : cs.onSurface,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                detail,
+                style: TextStyle(fontSize: 9, color: cs.onSurfaceVariant),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
