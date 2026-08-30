@@ -3,6 +3,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/utils/platform_tv.dart';
+import 'video_render.dart';
 
 /// Wrapper media_kit — gère le cycle de vie du Player et du VideoController.
 ///
@@ -41,7 +42,13 @@ class AetherPlayerController {
         logLevel: MPVLogLevel.warn,
       ),
     );
-    videoController = VideoController(player);
+    // §video4kBench — Le banc d'essai peut forcer `vo`/`hwdec` (cf.
+    // `video_render.dart`). `null` = aucune surcharge : media_kit garde
+    // strictement son défaut de plateforme, l'app se comporte comme avant.
+    final benchConfig = VideoRenderPreference.controllerConfiguration;
+    videoController = benchConfig == null
+        ? VideoController(player)
+        : VideoController(player, configuration: benchConfig);
     _applyAudioTuning();
     // Boost initial : appliqué après que mpv ait pris la propriété volume-max.
     player.setVolume(initialVolume);
@@ -59,7 +66,11 @@ class AetherPlayerController {
       await np.setProperty('audio-pitch-correction', 'yes');
       // Resample audio sur le refresh de l'écran → suppression des micro-décalages
       // qui font "claquer" les dialogues sur les flux 50fps européens.
-      await np.setProperty('video-sync', 'display-resample');
+      // §video4kBench — `display-resample` est le réglage historique, mais c'est
+      // aussi le plus coûteux : sur un VO qui peine il peut à lui seul provoquer
+      // du framedrop. Le banc d'essai permet de le confronter à `audio`, qui ne
+      // coûte rien et ne casse aucun sous-titre.
+      await np.setProperty('video-sync', VideoRenderPreference.sync.value);
       // Latence audio plus serrée → meilleure synchro lèvres.
       await np.setProperty('audio-buffer', '0.2');
       // Évite un seek subtil au démarrage de certains MKV qui désync 200-500 ms

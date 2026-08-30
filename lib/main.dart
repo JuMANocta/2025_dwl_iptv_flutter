@@ -43,6 +43,7 @@ import 'data/services/tmdb_poster_cache.dart';
 import 'feature/update/update_dialog.dart';
 import 'feature/player/video_fit.dart';
 import 'feature/player/video_stats.dart';
+import 'feature/player/video_render.dart';
 import 'core/utils/platform_tv.dart';
 import 'package:dpad/dpad.dart';
 
@@ -143,6 +144,7 @@ Future<void> _initServices() async {
     PerformanceSettingsService.load(), // §perfSettings
     VideoFitPreference.load(), // §videoFit
     VideoStatsPreference.load(), // §videoStats
+    VideoRenderPreference.load(), // §video4kBench
     MeasuredQualityService.init(), // §qualityTruth
     InferredCategoryService.init(), // §inferredCat
     TmdbPosterCache.init(), // §tmdbUrlPersist

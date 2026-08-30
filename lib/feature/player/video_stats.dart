@@ -60,6 +60,23 @@ class VideoStatsSnapshot {
   final double? signalPeak;
   final String? primaries;
 
+  /// §video4kBench — Sortie vidéo réellement active (`current-vo`).
+  ///
+  /// Indispensable dès qu'un banc d'essai peut forcer `vo` : sans elle, on ne
+  /// sait pas si le réglage choisi a été RETENU par mpv ou silencieusement
+  /// refusé, et on attribuerait à la mesure ce qui n'est qu'un réglage ignoré.
+  final String? vo;
+
+  /// Fréquence de rafraîchissement de l'écran (`display-fps`).
+  ///
+  /// C'est le plafond de ce que l'affichage peut présenter. Une box qui
+  /// annonce 60 Hz mais ne tient que 16 img/s en 4K désigne la sortie, pas la
+  /// source (§video4k).
+  final double? displayFps;
+
+  /// Décalage audio/vidéo instantané, en secondes (`avsync`).
+  final double? avSync;
+
   const VideoStatsSnapshot({
     this.width,
     this.height,
@@ -78,6 +95,9 @@ class VideoStatsSnapshot {
     this.decoderDroppedFrames,
     this.signalPeak,
     this.primaries,
+    this.vo,
+    this.displayFps,
+    this.avSync,
   });
 
   /// Le décodage passe-t-il par le matériel ?
@@ -143,6 +163,10 @@ class VideoStatsSnapshot {
         'fps=${containerFps?.toStringAsFixed(1) ?? "?"}',
         if (isAnamorphic) 'par=${pixelAspectRatio!.toStringAsFixed(2)}',
         if ((signalPeak ?? 0) > 1.0) 'hdr',
+        // §video4kBench — `vo` et `display-fps` sont STATIQUES pendant une
+        // lecture : leur place est ici, pas dans la signature dynamique.
+        if (vo != null) 'vo=$vo',
+        if (displayFps != null) 'écran=${displayFps!.toStringAsFixed(0)} Hz',
       ].join(' · ');
 
   /// §video4kTrace — Les deux chiffres qui décrivent le SYMPTÔME, à part.
@@ -167,6 +191,7 @@ class VideoStatsSnapshot {
       'perdues=${droppedFrames ?? 0}',
       if ((decoderDroppedFrames ?? 0) > 0) 'décodeur=$decoderDroppedFrames',
       if (bitrateLabel != null) 'débit=$bitrateLabel',
+      if (avSync != null) 'a/v=${avSync!.toStringAsFixed(3)} s',
       if (isDroppingRate) 'DÉCROCHE',
     ].join(' · ');
   }
@@ -200,6 +225,9 @@ abstract final class VideoStatsReader {
     int? bitrate;
     int? dropped;
     int? decoderDropped;
+    String? vo;
+    double? displayFps;
+    double? avSync;
 
     final platform = player.platform;
     if (platform is NativePlayer) {
@@ -212,7 +240,7 @@ abstract final class VideoStatsReader {
         }
       }
 
-      // En parallèle : 6 allers-retours natifs séquentiels tiendraient mal la
+      // En parallèle : 10 allers-retours natifs séquentiels tiendraient mal la
       // cadence d'une seconde sur une box déjà en difficulté.
       final values = await Future.wait([
         prop('hwdec-current'),
@@ -221,6 +249,17 @@ abstract final class VideoStatsReader {
         prop('video-bitrate'),
         prop('frame-drop-count'),
         prop('decoder-frame-drop-count'),
+        // §video4kBench — Vérifient qu'un réglage forcé a bien été retenu, et
+        // donnent le plafond de l'affichage (cf. §video4k).
+        prop('current-vo'),
+        // ⚠️ Deux noms selon la version de libmpv : `display-fps` a été
+        // transformé en OPTION (et rendu muet en lecture) sur les builds
+        // récents, où la valeur mesurée vit dans `estimated-display-fps`. On
+        // demande les deux — se tromper de nom coûterait un cycle de release
+        // pour découvrir un champ vide.
+        prop('display-fps'),
+        prop('estimated-display-fps'),
+        prop('avsync'),
       ]);
       hwdec = values[0];
       renderedFps = double.tryParse(values[1] ?? '');
@@ -228,6 +267,10 @@ abstract final class VideoStatsReader {
       bitrate = double.tryParse(values[3] ?? '')?.round();
       dropped = int.tryParse(values[4] ?? '');
       decoderDropped = int.tryParse(values[5] ?? '');
+      vo = values[6];
+      displayFps =
+          double.tryParse(values[7] ?? '') ?? double.tryParse(values[8] ?? '');
+      avSync = double.tryParse(values[9] ?? '');
     }
 
     return VideoStatsSnapshot(
@@ -250,6 +293,9 @@ abstract final class VideoStatsReader {
       decoderDroppedFrames: decoderDropped,
       signalPeak: params.sigPeak,
       primaries: params.primaries,
+      vo: vo,
+      displayFps: displayFps,
+      avSync: avSync,
     );
   }
 }

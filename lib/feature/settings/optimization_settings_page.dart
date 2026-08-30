@@ -3,6 +3,7 @@ import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
+import 'package:aetherStream/feature/player/video_render.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/widgets/memory_stats_card.dart';
@@ -251,6 +252,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
+              ..._buildVideoBench(cs),
             ],
           ),
         ),
@@ -272,6 +274,170 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           ),
         ),
       );
+
+  /// §video4kBench — Section « Banc d'essai vidéo ».
+  ///
+  /// Elle vit ici et pas dans le panneau du lecteur pour une raison de méthode :
+  /// changer `vo`/`hwdec` ne prend effet qu'à la lecture SUIVANTE (ils sont
+  /// figés à la construction du `VideoController`). Un réglage posé au milieu
+  /// d'un film donnerait l'illusion d'un essai qui n'a pas eu lieu.
+  ///
+  /// Le relevé qui la justifie (box réelle, 2026-08-30) : `mediacodec-copy`,
+  /// 8,12 images perdues par seconde, **invariantes au débit** — donc la sortie
+  /// vidéo, ni le réseau ni le décodeur. Cf. `video_render.dart`.
+  List<Widget> _buildVideoBench(ColorScheme cs) {
+    final overridden = VideoRenderPreference.isOverridden;
+    return [
+      _sectionLabel('Banc d\'essai vidéo', cs),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Text(
+          'Pour diagnostiquer une lecture 4K qui saccade sur box TV. '
+          'Les changements ne s\'appliquent qu\'à la PROCHAINE lecture. '
+          'Vérifier le résultat avec « Infos vidéo » dans le lecteur '
+          '(↑ → Options), qui affiche la sortie retenue et les images perdues.',
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+        ),
+      ),
+      _benchRow<VideoRenderMode>(
+        cs: cs,
+        title: 'Rendu',
+        values: VideoRenderMode.values,
+        current: VideoRenderPreference.mode,
+        labelOf: (v) => v.label,
+        detailOf: (v) => v.detail,
+        onPick: (v) => setState(() => VideoRenderPreference.setMode(v)),
+      ),
+      _benchRow<VideoSyncMode>(
+        cs: cs,
+        title: 'Synchro A/V',
+        values: VideoSyncMode.values,
+        current: VideoRenderPreference.sync,
+        labelOf: (v) => v.label,
+        detailOf: (v) => v.detail,
+        onPick: (v) => setState(() => VideoRenderPreference.setSync(v)),
+      ),
+      // ⚠️ L'avertissement n'apparaît QUE hors configuration d'origine : un
+      // relevé fait sur un banc oublié est un relevé faux, et c'est le genre
+      // d'oubli qui coûte une session entière.
+      if (overridden)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Text(
+            '⚠️ Réglages de diagnostic actifs — la lecture ne se comporte plus '
+            'comme par défaut. « Direct » supprime les sous-titres affichés par '
+            'le lecteur.',
+            style: TextStyle(fontSize: 11, color: kWarning),
+          ),
+        ),
+      if (overridden)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: FocusableCard(
+            scaleOnFocus: false,
+            onTap: _resetBench,
+            decorateOnly: true,
+            child: FilledButton.tonalIcon(
+              onPressed: _resetBench,
+              icon: const Icon(Icons.settings_backup_restore, size: 18),
+              label: const Text('Rétablir le rendu par défaut'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(44),
+              ),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  void _resetBench() {
+    setState(VideoRenderPreference.reset);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('🔬 Rendu vidéo rétabli — actif à la prochaine lecture'),
+    ));
+  }
+
+  /// Rangée de choix exclusifs, calquée sur `_buildProfilesRow` (même grammaire
+  /// visuelle et même focusabilité D-pad).
+  Widget _benchRow<T extends Enum>({
+    required ColorScheme cs,
+    required String title,
+    required List<T> values,
+    required T current,
+    required String Function(T) labelOf,
+    required String Function(T) detailOf,
+    required void Function(T) onPick,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+          child: Text(title,
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        ),
+        SizedBox(
+          height: 62,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            scrollDirection: Axis.horizontal,
+            itemCount: values.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (_, i) {
+              final v = values[i];
+              final active = v == current;
+              return FocusableChip(
+                onTap: () => onPick(v),
+                borderRadius: BorderRadius.circular(10),
+                child: GestureDetector(
+                  onTap: () => onPick(v),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 132,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      color: kAccentSecondary.withAlpha(active ? 40 : 16),
+                      border: Border.all(
+                        color: active
+                            ? kAccentSecondary
+                            : kAccentSecondary.withAlpha(60),
+                        width: active ? 2.0 : 1.0,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          labelOf(v),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight:
+                                active ? FontWeight.bold : FontWeight.normal,
+                            color: active ? kAccentSecondary : cs.onSurface,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          detailOf(v),
+                          style:
+                              TextStyle(fontSize: 9, color: cs.onSurfaceVariant),
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildProfilesRow(ColorScheme cs) {
     return SizedBox(
