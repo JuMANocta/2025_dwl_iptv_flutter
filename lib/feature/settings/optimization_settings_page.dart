@@ -5,6 +5,7 @@ import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/player/engine_probe_page.dart';
+import 'package:aetherStream/feature/player/engine_sweep_page.dart';
 import 'package:aetherStream/feature/player/video_render.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
@@ -360,6 +361,33 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
         ),
       ),
+      // §engineSweep — Le balayage qui doit trancher « garde-t-on libmpv ? ».
+      // Mesure, plutôt que de croire l'argument « libmpv est plus tolérant ».
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+        child: FocusableCard(
+          scaleOnFocus: false,
+          onTap: _sweepMedia3,
+          decorateOnly: true,
+          child: FilledButton.tonalIcon(
+            onPressed: _sweepMedia3,
+            icon: const Icon(Icons.playlist_add_check, size: 18),
+            label: const Text('Balayage formats (Media3)'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+            ),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+        child: Text(
+          '125 flux du catalogue : 60 .avi (le conteneur suspect), 40 .mkv, '
+          '25 .mp4. Compte ceux qui se lisent, ceux qui se lisent SANS AUDIO, '
+          'et ceux qui échouent. ~20 min, verdict dans le journal.',
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+        ),
+      ),
       // ⚠️ L'avertissement n'apparaît QUE hors configuration d'origine : un
       // relevé fait sur un banc oublié est un relevé faux, et c'est le genre
       // d'oubli qui coûte une session entière.
@@ -418,6 +446,13 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
         startAt: latest.position,
       ),
     ));
+  }
+
+  /// §engineSweep — Ouvre le balayage de formats.
+  void _sweepMedia3() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const EngineSweepPage()),
+    );
   }
 
   void _resetBench() {
