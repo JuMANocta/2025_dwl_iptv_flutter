@@ -50,8 +50,30 @@ class AetherPlayerController {
         ? VideoController(player)
         : VideoController(player, configuration: benchConfig);
     _applyAudioTuning();
+    _applyVideoTuning();
     // Boost initial : appliqué après que mpv ait pris la propriété volume-max.
     player.setVolume(initialVolume);
+  }
+
+  /// §video4kHdr — Applique le levier HDR du banc d'essai.
+  ///
+  /// Séparé du réglage audio parce qu'il ne s'adresse pas au même étage : ces
+  /// propriétés visent le travail que le GPU fait sur CHAQUE image, seul
+  /// endroit où la mesure situe encore le goulot en 4K (cf. `video_render.dart`).
+  /// Runtime-settable, contrairement à `vo`/`hwdec`.
+  Future<void> _applyVideoTuning() async {
+    final props = VideoRenderPreference.hdr.properties;
+    if (props.isEmpty) return;
+    try {
+      if (player.platform is! NativePlayer) return;
+      final np = player.platform as NativePlayer;
+      for (final e in props.entries) {
+        await np.setProperty(e.key, e.value);
+      }
+      debugPrint('🔬 §video4kHdr — ${VideoRenderPreference.hdr.name} appliqué');
+    } catch (e) {
+      debugPrint('⚠️ §video4kHdr — réglage refusé : $e');
+    }
   }
 
   /// Configure mpv pour un volume amplifiable et une meilleure synchro A/V.
@@ -145,6 +167,9 @@ class AetherPlayerController {
         await _applyLangPrefs(np, audioLang, subLang);
       }
     } catch (_) {}
+    // §benchGuard — Drapeau levé AVANT la lecture : s'il est encore là au
+    // prochain démarrage, c'est que l'app est morte pendant celle-ci.
+    VideoRenderPreference.armCrashGuard();
     await player.open(Media(url, start: start), play: true);
   }
 
@@ -157,6 +182,9 @@ class AetherPlayerController {
         await _applyLangPrefs(np, audioLang, subLang);
       }
     } catch (_) {}
+    // §benchGuard — Drapeau levé AVANT la lecture : s'il est encore là au
+    // prochain démarrage, c'est que l'app est morte pendant celle-ci.
+    VideoRenderPreference.armCrashGuard();
     await player.open(Media('file://$path', start: start), play: true);
   }
 
@@ -178,5 +206,9 @@ class AetherPlayerController {
     }
   }
 
-  void dispose() => player.dispose();
+  void dispose() {
+    // §benchGuard — Fermeture propre : on baisse le drapeau levé à l'ouverture.
+    VideoRenderPreference.disarmCrashGuard();
+    player.dispose();
+  }
 }

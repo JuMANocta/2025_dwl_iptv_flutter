@@ -119,6 +119,81 @@ enum VideoSyncMode {
   final String value;
 }
 
+/// §video4kHdr — Troisième levier : le travail GPU imposé par le HDR.
+///
+/// ## Ce que la mesure a établi (box réelle, 2026-08-30)
+///
+/// | Chemin | Images perdues | Dérive A/V |
+/// |---|---|---|
+/// | `mediacodec-copy` (défaut) | 7,99/s | **0,000 s**, verrouillée |
+/// | `hwdec=no` (logiciel) | 2,67/s | **+0,50 s par seconde** |
+///
+/// En matériel, toute la chaîne livre ses 24 img/s au vidéo-output et la
+/// synchro reste à zéro : rien en amont n'est en peine, ce sont des images
+/// **déjà prêtes** qui sont jetées à la présentation. En logiciel, le décodeur
+/// s'effondre (vidéo à mi-vitesse) et s'il perd moins d'images, c'est
+/// simplement qu'il en produit moins. **Le goulot est à l'étage de sortie
+/// GPU**, et nulle part ailleurs.
+///
+/// Trois choses s'y passent : la remontée en texture (la copie),
+/// le tone-mapping HDR→SDR, et la détection de pic lumineux
+/// (`hdr-compute-peak`, un compute shader qui analyse **chaque image**).
+/// [VideoRenderMode.direct] aurait supprimé les deux premières d'un coup —
+/// il tue l'application en ~20 s sur cette box. Restent les deux autres, et
+/// elles se coupent **sans perdre les sous-titres**.
+///
+/// ## L'indice qui vient de l'utilisateur
+///
+/// « ma télé est compatible HDR mais je ne vois pas l'image HDR se lancer en
+/// bas à droite ». Le téléviseur ne bascule jamais en mode HDR : mpv reçoit
+/// bien du HDR (`hdr` dans chaque relevé, bt.2020, 10 bits) mais **sort en
+/// SDR**. Il tone-mappe donc chaque image, en 3840×2072, 24 fois par seconde.
+/// [VideoHdrMode.passthrough] est la contre-épreuve : si le témoin HDR du
+/// téléviseur s'allume, le tone-mapping a quitté le GPU.
+enum VideoHdrMode {
+  /// Défaut mpv : tone-mapping bt.2390 + détection de pic si le GPU expose des
+  /// compute shaders.
+  auto(
+    label: 'Auto',
+    detail: 'Défaut mpv — tone-mapping complet',
+    properties: {},
+  ),
+
+  /// Coupe le compute shader d'analyse et prend la courbe la moins chère.
+  /// Le rendu HDR est moins fidèle, mais rien d'autre n'est perdu.
+  lightweight(
+    label: 'Allégé',
+    detail: 'Sans analyse de pic · courbe simple',
+    properties: {
+      'hdr-compute-peak': 'no',
+      'tone-mapping': 'clip',
+    },
+  ),
+
+  /// Demande à envoyer le HDR tel quel à l'écran. Si le téléviseur l'accepte,
+  /// le tone-mapping disparaît entièrement du GPU — et son témoin HDR
+  /// s'allume, ce qui rend l'essai vérifiable À L'ŒIL, sans journal.
+  passthrough(
+    label: 'Passthrough',
+    detail: 'HDR envoyé tel quel à la TV',
+    properties: {
+      'target-colorspace-hint': 'yes',
+    },
+  );
+
+  const VideoHdrMode({
+    required this.label,
+    required this.detail,
+    required this.properties,
+  });
+
+  final String label;
+  final String detail;
+
+  /// Propriétés mpv à poser. Vide = on ne touche à rien.
+  final Map<String, String> properties;
+}
+
 /// §video4kBench — Mémorise les choix du banc d'essai d'une lecture à l'autre.
 ///
 /// Persistant par nécessité : un diagnostic se fait sur plusieurs films
@@ -131,18 +206,23 @@ enum VideoSyncMode {
 abstract final class VideoRenderPreference {
   static const _modeKey = 'player_video_render_mode_v1';
   static const _syncKey = 'player_video_sync_mode_v1';
+  static const _hdrKey = 'player_video_hdr_mode_v1';
 
   static VideoRenderMode _mode = VideoRenderMode.auto;
   static VideoSyncMode _sync = VideoSyncMode.displayResample;
+  static VideoHdrMode _hdr = VideoHdrMode.auto;
 
   static VideoRenderMode get mode => _mode;
   static VideoSyncMode get sync => _sync;
+  static VideoHdrMode get hdr => _hdr;
 
   /// Vrai dès qu'un réglage s'écarte du comportement historique — sert à
   /// signaler dans le journal qu'un relevé n'a PAS été fait en configuration
   /// d'origine (une mesure dont on a oublié le banc est une mesure perdue).
   static bool get isOverridden =>
-      _mode != VideoRenderMode.auto || _sync != VideoSyncMode.displayResample;
+      _mode != VideoRenderMode.auto ||
+      _sync != VideoSyncMode.displayResample ||
+      _hdr != VideoHdrMode.auto;
 
   /// Configuration à passer au `VideoController`. `null` quand rien n'est
   /// surchargé → media_kit garde strictement son comportement par défaut.
@@ -158,8 +238,24 @@ abstract final class VideoRenderPreference {
           prefs.getString(_modeKey), VideoRenderMode.values, VideoRenderMode.auto);
       _sync = _byName(prefs.getString(_syncKey), VideoSyncMode.values,
           VideoSyncMode.displayResample);
+      _hdr = _byName(
+          prefs.getString(_hdrKey), VideoHdrMode.values, VideoHdrMode.auto);
+
+      // §benchGuard — Drapeau encore levé ⇒ la session précédente est morte en
+      // pleine lecture avec un réglage de diagnostic. On désarme AVANT de
+      // rendre la main, sinon la même lecture retue l'app en boucle.
+      if (prefs.getBool(_armedKey) == true) {
+        debugPrint('💥 §benchGuard — plantage détecté avec un réglage de '
+            'diagnostic actif (rendu=${_mode.name} sync=${_sync.name} '
+            'hdr=${_hdr.name}) → retour à la configuration par défaut');
+        reset();
+        _persistBool(_armedKey, false);
+        return;
+      }
+
       if (isOverridden) {
-        debugPrint('🔬 §video4kBench — rendu=${_mode.name} sync=${_sync.name}');
+        debugPrint('🔬 §video4kBench — rendu=${_mode.name} '
+            'sync=${_sync.name} hdr=${_hdr.name}');
       }
     } catch (e) {
       debugPrint('⚠️ §video4kBench — lecture impossible : $e');
@@ -178,11 +274,54 @@ abstract final class VideoRenderPreference {
     _persist(_syncKey, value.name);
   }
 
+  static void setHdr(VideoHdrMode value) {
+    if (value == _hdr) return;
+    _hdr = value;
+    _persist(_hdrKey, value.name);
+  }
+
   /// Remet le banc au comportement d'origine.
   static void reset() {
     setMode(VideoRenderMode.auto);
     setSync(VideoSyncMode.displayResample);
+    setHdr(VideoHdrMode.auto);
   }
+
+  // ── §benchGuard — Garde-fou anti-plantage ───────────────────────────────────
+  //
+  // ⚠️ Né d'un incident réel (2026-08-30) : `Rendu = Direct` a tué
+  // l'application en ~20 s, et le réglage étant PERSISTANT, chaque lecture 4K
+  // suivante replantait — au redémarrage, l'utilisateur n'a aucun moyen de
+  // deviner qu'un réglage de diagnostic est en cause.
+  //
+  // Principe : on lève un drapeau juste avant une lecture faite avec un
+  // réglage non standard, on le baisse quand le lecteur se ferme proprement.
+  // Retrouver le drapeau levé au démarrage suivant signifie que l'app est morte
+  // pendant cette lecture → on revient d'office à la configuration d'origine.
+  //
+  // ⚠️ Un faux positif est possible (l'utilisateur tue l'app à la main en
+  // pleine lecture) et c'est ASSUMÉ : il retombe sur la configuration sûre,
+  // jamais l'inverse. Un garde-fou qui se trompe doit se tromper du bon côté.
+  static const _armedKey = 'player_video_bench_armed_v1';
+
+  /// Appelé à l'ouverture d'un média. Sans surcharge active, ne coûte rien.
+  static void armCrashGuard() {
+    if (!isOverridden) return;
+    _persistBool(_armedKey, true);
+  }
+
+  /// Appelé quand le lecteur se ferme normalement.
+  static void disarmCrashGuard() => _persistBool(_armedKey, false);
+
+  static void _persistBool(String key, bool value) {
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setBool(key, value))
+        .catchError((e) {
+      debugPrint('⚠️ §benchGuard — écriture impossible : $e');
+      return false;
+    });
+  }
+
 
   static void _persist(String key, String value) {
     SharedPreferences.getInstance()

@@ -317,6 +317,18 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
         detailOf: (v) => v.detail,
         onPick: (v) => setState(() => VideoRenderPreference.setSync(v)),
       ),
+      // §video4kHdr — Le levier qui ne coûte aucun sous-titre, contrairement à
+      // « Direct ». « Passthrough » se vérifie à l'œil : le témoin HDR du
+      // téléviseur doit s'allumer.
+      _benchRow<VideoHdrMode>(
+        cs: cs,
+        title: 'HDR',
+        values: VideoHdrMode.values,
+        current: VideoRenderPreference.hdr,
+        labelOf: (v) => v.label,
+        detailOf: (v) => v.detail,
+        onPick: (v) => setState(() => VideoRenderPreference.setHdr(v)),
+      ),
       // ⚠️ L'avertissement n'apparaît QUE hors configuration d'origine : un
       // relevé fait sur un banc oublié est un relevé faux, et c'est le genre
       // d'oubli qui coûte une session entière.
