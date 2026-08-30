@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
+import 'tmdb_group_alias_service.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/feature/search/m3u_parser.dart';
@@ -136,7 +137,7 @@ class ParsedPlaylistService {
       _accountNames[accountId] = accountName;
       setLoadState(accountId, AccountLoadState.loaded);
       onProgress?.call(1.0);
-      version.value++;
+      _bumpAfterLoad();
       return disk;
     }
 
@@ -170,7 +171,7 @@ class ParsedPlaylistService {
     _memory[accountId] = playlist;
     _accountNames[accountId] = accountName;
     setLoadState(accountId, AccountLoadState.loaded);
-    version.value++;
+    _bumpAfterLoad();
 
     // Sauvegarde disque en arrière-plan (non bloquant)
     _saveToDisk(accountId, playlist);
@@ -201,7 +202,7 @@ class ParsedPlaylistService {
         setLoadState(acc.id, AccountLoadState.loaded);
         debugPrint('✅ ParsedPlaylist: préchargé depuis disque — ${acc.label} (${disk.entries.length} entrées)');
         _auditCategories(acc.label, disk.entries);
-        version.value++;
+        _bumpAfterLoad();
       }
     }
   }
@@ -226,7 +227,7 @@ class ParsedPlaylistService {
       _memory[accountId] = disk;
       _accountNames[accountId] = accountName;
       setLoadState(accountId, AccountLoadState.loaded);
-      version.value++;
+      _bumpAfterLoad();
       debugPrint('✅ ParsedPlaylist secondaire: cache disque — $accountName');
       return;
     }
@@ -253,7 +254,7 @@ class ParsedPlaylistService {
     _memory[accountId] = playlist;
     _accountNames[accountId] = accountName;
     setLoadState(accountId, AccountLoadState.loaded);
-    version.value++;
+    _bumpAfterLoad();
     _saveToDisk(accountId, playlist);
     debugPrint('✅ ParsedPlaylist secondaire: parse — $accountName (${allEntries.length} entrées)');
   }
@@ -367,6 +368,18 @@ class ParsedPlaylistService {
 
   /// Toutes les entrées de tous les comptes actuellement chargés en mémoire.
   /// Utilisé par ActorDetailsPage, FavoritesService, etc.
+  /// §tmdbMerge — Un catalogue vient d'entrer ou de sortir : la table de fusion
+  /// par identifiant TMDB doit être refaite AVANT de notifier les vues, sinon
+  /// elles regroupent une frame avec l'ancienne table.
+  ///
+  /// ⚠️ Appelé uniquement sur les chemins de CHARGEMENT / DÉCHARGEMENT, pas sur
+  /// chaque notification : la reconstruction balaie toutes les entrées de tous
+  /// les comptes (~350 000 sur les listes réelles).
+  static void _bumpAfterLoad() {
+    TmdbGroupAliasService.rebuild(entries);
+    version.value++;
+  }
+
   static List<M3uEntry> get entries {
     _touchAllLoaded();
     return _memory.values.expand((p) => p.entries).toList();

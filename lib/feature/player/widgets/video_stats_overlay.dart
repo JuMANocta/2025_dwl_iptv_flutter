@@ -59,6 +59,12 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
   /// CHANGEMENT, pas à chaque tic.
   String? _loggedSignature;
 
+  /// §video4kTrace — Dernière écriture des chiffres dynamiques, et mémoire du
+  /// décrochage déjà signalé.
+  DateTime? _lastDynamicLog;
+  bool _loggedDrop = false;
+  static const Duration _dynamicPeriod = Duration(seconds: 10);
+
   /// §qualityTruth — Un flux ne se fait épingler qu'UNE fois par lecture :
   /// la ligne intéresse, sa répétition à chaque changement de débit non.
   bool _loggedVerdict = false;
@@ -94,6 +100,21 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       // §qualityTruth — Une liste qui survend laisse une trace datée dans le
       // journal : c'est ce qui permet, après coup, de savoir QUEL fournisseur
       // ment et sur quels titres.
+      // §video4kTrace — Les chiffres qui bougent, à cadence LENTE : le rythme
+      // tenu et les pertes. Une ligne toutes les 10 s suffit à voir une lecture
+      // s'effondrer, sans transformer le journal en flot continu.
+      final now = DateTime.now();
+      final due = _lastDynamicLog == null ||
+          now.difference(_lastDynamicLog!) >= _dynamicPeriod;
+      // ⚠️ Le PREMIER décrochage est écrit tout de suite, sans attendre le
+      // prochain palier : c'est l'instant qui intéresse, et il peut précéder
+      // un plantage — auquel cas la ligne suivante n'arrivera jamais.
+      final firstDrop = !_loggedDrop && (stats.isDroppingRate || stats.hasDroppedFrames);
+      if (due || firstDrop) {
+        _lastDynamicLog = now;
+        if (firstDrop) _loggedDrop = true;
+        debugPrint('📉 §videoStats — ${stats.dynamicSignature}');
+      }
       if (!_loggedVerdict &&
           stats.verdictFor(widget.announcedQuality) ==
               QualityVerdict.survendu) {

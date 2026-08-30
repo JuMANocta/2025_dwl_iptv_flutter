@@ -14,6 +14,7 @@ import 'package:aetherStream/data/services/search_history_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_poster_cache.dart';
+import 'package:aetherStream/data/services/tmdb_group_alias_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
@@ -163,6 +164,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
       // §inferredCat — notifieur GROUPÉ (une fois toutes les 5 s au plus), donc
       // sûr à mettre ici : il entre dans la clé de regroupement.
       InferredCategoryService.version,
+      // §tmdbMerge — La table de fusion change la CLÉ de regroupement : sans
+      // elle ici, l'accueil garderait son regroupement mémoïsé d'avant fusion.
+      TmdbGroupAliasService.version,
     ]);
     _homeListenable.addListener(_onHomeNotifier);
 
@@ -1223,7 +1227,11 @@ class _TypePageState extends State<_TypePage> {
       // §inferredCat — Les catégories déduites changent le RANGEMENT, donc le
       // groupement doit être refait quand elles avancent. Sûr uniquement parce
       // que ce compteur est groupé côté service (cf. §favAudit).
-      InferredCategoryService.version.value * 10007;
+      InferredCategoryService.version.value * 10007 +
+      // §tmdbMerge — La table de fusion modifie la CLÉ de chaque groupe : elle
+      // doit entrer dans la clé de cache, sinon l'accueil garde le regroupement
+      // d'avant fusion jusqu'au prochain changement de playlist.
+      TmdbGroupAliasService.version.value * 100003;
 
   /// Tri des catégories : priorité (Favoris → France → New → …) puis alpha.
   static List<String> _sortCategories(Map<String, dynamic> byCategory) =>

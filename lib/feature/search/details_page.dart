@@ -1721,26 +1721,53 @@ class _DetailsPageState extends State<DetailsPage> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            // §versionSelected — La sélection ne peut PAS reposer sur la seule
+            // couleur. Elle s'exprimait par un fond à 21 % d'opacité contre
+            // 8 %, une bordure un peu plus dense et une graisse : à trois
+            // mètres d'un téléviseur, ces trois écarts sont invisibles.
+            //
+            // ⚠️ Pire : sur TV, `FocusableChip` peint un anneau vert vif autour
+            // de la puce FOCALISÉE. Focus et sélection partageaient donc le même
+            // canal — la puce sous le curseur avait l'air choisie, et la vraie
+            // sélection se noyait. « Où je suis » et « ce qui va être lu » sont
+            // deux informations différentes : la première garde l'anneau, la
+            // seconde prend un marqueur EXPLICITE et non chromatique.
             decoration: BoxDecoration(
-              color: selected ? color.withAlpha(55) : color.withAlpha(20),
+              color: selected ? color.withAlpha(70) : color.withAlpha(16),
               border: Border.all(
-                color: selected ? color.withAlpha(200) : color.withAlpha(60),
-                width: selected ? 1.5 : 1,
+                color: selected ? color : color.withAlpha(60),
+                width: selected ? 2 : 1,
               ),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                    color: color,
-                    height: 1.3,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Même motif que le sélecteur de pistes (`_TrackRow`) :
+                    // pastille cochée / cercle vide. L'emplacement est TOUJOURS
+                    // réservé, donc rien ne se décale quand on change de choix.
+                    Icon(
+                      selected
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked,
+                      size: 13,
+                      color: selected ? color : color.withAlpha(90),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                        color: color,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
                 ),
                 // §qualityTruth — Ce que ce flux a RÉELLEMENT servi la
                 // dernière fois qu'on l'a lu. Rien tant qu'il n'a pas été

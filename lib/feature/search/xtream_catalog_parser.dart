@@ -125,7 +125,7 @@ class XtreamCatalogParser {
       streamId: int.tryParse(id),
       groupTitle: groupTitle,
       category: cat,
-      tmdbId: _str(item['tmdb_id']),
+      tmdbId: _tmdbId(item),
       rating: _rating(item['rating']),
       addedAt: _unixSeconds(item['added']),
     ));
@@ -153,7 +153,7 @@ class XtreamCatalogParser {
       streamId: int.tryParse(id),
       groupTitle: groupTitle,
       category: cat,
-      tmdbId: _str(item['tmdb_id']),
+      tmdbId: _tmdbId(item),
       plot: _str(item['plot']),
       genre: _htmlDecode(_str(item['genre'])),
       rating: _rating(item['rating']),
@@ -171,6 +171,24 @@ class XtreamCatalogParser {
 }
 
 /// Valeur string non vide ou null (les panels renvoient "", null, ou 0 mélangés).
+/// §tmdbField — L'identifiant TMDB n'a pas le même nom d'un panel à l'autre.
+///
+/// ⚠️ Mesuré sur le corpus du 2026-08-30 : PLATINIUM l'envoie sous `tmdb_id`
+/// (93 % des films), **PREMIUM sous `tmdb`** (99 %). Le parseur ne lisait que
+/// le premier : **16 650 identifiants** (12 651 films + 3 999 séries) partaient
+/// à la poubelle, et ces titres retombaient sur la recherche TMDB par NOM —
+/// c'est-à-dire sur le chemin qui perd des affiches (§cleanQuery).
+///
+/// ⚠️ Ne pas se contenter de `??` : certains panels renvoient la chaîne vide ou
+/// `"0"` plutôt que d'omettre le champ.
+String? _tmdbId(Map item) {
+  for (final k in const ['tmdb_id', 'tmdb', 'tmdbId']) {
+    final v = _str(item[k]);
+    if (v != null && v.isNotEmpty && v != '0') return v;
+  }
+  return null;
+}
+
 String? _str(Object? v) {
   if (v == null) return null;
   final s = v.toString().trim();

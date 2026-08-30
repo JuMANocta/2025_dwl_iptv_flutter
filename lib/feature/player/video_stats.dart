@@ -145,6 +145,32 @@ class VideoStatsSnapshot {
         if ((signalPeak ?? 0) > 1.0) 'hdr',
       ].join(' · ');
 
+  /// §video4kTrace — Les deux chiffres qui décrivent le SYMPTÔME, à part.
+  ///
+  /// ⚠️ Ils ne peuvent pas rejoindre [diagnosticSignature] : celle-ci sert de
+  /// clé de dédoublonnage (`if (signature != _loggedSignature)`), et une valeur
+  /// qui bouge à chaque tick la ferait écrire une fois par seconde — le journal
+  /// se noierait au lieu d'informer.
+  ///
+  /// Pourquoi ils sont indispensables : sur la box, le journal §tvLogs est le
+  /// SEUL canal (pas de logcat). Sans eux, un utilisateur qui rapporte « une
+  /// image toutes les X secondes » n'a rien dans le journal qui le montre — le
+  /// symptôme reste invisible à celui qui doit le corriger.
+  String get dynamicSignature {
+    final target = containerFps;
+    final actual = renderedFps;
+    final rendu = (target != null && actual != null)
+        ? '${actual.toStringAsFixed(1)}/${target.toStringAsFixed(1)} img/s'
+        : (actual?.toStringAsFixed(1) ?? '?');
+    return [
+      'rendu=$rendu',
+      'perdues=${droppedFrames ?? 0}',
+      if ((decoderDroppedFrames ?? 0) > 0) 'décodeur=$decoderDroppedFrames',
+      if (bitrateLabel != null) 'débit=$bitrateLabel',
+      if (isDroppingRate) 'DÉCROCHE',
+    ].join(' · ');
+  }
+
   /// Débit lisible : « 18,4 Mb/s ».
   String? get bitrateLabel {
     final b = videoBitrate;

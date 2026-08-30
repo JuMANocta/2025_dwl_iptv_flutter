@@ -272,11 +272,38 @@ class TitleMetadata {
 
   // §23 — `VF\d?` couvre aussi les variantes numérotées "VF2" (liste VOD :
   // "[MULTi VF2]") qui survivaient dans le titre de base.
-  static final _reLangTags     = RegExp(r'\b(MULTI|VOSTFR|VOST|VF\d?|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH)\b', caseSensitive: false);
+  // §tagResidue — Jetons AJOUTÉS le 2026-08-30, tous mesurés sur le corpus
+  // rafraîchi (353 475 titres) : `SUBAR` 705, `LIGHT` 270, `SUB-AR` 144,
+  // `VQF` 8, plus `LEG`/`LEGENDADO` (sous-titres portugais) qui polluaient la
+  // pastille de qualité (« 4K · - LEG »).
+  //
+  // ⚠️ `LEG` est court et dangereux : le corpus contient `LEGO Marvel Super
+  // Heroes`. La frontière `\b` suffit ici (LEGO ≠ LEG), mais ce titre reste le
+  // contre-exemple à faire tourner à chaque modification.
+  static final _reLangTags     = RegExp(
+      r'\b(MULTI|VOSTFR|VOST|VF\d?|VO|VFF|VQF|VFQ|VIP|RAW|TRUEFRENCH|FRENCH'
+      r'|SUB[-_]?AR|SUBAR|SUBS?|AUDIO|LEGENDADO|LEGENDA|LEG|LIGHT'
+      r'|MUTLI)\b',
+      caseSensitive: false);
 
-  // Codes langue/version dans parenthèses : (FR), (EN), (AR), (MULTI), (VOST FR), (MUET)…
-  // Placé après _reQualityTags pour ne pas interférer avec (4K), (3D) etc. déjà retirés.
-  static final _reLangParens   = RegExp(r'[\(\[]\s*[A-Z]{2,6}(?:\s+[A-Z]{2,6})?\s*[\)\]]', caseSensitive: false);
+  // Codes langue/version entre délimiteurs : (FR), (EN), (AR), (MULTI), (VOST FR)…
+  //
+  // ⚠️ **§tagResidue (2026-08-30) — cette regex était un piège.** Elle s'écrivait
+  // `[A-Z]{2,6}` en `caseSensitive: false`, ce qui ne veut PAS dire « un code en
+  // majuscules » mais **n'importe quel mot de 2 à 6 lettres**. Elle mangeait donc
+  // `[Light]`, `(Suite)`, et surtout `[REC]` — qui EST le titre du film. Le titre
+  // devenait vide, et le repli rendait alors le titre BRUT, tags compris :
+  // `[REC] (2007) [MULTi]` s'affichait tel quel. La liste est désormais FERMÉE.
+  //
+  // ⚠️ Ne pas y remettre de joker : ce qui doit disparaître sans figurer ici est
+  // pris en charge par [_cleanTagGroups], qui raisonne sur « le strip a-t-il
+  // entamé ce groupe ? » au lieu de deviner sur la longueur d'un mot.
+  static final _reLangParens   = RegExp(
+      r'[\(\[]\s*(?:FR|EN|ES|IT|DE|PT|NL|RU|TR|PL|AR|JP|KR|CN|BR|US|UK|CA|BE'
+      r'|CH|MA|DZ|TN|GR|SE|NO|DK|FI|HU|RO|CZ|IN|VF\d?|VO|VOST|VOSTFR|VFF|VQF'
+      r'|VFQ|MULTI|MUET|SUB|SUBAR|LEG|LEGENDADO)'
+      r'(?:\s+(?:FR|EN|AR|SUB|VF\d?|VO|VOST|VOSTFR|MULTI))?\s*[\)\]]',
+      caseSensitive: false);
 
   // §xenoFormat — Tag composé `[MULTI-SUB]` et sa famille.
   //
@@ -322,7 +349,12 @@ class TitleMetadata {
     r'|BLURAY|BLU[-.]RAY|BDRIP|BRRIP'
     r'|WEB[-.]?DL|WEBRIP|HDRIP'
     r'|DVDRIP|DVDSCR|HDCAM|HDTS'
-    r'|MULTI|VOSTFR|VOST|VF\d?|VO|VFF|VIP|RAW|TRUEFRENCH|FRENCH'
+    r'|MULTI|VOSTFR|VOST|VF\d?|VO|VFF|VQF|VFQ|VIP|RAW|TRUEFRENCH|FRENCH'
+    r'|SUB[-_]?AR|SUBAR|SUBS?|AUDIO|LEGENDADO|LEGENDA|LEG|LIGHT'
+    // §tagResidue — `MUTLI` est une COQUILLE du fournisseur pour `MULTi`
+    // (`Tous en scène 2 (FHD MUTLi)`). Elle est dans le corpus, donc elle
+    // existe ; la corriger ici coûte un mot et évite une vignette orpheline.
+    r'|MUTLI'
     r')(?!\w)',
     caseSensitive: false,
   );
@@ -348,6 +380,130 @@ class TitleMetadata {
   /// titre affiché redevient une sous-chaîne exacte du titre brut, donc le
   /// calcul de `versionLabel` (une soustraction littérale) retrouve prise — un
   /// résidu ici laissait TOUT le titre dans le libellé (« FR Spider-Man… »).
+
+  // §tagResidue (2026-08-30) — Un groupe de délimiteurs se traite EN BLOC.
+  //
+  // **Le défaut.** Le strip de tags travaille jeton par jeton sur toute la
+  // chaîne. Quand un groupe contient un jeton INCONNU, il n'est ni vide ni
+  // intact : `[MULTi VO/VQF]` devient `[ /VQF]`, `[4K HDR10+ Dolby A/V]`
+  // devient `[ A/V]`. `_reEmptyBrackets` ne les ramasse pas — il exige une
+  // paire ne contenant que des espaces. Le débris part alors dans le titre
+  // affiché ET dans `groupKey`, donc le titre ne fusionne plus entre listes :
+  // ce sont les doublons signalés. Mesuré : **1 266 titres** sur 353 475.
+  //
+  // **La règle.** Un groupe est soit un bloc de tags — on le retire
+  // ENTIÈREMENT — soit du texte — on n'y touche PAS. Jamais de demi-strip.
+  // Il est jugé « bloc de tags » si le strip l'a ENTAMÉ et que le reste ne
+  // contient plus de mot.
+  //
+  // ⚠️ La garantie tient dans la première condition : un groupe que le strip
+  // n'a pas touché est laissé strictement intact. `(Hold The Dark)`,
+  // `(Dezesseis Facadas)`, `(mé)chant`, `(3D)` (§keep3d), les `(H)`/`(F)` des
+  // chaînes US ne peuvent pas être emportés — aucun jeton connu dedans.
+  //
+  // ⚠️ La seconde condition n'est PAS « c'est court » : `(The HD Story)` est
+  // entamé par `HD` et laisserait `The Story`, 8 caractères. On exige donc
+  // qu'aucun mot d'au moins 3 lettres contenant une minuscule ne subsiste.
+  static final _reGroupToken = RegExp(r'[\p{L}\p{N}]+', unicode: true);
+  static final _reYearOnlyGroup = RegExp(r'^\s*(?:19|20)\d{2}\s*$');
+
+  static bool _isTagGroup(String whole, String inner) {
+    if (inner.trim().isEmpty) return true;
+    // ⚠️ Les groupes que les regex DÉDIÉES savent déjà retirer entièrement
+    // doivent être reconnus ici, sinon le masque les leur soustrait : `(FR)`
+    // n'est pas dans `_reAllTags`, il est dans `_reLangParens`. Sans ce test,
+    // `2067 (FR) FHD 2020` redonnait `2067 (FR)` — régression de §yearTitle.
+    if (_reLangParens.hasMatch(whole) ||
+        _reFpsParens.hasMatch(whole) ||
+        _reMultiSubTag.hasMatch(whole)) {
+      return true;
+    }
+    var rest = inner
+        .replaceAll(_reDolby, ' ')
+        .replaceAll(_reAllTags, ' ')
+        // ⚠️ `_reQualityTags` n'est PAS inclus dans `_reAllTags` : il porte seul
+        // `DIRECTORS?\.?CUT`. Sans lui, `(Directors.Cut)` passait pour de la
+        // prose et restait dans le titre affiché.
+        .replaceAll(_reQualityTags, ' ')
+        .replaceAll(_reYearClean, ' ');
+    if (rest == inner) return false; // rien retiré → ce n'est pas un bloc de tags
+    var alnum = 0;
+    for (final m in _reGroupToken.allMatches(rest)) {
+      final t = m.group(0)!;
+      alnum += t.length;
+      if (t.length >= 3 && t.toUpperCase() != t) return false; // un vrai mot
+    }
+    return alnum <= 10;
+  }
+
+  // ⚠️ Sentinelles en zone à usage privé : ni lettre, ni chiffre, ni espace, ni
+  // délimiteur. Aucune des regex de la chaîne (``, `[A-Z]`, `\d`, `\s`,
+  // `[\p{L}\p{N}]`) ne peut les accrocher, donc un groupe masqué traverse le
+  // strip sans une égratignure.
+  static const String _maskOpen = '';
+  static const String _maskUnit = '';
+  static const String _maskClose = '';
+
+  /// Retire les groupes de tags, **masque** les autres.
+  ///
+  /// ⚠️ Le masquage n'est pas un détail : sans lui, un groupe qu'on a décidé de
+  /// GARDER se fait quand même entamer par les `replaceAll` globaux qui suivent
+  /// — `(MULTI AUDIO StadiumFX)` devenait `( AUDIO StadiumFX)`. « Soit on retire
+  /// tout, soit on ne touche à rien » n'a de sens que si le « rien » est protégé.
+  /// Les groupes conservés sont restaurés par [_unmaskGroups].
+  static String _cleanTagGroups(String value, List<String> kept) {
+    final out = StringBuffer();
+    var i = 0;
+    while (i < value.length) {
+      final c = value[i];
+      if (c == '(' || c == '[') {
+        final close = c == '(' ? ')' : ']';
+        final end = value.indexOf(close, i + 1);
+        // Pas de fermante → délimiteur mal formé côté fournisseur : on laisse
+        // faire `_dropOrphanBrackets` (§orphanBracket), qui sait le traiter.
+        if (end > i) {
+          final whole = value.substring(i, end + 1);
+          final inner = value.substring(i + 1, end);
+          // ⚠️ Un groupe réduit à une ANNÉE est laissé VERBATIM : ni retiré, ni
+          // masqué. C'est `_stripYears` qui doit le voir — la règle §midYear /
+          // §midYearFix décide « date de sortie ou morceau du titre » en
+          // regardant précisément ces délimiteurs. Le retirer ici cassait
+          // `|FR| Valensole 1965 (2025)` : privé de son `(2025)`, le `1965`
+          // devenait une année nue en fin de titre, donc une date, et le titre
+          // perdait son nombre.
+          if (_reYearOnlyGroup.hasMatch(inner)) {
+            out.write(whole);
+            i = end + 1;
+            continue;
+          }
+          if (_isTagGroup(whole, inner)) {
+            out.write(' ');
+          } else {
+            kept.add(whole);
+            out..write(_maskOpen)
+               ..write(_maskUnit * kept.length)
+               ..write(_maskClose);
+          }
+          i = end + 1;
+          continue;
+        }
+      }
+      out.write(c);
+      i++;
+    }
+    return out.toString();
+  }
+
+  static String _unmaskGroups(String value, List<String> kept) {
+    if (kept.isEmpty) return value;
+    var out = value;
+    for (var i = kept.length; i >= 1; i--) {
+      out = out.replaceAll(
+          '$_maskOpen${_maskUnit * i}$_maskClose', kept[i - 1]);
+    }
+    return out;
+  }
+
   static String _dropOrphanBrackets(String value) {
     final orphans = <int>{};
     final round = <int>[];
@@ -645,6 +801,15 @@ class TitleMetadata {
         base = base.substring(0, sFb.start).trim();
       }
     }
+    // §tagResidue — EN BLOC, et **AVANT** les strips globaux.
+    //
+    // ⚠️ L'ordre est la moitié du correctif. Placé après, ce nettoyage arrive
+    // sur des groupes déjà vidés (`[ /]`, `[ A/V]`) : il ne peut plus répondre à
+    // sa propre question — « le strip a-t-il entamé ce groupe ? » — puisque le
+    // strip est déjà passé. Mesuré : 1 266 résidus avant, 1 266 après. Placé
+    // ici, il voit `[MULTi VQF/VO]` entier et tranche.
+    final keptGroups = <String>[];
+    base = _cleanTagGroups(base, keptGroups);
     base = base.replaceAll(_reMultiSubTag, ' '); // §xenoFormat — avant _reLangTags
     base = base.replaceAll(_reDolby, '');        // multi-mots en premier
     base = base.replaceAll(_reQualityTags, '');
@@ -673,6 +838,7 @@ class TitleMetadata {
     // nettoyer les séparateurs pipe résiduels ("All My Life || MULTI" →
     // "All My Life" une fois MULTI retiré). ~6 900 titres réels concernés.
     base = base.replaceAll('|', '');
+    base = _unmaskGroups(base, keptGroups); // §tagResidue — groupes conservés
     base = _dropOrphanBrackets(base); // §orphanBracket
     base = base.replaceAll(_reSpaces, ' ').trim();
     base = base.replaceAll(_reTrimBaseStart, '').replaceAll(_reTrimBaseEnd, '');
@@ -702,6 +868,10 @@ class TitleMetadata {
       label = label.replaceAll(_reNewPrefix, '');
       label = label.replaceAll(_reSubSuffix, '');
       label = label.replaceAll(_reYearClean, '');
+      // §tagResidue — Même traitement EN BLOC que `baseTitle`, sinon on nettoie
+      // le titre et le débris ressort dans la pastille de version : mesuré,
+      // `Superman (2025) [4K HDR10+ Dolby A/V]` donnait `label=A/V`. C'est
+      // exactement le motif de §labelLeak.
       label = label.replaceAll(_reMultiSubTag, ' '); // §xenoFormat
       label = label.replaceAll(_reDolby, '');    // multi-mots en premier
       label = label.replaceAll(_reAllTags, '');
@@ -730,7 +900,14 @@ class TitleMetadata {
       // — 11 titres réels). Plutôt qu'une règle de plus, on vérifie l'invariant
       // sur la clé normalisée : si le libellé est déjà dans le titre, ce n'est
       // pas un libellé.
+      // §tagResidue — Un libellé fait uniquement de DÉBRIS n'en est pas un.
+      // `Superman (2025) [4K HDR10+ Dolby A/V]` laissait `label=A/V`, qui
+      // s'affichait tel quel sur la pastille de version. On exige au moins un
+      // mot de 2 lettres — ce qui laisse passer `Directors.Cut` (§labelLeak,
+      // le seul libellé authentique du corpus) et rejette `A/V`, `/`, `-`.
+      final hasWord = RegExp(r'[\p{L}]{2,}', unicode: true).hasMatch(label);
       if (label.isNotEmpty &&
+          hasWord &&
           !computeGroupKey(base).contains(computeGroupKey(label))) {
         versionLabel = label;
       }
