@@ -17,6 +17,7 @@ class _CategoryRow extends StatelessWidget {
   final IconData icon;
 
   const _CategoryRow({
+    super.key,
     required this.category,
     required this.groups,
     required this.allGroups,
@@ -126,6 +127,8 @@ class _CategoryRow extends StatelessWidget {
                       (constraints.maxWidth - spacing * (cols - 1)) / cols;
                   final tiles = <Widget>[
                     ...groups.asMap().entries.map((e) => _HomeCard(
+                          // §tvExitPage — Clé de CONTENU (cf. _CategoryRow).
+                          key: ValueKey(FavoritesService.keyFor(e.value.first)),
                           versions: e.value,
                           type: type,
                           width: tileWidth,
@@ -226,6 +229,8 @@ class _CategoryRow extends StatelessWidget {
                           );
                         }
                         return _HomeCard(
+                          // §tvExitPage — Clé de CONTENU (cf. _CategoryRow).
+                          key: ValueKey(FavoritesService.keyFor(groups[i].first)),
                           versions: groups[i],
                           type: type,
                           width: cardW,

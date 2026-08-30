@@ -158,6 +158,81 @@ void main() {
       expect(FocusManager.instance.primaryFocus, isNot(origin));
     });
 
+    testWidgets(
+        '§tvExitPage — feuille fermée puis player ouvert : la mémoire de '
+        "l'accueil garde la CARTE DE DEPART", (tester) async {
+      // Régression mesurée le 2026-08-30 sur émulateur Android TV.
+      //
+      // `showTvActionSheet.playVersion` fait `pop(feuille)` PUIS `push(player)`
+      // dans la même frame. Au moment du push, la feuille anime encore sa sortie
+      // et détient TOUJOURS le focus : on mémorisait donc son bouton
+      // (« Regarder · FHD ») comme « ce qu'il faudra restaurer sur l'accueil »,
+      // écrasant la vraie carte. À la sortie du player ce nœud est mort, la
+      // restauration ne fait rien, et le repli de `dpad` (1er nœud `entry` du
+      // scope) décide à notre place → on revient ailleurs dans la liste.
+      //
+      // ⚠️ **Ce test observe la MÉMOIRE, pas `primaryFocus`.** Un premier jet
+      // affirmait « le focus revient sur origin » — et il passait AUSSI avec le
+      // bug, parce qu'en test la `FocusScopeNode` de la route révélée restaure
+      // déjà son `focusedChild`. Ce qui rend la panne visible sur l'appareil,
+      // c'est le repli de `dpad`, absent ici. Le contrat testable est donc :
+      // qu'a-t-on retenu pour l'accueil ?
+      final observer = FocusRouteMemory();
+      final decoy = FocusNode(debugLabel: 'decoy');
+      final origin = FocusNode(debugLabel: 'origin');
+      final sheetButton = FocusNode(debugLabel: 'sheetButton');
+      addTearDown(decoy.dispose);
+      addTearDown(origin.dispose);
+      addTearDown(sheetButton.dispose);
+
+      await tester.pumpWidget(MaterialApp(
+        navigatorObservers: <NavigatorObserver>[observer],
+        home: _FirstPage(decoy: decoy, origin: origin),
+      ));
+      final Route<dynamic> home =
+          ModalRoute.of(tester.element(find.byType(_FirstPage)))!;
+
+      origin.requestFocus();
+      await tester.pump();
+      expect(FocusManager.instance.primaryFocus, origin);
+
+      final NavigatorState nav =
+          tester.state<NavigatorState>(find.byType(Navigator));
+
+      // 1. La feuille d'action s'ouvre et prend le focus.
+      nav.push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          body: Focus(
+            focusNode: sheetButton,
+            autofocus: true,
+            child: const SizedBox(width: 40, height: 40),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus, sheetButton);
+      expect(observer.memorizedFor(home), origin);
+
+      // 2. Lecture : la feuille se ferme et le player s'ouvre dans la MÊME
+      //    frame — le focus est encore sur le bouton de la feuille.
+      nav.pop();
+      nav.push(MaterialPageRoute<void>(builder: (_) => const _SecondPage()));
+      await tester.pumpAndSettle();
+
+      expect(observer.memorizedFor(home), origin,
+          reason: "l'accueil doit toujours pointer sur sa propre carte");
+      expect(observer.memorizedFor(home), isNot(sheetButton),
+          reason: 'un nœud de la feuille ne doit jamais devenir la mémoire de '
+              "l'accueil");
+
+      // 3. Sortie du player : la mémoire est consommée, rien ne fuit.
+      await tester.tap(find.text('fermer'));
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus, origin);
+      expect(observer.trackedRouteCount, 0,
+          reason: 'aucune entrée orpheline ne doit rester en mémoire');
+    });
+
     test('didRemove et didReplace purgent la mémoire', () {
       final observer = FocusRouteMemory();
       final a = MaterialPageRoute<void>(builder: (_) => const SizedBox());

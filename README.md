@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.15.13+106-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.15.14+107-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -233,6 +233,8 @@ lib/
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Sortir d'une chaîne ramène au bon endroit** (§tvExitPage, 2026-08-30) — Sur Android TV, quitter une chaîne renvoyait sur l'onglet **Films**, à une position quelconque de la liste. Deux causes : le lecteur mémorisait, comme point de retour, un bouton de la fenêtre d'options **en train de se fermer** (elle détient encore le focus au moment où le lecteur s'ouvre) ; et les rangées de l'accueil n'avaient pas d'identité stable, si bien que l'ajout automatique aux favoris décalait tout et ramenait sur une **autre chaîne**. On revient désormais exactement sur la carte lancée, sans que la liste bouge. Corrigé aussi : la barre Séries/Films/Chaînes ne glisse plus toute seule quand on navigue à la télécommande
+- [x] **Journal de diagnostic enfin lisible** (§focusName, 2026-08-30) — Le traceur de focus affichait `focus → Focus` pour absolument tout, ce qui le rendait inutilisable — il nomme désormais l'élément visé (`« TF1 » FocusableCard`). C'est ce qui a permis de trancher le bug ci-dessus en une session au lieu de six semaines
 - [x] **Nouvelle liste absorbée sans doublons** (§xenoFormat + §yearTitle, 2026-08-28) — Un 4e fournisseur nomme ses titres autrement (`FR| Lanterns` au lieu de `Lanterns`, tags `[MULTI-SUB]`) : ses films et séries n'étaient donc jamais reconnus comme les mêmes œuvres que sur les autres listes. Après correction, **13 191 films** et **5 336 séries** fusionnent avec le catalogue existant (contre 165 et 3 avant), et **3 642 doublons internes** disparaissent. Corrigé au passage : un film dont le titre est une année (« 2067 », « 1917 ») s'affichait sous son étiquette technique — 28 titres étaient illisibles, il n'en reste aucun
 - [x] **Le code pays n'est plus affiché comme une qualité vidéo** (§providerTag + §camQuality + §orphanBracket, 2026-08-28) — « Regarder · FR » s'affichait là où on attend « Regarder · FHD » : le marqueur de tête du fournisseur (FR, US, IT, RU…) était rangé dans un champ fourre-tout que l'interface lit comme une qualité. Il a désormais son propre champ et sa propre pastille — **137 459 titres** concernés. Dans l'autre sens, les rips de salle (HDTS, HDCAM, CAMRIP) **sont** une qualité et n'étaient pas détectés du tout : **188 titres** l'affichent maintenant, classés en dernier pour ne jamais être proposés par défaut. Corrigé au passage : un tag refermé par un délimiteur jamais ouvert (`… |HDTS]`) laissait un résidu dans le titre affiché — **120 titres**, dont « Spider-Man : Brand New Day - ] »
 - [x] **L'étiquette de version ne recopie plus le titre du film** (§labelLeak + §invisibleLead, 2026-08-28) — En vérifiant le point précédent, **11 375 titres sur 11 389** affichaient leur propre nom en guise d'étiquette de version. L'étiquette se calculait en retranchant le titre nettoyé du titre brut, ce qui échouait dès qu'un double espace, une année en milieu de titre ou un tag interne les faisait diverger. Il ne reste plus que **5 étiquettes**, toutes légitimes ou inoffensives (« Directors.Cut »)

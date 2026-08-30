@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:aetherStream/core/diagnostics/log_buffer.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
@@ -330,6 +331,18 @@ class _HomePageState extends State<HomePage> with RouteAware {
       // AVANT le jump pour que le pin (_pinPageOnTv) ne l'annule pas.
       if (_currentIndex != i) setState(() => _currentIndex = i);
       _pageController.jumpToPage(i);
+      // §3c Phase 2 — L'ancienne page (qui portait le chip d'onglet focusé) est
+      // exclue du focus → on ré-acquiert une cible dans la page désormais
+      // visible, sinon le focus reste en limbo.
+      //
+      // ⚠️ §tvExitPage — Cette ré-acquisition vivait dans `onPageChanged`, ce
+      // qui la déclenchait à CHAQUE notification de la vue, y compris le
+      // rebond du pin après une dérive : le focus était alors déplacé sans que
+      // l'utilisateur ait rien demandé. Sur TV, seul `_goToPage` est un
+      // changement d'onglet VOULU — c'est donc ici, et nulle part ailleurs.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).nextFocus();
+      });
       return;
     }
     _pageController.animateToPage(
@@ -348,6 +361,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
     if (!_pageController.hasClients) return;
     final page = _pageController.page;
     if (page == null || page == _currentIndex.toDouble()) return;
+    // §tvExitPage — trace : savoir QUI pousse la PageView hors de son index.
+    DiagnosticLog.trace(
+        '📄 pin: PageView à ${page.toStringAsFixed(3)} → retour sur $_currentIndex');
     _pageController.jumpToPage(_currentIndex);
   }
 
@@ -597,16 +613,34 @@ class _HomePageState extends State<HomePage> with RouteAware {
                     // Supprime la saccade de début de glissement.
                     allowImplicitScrolling: true,
                     onPageChanged: (i) {
-                      setState(() => _currentIndex = i);
-                      // §3c Phase 2 — Après un changement d'onglet sur TV,
-                      // l'ancienne page (avec le chip d'onglet focusé) est
-                      // exclue du focus → on ré-acquiert le focus dans la page
-                      // désormais visible pour ne pas le laisser en limbo.
+                      // §tvExitPage — Sur TV, la `PageView` ne bouge JAMAIS
+                      // d'elle-même : le swipe y est désactivé
+                      // (`NeverScrollableScrollPhysics`) et tout changement
+                      // d'onglet volontaire passe par `_goToPage`, qui fixe
+                      // `_currentIndex` **avant** le saut. Sur TV, la vue n'est
+                      // donc jamais la source de vérité de l'onglet courant :
+                      // un `onPageChanged` qui s'en écarte est, par
+                      // construction, une DÉRIVE — l'auto-scroll de focus
+                      // (`DpadScroll.ensureVisible` remonte TOUS les
+                      // scrollables ancêtres, `PageView` comprise). Mesuré sur
+                      // émulateur Android TV : « 📄 pin: PageView à 1.010 » à
+                      // chaque déplacement dans une rangée.
+                      //
+                      // ⚠️ L'adopter était le vrai piège : `_currentIndex`
+                      // devenait la dérive, et `_pinPageOnTv` — censé protéger
+                      // l'onglet — se mettait à DÉFENDRE le mauvais. On sortait
+                      // d'une chaîne et on restait bloqué sur « Films ».
                       if (PlatformTv.isTv) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) FocusScope.of(context).nextFocus();
-                        });
+                        if (i != _currentIndex) {
+                          DiagnosticLog.trace(
+                              '📄 onPageChanged REJETÉ (dérive) : $i ≠ $_currentIndex');
+                          _pinPageOnTv();
+                        }
+                        return;
                       }
+                      DiagnosticLog.trace(
+                          '📄 onPageChanged: $_currentIndex → $i');
+                      setState(() => _currentIndex = i);
                     },
                     children: [
                       // §3c Phase 2 — Chaque page du PageView est wrappée :
@@ -1520,6 +1554,17 @@ class _TypePageState extends State<_TypePage> {
             ? allGroups.take(perf.maxItemsPerRow).toList()
             : allGroups;
         return _CategoryRow(
+          // §tvExitPage — Clé de CONTENU, pas de position.
+          //
+          // ⚠️ Sans elle, Flutter apparie les éléments par INDEX : lancer une
+          // chaîne l'ajoute aux favoris, la rangée « Favoris » apparaît ou
+          // grandit, tout se décale d'un cran — et l'élément (donc le
+          // `FocusNode`) de la carte d'où l'on est parti se retrouve à décrire
+          // une AUTRE chaîne. Mesuré sur les vraies listes : on repartait de
+          // « ALBAYANE » et on revenait sur « MGG TV CANADA ». La mémoire de
+          // focus ne peut pas être juste si l'identité des éléments ne l'est
+          // pas.
+          key: ValueKey('cat_${widget.type.name}_$cat'),
           category: cat,
           groups: visibleGroups,
           allGroups: allGroups,

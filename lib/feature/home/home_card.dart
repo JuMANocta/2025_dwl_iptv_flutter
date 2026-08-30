@@ -15,7 +15,8 @@ class _HomeCard extends StatefulWidget {
   final bool isEntry;
 
   const _HomeCard(
-      {required this.versions,
+      {super.key,
+      required this.versions,
       required this.type,
       this.width,
       this.isEntry = false});

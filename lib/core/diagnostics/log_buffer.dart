@@ -2,7 +2,9 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart' show FocusNode;
+import 'package:flutter/material.dart' show Tooltip;
+import 'package:flutter/widgets.dart'
+    show BuildContext, Element, FocusNode, FocusScopeNode, Text;
 
 import '../utils/log_sanitizer.dart';
 
@@ -68,6 +70,13 @@ abstract final class DiagnosticLog {
     };
 
     add('📝 Journal de diagnostic démarré');
+
+    // §focusTrace — Traceur armé dès le boot avec
+    // `--dart-define=AS_KEYTRACE=true`. Sans ça, il faut ouvrir la console web
+    // AVANT le geste à observer : impossible pour tout ce qui se passe au
+    // démarrage, et fastidieux à chaque réinstallation pendant un diagnostic.
+    // Absent du build normal (constante de compilation à `false`).
+    if (const bool.fromEnvironment('AS_KEYTRACE')) keyTrace = true;
   }
 
   /// Garde les premières lignes d'une stack trace : au-delà, on remplit le
@@ -154,7 +163,7 @@ abstract final class DiagnosticLog {
   static bool _onKey(KeyEvent event) {
     if (event is KeyDownEvent) {
       final LogicalKeyboardKey k = event.logicalKey;
-      add('⌨️ ${k.debugName ?? k.keyLabel} '
+      trace('⌨️ ${k.debugName ?? k.keyLabel} '
           '(logical 0x${k.keyId.toRadixString(16)}, '
           'physical 0x${event.physicalKey.usbHidUsage.toRadixString(16)})');
     }
@@ -170,15 +179,163 @@ abstract final class DiagnosticLog {
   ///
   /// Branché sur `Dpad(onFocusChange:)`, actif en même temps que le traceur de
   /// touches pour pouvoir lire touche et focus dans le même fil.
+  ///
+  /// ⚠️ **§focusName (2026-08-30)** — la première version imprimait
+  /// `node.debugLabel ?? node.context?.widget.runtimeType`, ce qui donnait
+  /// invariablement `focus → Focus [dans scope?]` : aucun `FocusNode` de l'app
+  /// n'a de `debugLabel`, et le widget porteur est toujours le `Focus` interne
+  /// de Flutter. La trace existait mais **ne nommait rien** — donc les deux
+  /// tickets qu'elle devait trancher (§tvExitPage, §trackSheetFocus) restaient
+  /// indécidables. On remonte désormais aux widgets applicatifs porteurs et au
+  /// premier texte affiché à l'intérieur du nœud.
   static void traceFocus(FocusNode? node) {
     if (!_keyTrace) return;
     if (node == null) {
-      add('🎯 focus perdu (plus aucun élément focalisé)');
+      trace('🎯 focus perdu (plus aucun élément focalisé)');
       return;
     }
-    final String label = node.debugLabel ?? node.context?.widget.runtimeType.toString() ?? '?';
-    final String scope = node.enclosingScope?.debugLabel ?? 'scope?';
-    add('🎯 focus → $label   [dans $scope]');
+    trace('🎯 focus → ${describeFocusNode(node)}');
+  }
+
+  /// §focusTrace — Ligne de trace libre, muette tant que le traceur est éteint.
+  ///
+  /// Sert aux traces de diagnostic ponctuelles (index de `PageView`, ancrage de
+  /// rangée…) : elles seraient du bruit permanent dans un `debugPrint` nu.
+  ///
+  /// ⚠️ Passe par `debugPrint`, **pas** par [add] : la capture installée par
+  /// [install] renvoie déjà tout `debugPrint` vers le tampon, donc la ligne
+  /// arrive au même endroit — mais elle sort AUSSI sur logcat. Sur un appareil
+  /// branché en adb (émulateur, box en débogage sans fil) la trace devient
+  /// lisible sans ouvrir la console web.
+  static void trace(String message) {
+    if (!_keyTrace) return;
+    debugPrint(message);
+  }
+
+  /// §focusName — Description LISIBLE d'un nœud de focus :
+  /// `« TF1 FHD » FocusableCard < _HomeCard [dans _ModalScope…]`.
+  static String describeFocusNode(FocusNode node) {
+    final String? label = node.debugLabel;
+    final BuildContext? ctx = node.context;
+    // ⚠️ Un nœud mémorisé peut être DÉMONTÉ au moment où on le décrit (c'est
+    // même le cas intéressant : « quel écran mort garde le focus ? »). Lire
+    // `Element.widget` sur un élément défunt lève — une trace ne doit jamais
+    // faire tomber l'application qu'elle observe.
+    final bool alive = ctx != null && ctx.mounted;
+    String widgets = '?';
+    String? text;
+    if (alive) {
+      try {
+        widgets = _widgetChain(ctx);
+        text = _firstText(ctx);
+      } catch (_) {
+        widgets = 'nœud en cours de démontage';
+      }
+    } else if (ctx != null) {
+      widgets = 'nœud DÉMONTÉ (${_safeType(ctx)})';
+    }
+    final String scope = _scopeLabel(node);
+    final StringBuffer out = StringBuffer();
+    if (text != null) out.write('« $text » ');
+    out.write(widgets);
+    if (label != null && label.isNotEmpty) out.write(' ($label)');
+    out.write('   [dans $scope]');
+    return out.toString();
+  }
+
+  static String _safeType(BuildContext ctx) {
+    try {
+      return ctx.widget.runtimeType.toString();
+    } catch (_) {
+      return '?';
+    }
+  }
+
+  /// Widgets **applicatifs** qui portent le nœud, du plus proche au plus
+  /// lointain. Les emballages structurels de Flutter sont écartés : ce sont eux
+  /// qui masquaient l'information dans la version d'origine.
+  static const Set<String> _structuralWidgets = <String>{
+    'Focus', 'FocusScope', 'ExcludeFocus', 'Semantics', 'KeyedSubtree',
+    'Builder', 'RepaintBoundary', 'MouseRegion', 'Listener', 'GestureDetector',
+    'RawGestureDetector', 'InkWell', 'InkResponse', 'Material', 'Container',
+    'Padding', 'SizedBox', 'DecoratedBox', 'ColoredBox', 'Align', 'Center',
+    'ConstrainedBox', 'LayoutBuilder', 'AnimatedContainer', 'ClipRRect',
+    'ClipRect', 'Opacity', 'AnimatedOpacity', 'Transform', 'Stack',
+    'Positioned', 'Row', 'Column', 'Expanded', 'Flexible', 'IntrinsicWidth',
+    'SafeArea', 'MediaQuery', 'DefaultTextStyle', 'IconTheme', 'Directionality',
+    'Actions', 'Shortcuts', 'ValueListenableBuilder', 'AnimatedBuilder',
+    'ListenableBuilder', 'InheritedTheme', 'Theme', 'TweenAnimationBuilder',
+    'FocusTraversalGroup', 'FocusTraversalOrder', 'TapRegion',
+    // Internes Material/Ink : présents sous TOUS les boutons, ils chassaient
+    // les widgets applicatifs de la fenêtre des 3 noms retenus.
+    '_ActionsScope', '_ActionsMarker', '_ParentInkResponseProvider',
+    '_InkResponseStateWidget', '_InkFeatures', '_ShortcutsMarker',
+    '_EffectiveTickerMode', '_ModalScopeStatus', 'AnimatedSize',
+    'IgnorePointer', 'AbsorbPointer', 'Visibility', 'Offstage', 'SelectionArea',
+    'DefaultSelectionStyle', 'TextFieldTapRegion', 'CustomPaint', 'Flex',
+  };
+
+  static String _widgetChain(BuildContext ctx, {int keep = 3}) {
+    final List<String> names = <String>[];
+    // Le nœud lui-même d'abord, puis ses ancêtres.
+    for (final String n in <String>[ctx.widget.runtimeType.toString()]) {
+      if (!_structuralWidgets.contains(n)) names.add(n);
+    }
+    ctx.visitAncestorElements((Element el) {
+      if (!el.mounted) return false;
+      final String n = el.widget.runtimeType.toString();
+      if (!_structuralWidgets.contains(n) &&
+          !n.startsWith('_Inherited') &&
+          !n.startsWith('_Focus') &&
+          !names.contains(n)) {
+        names.add(n);
+      }
+      return names.length < keep;
+    });
+    return names.isEmpty ? ctx.widget.runtimeType.toString() : names.join(' < ');
+  }
+
+  /// Premier texte affiché SOUS le nœud : c'est ce que l'utilisateur voit, donc
+  /// la seule étiquette qui permette de reconnaître la carte à l'écran.
+  /// Budget borné — un sous-arbre de carte peut être profond.
+  static String? _firstText(BuildContext ctx, {int budget = 80}) {
+    String? found;
+    int left = budget;
+    void walk(Element el) {
+      if (found != null || left-- <= 0 || !el.mounted) return;
+      final Object w = el.widget;
+      if (w is Text) {
+        final String? d = w.data?.trim();
+        if (d != null && d.isNotEmpty) {
+          found = d.length > 40 ? '${d.substring(0, 40)}…' : d;
+          return;
+        }
+      } else if (w is Tooltip) {
+        final String? m = w.message?.trim();
+        if (m != null && m.isNotEmpty) {
+          found = m;
+          return;
+        }
+      }
+      el.visitChildren(walk);
+    }
+
+    if (ctx is Element) ctx.visitChildren(walk);
+    return found;
+  }
+
+  /// Premier scope de focus **nommé** au-dessus du nœud. Les routes modales de
+  /// Flutter portent un `debugLabel` (`ModalRoute Focus Scope`) : c'est lui qui
+  /// dit à quel ÉCRAN appartient le focus — l'information décisive quand une
+  /// feuille se ferme pendant qu'une autre s'ouvre.
+  static String _scopeLabel(FocusNode node) {
+    for (final FocusNode a in <FocusNode>[node, ...node.ancestors]) {
+      if (a is FocusScopeNode) {
+        final String? l = a.debugLabel;
+        if (l != null && l.isNotEmpty) return l;
+      }
+    }
+    return 'scope sans nom';
   }
 }
 
