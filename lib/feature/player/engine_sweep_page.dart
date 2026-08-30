@@ -87,6 +87,13 @@ class _EngineSweepPageState extends State<EngineSweepPage> {
   static const _maxAvi = 60;
 
   NativeVideoPlayerController? _controller;
+
+  /// Abonnements posés UNE fois sur le contrôleur unique, et le résultat en
+  /// cours qu'ils alimentent.
+  final List<StreamSubscription<dynamic>> _subs = [];
+  Completer<void>? _playing;
+  _SweepResult? _current;
+
   final List<_SweepResult> _results = [];
   List<M3uEntry> _queue = [];
   int _index = 0;
@@ -143,60 +150,74 @@ class _EngineSweepPageState extends State<EngineSweepPage> {
     if (mounted) setState(() => _done = true);
   }
 
-  Future<void> _test(M3uEntry entry) async {
-    final ext = entry.url.substring(entry.url.lastIndexOf('.') + 1).toLowerCase();
-    final res = _SweepResult(ext, entry.title.baseTitle);
-    _results.add(res);
-
-    // ⚠️ Un contrôleur NEUF par flux, avec un id distinct. Réutiliser le même a
-    // donné `PlatformException(NO_VIEW)` lors du premier essai : la vue native
-    // ne suit pas un rechargement enchaîné.
+  /// Prépare l'unique contrôleur, une fois pour toutes.
+  ///
+  /// ⚠️ **La version précédente créait un contrôleur NEUF par flux, et elle se
+  /// bloquait au premier.** Diagnostic de l'utilisateur, vérifié au journal :
+  /// un seul résultat produit puis plus rien. Chaque contrôleur ouvre une vue
+  /// native **et une instance MediaCodec**, or un SoC n'en autorise qu'une
+  /// poignée simultanément — et les précédentes n'étaient jamais vraiment
+  /// démontées, puisqu'on appelait `dispose()` alors que l'arbre de widgets
+  /// référençait encore la vue. Au deuxième flux, plus rien ne pouvait s'ouvrir.
+  ///
+  /// Réutiliser **un seul** contrôleur et enchaîner les `loadUrl` est de toute
+  /// façon ce que le moteur définitif devra faire pour passer d'un épisode au
+  /// suivant sans reconstruire la vue (l'équivalent de §episodeMeta).
+  Future<NativeVideoPlayerController> _ensureController() async {
+    final existing = _controller;
+    if (existing != null) return existing;
     final c = NativeVideoPlayerController(
-      id: 5000 + _index,
+      id: 5000,
       autoPlay: true,
       showNativeControls: false,
       enableHDR: true,
       allowsPictureInPicture: false,
     );
     setState(() => _controller = c);
+    // Laisse un frame à la vue native pour exister avant `initialize()`.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await c.initialize();
+    _subs.add(c.playerStateStream.listen((st) {
+      if (st == PlayerActivityState.playing && !(_playing?.isCompleted ?? true)) {
+        _playing!.complete();
+      }
+    }));
+    _subs.add(c.videoSizeStream.listen((sz) {
+      _current?.width = sz.width.round();
+      _current?.height = sz.height.round();
+    }));
+    return c;
+  }
 
-    final playing = Completer<void>();
-    final subs = <StreamSubscription<dynamic>>[
-      c.playerStateStream.listen((s) {
-        if (s == PlayerActivityState.playing && !playing.isCompleted) {
-          playing.complete();
-        }
-      }),
-      c.videoSizeStream.listen((s) {
-        res.width = s.width.round();
-        res.height = s.height.round();
-      }),
-    ];
+  Future<void> _test(M3uEntry entry) async {
+    final ext = entry.url.substring(entry.url.lastIndexOf('.') + 1).toLowerCase();
+    final res = _SweepResult(ext, entry.title.baseTitle);
+    _results.add(res);
+    _current = res;
+    _playing = Completer<void>();
 
     try {
-      await c.initialize();
+      final c = await _ensureController();
       await c.loadUrl(
         url: entry.url,
         headers: const {'User-Agent': 'IPTVSmartersPro'}, // §iptvUaCompat
       );
-      await playing.future.timeout(_perItem);
+      await _playing!.future.timeout(_perItem);
       res.loaded = true;
       // La liste des pistes n'est fiable qu'une fois la lecture engagée.
-      await Future<void>.delayed(const Duration(milliseconds: 800));
+      await Future<void>.delayed(const Duration(milliseconds: 700));
       res.audioTracks = (await c.getAvailableAudioTracks()).length;
     } on TimeoutException {
-      // Laissé tel quel : `loaded` reste false → ligne « timeout ».
+      // `loaded` reste false → ligne « timeout ».
     } catch (e) {
       res.error = e.toString().replaceAll('\n', ' ');
       if (res.error!.length > 90) res.error = '${res.error!.substring(0, 90)}…';
     } finally {
-      for (final s in subs) {
-        await s.cancel();
-      }
+      // On met en pause entre deux flux sans détruire la vue : c'est
+      // précisément ce qui saturait le décodeur.
       try {
-        await c.pause();
+        await _controller?.pause();
       } catch (_) {}
-      c.dispose();
     }
     debugPrint('🧪 §engineSweep — ${res.line}');
   }
@@ -224,6 +245,9 @@ class _EngineSweepPageState extends State<EngineSweepPage> {
 
   @override
   void dispose() {
+    for (final sub in _subs) {
+      sub.cancel();
+    }
     _controller?.dispose();
     super.dispose();
   }
