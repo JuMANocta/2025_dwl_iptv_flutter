@@ -175,6 +175,12 @@ class MyApp extends StatelessWidget {
 
   /// §dpadNav — Thème de focus global (reproduit §focusVisibility avec la couleur
   /// du thème actif) : effet par défaut des `DpadFocusable` sans `effects` propres.
+  ///
+  /// ⚠️ §touchNoFocus — Ces effets-là ne sont PAS filtrés par le mode d'entrée.
+  /// Aucun `DpadFocusable` de l'app ne les utilise aujourd'hui (tous passent par
+  /// `FocusableCard`/`FocusableChip`, ou fournissent `effects: const []`) ; un
+  /// nouveau widget qui s'en contenterait ferait revenir le faux focus tactile.
+  /// Dans ce cas, passer par `FocusEffectVisibility` (`focus_visibility.dart`).
   DpadThemeData _dpadTheme(AppThemeConfig config) {
     final r = BorderRadius.circular(config.borderRadius);
     return DpadThemeData(
@@ -245,9 +251,21 @@ class MyApp extends StatelessWidget {
 
         // §dpadNav — Racine de la navigation D-pad (package `dpad`). Installée
         // sur TOUTES les plateformes (requise par FocusableCard/FocusableChip et
-        // bénéfique au clavier desktop ; inerte au tactile mobile). Remplace
-        // l'ancien TvBackHandler : la touche Retour est gérée par `onBack`.
+        // bénéfique au clavier desktop). Remplace l'ancien TvBackHandler : la
+        // touche Retour est gérée par `onBack`.
         wrapped = Dpad(
+          // §touchNoFocus — ⚠️ Elle n'était PAS « inerte au tactile mobile »,
+          // comme l'affirmait le commentaire d'origine. `restoreFocus` est un
+          // filet de sécurité : dès que plus rien de réel n'a le focus (route
+          // dépilée, dialogue fermé), dpad en DONNE un — au nœud marqué `entry`
+          // ou au plus proche géométriquement. Sur TV c'est vital ; sur
+          // téléphone ça allumait un élément au hasard (mesuré : le bouton de
+          // rechargement de l'AppBar, en navigation 100 % tactile), et Material
+          // dessinait sa surbrillance de focus par-dessus.
+          //
+          // Le filet ne sert qu'à une navigation directionnelle : au doigt, rien
+          // ne doit JAMAIS avoir le focus.
+          restoreFocus: PlatformTv.isTv,
           theme: _dpadTheme(config),
           keySet: const DpadKeySet().copyWith(
             back: const [

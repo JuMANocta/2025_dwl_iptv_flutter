@@ -3,6 +3,7 @@ import 'package:dpad/dpad.dart';
 import '../../core/themes/aether_theme_extension.dart';
 import '../../data/services/remote_control_service.dart';
 import 'dpad_row_anchor.dart';
+import 'focus_visibility.dart';
 
 /// Wrapper de focus léger pour petits contrôles inline (§3c Phase 1 → §dpadNav) :
 /// onglets Séries/Films/Chaînes, sélecteurs saison / épisode / qualité, presets
@@ -60,7 +61,8 @@ class FocusableChip extends StatefulWidget {
   State<FocusableChip> createState() => _FocusableChipState();
 }
 
-class _FocusableChipState extends State<FocusableChip> {
+class _FocusableChipState extends State<FocusableChip>
+    with FocusEffectVisibility {
   @override
   void dispose() {
     RemoteControlService.instance.clearActivate(this);
@@ -87,9 +89,12 @@ class _FocusableChipState extends State<FocusableChip> {
         BorderRadius.circular(ext?.borderRadius ?? 12.0);
     final focusColor = ext?.focusGlowColor ?? cs.primary;
 
+    // §touchNoFocus — Peint seulement quand on ne navigue PAS au doigt.
     final effects = <DpadEffect>[
-      DpadBorderEffect(color: focusColor, width: 2.6, borderRadius: radius),
-      DpadGlowEffect(color: focusColor, opacity: 0.5, borderRadius: radius),
+      if (focusEffectsVisible) ...[
+        DpadBorderEffect(color: focusColor, width: 2.6, borderRadius: radius),
+        DpadGlowEffect(color: focusColor, opacity: 0.5, borderRadius: radius),
+      ],
     ];
 
     return DpadFocusable(

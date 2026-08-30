@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.15.12+105-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.15.13+106-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -317,6 +317,7 @@ lib/
 - [x] **La recherche ne part plus dès la première lettre** (§searchMinLen, 2026-08-29) — trois caractères minimum pour les films et séries, au lieu de balayer plus de 320 000 entrées à chaque frappe. Les **chaînes** restent cherchables dès la première lettre (« TF1 », « M6 »)
 - [x] **Le clavier ne masque plus les résultats** (§searchKeyboard, 2026-08-29) — il se referme au défilement
 - [x] **Bandeau de mise à jour repensé** (§updateBanner, 2026-08-29) — il annonçait la version à installer **sans jamais dire de quelle version on part**. Il affiche désormais les deux, la nouvelle se « décodant » à la manière de Matrix avec **la partie qui change en surbrillance**. La pluie Matrix couvre tout le bandeau au lieu de la seule barre de téléchargement, et le changelog brut est remplacé par un lien vers la release GitHub
+- [x] **Plus de « faux focus » sur téléphone** (§touchNoFocus, 2026-08-29) — les indicateurs de focus, faits pour la télécommande, s'affichaient aussi sur mobile : fermer un dialogue ou revenir en arrière allumait une vignette ou une icône **que personne n'avait touchée**. Au doigt, plus rien ne prend le focus ; la navigation TV et clavier est inchangée
 - [x] **Interface entièrement en français** (§frOnly, 2026-08-29) — l'app suivait la langue de l'appareil : sur un téléphone en anglais, les rares écrans câblés sur l10n basculaient en anglais pendant que le reste de l'interface restait en français. Le français est désormais imposé, et **tous les titres de page** ainsi que les libellés d'onglets passent par l10n
 - [x] **Repères visuels** (2026-08-29) — le témoin de chargement des listes ne décale plus l'accueil (filet de 2 px en surimpression au lieu d'un bandeau), et la barre de navigation du bas se détache du fond noir par un filet dégradé
 - [x] **Un téléchargement bridé se relance tout seul** (§dlWatchdog, 2026-08-29) — un serveur qui bride ne provoque **jamais** d'erreur : le transfert rampe, et rien ne se déclenchait. L'app surveille désormais le débit et reconnecte d'elle-même au même octet. Pour l'utilisateur rien ne se passe — **la même barre continue**, seul un compteur « 🔁 Relances » monte — et la tuile garde « ↻ relancé ×N » après un redémarrage. Le bouton « Relancer » devient inutile et disparaît pendant le transfert
