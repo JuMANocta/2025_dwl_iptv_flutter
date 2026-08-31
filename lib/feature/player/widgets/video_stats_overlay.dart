@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
+import '../playback_engine.dart';
 
 import '../../../core/themes/colors.dart';
 import '../../../data/models/quality_scale.dart';
@@ -21,7 +21,7 @@ import '../video_stats.dart';
 /// (`_reading`). Un overlay qui coûterait cher pendant une lecture 4K déjà en
 /// difficulté rendrait ses propres chiffres suspects.
 class VideoStatsOverlay extends StatefulWidget {
-  final Player player;
+  final AetherPlaybackEngine player;
 
   /// Masqué en mode lock, comme les autres surcouches du lecteur.
   final bool hidden;
@@ -87,7 +87,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     if (_reading || !mounted) return;
     _reading = true;
     try {
-      final stats = await VideoStatsReader.read(widget.player);
+      final stats = await widget.player.readStats();
       if (!mounted) return;
       // §tvLogs — La TV n'a pas de logcat : tant que l'encart est actif, ce
       // qu'il affiche part aussi dans le journal, lisible depuis la console

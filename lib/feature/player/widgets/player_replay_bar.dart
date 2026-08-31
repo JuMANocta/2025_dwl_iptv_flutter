@@ -1,14 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:media_kit/media_kit.dart';
+import '../playback_engine.dart';
 
 /// Barre de progression spécifique au mode replay (timeshift).
 ///
 /// Affiche l'heure de début, l'heure actuelle dans le replay
 /// et un bouton "DIRECT" pour retourner au flux live.
 class PlayerReplayBar extends StatefulWidget {
-  final Player player;
+  final AetherPlaybackEngine player;
   /// Heure de début du replay (pour afficher les horaires).
   final DateTime? replayStart;
   /// Durée totale du replay.
@@ -36,7 +36,7 @@ class _PlayerReplayBarState extends State<PlayerReplayBar> {
   @override
   void initState() {
     super.initState();
-    _sub = widget.player.stream.position.listen((v) {
+    _sub = widget.player.positionStream.listen((v) {
       if (mounted) setState(() => _position = v);
     });
   }

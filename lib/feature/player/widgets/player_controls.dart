@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
+import '../playback_engine.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 
@@ -10,7 +10,7 @@ import 'package:aetherStream/feature/player/player_page.dart';
 /// - Barre du bas  : seek bar + temps + play/pause + vitesse + lock
 /// - Mode lock     : masque tout sauf un bouton cadenas pour déverrouiller
 class PlayerControls extends StatefulWidget {
-  final Player player;
+  final AetherPlaybackEngine player;
   final String title;
   /// §watchContext a — Qualité du flux en cours (4K/FHD/HD/SD), affichée en
   /// badge sous le titre. Null = pas de badge qualité.
@@ -94,16 +94,16 @@ class _PlayerControlsState extends State<PlayerControls> {
   void initState() {
     super.initState();
     _subs.addAll([
-      widget.player.stream.playing
+      widget.player.playingStream
           .listen((v) => setState(() => _playing = v)),
-      widget.player.stream.position.listen((v) {
+      widget.player.positionStream.listen((v) {
         if (!_draggingSeek) setState(() => _position = v);
       }),
-      widget.player.stream.duration
+      widget.player.durationStream
           .listen((v) => setState(() => _duration = v)),
-      widget.player.stream.buffer
+      widget.player.bufferStream
           .listen((v) => setState(() => _buffer = v)),
-      widget.player.stream.buffering
+      widget.player.bufferingStream
           .listen((v) => setState(() => _buffering = v)),
     ]);
   }

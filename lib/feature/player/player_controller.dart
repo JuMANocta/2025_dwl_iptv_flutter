@@ -1,9 +1,11 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/utils/platform_tv.dart';
+import 'playback_engine.dart';
 import 'video_render.dart';
+import 'video_stats.dart';
 
 /// Wrapper media_kit — gère le cycle de vie du Player et du VideoController.
 ///
@@ -17,7 +19,18 @@ import 'video_render.dart';
 /// de l'écran) qui donne le meilleur résultat sur Android. `cache-pause=no`
 /// évite que mpv mette en pause sur de petits creux de buffer, ce qui
 /// désynchronise les dialogues sur les flux HLS un peu instables.
-class AetherPlayerController {
+/// §engineVendor étape 3 — Implémentation media_kit/libmpv de
+/// [AetherPlaybackEngine].
+///
+/// ⚠️ **Rien de son comportement n'a changé** en passant derrière l'interface :
+/// c'est un déplacement, pas une réécriture. Les réglages mpv (§audio, §avSync,
+/// §replayBuffer) restent ceux qui ont été réglés à la mesure.
+///
+/// ⚠️ Elle garde `player` public : les pages d'essai jetables
+/// (`engine_duel_page`) s'en servent encore, et §video4kBench pose des
+/// propriétés mpv qui n'ont de sens que pour ce moteur. Les deux disparaissent
+/// à l'étape 6.
+class AetherPlayerController implements AetherPlaybackEngine {
   /// Volume initial poussé à 130% (mobile) pour compenser les flux IPTV
   /// faiblement encodés. Sur Android TV / Fire TV, le boost natif des
   /// téléviseurs est déjà important → on démarre à 125%.
@@ -157,6 +170,7 @@ class AetherPlayerController {
   /// NATIVEMENT. Bien plus fiable que `seek()` après l'open (qui, surtout
   /// depuis media_kit v2, était parfois avalé pendant le buffering initial →
   /// la lecture repartait à 0).
+  @override
   Future<void> open(String url,
       {Duration? start, String? audioLang, String? subLang}) async {
     try {
@@ -174,6 +188,7 @@ class AetherPlayerController {
   }
 
   /// Ouvre un fichier local. [start] = position de reprise (cf. [open]).
+  @override
   Future<void> openFile(String path,
       {Duration? start, String? audioLang, String? subLang}) async {
     try {
@@ -206,6 +221,124 @@ class AetherPlayerController {
     }
   }
 
+
+  // ── §engineVendor étape 3 — Implémentation de AetherPlaybackEngine ─────────
+  //
+  // Traductions directes vers media_kit. Aucune logique ici : tout ce qui
+  // décide vit déjà au-dessus (player_page) ou en dessous (les réglages mpv).
+
+  @override
+  Future<void> play() => player.play();
+
+  @override
+  Future<void> pause() => player.pause();
+
+  @override
+  Future<void> playOrPause() => player.playOrPause();
+
+  @override
+  Future<void> seek(Duration position) => player.seek(position);
+
+  @override
+  Future<void> setRate(double rate) => player.setRate(rate);
+
+  @override
+  Future<void> setVolume(double volume) => player.setVolume(volume);
+
+  @override
+  Duration get position => player.state.position;
+
+  @override
+  Duration get duration => player.state.duration;
+
+  @override
+  bool get playing => player.state.playing;
+
+  @override
+  Stream<bool> get playingStream => player.stream.playing;
+
+  @override
+  Stream<bool> get bufferingStream => player.stream.buffering;
+
+  @override
+  Stream<bool> get completedStream => player.stream.completed;
+
+  @override
+  Stream<String> get errorStream => player.stream.error;
+
+  @override
+  Stream<Duration> get positionStream => player.stream.position;
+
+  @override
+  Stream<Duration> get durationStream => player.stream.duration;
+
+  @override
+  Stream<Duration> get bufferStream => player.stream.buffer;
+
+  @override
+  Stream<AetherVideoSize> get videoParamsStream =>
+      player.stream.videoParams.map((p) => AetherVideoSize(p.w, p.h));
+
+  // ── Pistes ─────────────────────────────────────────────────────────────────
+  //
+  // /!\ mpv expose des pistes « auto » et « no » en tête de liste : ce ne sont
+  // pas de vraies pistes, et les présenter comme telles rendrait le sélecteur
+  // incompréhensible. On les marque plutôt que de les cacher — « aucun
+  // sous-titre » est un choix légitime.
+
+  static AetherTrack _toTrack(dynamic t) => AetherTrack(
+        id: t.id as String,
+        title: t.title as String?,
+        language: t.language as String?,
+        isSpecial: t.id == 'auto' || t.id == 'no',
+      );
+
+  @override
+  List<AetherTrack> get audioTracks =>
+      player.state.tracks.audio.map(_toTrack).toList();
+
+  @override
+  List<AetherTrack> get subtitleTracks =>
+      player.state.tracks.subtitle.map(_toTrack).toList();
+
+  @override
+  AetherTrack? get currentAudioTrack => _toTrack(player.state.track.audio);
+
+  @override
+  AetherTrack? get currentSubtitleTrack => _toTrack(player.state.track.subtitle);
+
+  @override
+  Future<void> setAudioTrack(AetherTrack track) async {
+    final match = player.state.tracks.audio.where((t) => t.id == track.id);
+    if (match.isEmpty) return;
+    // §trackRebuffer — Ne PAS ré-appliquer une piste déjà active : mpv
+    // re-demuxe le flux et la lecture repart, ce qui se voit à l'écran.
+    if (player.state.track.audio.id == track.id) return;
+    await player.setAudioTrack(match.first);
+  }
+
+  @override
+  Future<void> setSubtitleTrack(AetherTrack track) async {
+    final match = player.state.tracks.subtitle.where((t) => t.id == track.id);
+    if (match.isEmpty) return;
+    if (player.state.track.subtitle.id == track.id) return;
+    await player.setSubtitleTrack(match.first);
+  }
+
+  @override
+  Future<void> disableAudio() => player.setAudioTrack(AudioTrack.no());
+
+  @override
+  Widget buildSurface(BoxFit fit) => Video(
+        controller: videoController,
+        controls: NoVideoControls,
+        fit: fit,
+      );
+
+  @override
+  Future<VideoStatsSnapshot> readStats() => VideoStatsReader.read(player);
+
+  @override
   void dispose() {
     // §benchGuard — Fermeture propre : on baisse le drapeau levé à l'ouverture.
     VideoRenderPreference.disarmCrashGuard();

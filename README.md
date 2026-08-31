@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.16.9+117-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.16.10+118-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -26,7 +26,7 @@
 ## Fonctionnalités
 
 ### 📺 Lecture
-- Lecture de flux réseau (HLS, MPEG-TS) et fichiers locaux via **libmpv** (`media_kit`)
+- Lecture de flux réseau (HLS, MPEG-TS) et fichiers locaux via **libmpv** (`media_kit`) — *migration en cours vers **Media3/ExoPlayer**, qui apporte le **HDR natif** sur téléviseur*
 - Player plein écran paysage avec contrôles entièrement custom
 - **Gestures** : double-tap ±10s, swipe horizontal seek, swipe vertical volume/luminosité
 - **Verrouillage écran** : le cadenas désactive aussi les gestes (plus de seek/volume accidentel)
@@ -217,7 +217,7 @@ lib/
 | Composant | Package |
 |-----------|---------|
 | HTTP / Téléchargements | `dio` |
-| Player vidéo | `media_kit` + `media_kit_video` (libmpv) |
+| Player vidéo | `media_kit` + `media_kit_video` (libmpv) — *remplacement par Media3/ExoPlayer en cours* |
 | Luminosité | `screen_brightness` |
 | Wakelock | `wakelock_plus` |
 | Stockage sécurisé | `flutter_secure_storage` |
@@ -348,6 +348,7 @@ lib/
 - [ ] **Hardening sécurité v2** — DownloadManagerService → SecureStorage, M3U cache → ApplicationSupport, debugPrint no-op en release
 - [ ] **Cleanup perfs** — Image.network avec cacheWidth/cacheHeight, memoization _HomeCard.build, helper launchPlayer factorisé
 - [ ] **Tests unitaires** — services purs (parser, filter, replay URL builder, etc.)
+- [ ] **Nouveau moteur vidéo — HDR natif sur téléviseur** *(en cours)* — le lecteur actuel compose l'image dans une texture, ce qui **impose une conversion en SDR** : un téléviseur compatible HDR n'affiche jamais de HDR, et le calcul de conversion faisait jeter une image sur trois en 4K. Le nouveau moteur dessine directement sur une surface d'affichage, ce qui rend le **HDR réel** possible (vérifié : la télé affiche enfin ses témoins HDR et Dolby) et **allège l'application d'environ 40 Mo**. La compatibilité des formats a été comparée fichier par fichier sur un téléviseur **et** un téléphone réels : aucune perte
 - [ ] **Mise à jour des dépendances** — `media_kit_video` v2, `flutter_secure_storage` v10, `google_fonts` v8, migration "Built-in Kotlin" (Flutter ≥ 3.44)
 - [ ] **Port Windows** — branche `windows-port` synchronisée à v1.11.2 ; cible : fusion mono-branche + exe Windows attaché aux releases GitHub (voir `.claude/windows_ci_release_plan.md`)
 
