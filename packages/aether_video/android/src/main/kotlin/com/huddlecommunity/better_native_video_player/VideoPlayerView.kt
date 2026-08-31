@@ -300,6 +300,24 @@ class VideoPlayerView(
                 }
                 result.success(null)
             }
+            // §engineVendor patch 4 — §videoFit : le mode de redimensionnement
+            // était FIGÉ sur RESIZE_MODE_FIT, donc le menu « format d'image »
+            // de l'app (contain / cover / fill) n'avait aucun effet.
+            //
+            // /!\ Il faut couvrir les DEUX chemins d'affichage : le PlayerView
+            // du mode normal ET l'AspectRatioFrameLayout du mode allégé, sinon
+            // le réglage marche dans une configuration et pas dans l'autre.
+            "setResizeMode" -> {
+                val mode = call.argument<Int>("mode")
+                    ?: AspectRatioFrameLayout.RESIZE_MODE_FIT
+                if (playerView != null) {
+                    playerView.resizeMode = mode
+                } else {
+                    (videoContentView as? AspectRatioFrameLayout)?.resizeMode = mode
+                }
+                NpLog.d(TAG, "setResizeMode($mode) sur view $viewId")
+                result.success(null)
+            }
             "ensureSurfaceConnected" -> {
                 // Called when reconnecting after all platform views were disposed (list→detail→back).
                 reconnectSurface()

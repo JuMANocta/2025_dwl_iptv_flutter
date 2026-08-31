@@ -51,6 +51,24 @@ part 'native_video_player_controller_events.dart';
 /// **Platform Communication:**
 /// - MethodChannel: Flutter → Native (play, pause, seek, etc.)
 /// - EventChannel: Native → Flutter (state changes, errors, buffering)
+/// §engineVendor patch 4 — Constantes `AspectRatioFrameLayout` de Media3.
+///
+/// Rendues nommées pour que l'app n'ait pas à manipuler des entiers nus, et
+/// pour documenter la correspondance avec le `BoxFit` de §videoFit.
+abstract final class AetherResizeMode {
+  /// L'image entière est visible, bandes noires si besoin — `BoxFit.contain`.
+  static const int fit = 0;
+  static const int fixedWidth = 1;
+  static const int fixedHeight = 2;
+
+  /// L'image est étirée pour remplir, ratio non conservé — `BoxFit.fill`.
+  static const int fill = 3;
+
+  /// L'image remplit en conservant le ratio, les bords sont rognés —
+  /// `BoxFit.cover`.
+  static const int zoom = 4;
+}
+
 class NativeVideoPlayerController {
   NativeVideoPlayerController({
     required this.id,
@@ -1461,9 +1479,18 @@ class NativeVideoPlayerController {
   /// [force] loads even when the current state is `loaded` (the guard that
   /// prevents accidental double-loads). Use it to replace the current video
   /// with a different one, e.g. for playlist advancement.
+  /// §engineVendor patch 2 — Accepte un certificat TLS invalide pour CE flux.
+  ///
+  /// /!\ **Sécurité** : à n'activer que pour un serveur IPTV de l'utilisateur.
+  /// Beaucoup de panels servent en HTTPS avec un certificat auto-signé ou
+  /// expiré, et le lecteur sortant (media_kit) posait `tls-verify=no` — ne pas
+  /// reproduire ce comportement casserait des flux qui marchent aujourd'hui.
+  /// Reste **par flux et opt-in**, jamais global : même discipline que
+  /// `NetworkUtils.buildBaseDio(allowInvalidCertificate:)` côté app.
   Future<void> load({
     required String url,
     Map<String, String>? headers,
+    bool allowInvalidCertificate = false,
     Map<String, dynamic>? drmConfig,
     List<NativeVideoPlayerSidecarSubtitle>? sidecarSubtitles,
     Duration? startAt,
@@ -1511,6 +1538,7 @@ class NativeVideoPlayerController {
         // non-URL sources render through the Flutter overlay only.
         sidecarSubtitles: _androidSidecarMaps(sidecarSubtitles),
         startAtMs: startAt?.inMilliseconds,
+        allowInvalidCertificate: allowInvalidCertificate,
       );
 
       // Re-apply the embedded caption text scale to the fresh player item.
@@ -1594,6 +1622,7 @@ class NativeVideoPlayerController {
   Future<void> loadUrl({
     required String url,
     Map<String, String>? headers,
+    bool allowInvalidCertificate = false,
     Map<String, dynamic>? drmConfig,
     Duration? startAt,
     bool force = false,
@@ -1603,6 +1632,7 @@ class NativeVideoPlayerController {
       headers: headers,
       drmConfig: drmConfig,
       startAt: startAt,
+      allowInvalidCertificate: allowInvalidCertificate,
       force: force,
     );
   }
@@ -1720,7 +1750,16 @@ class NativeVideoPlayerController {
     }
   }
 
-  /// Sets the volume
+  /// Volume de lecture. **0.0 → 2.0** depuis §engineVendor patch 1.
+  ///
+  /// Jusqu'a 1.0 c'est l'attenuation classique d'ExoPlayer. Au-dela, le natif
+  /// sature le volume du player et confie l'amplification a un
+  /// `LoudnessEnhancer` (2.0 = +6,02 dB). Indispensable : l'app demarre a 125 %
+  /// sur TV et monte a 200 %, parce que les flux IPTV sont souvent encodes a
+  /// faible niveau.
+  ///
+  /// /!\ L'amplification depend d'un effet audio systeme : sur un appareil qui
+  /// ne le fournit pas, le volume plafonne a 100 % au lieu d'echouer.
   Future<void> setVolume(double volume) async {
     await _methodChannel?.setVolume(volume);
     _updateState(_state.copyWith(volume: volume));
@@ -1742,6 +1781,34 @@ class NativeVideoPlayerController {
         .copyWith(embeddedTextScale: scale);
     await _methodChannel?.setEmbeddedTextScale(scale);
   }
+
+  /// §engineVendor patch 4 — Format d'image de la surface vidéo (§videoFit).
+  ///
+  /// Le paquet amont figeait `RESIZE_MODE_FIT` à la construction de la vue :
+  /// le menu « format d'image » de l'app (Contenu / Remplir / Étirer) restait
+  /// donc sans effet. On expose le réglage, appliqué aux **deux** chemins
+  /// d'affichage (PlayerView et AspectRatioFrameLayout allégé).
+  ///
+  /// Utiliser [AetherResizeMode] plutôt que les entiers nus.
+  Future<void> setResizeMode(int mode) async {
+    _resizeMode = mode;
+    await _methodChannel?.setResizeMode(mode);
+  }
+
+  /// Dernier mode demandé, réappliqué après un remontage de vue (changement de
+  /// plein écran, reconnexion de surface) — sinon le format retombe sur FIT
+  /// sans que l'utilisateur ait rien touché.
+  int _resizeMode = AetherResizeMode.fit;
+  int get resizeMode => _resizeMode;
+
+  /// §engineVendor patch 3 — Instantané §videoStats, ou `null` si indisponible.
+  ///
+  /// Clés : `droppedFrames`, `decoder`, `hardware`, `codec`, `width`, `height`,
+  /// `frameRate`, `bitrate`, `colorTransfer` (6 = HLG, 7 = HDR10).
+  /// `hardware` vaut `null` tant qu'aucun décodeur n'a été initialisé —
+  /// à ne PAS confondre avec `false`.
+  Future<Map<String, dynamic>?> getVideoStats() =>
+      _methodChannel?.getVideoStats() ?? Future<Map<String, dynamic>?>.value();
 
   /// Sets whether the video should loop
   Future<void> setLooping(bool looping) async {

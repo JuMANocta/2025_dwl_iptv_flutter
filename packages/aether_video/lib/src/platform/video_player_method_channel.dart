@@ -68,6 +68,7 @@ class VideoPlayerMethodChannel {
     Map<String, dynamic>? drmConfig,
     List<Map<String, dynamic>>? sidecarSubtitles,
     int? startAtMs,
+    bool allowInvalidCertificate = false,
   }) async {
     final Map<String, Object> params = <String, Object>{
       'url': url,
@@ -93,6 +94,12 @@ class VideoPlayerMethodChannel {
 
     if (startAtMs != null && startAtMs > 0) {
       params['startAtMs'] = startAtMs;
+    }
+
+    // §engineVendor patch 2 — envoyé seulement quand c'est demandé, pour que
+    // l'absence du drapeau reste le comportement strict par défaut.
+    if (allowInvalidCertificate) {
+      params['allowInvalidCertificate'] = true;
     }
 
     await _methodChannel.invokeMethod<void>('load', params);
@@ -203,6 +210,42 @@ class VideoPlayerMethodChannel {
       });
     } catch (e) {
       debugPrint('Error calling setEmbeddedTextScale: $e');
+    }
+  }
+
+  /// §engineVendor patch 4 — Mode de redimensionnement de la surface vidéo.
+  ///
+  /// Valeurs `AspectRatioFrameLayout` de Media3 :
+  /// 0 = FIT (contain) · 1 = FIXED_WIDTH · 2 = FIXED_HEIGHT · 3 = FILL · 4 = ZOOM (cover).
+  ///
+  /// /!\ Le paquet amont figeait FIT : sans ce passage, le menu « format
+  /// d'image » de l'app (§videoFit) n'avait aucun effet.
+  Future<void> setResizeMode(int mode) async {
+    try {
+      await _methodChannel.invokeMethod<void>('setResizeMode', <String, Object>{
+        'viewId': primaryPlatformViewId,
+        'mode': mode,
+      });
+    } catch (e) {
+      debugPrint('Error calling setResizeMode: $e');
+    }
+  }
+
+  /// §engineVendor patch 3 — Instantané de diagnostic vidéo (§videoStats).
+  ///
+  /// Renvoie `null` si le natif ne répond pas — l'encart doit alors afficher
+  /// « non mesurable », **jamais des zéros** qui se liraient comme une mesure
+  /// (leçon §hwdecUnknown : une fausse certitude est pire qu'un trou).
+  Future<Map<String, dynamic>?> getVideoStats() async {
+    try {
+      final r = await _methodChannel
+          .invokeMapMethod<String, dynamic>('getVideoStats', <String, Object>{
+        'viewId': primaryPlatformViewId,
+      });
+      return r;
+    } catch (e) {
+      debugPrint('Error calling getVideoStats: $e');
+      return null;
     }
   }
 

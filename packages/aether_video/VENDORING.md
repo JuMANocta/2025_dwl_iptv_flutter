@@ -37,6 +37,44 @@ Les mises à jour ne sont **plus gratuites**. Pour resynchroniser :
    marqués `§engineVendor` en commentaire dans le code ;
 4. rejouer le duel sur la TV **et** sur un téléphone physique avant de valider.
 
+## Les quatre patchs — APPLIQUÉS le 2026-08-31 (étape 2/6)
+
+Tous marqués `§engineVendor patch N` en commentaire dans le code.
+
+**Patch 4 — `setResizeMode` (§videoFit).** `RESIZE_MODE_FIT` était figé à la
+construction de la vue. ⚠️ Il y a **deux chemins d'affichage** — le `PlayerView`
+du mode normal et l'`AspectRatioFrameLayout` du mode allégé : ne patcher qu'un
+seul donnerait un réglage qui marche dans une configuration et pas dans l'autre.
+Constantes nommées `AetherResizeMode` (fit / fill / zoom) plutôt que des entiers
+nus.
+
+**Patch 3 — `AnalyticsListener` (§videoStats).** Images perdues, codec, débit,
+résolution, et surtout le **nom du décodeur** — c'est lui qui dit « matériel ou
+logiciel », l'équivalent du `hwdec-current` de mpv. Compteurs remis à zéro à
+chaque chargement, pour rester comparables entre moteurs.
+⚠️ `getVideoStats()` renvoie **`null`** si le natif ne répond pas, **jamais des
+zéros** : un zéro se lirait comme une mesure (leçon §hwdecUnknown).
+⚠️ « Matériel » se déduit du **nom** du décodeur (`c2.android.*` / `OMX.google.*`
+= logiciel) : Android n'expose pas de drapeau fiable. Heuristique assumée.
+
+**Patch 2 — Bypass SSL SCOPÉ.** Beaucoup de panels servent en HTTPS avec un
+certificat auto-signé, et media_kit posait `tls-verify=no` : **la lecture en
+bénéficiait déjà**, ne pas le reproduire aurait cassé des flux qui marchent.
+⚠️ `DefaultHttpDataSource` n'expose aucun réglage SSL → ajout de
+`media3-datasource-okhttp` (+0,1 Mo), seule voie qui n'altère pas la
+configuration du processus.
+⚠️ **Opt-in, par flux** (`load(allowInvalidCertificate: true)`), jamais global :
+même discipline que `NetworkUtils` côté Dart, TMDB/GitHub/XMLTV restent stricts.
+
+**Patch 1 — `LoudnessEnhancer` (§audio).** `player.volume` d'ExoPlayer est borné
+à 1.0 : il atténue, il n'amplifie pas. L'app monte à **200 %** et démarre à
+125 % sur TV, parce que les flux IPTV sont encodés bas. Gain en millibels
+(200 % = +6,02 dB = 602 mB).
+⚠️ L'effet est lié à un `audioSessionId` : **recréé quand la session change**,
+et **reposé à chaque chargement**, sinon l'amplification est perdue au 2e film.
+⚠️ Encapsulé : sur un appareil sans cet effet, le volume plafonne à 100 % au
+lieu de faire échouer la lecture.
+
 ## Écarts déjà appliqués à la copie
 
 - `CLAUDE.md` amont renommé **`UPSTREAM_CLAUDE.md`** : laissé tel quel, il serait

@@ -56,6 +56,10 @@ android {
         // Disk cache (SimpleCache/CacheDataSource + StandaloneDatabaseProvider).
         // Both already resolve transitively; declared because we use them directly.
         implementation("androidx.media3:media3-datasource:1.5.0")
+        // §engineVendor patch 2 — DefaultHttpDataSource n'expose AUCUN
+        // réglage SSL ; OkHttp est la seule voie supportée pour accepter
+        // un certificat invalide SANS toucher à la configuration globale.
+        implementation("androidx.media3:media3-datasource-okhttp:1.5.0")
         implementation("androidx.media3:media3-database:1.5.0")
 
         // Media notification style

@@ -16,10 +16,23 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.TrackSelectionParameters
+// §engineVendor patch 3 — instrumentation vidéo (§videoStats)
+import androidx.media3.common.Format
+import androidx.media3.exoplayer.DecoderReuseEvaluation
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DataSource
+// §engineVendor patch 1 — amplification au-dela de 100 % (§audio)
+import android.media.audiofx.LoudnessEnhancer
 import androidx.media3.datasource.DefaultHttpDataSource
+// §engineVendor patch 2 — bypass SSL scopé (panels IPTV)
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import okhttp3.OkHttpClient
+import java.security.cert.X509Certificate
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
@@ -121,8 +134,179 @@ class VideoPlayerMethodHandler(
         }
     }
 
+
+    // ── §engineVendor patch 1 — Amplification au-delà de 100 % (§audio) ──────
+    //
+    // `player.volume` d'ExoPlayer est BORNÉ à 1.0 : il atténue, il n'amplifie
+    // pas. Or l'app pousse le volume jusqu'à **200 %** et démarre à 125 % sur
+    // TV / 130 % sur téléphone, parce que les flux IPTV sont très souvent
+    // encodés à faible niveau (mpv le permettait via `volume-max=200`).
+    // Sans ce patch, la migration de moteur serait une régression audible dès
+    // le premier film — le genre qu'on remarque en trois secondes.
+    //
+    // `LoudnessEnhancer` applique un gain en millibels sur la session audio.
+    // Correspondance : un facteur d'amplitude f vaut 20·log10(f) dB, soit
+    // 2000·log10(f) mB → 200 % = +6,02 dB = 602 mB.
+    //
+    // /!\ L'effet est lié à un `audioSessionId` : il doit être RECRÉÉ quand la
+    // session change (nouveau média, reconfiguration de sortie), sinon le gain
+    // s'applique dans le vide et le son reste plat.
+    // /!\ Non garanti sur tous les appareils : encapsulé, un échec doit
+    // dégrader vers « pas d'amplification », jamais faire tomber la lecture.
+    private var loudness: LoudnessEnhancer? = null
+    private var loudnessSession: Int = -1
+    private var pendingGainMb: Int = 0
+
+    private fun applyGain(gainMb: Int) {
+        pendingGainMb = gainMb
+        val session = player.audioSessionId
+        if (session == C.AUDIO_SESSION_ID_UNSET) {
+            // La session n'existe pas encore : le gain sera posé au prochain
+            // appel, une fois la lecture engagée.
+            return
+        }
+        try {
+            if (loudness == null || loudnessSession != session) {
+                loudness?.release()
+                loudness = LoudnessEnhancer(session)
+                loudnessSession = session
+            }
+            loudness?.apply {
+                setTargetGain(gainMb)
+                enabled = gainMb > 0
+            }
+        } catch (e: Exception) {
+            NpLog.w(TAG, "LoudnessEnhancer indisponible, amplification ignoree : $e")
+            loudness = null
+            loudnessSession = -1
+        }
+    }
+
+    private fun releaseLoudness() {
+        try {
+            loudness?.release()
+        } catch (_: Exception) {
+        }
+        loudness = null
+        loudnessSession = -1
+    }
+
+    // ── §engineVendor patch 2 — Bypass SSL, SCOPÉ ───────────────────────────
+    //
+    // Beaucoup de panels IPTV servent en HTTPS avec un certificat auto-signé ou
+    // expiré. Le lecteur sortant (media_kit) posait `tls-verify=no` +
+    // `insecure=yes` : **la lecture bénéficiait donc déjà du bypass**, et ne pas
+    // le reproduire serait une régression silencieuse — un flux qui marche
+    // aujourd'hui cesserait de marcher, sans message clair.
+    //
+    // /!\ CE CLIENT N'EST CONSTRUIT QUE SUR DEMANDE EXPLICITE, par flux.
+    // Même discipline que `NetworkUtils.buildBaseDio(allowInvalidCertificate:)`
+    // côté Dart : TMDB, GitHub et XMLTV gardent une validation stricte. Ne
+    // JAMAIS le rendre global ni le passer par défaut — ce serait ouvrir toute
+    // l'app à l'interception.
+    //
+    // /!\ `DefaultHttpDataSource` n'expose aucun réglage SSL ; OkHttp est la
+    // seule voie supportée qui n'altère pas la configuration du processus.
+    private fun insecureHttpFactory(headers: Map<String, String>?): DataSource.Factory {
+        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
+            override fun checkClientTrusted(c: Array<X509Certificate>?, a: String?) {}
+            override fun checkServerTrusted(c: Array<X509Certificate>?, a: String?) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        })
+        val ctx = SSLContext.getInstance("TLS").apply {
+            init(null, trustAll, java.security.SecureRandom())
+        }
+        val client = OkHttpClient.Builder()
+            .sslSocketFactory(ctx.socketFactory, trustAll[0] as X509TrustManager)
+            .hostnameVerifier { _, _ -> true }
+            .build()
+        NpLog.w(TAG, "/!\\ Bypass SSL ACTIF pour ce flux (panel IPTV a certificat invalide)")
+        return OkHttpDataSource.Factory(client).apply {
+            if (headers != null) setDefaultRequestProperties(headers)
+        }
+    }
+
+    // ── §engineVendor patch 3 — Instrumentation vidéo (§videoStats) ─────────
+    //
+    // Le paquet amont n'installe AUCUN AnalyticsListener : impossible de savoir
+    // combien d'images sont perdues, ni quel décodeur travaille. Or c'est
+    // exactement l'instrument qui a permis de résoudre §video4k côté mpv
+    // (`frame-drop-count`, `hwdec-current`). Sans lui, changer de moteur
+    // reviendrait à se crever un œil.
+    //
+    // /!\ Compteurs CUMULATIFS depuis le début de la lecture, remis à zéro à
+    // chaque `load` — comme `frame-drop-count` de mpv, pour que les relevés
+    // restent comparables entre les deux moteurs.
+    private var droppedFrames: Int = 0
+    private var videoCodec: String? = null
+    private var videoDecoder: String? = null
+    private var videoBitrate: Int = 0
+
+    private val statsListener = object : AnalyticsListener {
+        override fun onDroppedVideoFrames(
+            eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long
+        ) {
+            this@VideoPlayerMethodHandler.droppedFrames += droppedFrames
+        }
+
+        override fun onVideoInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: DecoderReuseEvaluation?
+        ) {
+            videoCodec = format.sampleMimeType
+            videoBitrate = format.bitrate
+        }
+
+        // C'est ICI que se lit « matériel ou logiciel » : le nom du décodeur.
+        // Un décodeur logiciel s'appelle `c2.android.*` ou `OMX.google.*` ;
+        // tout le reste est du silicium. Même information que `hwdec-current`
+        // côté mpv, obtenue autrement.
+        override fun onVideoDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long
+        ) {
+            videoDecoder = decoderName
+        }
+    }
+
+    /// Remise à zéro, appelée à chaque chargement.
+    private fun resetStats() {
+        droppedFrames = 0
+        videoCodec = null
+        videoDecoder = null
+        videoBitrate = 0
+    }
+
+    private fun handleGetVideoStats(result: MethodChannel.Result) {
+        val format = player.videoFormat
+        val decoder = videoDecoder
+        // Heuristique assumée et documentée : Android n'expose pas de drapeau
+        // « matériel » fiable, seul le NOM du décodeur le trahit.
+        val software = decoder != null &&
+            (decoder.startsWith("c2.android.") || decoder.startsWith("OMX.google."))
+        result.success(
+            mapOf(
+                "droppedFrames" to droppedFrames,
+                "decoder" to decoder,
+                "hardware" to if (decoder == null) null else !software,
+                "codec" to (format?.sampleMimeType ?: videoCodec),
+                "width" to (format?.width ?: 0),
+                "height" to (format?.height ?: 0),
+                "frameRate" to (format?.frameRate ?: 0f),
+                "bitrate" to (format?.bitrate ?: videoBitrate),
+                // Transfert de couleur : 6 = HLG, 7 = ST2084 (HDR10). C'est ce
+                // qui dit si le flux est réellement HDR, sans le supposer.
+                "colorTransfer" to (format?.colorInfo?.colorTransfer ?: -1)
+            )
+        )
+    }
+
     init {
         player.addListener(audioFocusPlaybackListener)
+        player.addAnalyticsListener(statsListener)
     }
 
     private var availableQualities: List<Map<String, Any>> = emptyList()
@@ -213,6 +397,8 @@ class VideoPlayerMethodHandler(
             "setSidecarSubtitles" -> handleSetSidecarSubtitles(call, result)
             "setNativeSidecarActive" -> handleSetNativeSidecarActive(call, result)
             "setSubtitlesSuppressedForPip" -> handleSetSubtitlesSuppressedForPip(call, result)
+            // §engineVendor patch 3 — §videoStats
+            "getVideoStats" -> handleGetVideoStats(result)
             "getAvailableAudioTracks" -> handleGetAvailableAudioTracks(result)
             "setAudioTrack" -> handleSetAudioTrack(call, result)
             "play" -> handlePlay(result)
@@ -293,7 +479,12 @@ class VideoPlayerMethodHandler(
         // Build data source factory
         // For remote URLs with custom headers, use HTTP-specific data source
         // For local files, use DefaultDataSource which supports file:// URIs
-        val upstreamDataSourceFactory = if (!isLocalFile && headers != null) {
+        // §engineVendor patch 2 — Le bypass n'est pris QUE si le flux le demande
+        // ET qu'il est distant : un fichier local n'a pas de certificat.
+        val allowInvalidCert = args["allowInvalidCertificate"] as? Boolean ?: false
+        val upstreamDataSourceFactory = if (!isLocalFile && allowInvalidCert) {
+            insecureHttpFactory(headers)
+        } else if (!isLocalFile && headers != null) {
             DefaultHttpDataSource.Factory().apply {
                 setDefaultRequestProperties(headers)
             }
@@ -368,6 +559,11 @@ class VideoPlayerMethodHandler(
             player.setMediaSource(mediaSource)
         }
         player.prepare()
+        // §engineVendor patch 3 — compteurs remis à zéro par lecture.
+        resetStats()
+        // §engineVendor patch 1 — la session audio change avec le média : le
+        // gain doit être reposé, sinon l'amplification est perdue au 2e film.
+        if (pendingGainMb > 0) applyGain(pendingGainMb)
 
         // Configure HDR settings for ExoPlayer using TrackSelectionParameters
         if (!enableHDR) {
@@ -487,7 +683,16 @@ class VideoPlayerMethodHandler(
         val args = call.arguments as? Map<*, *>
         val volume = args?.get("volume") as? Double
         if (volume != null) {
-            player.volume = volume.toFloat()
+            // Jusqu'a 1.0 : attenuation classique, aucun effet audio.
+            // Au-dela : on sature le volume du player et on confie le reste au
+            // LoudnessEnhancer, seul capable d'amplifier.
+            if (volume <= 1.0) {
+                player.volume = volume.toFloat()
+                applyGain(0)
+            } else {
+                player.volume = 1.0f
+                applyGain((2000.0 * kotlin.math.log10(volume)).toInt())
+            }
         }
         result.success(null)
     }
@@ -858,6 +1063,8 @@ class VideoPlayerMethodHandler(
      */
     private fun handleDispose(result: MethodChannel.Result) {
         player.removeListener(audioFocusPlaybackListener)
+        player.removeAnalyticsListener(statsListener)
+        releaseLoudness()
         abandonAudioFocusForPlayback()
         player.stop()
 
