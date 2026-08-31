@@ -49,13 +49,32 @@ class EngineSweepPage extends StatefulWidget {
 class _SweepResult {
   final String container;
   final String title;
+
+  /// §sweepAccount — De QUELLE liste vient le flux.
+  ///
+  /// ⚠️ Absent de la première version, et c'était un vrai manque : 29 des
+  /// 37 échecs du balayage du 2026-08-30 étaient des liens morts, sans qu'on
+  /// puisse dire s'ils venaient d'un seul fournisseur négligent ou des trois.
+  /// Ce n'est pas le même diagnostic — et ça n'accuse pas le moteur.
+  final String account;
   bool loaded = false;
   int? width;
   int? height;
   int audioTracks = 0;
   String? error;
 
-  _SweepResult(this.container, this.title);
+  /// §sweepRetry — Vrai si le flux n'a réussi qu'à la SECONDE tentative.
+  ///
+  /// ⚠️ C'est l'arbitre entre deux explications d'un échec, et il fallait le
+  /// rendre mesurable plutôt que d'en débattre : un flux qui échoue **deux
+  /// fois de suite** accuse le format ; un flux qui passe au rattrapage accuse
+  /// le harnais (enchaînement trop rapide, vue native pas encore prête).
+  bool recovered = false;
+
+  /// Échec CONFIRMÉ : les deux tentatives ont échoué.
+  bool confirmedFailure = false;
+
+  _SweepResult(this.container, this.title, this.account);
 
   /// ⚠️ « Chargé » ne suffit pas : un flux qui affiche l'image sans piste audio
   /// est un ÉCHEC pour l'utilisateur, et c'est précisément le symptôme attendu
@@ -63,11 +82,17 @@ class _SweepResult {
   bool get ok => loaded && audioTracks > 0;
 
   String get line {
-    if (error != null) return '❌ $container · ${_short(title)} · $error';
-    if (!loaded) return '⏱️ $container · ${_short(title)} · timeout';
+    final tag = recovered ? ' ⚠️RATTRAPÉ' : '';
+    if (error != null) {
+      return '❌ $container/$account · ${_short(title)} · ${confirmedFailure ? "x2 " : ""}$error';
+    }
+    if (!loaded) {
+      return '⏱️ $container/$account · ${_short(title)} · '
+          '${confirmedFailure ? "timeout x2" : "timeout"}';
+    }
     final res = (width != null) ? '${width}x$height' : '?';
     final flag = audioTracks > 0 ? '✅' : '🔇';
-    return '$flag $container · ${_short(title)} · $res · ${audioTracks}a';
+    return '$flag $container/$account · ${_short(title)} · $res · ${audioTracks}a$tag';
   }
 
   static String _short(String s) => s.length <= 38 ? s : '${s.substring(0, 38)}…';
@@ -145,6 +170,8 @@ class _EngineSweepPageState extends State<EngineSweepPage> {
       if (!mounted) return;
       await _test(_queue[_index]);
       setState(() {});
+      // Démontage entre CHAQUE flux : un seul flux ouvert à la fois.
+      if (_index < _queue.length - 1) await _teardown();
     }
     _summarise();
     if (mounted) setState(() => _done = true);
@@ -191,11 +218,86 @@ class _EngineSweepPageState extends State<EngineSweepPage> {
 
   Future<void> _test(M3uEntry entry) async {
     final ext = entry.url.substring(entry.url.lastIndexOf('.') + 1).toLowerCase();
-    final res = _SweepResult(ext, entry.title.baseTitle);
+    final res = _SweepResult(
+      ext,
+      entry.title.baseTitle,
+      ParsedPlaylistService.accountName(entry.accountId) ?? entry.accountId,
+    );
     _results.add(res);
     _current = res;
-    _playing = Completer<void>();
 
+    await _attempt(entry, res);
+
+    // §sweepRetry — Seconde chance, après une vraie remise à zéro et une pause.
+    // ⚠️ Ne pas la supprimer « parce que ça double la durée » : sans elle, on
+    // ne peut pas distinguer un format non supporté d'un artefact du harnais,
+    // et tout le balayage perd sa valeur de preuve.
+    if (!res.loaded) {
+      res.error = null;
+      await _teardown();
+      await _attempt(entry, res);
+      if (res.loaded) {
+        res.recovered = true;
+      } else {
+        res.confirmedFailure = true;
+      }
+    }
+    debugPrint('🧪 §engineSweep — ${res.line}');
+  }
+
+  /// Remise à zéro entre deux flux — **démontage COMPLET, pas une pause**.
+  ///
+  /// ⚠️ **La contrainte est le FOURNISSEUR, pas le décodeur.** L'abonnement de
+  /// l'utilisateur n'autorise **qu'un flux à la fois** : tant que la connexion
+  /// du flux précédent reste ouverte, le panel refuse la suivante et renvoie
+  /// une réponse d'erreur — que le décodeur reçoit comme un format bidon, d'où
+  /// le trompeur `MediaCodecVideoRenderer error, format=Format(0, nul…`. Les
+  /// « échecs » observés au premier balayage étaient donc en bonne partie des
+  /// FAUX POSITIFS, comme l'utilisateur le pressentait.
+  ///
+  /// ⚠️ Et `pause()` **ne ferme rien** : dans le paquet publié, `player.stop()`
+  /// n'est appelé que par `handleDispose` — aucun arrêt n'est exposé. Le seul
+  /// moyen de relâcher réellement la connexion est donc de **détruire le
+  /// contrôleur**.
+  ///
+  /// ⚠️ **L'ORDRE est ce qui avait manqué la première fois** : détruire le
+  /// contrôleur alors que l'arbre de widgets référence encore sa vue native ne
+  /// libère ni la vue ni l'instance MediaCodec (d'où l'épuisement au 1er flux
+  /// et le `NO_VIEW`). Il faut d'abord **démonter le widget** (`_controller =
+  /// null` + `setState`), laisser passer une frame, PUIS disposer.
+  ///
+  /// C'est plus lent, et c'est voulu : un balayage qui produit de faux échecs
+  /// ne mesure rien.
+  Future<void> _teardown() async {
+    final old = _controller;
+    if (old == null) return;
+    for (final sub in _subs) {
+      await sub.cancel();
+    }
+    _subs.clear();
+    // 1. Démonter la vue AVANT de disposer.
+    if (mounted) setState(() => _controller = null);
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    // 2. Maintenant seulement, détruire — c'est ce qui appelle `player.stop()`
+    //    côté natif et ferme la connexion au panel.
+    try {
+      old.dispose();
+    } catch (_) {}
+    // 3. Laisser le fournisseur libérer le créneau.
+    await Future<void>.delayed(_settleDelay);
+  }
+
+  /// Temps laissé au FOURNISSEUR pour libérer le créneau de connexion après la
+  /// fermeture du flux précédent.
+  ///
+  /// ⚠️ **Ne pas raccourcir pour gagner du temps.** Signalé deux fois par
+  /// l'utilisateur (« tu vas trop vite pour passer de l'un à l'autre »), et la
+  /// cause s'est révélée être la limite de flux simultanés de son abonnement.
+  /// Mieux vaut dix minutes de plus qu'un verdict invalide.
+  static const _settleDelay = Duration(seconds: 2);
+
+  Future<void> _attempt(M3uEntry entry, _SweepResult res) async {
+    _playing = Completer<void>();
     try {
       final c = await _ensureController();
       await c.loadUrl(
@@ -219,7 +321,6 @@ class _EngineSweepPageState extends State<EngineSweepPage> {
         await _controller?.pause();
       } catch (_) {}
     }
-    debugPrint('🧪 §engineSweep — ${res.line}');
   }
 
   /// Le verdict, en trois lignes, dans le journal — c'est ce qui se lit depuis
@@ -234,13 +335,35 @@ class _EngineSweepPageState extends State<EngineSweepPage> {
       final ok = list.where((r) => r.ok).length;
       final mute = list.where((r) => r.loaded && r.audioTracks == 0).length;
       final ko = list.where((r) => !r.loaded).length;
+      final rec = list.where((r) => r.recovered).length;
       debugPrint('🧪 §engineSweep — $ext : ${list.length} testés · '
-          '$ok OK · $mute SANS AUDIO · $ko en échec');
+          '$ok OK · $mute SANS AUDIO · $ko en échec CONFIRMÉ (x2)'
+          '${rec > 0 ? " · $rec rattrapés au 2e essai" : ""}');
     });
     final total = _results.length;
     final ok = _results.where((r) => r.ok).length;
+    // §sweepAccount — Le même décompte par LISTE : un taux d'échec concentré
+    // sur un seul fournisseur ne dit pas la même chose qu'un taux diffus.
+    final byAcc = <String, List<_SweepResult>>{};
+    for (final r in _results) {
+      byAcc.putIfAbsent(r.account, () => []).add(r);
+    }
+    byAcc.forEach((acc, list) {
+      final dead = list.where((r) => (r.error ?? '').contains('Source')).length;
+      final dec = list.where((r) =>
+          (r.error ?? '').contains('MediaCodec')).length;
+      debugPrint('🧪 §engineSweep — liste $acc : ${list.length} testés · '
+          '${list.where((r) => r.ok).length} OK · $dead liens morts · '
+          '$dec refus de décodeur');
+    });
+
+    final rec = _results.where((r) => r.recovered).length;
     debugPrint('🧪 §engineSweep — TOTAL : $ok/$total exploitables '
         '(${total == 0 ? 0 : (100 * ok / total).round()} %)');
+    // ⚠️ Le chiffre qui juge le HARNAIS, pas les formats : s'il est élevé,
+    // les échecs « confirmés » deviennent eux-mêmes suspects.
+    debugPrint('🧪 §engineSweep — rattrapés au 2e essai : $rec '
+        '(si > 0, le harnais est en cause autant que les formats)');
   }
 
   @override

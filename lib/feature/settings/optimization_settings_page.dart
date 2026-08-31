@@ -5,6 +5,7 @@ import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/player/engine_probe_page.dart';
+import 'package:aetherStream/feature/player/engine_duel_page.dart';
 import 'package:aetherStream/feature/player/engine_sweep_page.dart';
 import 'package:aetherStream/feature/player/video_render.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
@@ -388,6 +389,32 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
         ),
       ),
+      // §engineDuel — Le témoin qui manquait : les DEUX moteurs, mêmes fichiers.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+        child: FocusableCard(
+          scaleOnFocus: false,
+          onTap: _duelEngines,
+          decorateOnly: true,
+          child: FilledButton.tonalIcon(
+            onPressed: _duelEngines,
+            icon: const Icon(Icons.compare_arrows, size: 18),
+            label: const Text('Duel Media3 ⚔ media_kit'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+            ),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+        child: Text(
+          'Rejoue les 8 fichiers que Media3 a refusés, plus 12 au hasard, '
+          'dans LES DEUX moteurs. Seule question : media_kit en sauve-t-il ? '
+          'Seul chiffre qui justifierait de le garder.',
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+        ),
+      ),
       // ⚠️ L'avertissement n'apparaît QUE hors configuration d'origine : un
       // relevé fait sur un banc oublié est un relevé faux, et c'est le genre
       // d'oubli qui coûte une session entière.
@@ -452,6 +479,13 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
   void _sweepMedia3() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const EngineSweepPage()),
+    );
+  }
+
+  /// §engineDuel — Ouvre le duel des deux moteurs.
+  void _duelEngines() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const EngineDuelPage()),
     );
   }
 
