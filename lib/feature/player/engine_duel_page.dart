@@ -67,7 +67,10 @@ class _Duel {
   String get line {
     String fmt(bool? ok, int audio, String? err) {
       if (ok == null) return '—';
-      if (!ok) return '❌${err != null && err.contains("Source") ? "lien" : "dec"}';
+      if (!ok) {
+        if (err == 'figé') return '❌figé';
+        return '❌${err != null && err.contains("Source") ? "lien" : "dec"}';
+      }
       return audio > 0 ? '✅${audio}a' : '🔇';
     }
 
@@ -104,6 +107,23 @@ class _EngineDuelPageState extends State<EngineDuelPage> {
   /// le lecteur — or l'abonnement n'autorise qu'un flux à la fois.
   static const _liveSample = 8;
   static const _perItem = Duration(seconds: 10);
+
+  /// §duelStrict — **La même preuve est exigée des DEUX moteurs.**
+  ///
+  /// ⚠️ La première version comparait deux choses différentes : Media3 devait
+  /// vraiment lire, tandis que mpv était compté « OK » dès que
+  /// `stream.playing` passait à vrai — un état qui peut être atteint alors que
+  /// le flux ne délivre rien. Résultat, mpv affichait `🔇` sur les 8 chaînes
+  /// que Media3 lisait avec audio, tout en étant crédité de 2 « sauvetages »
+  /// sur des liens morts. **Le verdict penchait en sa faveur par construction**,
+  /// et il aurait fait conclure de garder libmpv sur un artefact de mesure.
+  ///
+  /// Le critère commun, vérifiable de la même façon des deux côtés : après le
+  /// premier signal de lecture, **la position doit avoir réellement avancé**
+  /// sur une fenêtre de [_stableFor]. Une position figée = pas de lecture,
+  /// quel que soit ce que le moteur prétend.
+  static const _stableFor = Duration(seconds: 3);
+  static const _minProgress = Duration(milliseconds: 500);
   static const _settle = Duration(seconds: 2);
 
   /// §duelFairness — Le contrôleur media_kit est MONTÉ pendant son essai.
@@ -232,7 +252,15 @@ class _EngineDuelPageState extends State<EngineDuelPage> {
         headers: const {'User-Agent': 'IPTVSmartersPro'},
       );
       await _m3playing!.future.timeout(_perItem);
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+      // §duelStrict — La position doit AVANCER, pas seulement l'état changer.
+      final p0 = c.currentPosition;
+      await Future<void>.delayed(_stableFor);
+      final p1 = c.currentPosition;
+      if (p1 - p0 < _minProgress) {
+        d.media3Ok = false;
+        d.media3Err = 'figé';
+        return;
+      }
       d.media3Audio = (await c.getAvailableAudioTracks()).length;
       d.media3Ok = true;
     } on TimeoutException {
@@ -302,7 +330,20 @@ class _EngineDuelPageState extends State<EngineDuelPage> {
     try {
       await ctrl.open(entry.url);
       await playing.future.timeout(_perItem);
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+      // §duelStrict — Rigoureusement le même contrôle que pour Media3 : la
+      // position doit avoir avancé sur la même fenêtre. C'est ce qui rend les
+      // deux colonnes comparables.
+      final p0 = ctrl.player.state.position;
+      await Future<void>.delayed(_stableFor);
+      final p1 = ctrl.player.state.position;
+      if (p1 - p0 < _minProgress) {
+        d.mpvOk = false;
+        d.mpvErr = 'figé';
+        return;
+      }
+      // ⚠️ Le relevé des pistes vient APRÈS la fenêtre de stabilité : sur du
+      // live, la liste de media_kit n'est pas peuplée avant. Compter trop tôt
+      // produisait des `🔇` qui n'existaient pas.
       d.mpvAudio = ctrl.player.state.tracks.audio
           .where((t) => t.id != 'no' && t.id != 'auto')
           .length;
@@ -336,8 +377,14 @@ class _EngineDuelPageState extends State<EngineDuelPage> {
     debugPrint('⚔️ §engineDuel — ═══ VERDICT ═══');
     debugPrint('⚔️ §engineDuel — ${_results.length} fichiers · '
         'Media3 échoue $m3ko · mpv échoue $mpvko · les deux échouent $both');
+    final m3mute = _results.where((r) => r.media3Ok == true && r.media3Audio == 0).length;
+    final mpvmute = _results.where((r) => r.mpvOk == true && r.mpvAudio == 0).length;
+    debugPrint('⚔️ §engineDuel — sans audio : media3 $m3mute · mpv $mpvmute');
     debugPrint('⚔️ §engineDuel — ⭐ mpv RATTRAPE $saves fichier(s) que Media3 '
         'perd — c\'est le SEUL chiffre qui justifierait de garder libmpv');
+    debugPrint('⚔️ §engineDuel — (critère IDENTIQUE des 2 côtés : position '
+        'avancée de ${_minProgress.inMilliseconds} ms sur '
+        '${_stableFor.inSeconds} s)');
   }
 
   @override
