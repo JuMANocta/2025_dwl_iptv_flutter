@@ -2,7 +2,7 @@ name: aetherStream
 description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
-version: 1.16.7+115
+version: 1.16.8+116
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -43,10 +43,20 @@ dependencies:
   cached_network_image: ^3.4.1      # §imgDiskCache — cache DISQUE des vignettes
   flutter_cache_manager: ^3.4.1     # §imgDiskCache — politiques de rétention (TMDB/provider)
   dpad: ^3.0.0
-  # §playerEngine — 2e moteur vidéo (Media3/ExoPlayer sur SurfaceView), essai HDR.
-  # Version EPINGLEE volontairement : paquet jeune (21 likes), on ne veut pas
-  # qu'un ^ tire une version non testee sur le televiseur.
-  better_native_video_player: 1.5.2
+  # §engineVendor — Moteur video Media3/ExoPlayer sur SurfaceView, VENDORE dans
+  # `packages/aether_video/` (licence MIT). Copie a l'identique de
+  # better_native_video_player 1.5.2, nom de paquet CONSERVE pour qu'aucun
+  # import n'ait a bouger.
+  #
+  # Pourquoi vendore plutot que depend : quatre manques impossibles a corriger
+  # depuis l'exterieur — setVolume plafonne a 1.0 (le boost 0->200 %), aucun
+  # bypass SSL (panels a certificat invalide), aucun AnalyticsListener
+  # (§videoStats), et RESIZE_MODE_FIT fige (§videoFit).
+  #
+  # /!\ Les mises a jour amont ne sont plus gratuites : toute reprise se fait
+  # a la main depuis pub.dev, en rejouant nos patchs.
+  better_native_video_player:
+    path: packages/aether_video
 
 dev_dependencies:
   flutter_test:
