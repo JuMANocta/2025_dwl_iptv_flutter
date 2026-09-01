@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
-import '../../core/utils/platform_tv.dart';
 import 'playback_engine.dart';
 import 'video_render.dart';
 import 'video_stats.dart';
@@ -35,8 +34,10 @@ class AetherPlayerController implements AetherPlaybackEngine {
   /// faiblement encodés. Sur Android TV / Fire TV, le boost natif des
   /// téléviseurs est déjà important → on démarre à 125%.
   /// L'utilisateur peut monter jusqu'à 200% via le swipe vertical.
-  static double get initialVolume => PlatformTv.isTv ? 125.0 : 130.0;
-  static const double maxVolume = 200.0;
+  /// ⚠️ Déplacé dans [AetherVolume] (§engineVendor étape 5) : c'est une règle
+  /// de l'app, pas de libmpv. Alias conservés le temps de la migration.
+  static double get initialVolume => AetherVolume.initial;
+  static const double maxVolume = AetherVolume.max;
 
   late final Player player;
   late final VideoController videoController;

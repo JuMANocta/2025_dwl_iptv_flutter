@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../../core/utils/platform_tv.dart';
 import 'video_stats.dart';
 
 /// §engineVendor étape 3 — **La frontière entre l'app et son moteur vidéo.**
@@ -24,6 +25,21 @@ import 'video_stats.dart';
 /// ⚠️ **Aucun type de moteur ne traverse cette frontière** — ni `Player`, ni
 /// `AudioTrack` de media_kit, ni `NativeVideoPlayerController`. C'est la
 /// condition pour que le remplacement soit réel et pas cosmétique.
+/// §audio — Volume de départ et plafond, **communs à tous les moteurs**.
+///
+/// ⚠️ Ces valeurs vivaient dans l'implémentation media_kit : un second moteur
+/// ne les aurait jamais appliquées, et le son serait reparti à 100 % sans que
+/// personne ne comprenne pourquoi. C'est une règle de l'APP (les flux IPTV sont
+/// souvent encodés à faible niveau), pas une particularité de libmpv.
+abstract final class AetherVolume {
+  /// Sur téléviseur, le boost natif du poste est déjà important → 125 %.
+  static double get initial => PlatformTv.isTv ? 125.0 : 130.0;
+
+  /// Au-delà de 100 %, l'amplification est logicielle (mpv `volume-max`,
+  /// `LoudnessEnhancer` côté Media3 — cf. §engineVendor patch 1).
+  static const double max = 200.0;
+}
+
 abstract class AetherPlaybackEngine {
   // ── Commandes ──────────────────────────────────────────────────────────────
 

@@ -230,16 +230,24 @@ enum VideoHdrMode {
 /// revient d'office au défaut. Un moteur qui plante ne doit pas rendre l'app
 /// inutilisable.
 enum VideoEngineMode {
-  mediaKit(
-    label: 'media_kit',
-    detail: 'libmpv — moteur historique, très tolérant',
-  ),
-
-  /// ⚠️ Les 4 patchs du paquet vendoré (volume > 100 %, bypass SSL,
-  /// §videoStats, §videoFit) sont exercés pour la PREMIÈRE fois par ce mode.
+  /// §engineVendor étape 5 — **DÉFAUT depuis le 2026-09-01.**
+  ///
+  /// Bascule décidée par la mesure : sur DEUX matériels réels (téléviseur
+  /// Philips et téléphone), Media3 n'a **aucun échec de décodage propre** et
+  /// libmpv ne rattrape **rien**. Il apporte en plus le **HDR natif**, hors de
+  /// portée de media_kit par construction (une texture Flutter impose le SDR).
   media3(
     label: 'Media3',
-    detail: 'ExoPlayer sur SurfaceView — HDR natif',
+    detail: 'ExoPlayer sur SurfaceView — HDR natif · défaut',
+  ),
+
+  /// Conservé comme **repli** jusqu'à l'étape 6.
+  ///
+  /// ⚠️ C'est le moteur des réglages Rendu / Synchro / HDR du banc : ils sont
+  /// tous des propriétés mpv et n'ont **aucun effet** sur Media3.
+  mediaKit(
+    label: 'media_kit',
+    detail: 'libmpv — moteur historique, repli',
   );
 
   const VideoEngineMode({required this.label, required this.detail});
@@ -266,7 +274,7 @@ abstract final class VideoRenderPreference {
   static VideoRenderMode _mode = VideoRenderMode.auto;
   static VideoSyncMode _sync = VideoSyncMode.displayResample;
   static VideoHdrMode _hdr = VideoHdrMode.auto;
-  static VideoEngineMode _engine = VideoEngineMode.mediaKit;
+  static VideoEngineMode _engine = VideoEngineMode.media3;
 
   static VideoRenderMode get mode => _mode;
   static VideoSyncMode get sync => _sync;
@@ -282,7 +290,7 @@ abstract final class VideoRenderPreference {
       _mode != VideoRenderMode.auto ||
       _sync != VideoSyncMode.displayResample ||
       _hdr != VideoHdrMode.auto ||
-      _engine != VideoEngineMode.mediaKit;
+      _engine != VideoEngineMode.media3;
 
   /// Configuration à passer au `VideoController`. `null` quand rien n'est
   /// surchargé → media_kit garde strictement son comportement par défaut.
@@ -301,7 +309,7 @@ abstract final class VideoRenderPreference {
       _hdr = _byName(
           prefs.getString(_hdrKey), VideoHdrMode.values, VideoHdrMode.auto);
       _engine = _byName(prefs.getString(_engineKey), VideoEngineMode.values,
-          VideoEngineMode.mediaKit);
+          VideoEngineMode.media3);
 
       // §benchGuard — Drapeau encore levé ⇒ la session précédente est morte en
       // pleine lecture avec un réglage de diagnostic. On désarme AVANT de
@@ -353,7 +361,7 @@ abstract final class VideoRenderPreference {
     setMode(VideoRenderMode.auto);
     setSync(VideoSyncMode.displayResample);
     setHdr(VideoHdrMode.auto);
-    setEngine(VideoEngineMode.mediaKit);
+    setEngine(VideoEngineMode.media3);
   }
 
   // ── §benchGuard — Garde-fou anti-plantage ───────────────────────────────────

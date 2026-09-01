@@ -80,6 +80,10 @@ class Media3Engine implements AetherPlaybackEngine {
       allowsPictureInPicture: false,
     );
     _wire();
+    // §audio — Même départ que media_kit : les flux IPTV sont souvent encodés
+    // à faible niveau. Passe par le `LoudnessEnhancer` du patch 1, puisque
+    // ExoPlayer plafonne à 100 %.
+    setVolume(AetherVolume.initial);
   }
 
   /// ⚠️ Les abonnements se posent **avant** `initialize()` : le paquet le
@@ -342,6 +346,16 @@ class Media3Engine implements AetherPlaybackEngine {
     return (n != null && n > 0) ? n : null;
   }
 
+  /// ⚠️ **Ordre imposé par la vue native.** À la fermeture du lecteur, Flutter
+  /// démonte le widget AVANT que `dispose()` ne s'exécute : la vue de plateforme
+  /// n'existe déjà plus, et tout appel qui la vise échoue en
+  /// `PlatformException(NO_VIEW)`. Ce n'est pas une panne — la lecture s'arrête
+  /// bien — mais ça pollue le journal §tvLogs, seul canal de diagnostic sur
+  /// téléviseur, et un bruit récurrent finit par masquer une vraie erreur.
+  ///
+  /// On coupe donc les abonnements en premier, et on laisse `dispose()` du
+  /// contrôleur faire l'arrêt : c'est lui qui appelle `player.stop()` côté natif
+  /// sans passer par la vue.
   @override
   void dispose() {
     for (final s in _subs) {

@@ -296,7 +296,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
         child: Text(
-          'Pour diagnostiquer une lecture 4K qui saccade sur box TV. '
+          'Pour diagnostiquer une lecture qui saccade. '
           'Les changements ne s\'appliquent qu\'à la PROCHAINE lecture. '
           'Vérifier le résultat avec « Infos vidéo » dans le lecteur '
           '(↑ → Options), qui affiche la sortie retenue et les images perdues.',
@@ -435,8 +435,8 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           child: Text(
             '⚠️ Réglages de diagnostic actifs — la lecture ne se comporte plus '
             'comme par défaut. « Direct » supprime les sous-titres affichés par '
-            'le lecteur. Les réglages Rendu / Synchro / HDR ne concernent QUE '
-            'le moteur media_kit.',
+            'le lecteur. ⚠️ Les réglages Rendu / Synchro / HDR sont des '
+            'propriétés mpv : ils n\'ont AUCUN effet sur le moteur Media3.',
             style: TextStyle(fontSize: 11, color: kWarning),
           ),
         ),

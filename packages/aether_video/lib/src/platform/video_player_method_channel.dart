@@ -171,7 +171,18 @@ class VideoPlayerMethodChannel {
         'viewId': primaryPlatformViewId,
       });
     } catch (e) {
-      debugPrint('Error calling pause: $e');
+      // §engineVendor patch 5 — `NO_VIEW` n'est PAS une panne : à la fermeture
+      // du lecteur, Flutter démonte la vue de plateforme avant que le
+      // contrôleur ne soit disposé, donc tout appel qui la vise échoue. La
+      // lecture s'arrête bien de toute façon.
+      //
+      // /!\ Le paquet amont était INCOHÉRENT : `play` avalait silencieusement,
+      // `pause` journalisait. Sur téléviseur le journal §tvLogs est le SEUL
+      // canal de diagnostic — un bruit récurrent à chaque sortie de lecteur y
+      // masque les vraies erreurs. On aligne sur le comportement de `play`.
+      if (!e.toString().contains('NO_VIEW')) {
+        debugPrint('Error calling pause: $e');
+      }
     }
   }
 
