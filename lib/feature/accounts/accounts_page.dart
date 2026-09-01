@@ -324,6 +324,10 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
         ),
         actions: [
           TextButton(
+              // §safeFocus — Le focus d'entrée va sur le bouton SÛR : sur TV,
+              // OK est le geste réflexe et le dialogue pouvait s'ouvrir sur
+              // l'action destructrice.
+              autofocus: true,
               onPressed: () => Navigator.pop(ctx, false),
               child: Text(l10n.cancel)),
           TextButton(
@@ -389,6 +393,10 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
         content: Text(l10n.deleteAccountDialogContent),
         actions: [
           TextButton(
+              // §safeFocus — Suppression de COMPTE : le focus d'entrée va sur
+              // « Annuler ». C'est l'action la plus destructrice de l'app, et
+              // sur TV, OK est le geste réflexe.
+              autofocus: true,
               onPressed: () => Navigator.pop(ctx, false),
               child: Text(l10n.cancel)),
           TextButton(

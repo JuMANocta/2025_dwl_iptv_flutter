@@ -1801,6 +1801,26 @@ class NativeVideoPlayerController {
   int _resizeMode = AetherResizeMode.fit;
   int get resizeMode => _resizeMode;
 
+  /// §engineVendor patch 8 — Langue audio préférée, à poser AVANT l'ouverture.
+  Future<void> setPreferredAudioLanguage(String? language) =>
+      _methodChannel?.setPreferredAudioLanguage(language) ??
+      Future<void>.value();
+
+  /// §engineVendor patch 7 — Arrêt immédiat, à appeler AVANT [dispose].
+  ///
+  /// Libère le rendu et le décodeur tout de suite ; le `dispose()` complet, qui
+  /// est asynchrone et enchaîne plusieurs allers-retours natifs, n'a alors plus
+  /// rien de coûteux à faire pendant que Flutter reconstruit l'écran précédent.
+  Future<void> stopNow() => _methodChannel?.stopNow() ?? Future<void>.value();
+
+  /// §engineVendor patch 6 — Rapidité du saut dans le flux.
+  ///
+  /// `true` (défaut) : saut à l'image-clé la plus proche, réponse immédiate.
+  /// `false` : position exacte, au prix d'un re-décodage silencieux qui rend le
+  /// retour arrière très lent sur un flux 4K.
+  Future<void> setFastSeek(bool enabled) =>
+      _methodChannel?.setFastSeek(enabled) ?? Future<void>.value();
+
   /// §engineVendor patch 3 — Instantané §videoStats, ou `null` si indisponible.
   ///
   /// Clés : `droppedFrames`, `decoder`, `hardware`, `codec`, `width`, `height`,

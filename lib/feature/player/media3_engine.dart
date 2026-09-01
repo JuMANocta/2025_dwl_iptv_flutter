@@ -152,6 +152,9 @@ class Media3Engine implements AetherPlaybackEngine {
       {Duration? start, String? audioLang, String? subLang}) async {
     _subLang = subLang;
     await _c.initialize();
+    // §trackLangPref — Posée AVANT l'ouverture : changer de piste après coup
+    // re-demuxe le flux ~3 s plus tard (« le film se relance »).
+    await _applyLangPrefs(audioLang);
     await _c.loadUrl(
       url: url,
       // §iptvUaCompat — Les panels Xtream rejettent les UA navigateur par un
@@ -173,8 +176,19 @@ class Media3Engine implements AetherPlaybackEngine {
       {Duration? start, String? audioLang, String? subLang}) async {
     _subLang = subLang;
     await _c.initialize();
+    await _applyLangPrefs(audioLang);
     await _c.load(url: 'file://$path', startAt: start);
     await _applySubPreference();
+  }
+
+  /// §trackLangPref — Préférence de langue audio.
+  ///
+  /// ⚠️ Le paquet amont ne gérait QUE les sous-titres : la préférence audio
+  /// était silencieusement perdue et un film multi-langue repartait sur la
+  /// piste par défaut du fichier (§engineVendor patch 8).
+  Future<void> _applyLangPrefs(String? audioLang) async {
+    if (audioLang == null || audioLang.isEmpty) return;
+    await _c.setPreferredAudioLanguage(audioLang);
   }
 
   /// §trackLangPref — `subLang == 'no'` signifie « sous-titres désactivés ».
@@ -358,6 +372,18 @@ class Media3Engine implements AetherPlaybackEngine {
   /// sans passer par la vue.
   @override
   void dispose() {
+    // §engineVendor patch 7 — Couper la lecture AVANT tout le reste.
+    //
+    // Mesuré sur téléviseur : la sortie du lecteur prenait 1,5 s, interface
+    // figée. `dispose()` du paquet est asynchrone et n'est pas attendu ici
+    // (l'interface impose une signature synchrone) : la surface, le décodeur
+    // Dolby Vision et la connexion réseau restaient donc tenus pendant que
+    // Flutter reconstruisait la fiche.
+    //
+    // ⚠️ Volontairement NON attendu : `dispose()` doit rendre la main tout de
+    // suite. L'ordre part au natif avant la destruction de la vue, c'est ce qui
+    // compte.
+    _c.stopNow();
     for (final s in _subs) {
       s.cancel();
     }

@@ -224,6 +224,43 @@ class VideoPlayerMethodChannel {
     }
   }
 
+  /// §engineVendor patch 8 — Langue audio préférée (§trackLangPref).
+  Future<void> setPreferredAudioLanguage(String? language) async {
+    try {
+      await _methodChannel
+          .invokeMethod<void>('setPreferredAudioLanguage', <String, Object?>{
+        'viewId': primaryPlatformViewId,
+        'language': language,
+      });
+    } catch (e) {
+      debugPrint('Error calling setPreferredAudioLanguage: $e');
+    }
+  }
+
+  /// §engineVendor patch 7 — Coupe la lecture immédiatement (sortie du lecteur).
+  Future<void> stopNow() async {
+    try {
+      await _methodChannel.invokeMethod<void>('stopNow', <String, Object>{
+        'viewId': primaryPlatformViewId,
+      });
+    } catch (e) {
+      // La vue peut déjà être démontée : sans objet, pas une panne.
+    }
+  }
+
+  /// §engineVendor patch 6 — Saut à l'image-clé la plus proche (rapide) ou
+  /// position exacte (lent sur les flux 4K à images-clés espacées).
+  Future<void> setFastSeek(bool enabled) async {
+    try {
+      await _methodChannel.invokeMethod<void>('setFastSeek', <String, Object>{
+        'viewId': primaryPlatformViewId,
+        'enabled': enabled,
+      });
+    } catch (e) {
+      debugPrint('Error calling setFastSeek: $e');
+    }
+  }
+
   /// §engineVendor patch 4 — Mode de redimensionnement de la surface vidéo.
   ///
   /// Valeurs `AspectRatioFrameLayout` de Media3 :

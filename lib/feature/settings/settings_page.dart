@@ -116,6 +116,17 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
         ),
         actions: [
           TextButton(
+          // §safeFocus — Sur TV, le focus d'entrée d'un dialogue n'est pas
+          // maîtrisé : il peut tomber sur le bouton destructeur, et OK est le
+          // geste RÉFLEXE à la télécommande (§dlErgo l'avait déjà établi pour
+          // les téléchargements). Constaté en conditions réelles le 2026-09-01 :
+          // en visant le banc d'essai, le focus a atterri sur « Réinitialiser
+          // les données d'usage ».
+          //
+          // ⚠️ L'autofocus va sur le bouton SÛR, jamais sur l'action. Sans
+          // effet au tactile — c'est un correctif TV qui ne change rien sur
+          // mobile.
+          autofocus: true,
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Annuler'),
           ),

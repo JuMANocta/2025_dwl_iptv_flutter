@@ -20,6 +20,8 @@ import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Format
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+// §engineVendor patch 6 — precision de recherche (seek)
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DataSource
@@ -237,6 +239,11 @@ class VideoPlayerMethodHandler(
     // /!\ Compteurs CUMULATIFS depuis le début de la lecture, remis à zéro à
     // chaque `load` — comme `frame-drop-count` de mpv, pour que les relevés
     // restent comparables entre les deux moteurs.
+    /// §engineVendor patch 6 — Saut a l'image-cle la plus proche.
+    /// Defaut VRAI : c'est le comportement attendu d'un lecteur video, et
+    /// l'exactitude a la milliseconde n'a aucun usage ici.
+    private var fastSeek: Boolean = true
+
     private var droppedFrames: Int = 0
     private var videoCodec: String? = null
     private var videoDecoder: String? = null
@@ -398,6 +405,56 @@ class VideoPlayerMethodHandler(
             "setNativeSidecarActive" -> handleSetNativeSidecarActive(call, result)
             "setSubtitlesSuppressedForPip" -> handleSetSubtitlesSuppressedForPip(call, result)
             // §engineVendor patch 3 — §videoStats
+            // §engineVendor patch 8 — Langue AUDIO preferee (§trackLangPref).
+            //
+            // Le paquet amont ne gerait que `setPreferredTextLanguage` : la
+            // preference de langue audio de l'app etait donc **silencieusement
+            // perdue** sur ce moteur, et un film multi-langue repartait sur la
+            // piste par defaut du fichier.
+            //
+            // /!\ A poser AVANT l'ouverture : changer de piste APRES coup
+            // provoque un re-demux ~3 s plus tard, l'effet « le film se
+            // relance » (§trackLangPref, deja paye cote mpv).
+            "setPreferredAudioLanguage" -> {
+                val language = call.argument<String>("language")
+                player.trackSelectionParameters =
+                    player.trackSelectionParameters.buildUpon()
+                        .setPreferredAudioLanguage(language)
+                        .build()
+                NpLog.d(TAG, "setPreferredAudioLanguage($language)")
+                result.success(null)
+            }
+            // §engineVendor patch 7 — Arret IMMEDIAT, pour la sortie du lecteur.
+            //
+            // Mesure sur televiseur (2026-09-01) : quitter un film prenait
+            // **1,5 s**, pendant lesquelles l'interface etait figee.
+            //
+            // Cause : `dispose()` du paquet est ASYNCHRONE et enchaine
+            // plusieurs allers-retours natifs (pause, plein ecran,
+            // desabonnements, coordinateur, sous-titres...). Pendant ce temps
+            // ExoPlayer tient encore la surface, le decodeur Dolby Vision et la
+            // connexion reseau — et Flutter essaie deja de reconstruire l'ecran
+            // precedent. Le `PlatformException(NO_VIEW)` observe au dispose
+            // etait le SYMPTOME de cet ordre inverse.
+            //
+            // Cette route fait le strict necessaire, tout de suite : couper le
+            // rendu et liberer le decodeur. Le `dispose()` complet suit, mais
+            // il n'a plus rien de couteux a faire.
+            "stopNow" -> {
+                try {
+                    player.stop()
+                    player.clearMediaItems()
+                } catch (e: Exception) {
+                    NpLog.w(TAG, "stopNow: $e")
+                }
+                result.success(null)
+            }
+            // §engineVendor patch 6 — bascule precision/rapidite du seek.
+            "setFastSeek" -> {
+                fastSeek = call.argument<Boolean>("enabled") ?: true
+                NpLog.d(TAG, "setFastSeek($fastSeek)")
+                result.success(null)
+            }
             "getVideoStats" -> handleGetVideoStats(result)
             "getAvailableAudioTracks" -> handleGetAvailableAudioTracks(result)
             "setAudioTrack" -> handleSetAudioTrack(call, result)
@@ -670,6 +727,31 @@ class VideoPlayerMethodHandler(
         val args = call.arguments as? Map<*, *>
         val milliseconds = args?.get("milliseconds") as? Int
         if (milliseconds != null) {
+            // §engineVendor patch 6 — **Le retour arrière était très lent.**
+            //
+            // Signale par l'utilisateur sur son televiseur (2026-09-01) : la
+            // lecture est fluide, mais un saut en arriere prend plusieurs
+            // secondes.
+            //
+            // Cause : sans `setSeekParameters`, ExoPlayer utilise
+            // `SeekParameters.DEFAULT`, qui vise la position EXACTE. Pour y
+            // arriver il repart de l'image-cle precedente et **redecode en
+            // silence** tout l'intervalle. Sur du Dolby Vision 4K les cles sont
+            // espacees de plusieurs secondes et chaque image coute cher.
+            //
+            // /!\ En arriere c'est SYSTEMATIQUEMENT le pire cas : on retombe au
+            // debut du groupe d'images. En avant, on tombe souvent pres d'une
+            // cle — d'ou l'asymetrie constatee.
+            //
+            // `CLOSEST_SYNC` saute directement a l'image-cle la plus proche :
+            // aucun redecodage, reponse immediate. Le prix est un ecart de
+            // position de quelques secondes au plus — invisible pour un saut de
+            // 10 s, et c'est le comportement qu'ont les lecteurs du marche.
+            if (fastSeek) {
+                player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+            } else {
+                player.setSeekParameters(SeekParameters.DEFAULT)
+            }
             player.seekTo(milliseconds.toLong())
             eventHandler.sendEvent("seek", mapOf("position" to milliseconds))
         }
