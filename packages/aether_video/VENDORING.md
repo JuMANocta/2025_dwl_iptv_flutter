@@ -80,6 +80,15 @@ lieu de faire échouer la lecture.
 - `CLAUDE.md` amont renommé **`UPSTREAM_CLAUDE.md`** : laissé tel quel, il serait
   chargé comme instructions projet dès qu'on travaille dans ce sous-dossier.
 - `example/`, `.dart_tool/`, `build/` retirés.
+- **`packages/better_native_video_extractor/` supprimé (2026-09-01).**
+  Sous-paquet amont d'extraction d'URL YouTube/Vimeo, **jamais importé** :
+  aucune référence dans `lib/`, ni dans le `pubspec.yaml` de l'app, ni dans
+  celui du paquet vendoré. Il dépendait de `youtube_explode_dart` et de
+  `package:test`, absents de la résolution → il injectait **106 erreurs** dans
+  chaque `flutter analyze`, qui restait donc rouge en permanence.
+  ⚠️ Le vrai coût n'était pas les 64 Ko : un `analyze` rouge en permanence
+  **cache les régressions réelles**. Après retrait : 106 erreurs → 0.
+  ↩️ Récupérable par `git revert` (le dossier était suivi par git).
 - Aucun autre écart à ce jour — l'étape 1 du plan est une copie **à
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).

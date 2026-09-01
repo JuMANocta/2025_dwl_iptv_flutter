@@ -26,7 +26,7 @@
 ## Fonctionnalités
 
 ### 📺 Lecture
-- Lecture de flux réseau (HLS, MPEG-TS) et fichiers locaux via **libmpv** (`media_kit`) — *migration en cours vers **Media3/ExoPlayer**, qui apporte le **HDR natif** sur téléviseur*
+- Lecture de flux réseau (HLS, MPEG-TS) et fichiers locaux via **Media3/ExoPlayer** — décodage matériel **Dolby Vision / HDR natif** sur téléviseur, sur `SurfaceView`. Vérifié sur un Philips : 4K Dolby Vision, **zéro image perdue**. libmpv (`media_kit`) reste disponible en repli le temps de finir la migration
 - Player plein écran paysage avec contrôles entièrement custom
 - **Gestures** : double-tap ±10s, swipe horizontal seek, swipe vertical volume/luminosité
 - **Verrouillage écran** : le cadenas désactive aussi les gestes (plus de seek/volume accidentel)
@@ -217,7 +217,7 @@ lib/
 | Composant | Package |
 |-----------|---------|
 | HTTP / Téléchargements | `dio` |
-| Player vidéo | `media_kit` + `media_kit_video` (libmpv) — *remplacement par Media3/ExoPlayer en cours* |
+| Player vidéo | **Media3/ExoPlayer** vendoré (`packages/aether_video`) — `media_kit`/libmpv conservé en repli jusqu'au retrait final |
 | Luminosité | `screen_brightness` |
 | Wakelock | `wakelock_plus` |
 | Stockage sécurisé | `flutter_secure_storage` |
@@ -294,7 +294,7 @@ lib/
 **🔥 Top priorité (2026-08-05)** :
 - [x] **Plafond du cache image en RAM** (§imgMemCache) — réglable dans Optimisation (20-150 Mo, 40 Mo en profil Performance) au lieu des 100 Mo par défaut de Flutter ; rendu possible par le cache disque
 - [x] **Cache disque des images** (§imgDiskCache) — vignettes persistées sur disque (widget partagé `AetherImage`, rétention 60 j TMDB / 7 j provider), backdrop de fiche en w1280, ligne « Cache images » + bouton de purge dans Optimisation
-- [x] **Statut de démarrage parlant** (§bootStatus) — l'écran de lancement affiche l'étape réelle au lieu du « // initialisation… » figé : vérification du compte, lecture **ou** téléchargement de la playlist, analyse du catalogue **avec pourcentage** (barre déterminée), chargement des autres comptes
+- [x] **Statut de démarrage parlant** (§bootStatus) — l'écran de lancement affiche l'étape réelle au lieu du « // initialisation… » figé : vérification du compte, lecture **ou** téléchargement de la playlist, analyse du catalogue, chargement des autres comptes. ⚠️ *Le pourcentage affiché pendant l'analyse ne mesure rien depuis le passage au catalogue JSON : il saute de 5 % à 100 % sans rien entre les deux — corrigé par §bootPercent (planifié).*
 - [x] **Audit de la gestion des favoris** (§favAudit) — la latence venait du groupement de la home, qui se relançait **entièrement à chaque cœur** : la rangée ⭐ (catégorie virtuelle) est désormais recalculée seule. Corrigé aussi : le flag one-shot de réconciliation pouvait n'être jamais posé (scan de la playlist à chaque démarrage) et les regex de `tvGroupKey` étaient recompilées à chaque appel
 - [x] **Lecture 4K saccadée sur box TV** (§video4k, 2026-08-30) — **résolu**. Le décodage n'était pas en cause : c'est le traitement **HDR** appliqué par le processeur graphique à chaque image (une analyse de luminosité image par image, en 4K, 24 fois par seconde) qui faisait jeter **une image sur trois**. L'option « HDR → Allégé » du banc d'essai (Paramètres → Optimisation) supprime **toutes** les pertes, sans rien retirer d'autre — ni sous-titres, ni synchronisation. L'indice décisif est venu d'un utilisateur remarquant que sa télé compatible HDR ne basculait jamais en mode HDR
 - [x] **Téléchargement écrit directement à l'emplacement final** (§dlDirectWrite) — le fichier est téléchargé **dans son dossier de destination** puis simplement renommé : plus de copie de plusieurs Go en fin de parcours (elle s'exécutait sur le thread UI d'Android et faisait planter certains téléphones, en exigeant au passage le double d'espace disque). Corrigés aussi : la progression qui réécrivait toute la liste des tâches sur disque **à chaque bloc reçu**, et les tâches qui pouvaient rester bloquées sur « finalisation » indéfiniment
@@ -302,6 +302,8 @@ lib/
 - [x] **Fiche film : réalisateur cliquable + ses films disponibles** (§directorView), **synopsis avant les boutons** (§detailsLayout), **infos TMDB élargies** (§tmdbMore — tagline, nombre de votes, section « Infos » avec pays/studios/statut/durée)
 - [x] **Sens de défilement des carrousels en remontant la page** (§carouselScrollDir) — entrée par la gauche
 - [x] **Recherche par personne** (§personSearch) — rangée « Personnes » en tête des résultats (photos rondes + métier), tap → filmographie avec badges DISPO
+- [ ] **Les autres comptes chargés pendant l'écran de démarrage** (§bootHydrate) — aujourd'hui, les listes secondaires se téléchargent et se parsent **5 s après** l'arrivée sur l'accueil. Mesuré sur téléviseur le 2026-09-01 : **46 secondes** de téléchargement, de parsing et d'écriture disque pendant qu'on fait défiler les vignettes — l'application paraît boguée alors qu'elle travaille. Le travail doit se faire sur l'écran de démarrage, annoncé, et seulement les jours où un cache est réellement périmé
+- [ ] **Un pourcentage de démarrage qui dit la vérité** (§bootPercent) — pendant « analyse du catalogue », la barre affiche 5 % puis 100 %, sans rien entre les deux : le parsing tourne dans un fil séparé qui ne rend aucun compte avant d'avoir fini. Sur une grosse liste, cela fait **16 secondes** d'écran immobile à 5 % — le moment exact où l'on se demande si l'application a planté
 - [ ] **Enchaînement automatique de l'épisode suivant en fin de lecture** (§autoNextEp) — compte à rebours annulable type Netflix
 
 **Autres** :

@@ -135,10 +135,22 @@ class RemoteControlService {
       case 'seekfwd':
         p.seek(const Duration(seconds: 10));
         break;
+      // §remoteOptions — Haut et Bas ne font PAS la même chose, et le
+      // commentaire d'origine promettait déjà ce que le code ne faisait pas :
+      // il disait « révèle les options du lecteur », et appelait `showControls`
+      // pour les deux touches. `showOptions` était donc câblé côté lecteur
+      // (`player_page.dart:293`) et **jamais atteint** depuis la console web.
+      //
+      // Constaté en recette à distance le 2026-09-01 : impossible d'ouvrir le
+      // panneau d'options — donc ni pistes audio, ni format d'image, ni encart
+      // §videoStats — alors que la télécommande PHYSIQUE y accède par ↑
+      // (`player_page.dart:1004`). On aligne sur elle, à l'identique.
       case 'up':
+        p.showOptions();
+        break;
       case 'down':
-        // Haut / Bas → révèle les options du lecteur (cohérent avec la
-        // télécommande TV physique). Le volume reste sur volup/voldown.
+        // Bas → simple révélation des contrôles. Le volume reste sur
+        // volup/voldown.
         p.showControls();
         break;
       case 'volup':
