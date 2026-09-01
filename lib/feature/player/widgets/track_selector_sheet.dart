@@ -35,7 +35,7 @@ class _TrackSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     // §engineVendor étape 3 — listes et sélection viennent du moteur, plus
-    // d'un objet d'état media_kit.
+    // d'un objet d'état propre au moteur.
     final audio = player.audioTracks;
     final subs = player.subtitleTracks;
     final curAudio = player.currentAudioTrack;

@@ -11,7 +11,7 @@ import 'player_page.dart' show PlayerBadgeType, VideoSourceType;
 ///      (les métadonnées TMDB du suivant n'étaient pas encore chargées au
 ///      moment de la reconstruction, et plus rien ne pouvait les rafraîchir
 ///      ensuite puisque les champs étaient `final`) ;
-///   2. le contrôleur `media_kit` était détruit et recréé à chaque épisode :
+///   2. le contrôleur du moteur vidéo était détruit et recréé à chaque épisode :
 ///      écran noir et re-buffering complet, très visible sur box TV.
 ///
 /// Regrouper ces champs dans un objet porté par le State rend le player

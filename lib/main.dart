@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
@@ -43,7 +42,6 @@ import 'data/services/tmdb_poster_cache.dart';
 import 'feature/update/update_dialog.dart';
 import 'feature/player/video_fit.dart';
 import 'feature/player/video_stats.dart';
-import 'feature/player/video_render.dart';
 import 'core/utils/platform_tv.dart';
 import 'package:dpad/dpad.dart';
 
@@ -123,7 +121,6 @@ Future<void> ensureServicesReady() => _servicesReady ??= _initServices();
 Future<void> _initServices() async {
   // L'ordre compte : `MediaStore.appFolder` doit être posé avant
   // `DownloadManagerService.init()`, qui réconcilie les tâches sur disque.
-  MediaKit.ensureInitialized();
   await MediaStore.ensureInitialized();
   MediaStore.appFolder = 'AetherStream';
   // Migration legacy d'abord (touche le secure storage des comptes).
@@ -144,7 +141,6 @@ Future<void> _initServices() async {
     PerformanceSettingsService.load(), // §perfSettings
     VideoFitPreference.load(), // §videoFit
     VideoStatsPreference.load(), // §videoStats
-    VideoRenderPreference.load(), // §video4kBench
     MeasuredQualityService.init(), // §qualityTruth
     InferredCategoryService.init(), // §inferredCat
     TmdbPosterCache.init(), // §tmdbUrlPersist
@@ -284,7 +280,7 @@ class MyApp extends StatelessWidget {
           ),
           // §mediaKeys — Touches média de la télécommande (PLAY, PAUSE, STOP,
           // avance/recul rapide, piste suivante). Elles n'étaient captées nulle
-          // part : ni ici, ni côté Android, ni par media_kit. Routées vers le
+          // part : ni ici, ni côté Android, ni par le moteur vidéo. Routées vers le
           // même dispatch que la télécommande web → un seul chemin d'actions.
           // Hors lecture, ces actions sont ignorées (pas de faux positif sur
           // l'accueil).

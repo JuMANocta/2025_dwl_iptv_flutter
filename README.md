@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.16.13+121-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.16.14+122-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -26,7 +26,7 @@
 ## Fonctionnalités
 
 ### 📺 Lecture
-- Lecture de flux réseau (HLS, MPEG-TS) et fichiers locaux via **Media3/ExoPlayer** — décodage matériel **Dolby Vision / HDR natif** sur téléviseur, sur `SurfaceView`. Vérifié sur un Philips : 4K Dolby Vision, **zéro image perdue**. libmpv (`media_kit`) reste disponible en repli le temps de finir la migration
+- Lecture de flux réseau (HLS, MPEG-TS) et fichiers locaux via **Media3/ExoPlayer** — décodage matériel **Dolby Vision / HDR natif** sur téléviseur, sur `SurfaceView`. Vérifié sur un Philips : 4K Dolby Vision, **zéro image perdue**
 - Player plein écran paysage avec contrôles entièrement custom
 - **Gestures** : double-tap ±10s, swipe horizontal seek, swipe vertical volume/luminosité
 - **Verrouillage écran** : le cadenas désactive aussi les gestes (plus de seek/volume accidentel)
@@ -217,7 +217,7 @@ lib/
 | Composant | Package |
 |-----------|---------|
 | HTTP / Téléchargements | `dio` |
-| Player vidéo | **Media3/ExoPlayer** vendoré (`packages/aether_video`) — `media_kit`/libmpv conservé en repli jusqu'au retrait final |
+| Player vidéo | **Media3/ExoPlayer** vendoré (`packages/aether_video`) — seul moteur depuis 2026-09-01 |
 | Luminosité | `screen_brightness` |
 | Wakelock | `wakelock_plus` |
 | Stockage sécurisé | `flutter_secure_storage` |
@@ -290,6 +290,8 @@ lib/
 - [x] `allowBackup="false"` + `data_extraction_rules.xml` — pas de fuite credentials via `adb backup`
 - [x] Sanitiseur de logs (`redactUrl` / `redactServer`) — plus aucune URL avec `user:pass` dans logcat
 
+- [x] **Changement de moteur vidéo : libmpv devient Media3/ExoPlayer** (§engineVendor, 2026-09-01) — Le lecteur reposait sur libmpv, qui rend dans une texture Flutter : cela **interdit le HDR par construction**, et sur un téléviseur 4K l'application perdait **une image sur trois**. Media3 rend dans une `SurfaceView`, ce qui laisse le téléviseur décoder le **Dolby Vision sur son circuit dédié** : plus aucune image perdue. La décision n'a pas été prise sur un principe mais sur une mesure — les deux moteurs mis face aux **mêmes fichiers**, sur un téléphone et sur le téléviseur : Media3 n'a **aucun échec de décodage propre**, et libmpv ne rattrapait **aucun** fichier. L'argument qui le protégeait (« il est plus tolérant aux formats ») n'était vrai que sur l'émulateur, dont les codecs délèguent au GPU de la machine hôte. Au passage, l'application **maigrit de 40,3 Mo** (103,1 → 62,8 Mo, 39 %) et la sortie du lecteur, qui prenait 1,5 seconde, est devenue instantanée
+
 ### 📅 Planifié
 **🔥 Top priorité (2026-08-05)** :
 - [x] **Plafond du cache image en RAM** (§imgMemCache) — réglable dans Optimisation (20-150 Mo, 40 Mo en profil Performance) au lieu des 100 Mo par défaut de Flutter ; rendu possible par le cache disque
@@ -302,6 +304,8 @@ lib/
 - [x] **Fiche film : réalisateur cliquable + ses films disponibles** (§directorView), **synopsis avant les boutons** (§detailsLayout), **infos TMDB élargies** (§tmdbMore — tagline, nombre de votes, section « Infos » avec pays/studios/statut/durée)
 - [x] **Sens de défilement des carrousels en remontant la page** (§carouselScrollDir) — entrée par la gauche
 - [x] **Recherche par personne** (§personSearch) — rangée « Personnes » en tête des résultats (photos rondes + métier), tap → filmographie avec badges DISPO
+- [ ] **Corrections du tour post-migration** (§tourFix) — huit défauts trouvés en auditant l'application après le changement de moteur, dont : choisir un profil de performance réactivait l'enchaînement automatique des épisodes qu'on avait coupé, le badge de vitesse du lecteur restait figé à 1.0x sur téléviseur, et le verrouillage du lecteur n'empêchait pas la télécommande d'agir. Deux correctifs de confidentialité des journaux au passage
+- [ ] **Application encore plus légère** (§apkDiet + §ramDiet) — l'APK peut passer de 62,8 à **environ 40 Mo** sans rien retirer de visible : 94,6 % du poids sont les bibliothèques natives, dont une architecture (x86_64) qu'aucun téléviseur ni téléphone n'utilise. Côté mémoire, le chargement d'une grande liste M3U garde ~179 Mo de copies temporaires — une lecture en flux les évite
 - [ ] **Les autres comptes chargés pendant l'écran de démarrage** (§bootHydrate) — aujourd'hui, les listes secondaires se téléchargent et se parsent **5 s après** l'arrivée sur l'accueil. Mesuré sur téléviseur le 2026-09-01 : **46 secondes** de téléchargement, de parsing et d'écriture disque pendant qu'on fait défiler les vignettes — l'application paraît boguée alors qu'elle travaille. Le travail doit se faire sur l'écran de démarrage, annoncé, et seulement les jours où un cache est réellement périmé
 - [ ] **Un pourcentage de démarrage qui dit la vérité** (§bootPercent) — pendant « analyse du catalogue », la barre affiche 5 % puis 100 %, sans rien entre les deux : le parsing tourne dans un fil séparé qui ne rend aucun compte avant d'avoir fini. Sur une grosse liste, cela fait **16 secondes** d'écran immobile à 5 % — le moment exact où l'on se demande si l'application a planté
 - [ ] **Enchaînement automatique de l'épisode suivant en fin de lecture** (§autoNextEp) — compte à rebours annulable type Netflix

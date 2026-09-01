@@ -5,7 +5,6 @@ import '../playback_engine.dart';
 
 import '../../../core/themes/colors.dart';
 import '../../../data/models/quality_scale.dart';
-import '../video_render.dart';
 import '../video_stats.dart';
 
 /// §videoStats — Encart de diagnostic vidéo, en direct par-dessus l'image.
@@ -181,13 +180,11 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       alert: s.hwdecKnown && !hw,
     ));
 
-    // §video4kBench — La sortie effectivement retenue par mpv. Elle suit
-    // « Décodage » parce que les deux décrivent le même chemin : le relevé
-    // §video4k a montré que le défaut y met `mediacodec-copy`, c'est-à-dire une
-    // copie mémoire par image. Affichée seulement quand le banc d'essai est
-    // actif ou qu'un mode direct est en place — sinon c'est du bruit pour
-    // quelqu'un qui regarde juste un film.
-    if (s.vo != null && (VideoRenderPreference.isOverridden || s.vo == 'mediacodec_embed')) {
+    // §engineVendor étape 6 — La sortie vidéo. Elle était masquée hors banc
+    // d'essai parce que sous mpv elle ne disait presque rien (`mediacodec-copy`
+    // partout). Sous Media3 elle nomme `SurfaceView`, c'est-à-dire précisément
+    // le chemin qui rend le HDR possible — l'information vaut d'être montrée.
+    if (s.vo != null) {
       rows.add(_StatRow(label: 'Sortie', value: s.vo!));
     }
 

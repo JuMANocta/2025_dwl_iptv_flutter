@@ -75,6 +75,27 @@ et **reposé à chaque chargement**, sinon l'amplification est perdue au 2e film
 ⚠️ Encapsulé : sur un appareil sans cet effet, le volume plafonne à 100 % au
 lieu de faire échouer la lecture.
 
+## 🛡️ Réserve §engineFeatures — NE PAS « nettoyer »
+
+Un audit du 2026-09-01 a inventorié ce qui, dans ce paquet, n'est pas encore
+appelé par l'app. **Décision utilisateur explicite : tout est à GARDER** — ce
+sont les fonctionnalités pour lesquelles le vendorage a été choisi (« il y a
+les options de cast etc. qui pourront servir »). Ne prendre AUCUN de ces blocs
+pour du code mort :
+
+- **Cast/Chromecast** : `lib/cast.dart` + `src/services/cast/` (~980 l. Dart,
+  + dépendance `multicast_dns`) ;
+- **Notifications / MediaSession / écran verrouillé** :
+  `VideoPlayerNotificationHandler.kt` + `VideoPlayerMediaSessionService.kt`
+  (~607 l. Kotlin, deps `media3-session` + `androidx.media`) ;
+- **PiP** : dépendance `floating` (l'app passe `allowsPictureInPicture: false`
+  pour l'instant) ;
+- **Téléchargements natifs** (`video_download_controller*`, `VideoCacheManager.kt`),
+  **playlists**, **analytics de lecture**, **sous-titres sidecar**,
+  **vignettes storyboard**, **AirPlay** (iOS) et le dossier `ios/` complet.
+
+Le jour où l'une de ces capacités est branchée → §engineFeatures en roadmap.
+
 ## Écarts déjà appliqués à la copie
 
 - `CLAUDE.md` amont renommé **`UPSTREAM_CLAUDE.md`** : laissé tel quel, il serait

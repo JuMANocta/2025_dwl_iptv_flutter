@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/quality_scale.dart';
@@ -225,99 +224,6 @@ class VideoStatsSnapshot {
       return '${(b / 1000000).toStringAsFixed(1).replaceAll('.', ',')} Mb/s';
     }
     return '${(b / 1000).round()} kb/s';
-  }
-}
-
-/// §videoStats — Lit un instantané des paramètres vidéo.
-abstract final class VideoStatsReader {
-  /// Une lecture complète : l'état media_kit (synchrone) + les propriétés que
-  /// seul mpv connaît (asynchrones).
-  ///
-  /// Best-effort de bout en bout : toute propriété absente reste `null` plutôt
-  /// que de faire échouer l'instantané entier — un overlay de diagnostic qui
-  /// disparaît au premier flux exotique ne diagnostique rien.
-  static Future<VideoStatsSnapshot> read(Player player) async {
-    final params = player.state.videoParams;
-    final track = player.state.track.video;
-
-    String? hwdec;
-    double? renderedFps;
-    double? containerFps;
-    int? bitrate;
-    int? dropped;
-    int? decoderDropped;
-    String? vo;
-    double? displayFps;
-    double? avSync;
-
-    final platform = player.platform;
-    if (platform is NativePlayer) {
-      Future<String?> prop(String name) async {
-        try {
-          final v = await platform.getProperty(name);
-          return v.isEmpty ? null : v;
-        } catch (_) {
-          return null;
-        }
-      }
-
-      // En parallèle : 10 allers-retours natifs séquentiels tiendraient mal la
-      // cadence d'une seconde sur une box déjà en difficulté.
-      final values = await Future.wait([
-        prop('hwdec-current'),
-        prop('estimated-vf-fps'),
-        prop('container-fps'),
-        prop('video-bitrate'),
-        prop('frame-drop-count'),
-        prop('decoder-frame-drop-count'),
-        // §video4kBench — Vérifient qu'un réglage forcé a bien été retenu, et
-        // donnent le plafond de l'affichage (cf. §video4k).
-        prop('current-vo'),
-        // ⚠️ Deux noms selon la version de libmpv : `display-fps` a été
-        // transformé en OPTION (et rendu muet en lecture) sur les builds
-        // récents, où la valeur mesurée vit dans `estimated-display-fps`. On
-        // demande les deux — se tromper de nom coûterait un cycle de release
-        // pour découvrir un champ vide.
-        prop('display-fps'),
-        prop('estimated-display-fps'),
-        prop('avsync'),
-      ]);
-      hwdec = values[0];
-      renderedFps = double.tryParse(values[1] ?? '');
-      containerFps = double.tryParse(values[2] ?? '');
-      bitrate = double.tryParse(values[3] ?? '')?.round();
-      dropped = int.tryParse(values[4] ?? '');
-      decoderDropped = int.tryParse(values[5] ?? '');
-      vo = values[6];
-      displayFps =
-          double.tryParse(values[7] ?? '') ?? double.tryParse(values[8] ?? '');
-      avSync = double.tryParse(values[9] ?? '');
-    }
-
-    return VideoStatsSnapshot(
-      width: params.w ?? track.w,
-      height: params.h ?? track.h,
-      displayWidth: params.dw,
-      displayHeight: params.dh,
-      pixelAspectRatio: params.par,
-      pixelFormat: params.pixelformat,
-      hwPixelFormat: params.hwPixelformat,
-      hwdec: hwdec,
-      codec: track.codec,
-      decoder: track.decoder,
-      // `container-fps` manque sur beaucoup de flux HLS → repli sur le fps
-      // annoncé par le demuxer de la piste.
-      containerFps: containerFps ?? track.fps,
-      renderedFps: renderedFps,
-      videoBitrate: bitrate ?? track.bitrate,
-      droppedFrames: dropped,
-      decoderDroppedFrames: decoderDropped,
-      signalPeak: params.sigPeak,
-      primaries: params.primaries,
-      vo: vo,
-      displayFps: displayFps,
-      avSync: avSync,
-    );
   }
 }
 

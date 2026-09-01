@@ -11,8 +11,6 @@ import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'media3_engine.dart';
 import 'playback_engine.dart';
-import 'video_render.dart';
-import 'player_controller.dart';
 import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
@@ -34,7 +32,7 @@ enum VideoSourceType {
   network, // live / VOD réseau (et timeshift simple)
   networkReplay, // timeshift avec barre replay + bouton "Retour au direct"
   file, // fichier local
-  // networkWithCache supprimé : media_kit gère le cache nativement
+  // networkWithCache supprimé : le moteur vidéo gère le cache nativement
 }
 
 /// Badge affiché en haut à droite du player.
@@ -235,9 +233,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   // Luminosité courante (0.0–1.0), initialisée à 0.5 par défaut.
   double _brightness = 0.5;
-  // Volume courant (0.0–200.0). Démarre boosté à 130% pour compenser les flux
-  // IPTV souvent encodés faibles — voir AetherPlayerController.initialVolume.
-  double _volume = AetherPlayerController.initialVolume;
+  // Volume courant (0.0–200.0). Démarre boosté (125 % sur TV, 130 % ailleurs)
+  // pour compenser les flux IPTV souvent encodés faibles — cf. [AetherVolume],
+  // qui vit dans l'interface et NON dans une implémentation : ces valeurs
+  // avaient été écrites côté mpv, et le moteur suivant ne les aurait jamais
+  // appliquées (§engineVendor étape 5).
+  double _volume = AetherVolume.initial;
 
   /// §webConsole Phase 2 — handlers exposés à la télécommande web pendant que
   /// le player est ouvert (mêmes actions que le D-pad TV).
@@ -256,22 +257,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _currentPath = _media.path;
     // §replayBuffer — profil mpv timeshift (buffering propre aux frontières
     // de segments HLS longs) quand on lit un replay.
-    // §engineVendor étape 4 — Le moteur est choisi dans le banc d'essai
-    // (Optimisation → Moteur vidéo). media_kit reste le DÉFAUT tant que
-    // l'étape 5 n'a pas validé Media3 sur les deux matériels réels.
-    //
-    // ⚠️ Le choix est lu ICI, à la construction : changer de moteur en cours de
-    // lecture n'a aucun sens (la surface native est déjà montée). Il prend donc
-    // effet à la PROCHAINE lecture, comme les autres leviers du banc.
+    // §engineVendor étape 6 — Il n'y a plus qu'un moteur : Media3/ExoPlayer.
+    // Le sélecteur du banc d'essai et l'implémentation libmpv sont partis avec
+    // libmpv lui-même. `_ctrl` reste typé [AetherPlaybackEngine] : l'interface
+    // garde son intérêt (elle borne ce que le lecteur a le droit de demander au
+    // moteur, et c'est elle qui a rendu la bascule possible sans réécrire le
+    // lecteur), même avec une seule implémentation.
     final timeshift = _media.sourceType == VideoSourceType.networkReplay;
-    _ctrl = switch (VideoRenderPreference.engine) {
-      VideoEngineMode.media3 => Media3Engine(timeshift: timeshift),
-      // §replayBuffer — profil mpv timeshift (buffering propre aux frontières
-      // de segments HLS longs) quand on lit un replay.
-      VideoEngineMode.mediaKit => AetherPlayerController(timeshift: timeshift),
-    };
-    debugPrint('🎬 §engineVendor — moteur '
-        '${VideoRenderPreference.engine.label} pour cette lecture');
+    _ctrl = Media3Engine(timeshift: timeshift);
     _listenErrors();
     _listenPlaybackForWakelock();
     _listenVideoParamsForQuality();
@@ -341,9 +334,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// ⚠️ Volontairement **indépendant de l'encart §videoStats** : celui-ci
   /// s'active à la demande, alors que la mesure n'a de valeur que si elle
   /// s'accumule toute seule, sur tous les flux lus. Elle ne coûte rien de plus
-  /// — `videoParams` est un flux que media_kit publie déjà.
+  /// — la taille vidéo est un flux que le moteur publie déjà.
   ///
-  /// Une seule écriture par lecture (`_measuredKey`) : mpv republie ces
+  /// Une seule écriture par lecture (`_measuredKey`) : le moteur republie ces
   /// paramètres à chaque reconfiguration de la chaîne vidéo.
   void _listenVideoParamsForQuality() {
     _videoParamsSub = _ctrl.videoParamsStream.listen((params) {
@@ -887,7 +880,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   void _handleVolumeChange(double delta) {
-    _volume = (_volume + delta).clamp(0.0, AetherPlayerController.maxVolume);
+    _volume = (_volume + delta).clamp(0.0, AetherVolume.max);
     _ctrl.setVolume(_volume);
   }
 
