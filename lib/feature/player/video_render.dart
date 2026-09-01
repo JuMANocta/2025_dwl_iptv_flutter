@@ -219,6 +219,35 @@ enum VideoHdrMode {
   final Map<String, String> properties;
 }
 
+/// §engineVendor étape 4 — Quel moteur vidéo lit les flux.
+///
+/// ⚠️ **media_kit reste le DÉFAUT** tant que l'étape 5 n'a pas validé Media3
+/// sur les deux matériels réels. Ce sélecteur est là pour comparer, pas encore
+/// pour basculer.
+///
+/// ⚠️ Couvert par §benchGuard, comme les autres leviers du banc : si l'app
+/// meurt pendant une lecture avec un moteur non standard, le démarrage suivant
+/// revient d'office au défaut. Un moteur qui plante ne doit pas rendre l'app
+/// inutilisable.
+enum VideoEngineMode {
+  mediaKit(
+    label: 'media_kit',
+    detail: 'libmpv — moteur historique, très tolérant',
+  ),
+
+  /// ⚠️ Les 4 patchs du paquet vendoré (volume > 100 %, bypass SSL,
+  /// §videoStats, §videoFit) sont exercés pour la PREMIÈRE fois par ce mode.
+  media3(
+    label: 'Media3',
+    detail: 'ExoPlayer sur SurfaceView — HDR natif',
+  );
+
+  const VideoEngineMode({required this.label, required this.detail});
+
+  final String label;
+  final String detail;
+}
+
 /// §video4kBench — Mémorise les choix du banc d'essai d'une lecture à l'autre.
 ///
 /// Persistant par nécessité : un diagnostic se fait sur plusieurs films
@@ -232,14 +261,19 @@ abstract final class VideoRenderPreference {
   static const _modeKey = 'player_video_render_mode_v1';
   static const _syncKey = 'player_video_sync_mode_v1';
   static const _hdrKey = 'player_video_hdr_mode_v1';
+  static const _engineKey = 'player_video_engine_v1';
 
   static VideoRenderMode _mode = VideoRenderMode.auto;
   static VideoSyncMode _sync = VideoSyncMode.displayResample;
   static VideoHdrMode _hdr = VideoHdrMode.auto;
+  static VideoEngineMode _engine = VideoEngineMode.mediaKit;
 
   static VideoRenderMode get mode => _mode;
   static VideoSyncMode get sync => _sync;
   static VideoHdrMode get hdr => _hdr;
+
+  /// §engineVendor — Moteur retenu pour la PROCHAINE lecture.
+  static VideoEngineMode get engine => _engine;
 
   /// Vrai dès qu'un réglage s'écarte du comportement historique — sert à
   /// signaler dans le journal qu'un relevé n'a PAS été fait en configuration
@@ -247,7 +281,8 @@ abstract final class VideoRenderPreference {
   static bool get isOverridden =>
       _mode != VideoRenderMode.auto ||
       _sync != VideoSyncMode.displayResample ||
-      _hdr != VideoHdrMode.auto;
+      _hdr != VideoHdrMode.auto ||
+      _engine != VideoEngineMode.mediaKit;
 
   /// Configuration à passer au `VideoController`. `null` quand rien n'est
   /// surchargé → media_kit garde strictement son comportement par défaut.
@@ -265,6 +300,8 @@ abstract final class VideoRenderPreference {
           VideoSyncMode.displayResample);
       _hdr = _byName(
           prefs.getString(_hdrKey), VideoHdrMode.values, VideoHdrMode.auto);
+      _engine = _byName(prefs.getString(_engineKey), VideoEngineMode.values,
+          VideoEngineMode.mediaKit);
 
       // §benchGuard — Drapeau encore levé ⇒ la session précédente est morte en
       // pleine lecture avec un réglage de diagnostic. On désarme AVANT de
@@ -279,8 +316,8 @@ abstract final class VideoRenderPreference {
       }
 
       if (isOverridden) {
-        debugPrint('🔬 §video4kBench — rendu=${_mode.name} '
-            'sync=${_sync.name} hdr=${_hdr.name}');
+        debugPrint('🔬 §video4kBench — moteur=${_engine.name} '
+            'rendu=${_mode.name} sync=${_sync.name} hdr=${_hdr.name}');
       }
     } catch (e) {
       debugPrint('⚠️ §video4kBench — lecture impossible : $e');
@@ -299,6 +336,12 @@ abstract final class VideoRenderPreference {
     _persist(_syncKey, value.name);
   }
 
+  static void setEngine(VideoEngineMode value) {
+    if (value == _engine) return;
+    _engine = value;
+    _persist(_engineKey, value.name);
+  }
+
   static void setHdr(VideoHdrMode value) {
     if (value == _hdr) return;
     _hdr = value;
@@ -310,6 +353,7 @@ abstract final class VideoRenderPreference {
     setMode(VideoRenderMode.auto);
     setSync(VideoSyncMode.displayResample);
     setHdr(VideoHdrMode.auto);
+    setEngine(VideoEngineMode.mediaKit);
   }
 
   // ── §benchGuard — Garde-fou anti-plantage ───────────────────────────────────

@@ -9,7 +9,9 @@ import 'package:aetherStream/data/services/remote_control_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
+import 'media3_engine.dart';
 import 'playback_engine.dart';
+import 'video_render.dart';
 import 'player_controller.dart';
 import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
@@ -140,7 +142,9 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
-  late final AetherPlayerController _ctrl;
+  /// §engineVendor étape 4 — Typé par l'INTERFACE, plus par une implémentation :
+  /// c'est ce qui permet de choisir le moteur au lancement de la lecture.
+  late final AetherPlaybackEngine _ctrl;
 
   /// §episodeMeta — Contenu courant. Remplacé par [_switchTo] sans démonter la
   /// page : c'est ce qui permet aux infos affichées de suivre l'épisode lu.
@@ -252,9 +256,22 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _currentPath = _media.path;
     // §replayBuffer — profil mpv timeshift (buffering propre aux frontières
     // de segments HLS longs) quand on lit un replay.
-    _ctrl = AetherPlayerController(
-      timeshift: _media.sourceType == VideoSourceType.networkReplay,
-    );
+    // §engineVendor étape 4 — Le moteur est choisi dans le banc d'essai
+    // (Optimisation → Moteur vidéo). media_kit reste le DÉFAUT tant que
+    // l'étape 5 n'a pas validé Media3 sur les deux matériels réels.
+    //
+    // ⚠️ Le choix est lu ICI, à la construction : changer de moteur en cours de
+    // lecture n'a aucun sens (la surface native est déjà montée). Il prend donc
+    // effet à la PROCHAINE lecture, comme les autres leviers du banc.
+    final timeshift = _media.sourceType == VideoSourceType.networkReplay;
+    _ctrl = switch (VideoRenderPreference.engine) {
+      VideoEngineMode.media3 => Media3Engine(timeshift: timeshift),
+      // §replayBuffer — profil mpv timeshift (buffering propre aux frontières
+      // de segments HLS longs) quand on lit un replay.
+      VideoEngineMode.mediaKit => AetherPlayerController(timeshift: timeshift),
+    };
+    debugPrint('🎬 §engineVendor — moteur '
+        '${VideoRenderPreference.engine.label} pour cette lecture');
     _listenErrors();
     _listenPlaybackForWakelock();
     _listenVideoParamsForQuality();

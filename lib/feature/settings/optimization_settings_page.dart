@@ -303,6 +303,17 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
         ),
       ),
+      // §engineVendor étape 4 — Le choix le plus structurant du banc : il
+      // change de MOTEUR, pas un réglage de moteur. Placé en tête pour ça.
+      _benchRow<VideoEngineMode>(
+        cs: cs,
+        title: 'Moteur vidéo',
+        values: VideoEngineMode.values,
+        current: VideoRenderPreference.engine,
+        labelOf: (v) => v.label,
+        detailOf: (v) => v.detail,
+        onPick: (v) => setState(() => VideoRenderPreference.setEngine(v)),
+      ),
       _benchRow<VideoRenderMode>(
         cs: cs,
         title: 'Rendu',
@@ -424,7 +435,8 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           child: Text(
             '⚠️ Réglages de diagnostic actifs — la lecture ne se comporte plus '
             'comme par défaut. « Direct » supprime les sous-titres affichés par '
-            'le lecteur.',
+            'le lecteur. Les réglages Rendu / Synchro / HDR ne concernent QUE '
+            'le moteur media_kit.',
             style: TextStyle(fontSize: 11, color: kWarning),
           ),
         ),
