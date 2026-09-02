@@ -236,6 +236,30 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     _scheduleNext();
   }
 
+  /// §heroPaint — Opacité d'une carte selon son rang dans la pile.
+  ///
+  /// Extraite en fonction parce qu'elle sert désormais **aussi** à décider si
+  /// la carte vaut la peine d'être construite : la règle de visibilité et la
+  /// règle d'affichage doivent être la même, sinon on écarte une carte encore
+  /// visible ou on en peint une qui ne l'est pas.
+  static double _opacityFor(double absDelta) =>
+      math.max(0.0, 1.0 - absDelta * 0.32).clamp(0.0, 1.0);
+
+  /// §heroPaint — En dessous, une carte ne se voit plus : elle ne coûte.
+  ///
+  /// ⚠️ Le rang 3 de la pile tombait à **4 %** d'opacité — invisible à l'œil,
+  /// mais payé plein tarif : une couche `RepaintBoundary` créée, une image
+  /// décodée, une ombre floutée tracée, et un `saveLayer` pour l'opacité. Il y
+  /// en avait un de chaque côté, soit 2 cartes sur 7.
+  static const double _minVisibleOpacity = 0.06;
+
+  /// §heroPaint — Au-delà de ce rang, plus d'ombre portée.
+  ///
+  /// ⚠️ Ces cartes sont à 36 % d'opacité ou moins ET recouvertes aux trois
+  /// quarts par la carte active : leur ombre floutée est un flou de 12 px
+  /// qu'on ne distingue pas. C'est le tracé le plus cher d'une carte de pile.
+  static const double _maxShadowDepth = 1.5;
+
   @override
   Widget build(BuildContext context) {
     if (widget.featured.isEmpty) return const SizedBox.shrink();
@@ -266,7 +290,12 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
         final cards = <({int i, double delta})>[];
         for (var i = 0; i < widget.featured.length; i++) {
           final d = _shortestDelta(i);
-          if (d.abs() <= 3) cards.add((i: i, delta: d));
+          // §heroPaint — On ne construit que ce qui se VOIT. Le rang 3 était à
+          // 4 % d'opacité : deux cartes sur sept, invisibles et payées plein
+          // tarif au premier tracé (couche + image + ombre floutée + saveLayer).
+          if (_opacityFor(d.abs()) >= _minVisibleOpacity) {
+            cards.add((i: i, delta: d));
+          }
         }
         cards.sort((a, b) => b.delta.abs().compareTo(a.delta.abs()));
 
@@ -332,7 +361,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     final offsetX = delta * (w * 0.22);
     final offsetY = math.min(absDelta * 14.0, 42.0);
     final scale = math.max(0.55, 1.0 - absDelta * 0.07);
-    final opacity = math.max(0.0, 1.0 - absDelta * 0.32).clamp(0.0, 1.0);
+    final opacity = _opacityFor(absDelta);
 
     return Transform(
       transform: Matrix4.identity()
@@ -359,6 +388,9 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
                 versions: widget.featured[i],
                 type: widget.type,
                 isActive: isActive,
+                // §heroPaint — la profondeur décide de l'ombre (cf.
+                // `_maxShadowDepth`) : une carte enfouie n'en porte plus.
+                depth: absDelta,
                 onTap: () => _onCardTap(context, i),
                 width: w,
               ),
@@ -398,6 +430,10 @@ class _HeroFanCard extends StatelessWidget {
   final List<M3uEntry> versions;
   final M3uContentType type;
   final bool isActive;
+
+  /// §heroPaint — Rang dans la pile (`|delta|`), 0 pour la carte active.
+  final double depth;
+
   final VoidCallback onTap;
 
   /// §imgThrash — Largeur de rendu, pour caler le décodage de l'affiche dessus
@@ -408,6 +444,7 @@ class _HeroFanCard extends StatelessWidget {
     required this.versions,
     required this.type,
     required this.isActive,
+    required this.depth,
     required this.onTap,
     required this.width,
   });
@@ -450,13 +487,19 @@ class _HeroFanCard extends StatelessWidget {
               blurRadius: 24,
             ),
           ]
-        : <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withAlpha(140),
-              offset: const Offset(4, 6),
-              blurRadius: 12,
-            ),
-          ];
+        : (depth > _HeroFanBannerState._maxShadowDepth
+            // §heroPaint — Carte enfouie : pas d'ombre du tout. Un flou de
+            // 12 px est le tracé le plus cher d'une carte de pile, et celle-ci
+            // est à 36 % d'opacité derrière la carte active — on ne le voit
+            // pas, on le paie.
+            ? const <BoxShadow>[]
+            : <BoxShadow>[
+                BoxShadow(
+                  color: Colors.black.withAlpha(140),
+                  offset: const Offset(4, 6),
+                  blurRadius: 12,
+                ),
+              ]);
 
     return Container(
       decoration: BoxDecoration(

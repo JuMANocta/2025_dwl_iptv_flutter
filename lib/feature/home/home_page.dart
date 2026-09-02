@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:aetherStream/core/diagnostics/jank_meter.dart';
 import 'package:aetherStream/core/diagnostics/log_buffer.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
@@ -329,6 +330,11 @@ class _HomePageState extends State<HomePage> with RouteAware {
   }
 
   void _goToPage(int i) {
+    // §jankMeter + §tabSwitchCost — Le changement d'onglet est le geste que
+    // l'utilisateur décrit comme « lourd ». La fenêtre se referme après la
+    // transition, et la purge de la sonde laisse encore remonter les frames
+    // de reconstruction — qui sont justement les plus chères.
+    JankMeter.beginSpan('onglet $_currentIndex → $i');
     if (PlatformTv.isTv) {
       // §dpadNav — Changement de section INSTANTANÉ sur TV (pas de glissement
       // horizontal de la PageView, donc plus de « secousse »). On fixe l'index
@@ -346,14 +352,17 @@ class _HomePageState extends State<HomePage> with RouteAware {
       // changement d'onglet VOULU — c'est donc ici, et nulle part ailleurs.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) FocusScope.of(context).nextFocus();
+        JankMeter.endSpan();
       });
       return;
     }
-    _pageController.animateToPage(
-      i,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeInOut,
-    );
+    _pageController
+        .animateToPage(
+          i,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeInOut,
+        )
+        .then((_) => JankMeter.endSpan());
   }
 
   /// §dpadNav — TV : repince la PageView sur la page courante dès qu'un
@@ -1151,7 +1160,144 @@ class _TypePage extends StatefulWidget {
   }
 }
 
+/// §tabSwitchCost — Un groupement calculé, conservé HORS de l'état de la page.
+///
+/// ## Le défaut mesuré
+///
+/// `PageView(allowImplicitScrolling: true)` ne garde vivantes que les pages
+/// `index ± 1` : sur trois onglets, passer de Chaînes à Films **détruit** la
+/// page Séries, et y revenir la reconstruit. Or les caches de groupement
+/// étaient des champs d'ÉTAT — ils mouraient avec la page. Le retour repayait
+/// donc, **dans une seule frame synchrone**, un regroupement O(n) sur toutes
+/// les entrées du type plus la composition du hero.
+///
+/// Relevé sur un Galaxy S25 en build profile (écran 120 Hz, budget 8,3 ms) :
+/// **161,9 ms de construction Dart sur UNE frame**, 16 frames ratées sur 18.
+/// Vingt budgets d'affilée : ce n'est pas une impression de lourdeur, c'est un
+/// blocage.
+///
+/// ## Pourquoi pas `AutomaticKeepAliveClientMixin`
+///
+/// C'était le réflexe, et la mesure l'a écarté :
+/// - les trois pages sont **déjà vivantes** sur l'onglet Films (le défaut au
+///   démarrage) — garder la page n'aurait rien changé au cas le plus courant ;
+/// - chaque page vivante épingle ses images décodées dans `ImageCache._liveImages`,
+///   qui **échappe au budget** de `PerfConfig.imageCacheMb` ;
+/// - `InferredCategoryService.version` avance toutes les ~5 s pendant le
+///   défilement d'une liste sans `group-title` : le groupement s'invalide de
+///   lui-même, et trois pages vivantes le recalculeraient **trois fois**.
+///
+/// Ici, rien ne reste vivant en plus : seul le RÉSULTAT survit.
+///
+/// ⚠️ Le mémo garde le groupement **PUR**, sans la catégorie virtuelle ⭐ :
+/// `_ensureFavoriteCategory` mute la map en place (`remove` / `[]=`), donc la
+/// page en reçoit une **copie superficielle**. Sans ça, la première page qui
+/// affiche des favoris les inscrirait dans le mémo, et les deux autres les
+/// hériteraient — y compris après leur suppression.
+/// §tabSwitchCost — Le hero composé, conservé hors de l'état de la page.
+///
+/// ⚠️ Le commentaire d'origine de `_ensureFeatured` annonçait un « cache
+/// SÉPARÉ (léger) ». C'est faux : la composition interroge la progression de
+/// lecture **pour chaque URL de chaque version de chaque groupe**, donc elle
+/// est en O(entrées), pas en O(groupes) — du même ordre que le regroupement
+/// lui-même. À chaque page reconstruite, elle repassait entièrement.
+///
+/// La clé est comparée **champ par champ** plutôt que réduite à une somme :
+/// une somme d'entiers se collisionne, et une collision ici afficherait un
+/// hero périmé sans qu'on sache pourquoi.
+@immutable
+class _FeaturedMemo {
+  final int groupingKey;
+  final int favoritesVersion;
+  final int watchVersion;
+  final int maxFeatured;
+
+  /// Comparé par IDENTITÉ : `TmdbService.getTrending` rend la même instance
+  /// tant que son cache de 24 h est valide.
+  final List<TrendingTitle>? trending;
+
+  /// Lecture seule après composition — rien ne le mute, il peut donc être
+  /// partagé par référence entre les pages.
+  final List<List<M3uEntry>> featured;
+
+  const _FeaturedMemo({
+    required this.groupingKey,
+    required this.favoritesVersion,
+    required this.watchVersion,
+    required this.maxFeatured,
+    required this.trending,
+    required this.featured,
+  });
+
+  bool matches({
+    required int groupingKey,
+    required int favoritesVersion,
+    required int watchVersion,
+    required int maxFeatured,
+    required List<TrendingTitle>? trending,
+  }) =>
+      this.groupingKey == groupingKey &&
+      this.favoritesVersion == favoritesVersion &&
+      this.watchVersion == watchVersion &&
+      this.maxFeatured == maxFeatured &&
+      identical(this.trending, trending);
+}
+
+@immutable
+class _GroupingMemo {
+  /// Identité de la liste d'entrées : `_byTypeMemoized` réutilise la même
+  /// instance tant que playlist et compte actif ne changent pas. Comparer par
+  /// `identical` couvre donc le changement de compte **sans** que
+  /// `_groupingKey()` ait à le connaître — il ne le connaît pas.
+  final List<M3uEntry> source;
+  final int key;
+
+  /// Retenu à part pour pouvoir jeter les mémos d'une playlist qui n'est plus
+  /// chargée : sans ça, ils garderaient en vie tout le graphe d'entrées d'un
+  /// compte déchargé, et annuleraient le bénéfice du déchargement.
+  final int playlistVersion;
+
+  final Map<String, List<List<M3uEntry>>> byCategory;
+  final List<List<M3uEntry>> groups;
+  final List<String> categories;
+
+  const _GroupingMemo({
+    required this.source,
+    required this.key,
+    required this.playlistVersion,
+    required this.byCategory,
+    required this.groups,
+    required this.categories,
+  });
+}
+
 class _TypePageState extends State<_TypePage> {
+  /// §tabSwitchCost — Un mémo par type, donc **trois au maximum**.
+  static final Map<M3uContentType, _GroupingMemo> _sharedGrouping =
+      <M3uContentType, _GroupingMemo>{};
+
+  /// §tabSwitchCost — Un hero composé par type.
+  static final Map<M3uContentType, _FeaturedMemo> _sharedFeatured =
+      <M3uContentType, _FeaturedMemo>{};
+
+  /// §tabSwitchCost — Les tendances TMDB sont une donnée **du type**, pas de
+  /// l'instance de page.
+  ///
+  /// ⚠️ Sans ça, le mémo du hero ne servait à rien au retour d'onglet : une
+  /// page reconstruite repartait avec `_trendingTitles == null`, ne
+  /// reconnaissait donc pas le hero mémorisé (composé AVEC les tendances), et
+  /// recalculait tout — pour ensuite le recalculer une SECONDE fois quand
+  /// `_loadTrending` répondait depuis son cache mémoire, c'est-à-dire
+  /// immédiatement. Deux passes O(entrées) par changement d'onglet.
+  static final Map<M3uContentType, List<TrendingTitle>> _sharedTrending =
+      <M3uContentType, List<TrendingTitle>>{};
+
+  // ⚠️ Pas de `clearSharedGrouping()` de confort : `_TypePageState` est privée
+  // à cette bibliothèque, donc aucun test ne peut l'atteindre — et il n'existe
+  // AUCUN test sur l'accueil (vérifié : rien dans `test/` ne monte un widget de
+  // `feature/home/`). La purge se fait donc là où elle a un sens, dans
+  // `_ensureGrouping`, sur la version de playlist. La vérification de ce lot
+  // est une MESURE sur appareil, pas une suite de tests.
   // §perfSettings — La limite d'items par carrousel (« Voir tout » au-delà)
   // n'est plus une constante : elle vient de `PerfConfig.maxItemsPerRow`
   // (réglable dans Paramètres → Optimisation). Appliquée au RENDU (take(N)
@@ -1188,7 +1334,10 @@ class _TypePageState extends State<_TypePage> {
   // §trending — Titres tendance TMDB de la semaine (chargés une fois, cache
   // 24h côté service). Null tant que pas chargé / pas de clé TMDB. Le croisement
   // avec la playlist se fait dans `_ensureFeatured` (titres → groupes dispo).
-  List<TrendingTitle>? _trendingTitles;
+  //
+  // §tabSwitchCost — Stockés par TYPE et non dans l'instance : une page
+  // reconstruite les retrouve immédiatement (cf. `_sharedTrending`).
+  List<TrendingTitle>? get _trendingTitles => _sharedTrending[widget.type];
 
   @override
   void initState() {
@@ -1203,8 +1352,13 @@ class _TypePageState extends State<_TypePage> {
     final isTv = widget.type == M3uContentType.series; // series → /trending/tv
     final list = await TmdbService.instance.getTrending(isTv: isTv);
     if (!mounted) return;
+    // ⚠️ Ne RIEN faire si les tendances n'ont pas bougé. Le service rend la
+    // même instance tant que son cache de 24 h tient : sans ce test, chaque
+    // montage de page invalidait le hero et relançait une composition
+    // O(entrées) pour un résultat identique.
+    if (identical(list, _sharedTrending[widget.type])) return;
     setState(() {
-      _trendingTitles = list;
+      _sharedTrending[widget.type] = list;
       _cachedFeaturedKey = -1; // invalide le hero → recompute avec les tendances
     });
   }
@@ -1243,7 +1397,9 @@ class _TypePageState extends State<_TypePage> {
           return a.toLowerCase().compareTo(b.toLowerCase());
         });
 
-  /// Groupe par catégorie puis par titre. Mémoïsé sur [_groupingKey].
+  /// Groupe par catégorie puis par titre. Mémoïsé sur [_groupingKey], **et**
+  /// sur [_sharedGrouping] pour survivre à la destruction de la page
+  /// (§tabSwitchCost).
   void _ensureGrouping() {
     final key = _groupingKey();
     if (_cachedByCategory != null && _cachedGroupingKey == key) {
@@ -1252,11 +1408,54 @@ class _TypePageState extends State<_TypePage> {
       return;
     }
 
-    final res = _groupByCategoryThenByTitle(widget.entries, widget.type);
+    // §tabSwitchCost — Le mémo partagé d'abord : c'est lui qui évite de
+    // repayer un regroupement complet quand le `PageView` a détruit puis
+    // reconstruit cette page.
+    final _GroupingMemo? memo = _sharedGrouping[widget.type];
+    if (memo != null &&
+        memo.key == key &&
+        identical(memo.source, widget.entries)) {
+      _adoptGrouping(memo, key);
+      return;
+    }
 
-    _cachedByCategory = res.byCategory;
-    _cachedGroups = res.groups;
-    _cachedCategories = _sortCategories(res.byCategory);
+    final res = _groupByCategoryThenByTitle(widget.entries, widget.type);
+    final int playlistVersion = ParsedPlaylistService.version.value;
+
+    // ⚠️ Purge des mémos d'une AUTRE version de playlist : ils retiendraient le
+    // graphe d'entrées d'un compte peut-être déchargé depuis.
+    _sharedGrouping.removeWhere(
+      (_, m) => m.playlistVersion != playlistVersion,
+    );
+    // Le hero référence les mêmes groupes : le purger avec eux, sinon il
+    // retiendrait à lui seul le graphe d'entrées d'un compte déchargé.
+    _sharedFeatured.clear();
+
+    final _GroupingMemo fresh = _GroupingMemo(
+      source: widget.entries,
+      key: key,
+      playlistVersion: playlistVersion,
+      byCategory: res.byCategory,
+      groups: res.groups,
+      categories: _sortCategories(res.byCategory),
+    );
+    _sharedGrouping[widget.type] = fresh;
+    _adoptGrouping(fresh, key);
+  }
+
+  /// Installe un groupement partagé dans l'état de CETTE page.
+  ///
+  /// ⚠️ `byCategory` et `categories` sont **copiés**, pas partagés :
+  /// `_ensureFavoriteCategory` les mute en place pour injecter la catégorie
+  /// virtuelle ⭐. Sans la copie, les favoris d'une page fuiraient dans le
+  /// mémo, donc dans les autres pages — et y survivraient à leur suppression.
+  /// La copie est superficielle : quelques dizaines d'entrées, aucune liste de
+  /// groupe recopiée.
+  void _adoptGrouping(_GroupingMemo memo, int key) {
+    _cachedByCategory =
+        Map<String, List<List<M3uEntry>>>.of(memo.byCategory);
+    _cachedGroups = memo.groups;
+    _cachedCategories = List<String>.of(memo.categories);
     _cachedGroupingKey = key;
     _cachedFeaturedKey = -1; // groupement changé → forcer le recalcul du hero
     _cachedFavoritesKey = -1; // …et celui de la rangée ⭐
@@ -1305,6 +1504,25 @@ class _TypePageState extends State<_TypePage> {
     final maxFeatured = PerformanceSettingsService.config.value.heroCardCount;
     final key = WatchProgressService.version.value * 1000003 + maxFeatured;
     if (_cachedFeatured != null && _cachedFeaturedKey == key) return;
+
+    // §tabSwitchCost — Le mémo partagé avant de recomposer : c'est ce qui
+    // évite de repayer une passe O(entrées) quand le `PageView` a détruit puis
+    // reconstruit cette page.
+    final int favoritesVersion = FavoritesService.version.value;
+    final int watchVersion = WatchProgressService.version.value;
+    final _FeaturedMemo? memo = _sharedFeatured[widget.type];
+    if (memo != null &&
+        memo.matches(
+          groupingKey: _cachedGroupingKey,
+          favoritesVersion: favoritesVersion,
+          watchVersion: watchVersion,
+          maxFeatured: maxFeatured,
+          trending: _trendingTitles,
+        )) {
+      _cachedFeatured = memo.featured;
+      _cachedFeaturedKey = key;
+      return;
+    }
 
     final byCategory = _cachedByCategory!;
     final categories = _cachedCategories!;
@@ -1466,6 +1684,14 @@ class _TypePageState extends State<_TypePage> {
       featured.addAll(byCategory[first]!.take(5));
     }
 
+    _sharedFeatured[widget.type] = _FeaturedMemo(
+      groupingKey: _cachedGroupingKey,
+      favoritesVersion: favoritesVersion,
+      watchVersion: watchVersion,
+      maxFeatured: maxFeatured,
+      trending: _trendingTitles,
+      featured: featured,
+    );
     _cachedFeatured = featured;
     _cachedFeaturedKey = key;
   }
@@ -1497,7 +1723,14 @@ class _TypePageState extends State<_TypePage> {
     final lastWatchedOffset = showLastWatchedSlot ? 1 : 0;
     final headerCount = heroOffset + tabsOffset + lastWatchedOffset;
 
-    return ListView.builder(
+    // §jankMeter — Sonde de fluidité du défilement VERTICAL de l'accueil.
+    //
+    // ⚠️ Les carrousels horizontaux sont imbriqués dedans, et les notifications
+    // de défilement REMONTENT l'arbre : c'est le filtre `depth == 0` de la
+    // sonde qui empêche cette mesure-ci d'avaler les frames des rangées.
+    return JankScrollProbe(
+      label: 'accueil vertical · ${widget.type.name}',
+      child: ListView.builder(
       // §rowStorageKey — Case de sauvegarde PROPRE à cette liste.
       //
       // Flutter identifie l'emplacement où un scrollable range sa position par
@@ -1601,6 +1834,7 @@ class _TypePageState extends State<_TypePage> {
           icon: _TypePage.categoryIcon(cat),
         );
       },
+      ),
     );
   }
 

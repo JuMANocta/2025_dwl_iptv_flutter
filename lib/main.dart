@@ -28,6 +28,7 @@ import 'feature/settings/perf_suggest_dialog.dart';
 import 'core/boot/boot_status.dart';
 import 'feature/boot/boot_screen.dart';
 import 'core/diagnostics/log_buffer.dart';
+import 'core/diagnostics/jank_meter.dart';
 import 'feature/settings/web_console/web_console_page.dart';
 import 'data/services/playlist_service.dart';
 import 'data/services/remote_control_service.dart';
@@ -71,6 +72,14 @@ void main() async {
   // logcat accessible, ce tampon est le seul moyen de voir ce qui se passe
   // (consultable et exportable depuis la console web du téléphone).
   DiagnosticLog.install();
+  // §jankMeter — Mesure de fluidité. Le rappel ne fait rien tant qu'aucune
+  // fenêtre n'est ouverte ; ses relevés partent dans le tampon ci-dessus,
+  // donc dans la console web — seul canal lisible depuis un téléviseur.
+  //
+  // ⚠️ En build DEBUG, les chiffres sont inexploitables (Dart non
+  // optimisé) : chaque relevé le dit de lui-même plutôt que de laisser
+  // citer une valeur fausse.
+  JankMeter.install();
 
   // §bootFast — On n'attend AVANT `runApp` que ce qui est nécessaire pour
   // peindre juste : la plateforme (tailles TV) et le thème (couleurs). Tout le

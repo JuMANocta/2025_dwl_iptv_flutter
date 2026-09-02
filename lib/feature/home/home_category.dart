@@ -200,7 +200,13 @@ class _CategoryRow extends StatelessWidget {
                   enter: DpadEnterBehavior.entry,
                   child: SizedBox(
                     height: cardW * 1.5 + vSlack,
-                    child: ListView.separated(
+                    // §jankMeter — « même l'horizontalité » : une rangée qui
+                    // accroche se voit autant qu'un défilement vertical, parce
+                    // que l'œil suit un mouvement continu et que les affiches
+                    // s'y décodent en cours de route.
+                    child: JankScrollProbe(
+                      label: 'rangée ${type.name} · $category',
+                      child: ListView.separated(
                       // §rowStorageKey — Case de sauvegarde propre à CETTE
                       // rangée (cf. le long commentaire sur la liste verticale
                       // de `home_page.dart`). Sans elle, toutes les rangées et
@@ -246,6 +252,7 @@ class _CategoryRow extends StatelessWidget {
                           isEntry: i == 0,
                         );
                       },
+                      ),
                     ),
                   ),
                 );
