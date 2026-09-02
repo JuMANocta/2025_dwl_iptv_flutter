@@ -41,6 +41,29 @@ Les mises à jour ne sont **plus gratuites**. Pour resynchroniser :
 
 Tous marqués `§engineVendor patch N` en commentaire dans le code.
 
+**§videoStatsPlus (2026-09-02) — mesurer ce que le conteneur ne déclare pas.**
+Extension du patch 3, marquée `§videoStatsPlus` dans
+`VideoPlayerMethodHandler.kt`. Le constat : `player.videoFormat` porte
+`frameRate` et `bitrate`… **quand le flux les déclare**. Un TS live n'en déclare
+aucun — sur une chaîne 4K réelle, l'encart n'affichait donc **ni images/s ni
+débit**. Ajouté :
+- **`renderedFps`** — images/s RÉELLEMENT rendues, dérivées de
+  `videoDecoderCounters.renderedOutputBufferCount` échantillonné entre deux
+  relevés. C'est l'`estimated-vf-fps` de mpv, que §tourFix avait retiré du
+  modèle faute d'équivalent : il y en a un, il se calcule au lieu de se lire.
+  ⚠️ `ensureUpdated()` obligatoire (compteurs incrémentés sur le thread de
+  rendu, publiés paresseusement) ; échantillon ignoré sous 0,5 s, sinon le
+  chiffre saute.
+- **`networkBitrate` / `bytesTransferred`** — via `onBandwidthEstimate`. Le
+  débit **servi**, à distinguer du débit **annoncé** : un panel qui bride ne se
+  voit que là. Mesuré sur une chaîne 4K : 423 Mb/s en pointe de téléchargement.
+- **`skippedFrames`**, et la piste **audio** (codec, canaux, échantillonnage,
+  décodeur) — qui n'était exposée nulle part.
+
+⚠️ Toutes ces valeurs sont remises à zéro dans `resetStats()` : garder le débit
+du flux précédent ferait mentir l'encart pendant les premières secondes du
+suivant.
+
 **Patch 4 — `setResizeMode` (§videoFit).** `RESIZE_MODE_FIT` était figé à la
 construction de la vue. ⚠️ Il y a **deux chemins d'affichage** — le `PlayerView`
 du mode normal et l'`AspectRatioFrameLayout` du mode allégé : ne patcher qu'un

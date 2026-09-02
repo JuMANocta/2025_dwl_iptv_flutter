@@ -8,6 +8,8 @@ import 'l10n/app_localizations.dart';
 import 'data/services/download_manager_service.dart';
 import 'data/services/favorites_service.dart';
 import 'data/services/stream_account_service.dart';
+import 'data/services/storage_janitor.dart';
+import 'data/services/playback_health_service.dart';
 import 'data/models/stream_account.dart';
 import 'data/services/parsed_playlist_service.dart';
 import 'data/services/watch_progress_service.dart';
@@ -136,6 +138,8 @@ Future<void> _initServices() async {
     WatchProgressService.init(),
     SearchHistoryService.init(),
     LastWatchedChannelService.init(),
+    // §stallCount — Historique de blocages par compte (quel abonnement rame).
+    PlaybackHealthService.init(),
     HiddenRegionsService.init(),
     TrackPreferencesService.init(),
     PerformanceSettingsService.load(), // §perfSettings
@@ -364,6 +368,22 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     BootStatus.set('// vérification du compte…');
     final accounts = await StreamAccountService.listAccounts();
     if (accounts.isEmpty) return null;
+
+    // §acctPurge — Ménage des fichiers sans propriétaire, en tâche de fond.
+    //
+    // Le correctif de source (`deleteAccount` supprime désormais les fichiers)
+    // ne nettoie que l'avenir : les installations existantes portent déjà leurs
+    // orphelins — 290 Mo sur l'appareil de test, dont un `.m3u` de 217 Mo
+    // rattaché à un compte effacé trois mois plus tôt.
+    //
+    // ⚠️ NON attendu (`unawaited`) : c'est du confort, jamais un préalable au
+    // démarrage. Et il n'est lancé qu'APRÈS le test `accounts.isEmpty`
+    // ci-dessus — une liste vide est précisément le cas où le balayage se
+    // refuse à agir (cf. `StorageJanitor`), pour qu'un stockage sécurisé qui
+    // hoquette n'efface jamais les playlists de l'utilisateur.
+    unawaited(StorageJanitor.sweepOrphans(
+      knownAccountIds: accounts.map((a) => a.id).toSet(),
+    ));
 
     // Téléchargement / vérification cache M3U du compte actif.
     BootStatus.set('// lecture de la playlist…');

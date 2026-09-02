@@ -237,6 +237,23 @@ class VideoPlayerMethodChannel {
     }
   }
 
+  /// §liveRecover — Re-prépare la source DÉJÀ chargée au lieu de la rouvrir.
+  ///
+  /// Renvoie `false` si le natif n'a rien à re-préparer : l'appelant retombe
+  /// alors sur une réouverture complète.
+  Future<bool> retryPlayback() async {
+    try {
+      final ok = await _methodChannel.invokeMethod<bool>(
+        'retryPlayback',
+        <String, Object>{'viewId': primaryPlatformViewId},
+      );
+      return ok ?? false;
+    } catch (e) {
+      debugPrint('Error calling retryPlayback: $e');
+      return false;
+    }
+  }
+
   /// §engineVendor patch 7 — Coupe la lecture immédiatement (sortie du lecteur).
   Future<void> stopNow() async {
     try {

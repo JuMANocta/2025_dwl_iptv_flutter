@@ -1880,6 +1880,8 @@ class _DetailsPageState extends State<DetailsPage> {
       builder: (_) => PlayerPage(
         path: _selectedEntry.url,
         title: _playerTitle,
+        // §stallCount — rattache les blocages au fournisseur.
+        accountId: _selectedEntry.accountId,
         // §watchContext a/b — badges qualité + saison/épisode dans le player.
         qualityTag: _selectedEntry.title.qualityOrDefault,
         episodeTag: _selectedEntry.title.seasonEpisodeLabel,

@@ -5,6 +5,7 @@ import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
+import 'package:aetherStream/data/services/playback_health_service.dart';
 import 'package:aetherStream/data/services/expiration_alert_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
@@ -1002,6 +1003,8 @@ class _AccountCardState extends State<_AccountCard> {
                                   series: c?.series,
                                   tv: c?.tv,
                                 ),
+                                _PlaybackHealthLine(
+                                    accountId: widget.account.id),
                                 const SizedBox(height: 12),
                                 _FileStatsBlock(
                                   accountId: widget.account.id,
@@ -1253,6 +1256,63 @@ class _CountsRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(child: _CountTile(icon: Icons.live_tv_outlined, value: tv, label: 'Chaînes', color: kAccentSecondary)),
       ],
+    );
+  }
+}
+
+/// §stallCount — Ce que CE fournisseur a réellement servi.
+///
+/// Placée juste sous les compteurs de catalogue, et c'est délibéré : la carte
+/// disait jusqu'ici combien un compte contient, jamais s'il **fonctionne**. Un
+/// abonnement à 50 000 films qui bloque toutes les dix minutes n'est pas un bon
+/// abonnement, et rien ne le montrait.
+///
+/// ⚠️ Rien n'est affiché tant qu'aucune session n'a été mesurée : une ligne
+/// « 0 blocage » sur un compte jamais lu serait un compliment non mérité.
+class _PlaybackHealthLine extends StatelessWidget {
+  final String accountId;
+  const _PlaybackHealthLine({required this.accountId});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ValueListenableBuilder<int>(
+      valueListenable: PlaybackHealthService.version,
+      builder: (_, __, ___) {
+        final h = PlaybackHealthService.forAccount(accountId);
+        if (h == null || h.sessions == 0) return const SizedBox.shrink();
+        final perHour = h.stallsPerHour;
+        // Seuil délibérément indulgent : sous un blocage par heure, une liaison
+        // domestique normale suffit à l'expliquer. Au-delà, c'est un motif.
+        final bad = perHour != null && perHour >= 1.0;
+        final startup = h.averageStartup;
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            children: [
+              Icon(
+                bad ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+                size: 14,
+                color: bad ? kWarning : cs.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  [
+                    h.summary,
+                    if (startup != null)
+                      'départ ${(startup.inMilliseconds / 1000).toStringAsFixed(1)} s',
+                  ].join(' · '),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: bad ? kWarning : cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

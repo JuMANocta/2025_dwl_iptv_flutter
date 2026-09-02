@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:aetherStream/data/services/playback_health_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/data/services/track_preferences_service.dart';
 import 'package:aetherStream/data/services/remote_control_service.dart';
@@ -100,10 +101,16 @@ class PlayerPage extends StatefulWidget {
   /// franchissement de saison. `null` hors séries.
   final int? seasonNumber;
 
+  /// §stallCount — Compte IPTV source, pour rattacher les blocages mesurés au
+  /// fournisseur qui les a causés. Vide = fichier local ou source inconnue :
+  /// on n'enregistre alors rien plutôt que d'attribuer au hasard.
+  final String accountId;
+
   const PlayerPage({
     super.key,
     required this.path,
     required this.title,
+    this.accountId = '',
     this.qualityTag,
     this.episodeTag,
     this.seriesName,
@@ -133,6 +140,7 @@ class PlayerPage extends StatefulWidget {
         startPosition: startPosition,
         progressKey: progressKey,
         seasonNumber: seasonNumber,
+        accountId: accountId,
       );
 
   @override
@@ -163,6 +171,27 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   String _errorMessage = '';
   int _retryCount = 0;
   static const _maxRetries = 3;
+
+  /// §liveRecover — Reprises en place déjà tentées pour ce média.
+  int _inPlaceRecoveries = 0;
+
+  /// Au-delà, on considère que re-préparer ne suffit pas et on rouvre.
+  ///
+  /// **5 et non 3, et le chiffre vient de la mesure.** Sur appareil, le moteur
+  /// ré-émet son erreur toutes les ~3 s : trois tentatives couvraient donc à
+  /// peine **6 secondes** de coupure avant de retomber sur la réouverture — trop
+  /// court pour la plupart des respirations réseau, c'est-à-dire précisément le
+  /// cas que §liveRecover doit absorber. Cinq couvrent ~15 s.
+  ///
+  /// Le budget se reconstitue dès que la lecture repart, donc l'allonger ne
+  /// coûte rien sur la durée ; et il reste borné pour qu'une source réellement
+  /// morte finisse par emprunter le chemin de la réouverture — le seul qui
+  /// tente aussi l'extension alternative (.m3u8 ↔ .ts).
+  static const _maxInPlaceRecoveries = 5;
+
+  /// Vrai pendant qu'une reprise en place est en vol : empêche qu'une rafale
+  /// d'erreurs (§retryBurst) en déclenche plusieurs à la fois.
+  bool _recovering = false;
   // Chemin courant utilisé pour le retry (peut alterner .m3u8 ↔ .ts).
   late String _currentPath;
 
@@ -321,6 +350,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _playingSub = _ctrl.playingStream.listen((playing) {
       if (playing) {
         _acquireWakelock();
+        // §liveRecover — La lecture est repartie : les compteurs de secours
+        // repartent avec elle.
+        //
+        // ⚠️ Défaut trouvé À LA VÉRIFICATION sur appareil : sans cette remise à
+        // zéro, `_inPlaceRecoveries` ne redescendait jamais. Trois coupures
+        // espacées d'une heure épuisaient le budget, et le reste de la séance
+        // ne connaissait plus que la réouverture complète — exactement ce que
+        // §liveRecover corrige. Même raisonnement pour `_retryCount` : trois
+        // incidents distincts ne sont pas un incident qui s'aggrave.
+        if (_inPlaceRecoveries != 0 || _retryCount != 0) {
+          debugPrint('✅ §liveRecover — lecture rétablie, compteurs remis à zéro '
+              '(reprises=$_inPlaceRecoveries, réouvertures=$_retryCount)');
+        }
+        _inPlaceRecoveries = 0;
+        _retryCount = 0;
       } else {
         _releaseWakelock();
       }
@@ -503,6 +547,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _endOfPlayback = null;
       _currentPath = next.path; // sinon un retry .ts/.m3u8 de l'épisode
       _retryCount = 0; //        précédent contaminerait le suivant
+      _inPlaceRecoveries = 0; // §liveRecover — même raison
       _measuredKey = null; // §qualityTruth — le suivant doit être mesuré aussi
       _hasError = false;
       _errorMessage = '';
@@ -807,7 +852,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // la reconnexion « ×3, délai 5 s » ne servait à RIEN — pas même pour les
     // coupures réseau pour lesquelles elle a été écrite.
     // Tant qu'un retry est armé, ou qu'on a déjà rendu les armes, on ignore.
-    if (_pendingRetryTimer != null || _hasError) return;
+    if (_pendingRetryTimer != null || _hasError || _recovering) return;
 
     // §audioFallback — Un échec de DÉCODAGE AUDIO ne doit pas tuer la lecture.
     // Mesuré sur device : sur un fichier 4K, mpv rendait déjà la vidéo
@@ -815,6 +860,42 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // Ces fichiers embarquent presque toujours une piste de secours (AC3/EAC3).
     if (isAudioDecodeError(error) && _recoverFromAudioError()) return;
 
+    // §liveRecover — REPRENDRE avant de RECHARGER.
+    //
+    // Le défaut mesuré sur une chaîne 4K : couper le réseau vidait le tampon,
+    // le moteur émettait une erreur, et la seule réponse de l'app était
+    // `_openMedia()` — une réouverture complète. Relevé au journal : un `load`
+    // natif, toutes les statistiques remises à zéro, décodeur recréé, ~3,5 s
+    // d'écran noir. Pour une simple respiration du réseau.
+    //
+    // `recoverInPlace()` re-prépare la source DÉJÀ chargée : même connexion
+    // logique, même sélection de pistes, pas de nouvelle vue. C'est la reprise
+    // que Media3 documente. On l'essaie EN PREMIER, et **sans le délai de 5 s** :
+    // attendre n'a de sens que pour laisser un serveur se remettre, pas pour
+    // relancer un tampon.
+    //
+    // ⚠️ Budget borné : si la reprise en place échoue à se stabiliser (erreur
+    // qui revient aussitôt), on retombe sur la réouverture. Sans ce plafond,
+    // une source réellement morte ferait boucler la reprise en silence.
+    if (_inPlaceRecoveries < _maxInPlaceRecoveries) {
+      _inPlaceRecoveries++;
+      _recovering = true;
+      debugPrint('🔁 §liveRecover — tentative de reprise en place '
+          '$_inPlaceRecoveries/$_maxInPlaceRecoveries');
+      _ctrl.recoverInPlace().then((ok) {
+        _recovering = false;
+        if (ok || !mounted) return;
+        // Le moteur n'avait rien à reprendre → filet historique.
+        _scheduleReload(error);
+      });
+      return;
+    }
+
+    _scheduleReload(error);
+  }
+
+  /// Réouverture complète — le filet, quand la reprise en place ne suffit pas.
+  void _scheduleReload(String error) {
     if (_retryCount < _maxRetries) {
       _retryCount++;
       // Retry 2 : tente l'extension alternative
@@ -940,6 +1021,28 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _openMedia();
   }
 
+  /// §stallCount — Verse le bilan de la session au compte source.
+  ///
+  /// ⚠️ **Lu ICI et pas ailleurs** : c'est le seul instant où la mesure est
+  /// complète, et `AetherPlaybackHealth` est justement synchrone pour être
+  /// lisible depuis un `dispose()`. Appelé AVANT `_ctrl.dispose()`, qui coupe
+  /// les analytics.
+  ///
+  /// Rien n'est enregistré pour un fichier local (`accountId` vide) ni pour une
+  /// session trop courte : le service refuse les deux, parce qu'ils ne disent
+  /// rien du fournisseur et fausseraient la moyenne.
+  void _recordPlaybackHealth() {
+    final h = _ctrl.health;
+    if (!h.isMeaningful) return;
+    PlaybackHealthService.record(
+      accountId: _media.accountId,
+      stalls: h.stalls,
+      stalled: h.stalled,
+      watched: h.watched,
+      startup: h.startup,
+    );
+  }
+
   @override
   void dispose() {
     _hideTimer?.cancel();
@@ -949,6 +1052,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _seekOverlayTimer?.cancel();
     RemoteControlService.instance.clearPlayer(_remoteHandlers);
     _saveProgress(); // dernière sauvegarde à la sortie du player
+    _recordPlaybackHealth();
     _playingSub?.cancel();
     _videoParamsSub?.cancel();
     _errorSub?.cancel();

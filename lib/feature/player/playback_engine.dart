@@ -40,6 +40,39 @@ abstract final class AetherVolume {
   static const double max = 200.0;
 }
 
+/// §stallCount — Santé d'UNE session de lecture, lisible de façon **synchrone**.
+///
+/// Synchrone à dessein : le bilan est relevé dans `dispose()` du lecteur, où
+/// aucun `await` n'est possible — c'est justement le moment où la mesure est
+/// complète.
+@immutable
+class AetherPlaybackHealth {
+  /// Blocages depuis le début de la session — **hors** mise en tampon initiale
+  /// et hors `seek` (cf. `Media3Engine`).
+  final int stalls;
+
+  /// Temps cumulé passé bloqué.
+  final Duration stalled;
+
+  /// Délai entre l'ouverture et la première image. `null` si jamais parti.
+  final Duration? startup;
+
+  /// Temps réellement passé à lire (hors pause, hors blocage).
+  final Duration watched;
+
+  const AetherPlaybackHealth({
+    this.stalls = 0,
+    this.stalled = Duration.zero,
+    this.startup,
+    this.watched = Duration.zero,
+  });
+
+  static const AetherPlaybackHealth empty = AetherPlaybackHealth();
+
+  /// Une session sans lecture effective ne dit rien : ni bonne, ni mauvaise.
+  bool get isMeaningful => watched.inSeconds >= 10;
+}
+
 abstract class AetherPlaybackEngine {
   // ── Commandes ──────────────────────────────────────────────────────────────
 
@@ -147,6 +180,22 @@ abstract class AetherPlaybackEngine {
   /// ⚠️ Un champ que le moteur ne sait pas renseigner doit rester **`null`**,
   /// jamais zéro : un zéro se lit comme une mesure (leçon §hwdecUnknown).
   Future<VideoStatsSnapshot> readStats();
+
+  /// §stallCount — Bilan de la session en cours. Toujours lisible, y compris
+  /// pendant `dispose()`.
+  AetherPlaybackHealth get health;
+
+  /// §liveRecover — Tente de repartir **sans rouvrir le flux**.
+  ///
+  /// Le cas qui l'impose : sur une CHAÎNE, un tampon vidé fait émettre une
+  /// erreur au moteur. La seule réponse dont disposait l'app était de
+  /// réouvrir l'URL — nouvelle connexion, décodeur recréé, écran noir, ~3,5 s
+  /// avant la première image. Mesuré au journal : un `load` complet et toutes
+  /// les statistiques remises à zéro. Sur du 4K, c'est très visible.
+  ///
+  /// Renvoie `false` si le moteur n'a rien à reprendre — l'appelant retombe
+  /// alors sur la réouverture, qui reste le filet.
+  Future<bool> recoverInPlace();
 
   void dispose();
 }

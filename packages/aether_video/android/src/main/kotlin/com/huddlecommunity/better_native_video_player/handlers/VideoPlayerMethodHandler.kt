@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
@@ -249,6 +250,36 @@ class VideoPlayerMethodHandler(
     private var videoDecoder: String? = null
     private var videoBitrate: Int = 0
 
+    // §videoStatsPlus — Ce que le CONTENEUR ne dit pas, et qu'il faut donc
+    // mesurer.
+    //
+    // `player.videoFormat` porte `frameRate` et `bitrate`… quand le conteneur
+    // les déclare. Un flux TS live n'en déclare aucun : sur une chaîne 4K
+    // réelle, l'encart n'affichait donc NI images/s NI débit. Ces champs-là
+    // sont observés à l'exécution, pas lus dans un en-tête.
+    private var audioDecoder: String? = null
+
+    /// Débit réseau estimé par ExoPlayer (bits/s) — le débit RÉELLEMENT servi,
+    /// à distinguer du débit annoncé par le flux.
+    private var networkBitrate: Long = 0
+
+    /// Octets réellement transférés depuis le début de la lecture.
+    private var bytesTransferred: Long = 0
+
+    // Échantillonnage des images rendues : `DecoderCounters` donne un CUMUL, or
+    // ce qui intéresse est un débit. On garde donc le dernier relevé et sa date,
+    // et on dérive les images/s entre deux interrogations de l'encart.
+    private var lastRenderedCount: Long = -1
+    private var lastRenderedAtMs: Long = 0
+    private var measuredFps: Double = 0.0
+
+    /// §liveRecover — Code de la dernière `PlaybackException`.
+    ///
+    /// Il conditionne la reprise : sortir de la fenêtre du direct
+    /// (`ERROR_CODE_BEHIND_LIVE_WINDOW`) impose de se replacer au bord AVANT de
+    /// re-préparer, là où une simple erreur réseau n'en a pas besoin.
+    private var lastErrorCode: Int = 0
+
     private val statsListener = object : AnalyticsListener {
         override fun onDroppedVideoFrames(
             eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long
@@ -277,6 +308,44 @@ class VideoPlayerMethodHandler(
         ) {
             videoDecoder = decoderName
         }
+
+        // §videoStatsPlus — Le débit RÉELLEMENT servi par le fournisseur.
+        //
+        // C'est la mesure qui manquait le plus à une app IPTV : le débit
+        // *annoncé* par un flux est une déclaration, celui-ci est un constat.
+        // Un panel qui bride se voit ici, et nulle part ailleurs.
+        override fun onBandwidthEstimate(
+            eventTime: AnalyticsListener.EventTime,
+            totalLoadTimeMs: Int,
+            totalBytesLoaded: Long,
+            bitrateEstimate: Long
+        ) {
+            networkBitrate = bitrateEstimate
+            bytesTransferred += totalBytesLoaded
+        }
+
+        override fun onAudioDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long
+        ) {
+            audioDecoder = decoderName
+        }
+
+        // §liveRecover — Le CODE de l'erreur, pas seulement son message.
+        //
+        // C'est lui qui distingue « sorti de la fenêtre du direct » (il faut se
+        // replacer au bord avant de re-préparer) d'une simple coupure réseau
+        // (une re-préparation suffit). Sans le code, toute erreur se ressemble
+        // et la seule réponse possible est de tout recharger.
+        override fun onPlayerError(
+            eventTime: AnalyticsListener.EventTime,
+            error: PlaybackException
+        ) {
+            lastErrorCode = error.errorCode
+            NpLog.w(TAG, "onPlayerError: ${error.errorCodeName} (${error.errorCode})")
+        }
     }
 
     /// Remise à zéro, appelée à chaque chargement.
@@ -285,10 +354,51 @@ class VideoPlayerMethodHandler(
         videoCodec = null
         videoDecoder = null
         videoBitrate = 0
+        // §videoStatsPlus — Les mesures aussi repartent de zéro : garder le
+        // débit du flux précédent ferait mentir l'encart pendant les premières
+        // secondes du suivant.
+        audioDecoder = null
+        networkBitrate = 0
+        bytesTransferred = 0
+        lastRenderedCount = -1
+        lastRenderedAtMs = 0
+        measuredFps = 0.0
+    }
+
+    /// §videoStatsPlus — Images/s RÉELLEMENT rendues, dérivées du compteur du
+    /// décodeur entre deux relevés.
+    ///
+    /// C'est l'équivalent de l'`estimated-vf-fps` de mpv, que §tourFix avait
+    /// retiré du modèle faute d'équivalent Media3. Il y en a un — simplement il
+    /// se calcule au lieu de se lire.
+    ///
+    /// ⚠️ À ne pas confondre avec le `frameRate` du conteneur : celui-là dit ce
+    /// que le flux PRÉTEND, celui-ci ce que l'appareil AFFICHE. L'écart entre
+    /// les deux est exactement le symptôme cherché par §video4k.
+    ///
+    /// ⚠️ `ensureUpdated()` est obligatoire : les compteurs sont incrémentés sur
+    /// le thread de rendu et publiés paresseusement.
+    private fun sampleRenderedFps(): Double {
+        val counters = player.videoDecoderCounters ?: return measuredFps
+        counters.ensureUpdated()
+        val rendered = counters.renderedOutputBufferCount.toLong()
+        val now = System.currentTimeMillis()
+        if (lastRenderedCount >= 0 && now > lastRenderedAtMs) {
+            val frames = rendered - lastRenderedCount
+            val seconds = (now - lastRenderedAtMs) / 1000.0
+            // Sous 0,5 s l'échantillon est trop court pour être stable ; on
+            // garde la valeur précédente plutôt que d'afficher un chiffre qui
+            // saute.
+            if (seconds >= 0.5 && frames >= 0) measuredFps = frames / seconds
+        }
+        lastRenderedCount = rendered
+        lastRenderedAtMs = now
+        return measuredFps
     }
 
     private fun handleGetVideoStats(result: MethodChannel.Result) {
         val format = player.videoFormat
+        val audioFormat = player.audioFormat
         val decoder = videoDecoder
         // Heuristique assumée et documentée : Android n'expose pas de drapeau
         // « matériel » fiable, seul le NOM du décodeur le trahit.
@@ -306,7 +416,17 @@ class VideoPlayerMethodHandler(
                 "bitrate" to (format?.bitrate ?: videoBitrate),
                 // Transfert de couleur : 6 = HLG, 7 = ST2084 (HDR10). C'est ce
                 // qui dit si le flux est réellement HDR, sans le supposer.
-                "colorTransfer" to (format?.colorInfo?.colorTransfer ?: -1)
+                "colorTransfer" to (format?.colorInfo?.colorTransfer ?: -1),
+                // §videoStatsPlus — Les mesures, par opposition aux déclarations.
+                "renderedFps" to sampleRenderedFps(),
+                "skippedFrames" to (player.videoDecoderCounters?.skippedOutputBufferCount ?: 0),
+                "networkBitrate" to networkBitrate,
+                "bytesTransferred" to bytesTransferred,
+                "audioCodec" to (audioFormat?.sampleMimeType),
+                "audioDecoder" to audioDecoder,
+                "audioBitrate" to (audioFormat?.bitrate ?: 0),
+                "audioChannels" to (audioFormat?.channelCount ?: 0),
+                "audioSampleRate" to (audioFormat?.sampleRate ?: 0)
             )
         )
     }
@@ -448,6 +568,46 @@ class VideoPlayerMethodHandler(
                     NpLog.w(TAG, "stopNow: $e")
                 }
                 result.success(null)
+            }
+            // §liveRecover — REPRENDRE au lieu de RECHARGER.
+            //
+            // Le problème mesuré : sur une chaîne, dès que le tampon se vide
+            // (coupure réseau, panel qui hoquette), ExoPlayer émet une erreur.
+            // L'app ne savait y répondre que par un `load` complet — nouvelle
+            // connexion, nouveau handshake, décodeur recréé, écran noir, ~3,5 s
+            // de démarrage. Très visible en 4K.
+            //
+            // Media3 documente une reprise bien moins chère : `prepare()` sur la
+            // source DÉJÀ en place. Le `MediaItem`, la `DataSource.Factory` et
+            // la sélection de pistes sont conservés ; seul le chargement
+            // redémarre. Et si l'erreur était `ERROR_CODE_BEHIND_LIVE_WINDOW`
+            // (on est sorti de la fenêtre du direct pendant l'attente), il faut
+            // d'abord se replacer au bord du direct — sinon on re-prépare sur
+            // une position qui n'existe plus et l'erreur revient en boucle.
+            //
+            // ⚠️ Renvoie `false` s'il n'y a plus rien à re-préparer (aucun média
+            // chargé) : l'appelant retombe alors sur la réouverture complète,
+            // qui reste le filet.
+            "retryPlayback" -> {
+                try {
+                    if (player.currentMediaItem == null) {
+                        result.success(false)
+                    } else {
+                        if (lastErrorCode ==
+                            PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW
+                        ) {
+                            player.seekToDefaultPosition()
+                        }
+                        player.prepare()
+                        player.playWhenReady = true
+                        NpLog.d(TAG, "retryPlayback: prepare() (code=$lastErrorCode)")
+                        lastErrorCode = 0
+                        result.success(true)
+                    }
+                } catch (e: Exception) {
+                    NpLog.w(TAG, "retryPlayback: $e")
+                    result.success(false)
+                }
             }
             // §engineVendor patch 6 — bascule precision/rapidite du seek.
             "setFastSeek" -> {

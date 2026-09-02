@@ -201,6 +201,13 @@ class _CategoryRow extends StatelessWidget {
                   child: SizedBox(
                     height: cardW * 1.5 + vSlack,
                     child: ListView.separated(
+                      // §rowStorageKey — Case de sauvegarde propre à CETTE
+                      // rangée (cf. le long commentaire sur la liste verticale
+                      // de `home_page.dart`). Sans elle, toutes les rangées et
+                      // la liste verticale partageaient un seul emplacement :
+                      // remonter l'accueil recalait les carrousels au hasard,
+                      // sur l'offset écrit par le dernier scrollable en date.
+                      key: PageStorageKey('row_${type.name}_$category'),
                       scrollDirection: Axis.horizontal,
                       clipBehavior: PlatformTv.isTv ? Clip.none : Clip.hardEdge,
                       padding: EdgeInsets.symmetric(

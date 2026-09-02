@@ -1498,6 +1498,25 @@ class _TypePageState extends State<_TypePage> {
     final headerCount = heroOffset + tabsOffset + lastWatchedOffset;
 
     return ListView.builder(
+      // §rowStorageKey — Case de sauvegarde PROPRE à cette liste.
+      //
+      // Flutter identifie l'emplacement où un scrollable range sa position par
+      // la **chaîne des `PageStorageKey` au-dessus de lui**. L'accueil n'en
+      // portait qu'UN SEUL (`homeTypePages`, sur la PageView des onglets) :
+      // cette liste verticale, TOUS les carrousels horizontaux et la grille des
+      // chaînes résolvaient donc vers la MÊME case, et se réécrivaient dessus.
+      //
+      // Effet mesuré sur téléphone : descendre l'accueil jusqu'en bas y inscrit
+      // l'offset vertical (des milliers de pixels) ; en remontant, chaque
+      // rangée reconstruite RELIT cet offset et se cale à son extrémité droite,
+      // première carte coupée par le bord. Une rangée jamais touchée
+      // horizontalement se retrouvait ainsi déplacée — d'où « les carrousels
+      // partent vers la gauche quand on remonte ».
+      //
+      // ⚠️ Une `ValueKey` ne suffit PAS : `PageStorageBucket` ne collecte que
+      // les clés de type `PageStorageKey`. La `ValueKey('cat_…')` de §tvExitPage
+      // sert à l'identité des éléments, pas au rangement des positions.
+      key: PageStorageKey('homeRows_${widget.type.name}'),
       padding: EdgeInsets.only(top: widget.topInset, bottom: 24),
       // §dpadHeroDown — cache vertical élargi (défaut 250 px) : la 1re rangée
       // sous le pli doit être CONSTRUITE pour exister comme candidat de focus

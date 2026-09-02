@@ -59,6 +59,65 @@ class VideoStatsSnapshot {
   /// le HDR natif possible (§engineVendor).
   final String? vo;
 
+  /// §stallCount — Nombre de fois où la lecture s'est ARRÊTÉE pour attendre le
+  /// réseau, depuis le début de la session.
+  ///
+  /// ⚠️ Ce n'est PAS [droppedFrames], et la nuance est tout l'intérêt : une
+  /// image jetée signale que l'appareil ne suit pas ; un blocage signale que la
+  /// SOURCE ne suit pas. C'est le second qui dit quel abonnement est mauvais.
+  ///
+  /// La mise en tampon initiale et celle qui suit un déplacement volontaire
+  /// n'en font pas partie (cf. `Media3Engine`).
+  final int? stalls;
+
+  /// Temps cumulé passé bloqué, en millisecondes. 3 blocages de 0,3 s et
+  /// 3 blocages de 12 s ne se vivent pas du tout pareil.
+  final int? stalledMs;
+
+  /// Délai entre l'ouverture et la première image, en millisecondes.
+  final int? startupMs;
+
+  // ── §videoStatsPlus — Ce qui est MESURÉ, par opposition à ce qui est déclaré
+  //
+  // Les champs ci-dessus viennent en grande partie de l'en-tête du flux : ils
+  // disent ce que la source PRÉTEND servir. Ceux qui suivent sont observés à
+  // l'exécution. Sur une chaîne 4K live réelle, `containerFps` et
+  // `videoBitrate` étaient tous deux absents — un flux TS ne les déclare pas —
+  // et l'encart n'affichait donc ni images/s ni débit.
+
+  /// Images/s **réellement rendues**, dérivées du compteur du décodeur.
+  ///
+  /// ⚠️ L'écart avec [containerFps] est le symptôme cherché par §video4k :
+  /// « annoncé 50, rendu 33 » dit tout, là où chacun pris seul ne dit rien.
+  final double? renderedFps;
+
+  /// Images sautées par le décodeur (distinctes de [droppedFrames], jetées à
+  /// l'affichage).
+  final int? skippedFrames;
+
+  /// Débit réseau **estimé par le lecteur**, en bits/s.
+  ///
+  /// La mesure qui manquait le plus : [videoBitrate] est une déclaration du
+  /// flux, celui-ci est un constat de ce que le fournisseur sert vraiment.
+  /// Un panel qui bride se voit ici, et nulle part ailleurs.
+  final int? networkBitrate;
+
+  /// Octets réellement transférés depuis le début de la lecture.
+  final int? bytesTransferred;
+
+  /// Avance de tampon disponible.
+  ///
+  /// Calculée côté Dart (position mise en tampon − position lue) : c'est le
+  /// témoin direct de §playerBuffer. Si elle reste collée à zéro, le tampon
+  /// configuré ne se remplit jamais — la source ne suit pas.
+  final Duration? bufferAhead;
+
+  final String? audioCodec;
+  final String? audioDecoder;
+  final int? audioBitrate;
+  final int? audioChannels;
+  final int? audioSampleRate;
+
   const VideoStatsSnapshot({
     this.width,
     this.height,
@@ -70,7 +129,71 @@ class VideoStatsSnapshot {
     this.droppedFrames,
     this.hdr,
     this.vo,
+    this.stalls,
+    this.stalledMs,
+    this.startupMs,
+    this.renderedFps,
+    this.skippedFrames,
+    this.networkBitrate,
+    this.bytesTransferred,
+    this.bufferAhead,
+    this.audioCodec,
+    this.audioDecoder,
+    this.audioBitrate,
+    this.audioChannels,
+    this.audioSampleRate,
   });
+
+  /// §videoStatsPlus — Débit réseau lisible (« 24,1 Mb/s »).
+  String? get networkBitrateLabel {
+    final b = networkBitrate;
+    if (b == null || b <= 0) return null;
+    return b >= 1000000
+        ? '${(b / 1000000).toStringAsFixed(1).replaceAll('.', ',')} Mb/s'
+        : '${(b / 1000).round()} kb/s';
+  }
+
+  /// Volume transféré lisible (« 1,2 Go »).
+  String? get transferredLabel {
+    final n = bytesTransferred;
+    if (n == null || n <= 0) return null;
+    const mo = 1024 * 1024;
+    return n >= 1024 * mo
+        ? '${(n / (1024 * mo)).toStringAsFixed(1).replaceAll('.', ',')} Go'
+        : '${(n / mo).round()} Mo';
+  }
+
+  /// Piste audio lisible (« AAC · 5.1 · 48 kHz »).
+  String? get audioLabel {
+    final parts = <String>[];
+    final c = audioCodec;
+    if (c != null && c.isNotEmpty) {
+      parts.add(c.replaceFirst('audio/', '').toUpperCase());
+    }
+    final ch = audioChannels;
+    if (ch != null && ch > 0) {
+      parts.add(switch (ch) {
+        1 => 'mono',
+        2 => 'stéréo',
+        6 => '5.1',
+        8 => '7.1',
+        _ => '$ch canaux',
+      });
+    }
+    final sr = audioSampleRate;
+    if (sr != null && sr > 0) parts.add('${(sr / 1000).round()} kHz');
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  /// §stallCount — Ligne prête à afficher, ou `null` si rien n'est mesuré.
+  /// Un « 0 blocage » EST une information : on l'affiche.
+  String? get stallLabel {
+    final n = stalls;
+    if (n == null) return null;
+    if (n == 0) return 'aucun';
+    final s = ((stalledMs ?? 0) / 1000).round();
+    return s > 0 ? '$n (${s}s au total)' : '$n';
+  }
 
   /// Le décodage passe-t-il par le matériel ?
   ///
@@ -161,6 +284,17 @@ class VideoStatsSnapshot {
   /// « perdues=N » suffit à dater un effondrement.
   String get dynamicSignature => [
         'perdues=${droppedFrames ?? 0}',
+        // §videoStatsPlus — Le trio qui rend un « ça rame » diagnosticable :
+        // ce qui est rendu, ce que le réseau sert, et ce qu'il reste d'avance.
+        if (renderedFps != null && renderedFps! > 0)
+          'rendu=${renderedFps!.toStringAsFixed(1)}img/s',
+        if (networkBitrateLabel != null) 'réseau=$networkBitrateLabel',
+        if (bufferAhead != null)
+          'tampon=${(bufferAhead!.inMilliseconds / 1000).toStringAsFixed(1)}s',
+        // §stallCount — Daté dans le journal, un blocage devient rattachable à
+        // un moment précis (un match, une heure de pointe) au lieu d'un
+        // « ça rame parfois » invérifiable.
+        if (stalls != null) 'blocages=$stalls',
         if (bitrateLabel != null) 'débit=$bitrateLabel',
       ].join(' · ');
 

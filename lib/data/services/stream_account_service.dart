@@ -6,6 +6,7 @@ import 'package:aetherStream/core/utils/secure_storage_compte.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/core/utils/network.dart';
+import 'package:aetherStream/data/services/storage_janitor.dart';
 
 /// Service de gestion **multi-comptes**
 /// Stockage : `flutter_secure_storage` (mêmes fondations que ton SecureStorageService)
@@ -85,7 +86,19 @@ class StreamAccountService {
   }
 
   /// Supprime un compte + maintient la sélection courante proprement.
+  ///
+  /// §acctPurge (2026-09-02) — **et supprime enfin ses FICHIERS.** Pendant des
+  /// mois, cette méthode n'effaçait que la fiche en stockage sécurisé et
+  /// l'index : la playlist téléchargée et son cache parsé restaient sur le
+  /// disque, définitivement, sans plus aucun propriétaire. Relevé sur l'appareil
+  /// de test : **290 Mo** de fichiers de comptes supprimés, dont un `.m3u` de
+  /// 217 Mo vieux de trois mois. Rien dans l'interface n'en parlait — « À
+  /// propos » n'additionne que le disque des comptes VIVANTS.
   static Future<void> deleteAccount(String id) async {
+    // Les fichiers d'abord : si la purge échoue, le compte reste supprimable,
+    // et le balayage de démarrage rattrapera les fichiers au prochain lancement.
+    await StorageJanitor.purgeAccount(id);
+
     // Supprimer la fiche
     await _storage.delete(key: _kAccount(id));
 

@@ -51,6 +51,23 @@ class PerfConfig {
   /// franchissement de saison (qui demande toujours une confirmation).
   final bool autoNextEpisode;
 
+  /// §playerBuffer — Secondes de vidéo que le lecteur cherche à garder d'avance.
+  ///
+  /// Media3 n'a **aucun** équivalent des réglages mpv perdus avec libmpv
+  /// (`cache-pause`, `demuxer-readahead-secs`, le tampon de 64 Mo de
+  /// §replayBuffer) : sa manette à lui est le `LoadControl`, que le paquet
+  /// vendoré expose et que personne ne posait — on tournait donc sur SES
+  /// defaults (50 s), jamais choisis.
+  ///
+  /// Le compromis est **mémoire contre résistance** : plus de tampon absorbe un
+  /// panel qui bride, mais tient d'autant plus de flux en RAM. D'où le lien avec
+  /// les profils — le profil Fire Stick en prend le moins.
+  ///
+  /// ⚠️ C'est un PLAFOND en temps, pas une réservation : ExoPlayer s'arrête
+  /// aussi sur son propre budget en octets. 30 s d'un flux à 3 Mbit/s ne pèsent
+  /// pas comme 30 s de 4K.
+  final int bufferSeconds;
+
   static const int minHeroCards = 5;
   static const int maxHeroCards = 15;
   static const int minItemsPerRow = 5;
@@ -61,12 +78,18 @@ class PerfConfig {
   static const int minImageCacheMb = 60;
   static const int maxImageCacheMb = 200;
 
+  /// §playerBuffer — sous 10 s le moindre à-coup réseau coupe la lecture ;
+  /// au-delà de 90 s on immobilise de la RAM sans gain observable.
+  static const int minBufferSeconds = 10;
+  static const int maxBufferSeconds = 90;
+
   const PerfConfig({
     required this.heroEnabled,
     required this.heroAutoRotate,
     required this.heroCardCount,
     required this.maxItemsPerRow,
     required this.imageCacheMb,
+    this.bufferSeconds = 30,
     this.autoNextEpisode = true,
   });
 
@@ -79,6 +102,7 @@ class PerfConfig {
     heroCardCount: 15,
     maxItemsPerRow: 15,
     imageCacheMb: 120,
+    bufferSeconds: 30,
   );
 
   /// Hero conservé mais immobile, rangées allégées.
@@ -88,6 +112,7 @@ class PerfConfig {
     heroCardCount: 10,
     maxItemsPerRow: 10,
     imageCacheMb: 100,
+    bufferSeconds: 30,
   );
 
   /// Fire Stick / box faible : hero coupé (les valeurs hero restent cohérentes
@@ -103,7 +128,18 @@ class PerfConfig {
     heroAutoRotate: false,
     heroCardCount: 8,
     maxItemsPerRow: 10,
-    imageCacheMb: 80,
+    // ⚠️ §imgThrash — Était à **80 Mo**, en contradiction directe avec le
+    // commentaire ci-dessus qui promet « le cache reste au niveau du défaut
+    // Flutter ». Or le défaut Flutter est de **100 Mo** : ce profil descendait
+    // donc encore sous lui — exactement l'erreur que §imgThrash avait
+    // diagnostiquée puis annoncée comme corrigée, et sur le profil que
+    // §perfAutoSuggest propose justement sur box TV.
+    //
+    // Corrigé le 2026-09-02 (audit mémoire). L'allègement de ce profil passe
+    // par le hero coupé et les rangées courtes, pas par le cache image.
+    imageCacheMb: 100,
+    // Le profil Fire Stick : moins de flux tenu en RAM.
+    bufferSeconds: 15,
   );
 
   /// Profils affichés dans OptimizationSettingsPage. Un état ne correspondant
@@ -137,6 +173,7 @@ class PerfConfig {
         'hcc': heroCardCount,
         'mir': maxItemsPerRow,
         'icm': imageCacheMb,
+        'bfs': bufferSeconds,
         'ane': autoNextEpisode,
       };
 
@@ -151,6 +188,8 @@ class PerfConfig {
             .clamp(minItemsPerRow, maxItemsPerRowLimit),
         imageCacheMb: (j['icm'] as int? ?? defaults.imageCacheMb)
             .clamp(minImageCacheMb, maxImageCacheMb),
+        bufferSeconds: (j['bfs'] as int? ?? defaults.bufferSeconds)
+            .clamp(minBufferSeconds, maxBufferSeconds),
         autoNextEpisode: j['ane'] as bool? ?? defaults.autoNextEpisode,
       );
 
@@ -160,6 +199,7 @@ class PerfConfig {
     int? heroCardCount,
     int? maxItemsPerRow,
     int? imageCacheMb,
+    int? bufferSeconds,
     bool? autoNextEpisode,
   }) =>
       PerfConfig(
@@ -168,6 +208,7 @@ class PerfConfig {
         heroCardCount: heroCardCount ?? this.heroCardCount,
         maxItemsPerRow: maxItemsPerRow ?? this.maxItemsPerRow,
         imageCacheMb: imageCacheMb ?? this.imageCacheMb,
+        bufferSeconds: bufferSeconds ?? this.bufferSeconds,
         autoNextEpisode: autoNextEpisode ?? this.autoNextEpisode,
       );
 
@@ -179,12 +220,14 @@ class PerfConfig {
       other.heroAutoRotate == heroAutoRotate &&
       other.heroCardCount == heroCardCount &&
       other.maxItemsPerRow == maxItemsPerRow &&
-      other.imageCacheMb == imageCacheMb;
+      other.imageCacheMb == imageCacheMb &&
+      other.bufferSeconds == bufferSeconds;
   // NB : `autoNextEpisode` est volontairement EXCLU de l'égalité — c'est un
   // réglage de confort, pas un paramètre de profil. L'inclure ferait basculer
   // la page en « Personnalisé » dès qu'on touche l'interrupteur.
 
   @override
   int get hashCode => Object.hash(
-      heroEnabled, heroAutoRotate, heroCardCount, maxItemsPerRow, imageCacheMb);
+      heroEnabled, heroAutoRotate, heroCardCount, maxItemsPerRow, imageCacheMb,
+      bufferSeconds);
 }

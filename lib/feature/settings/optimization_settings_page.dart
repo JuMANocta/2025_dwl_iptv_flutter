@@ -4,6 +4,7 @@ import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
+import 'package:aetherStream/data/services/storage_janitor.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/widgets/memory_stats_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
@@ -32,10 +33,50 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
   /// (initState → refresh) pour refléter immédiatement les comptes déchargés.
   int _memCardEpoch = 0;
 
+  /// §acctPurge — Ce qu'un balayage libérerait, mesuré à l'ouverture de la page.
+  /// `null` tant que le comptage n'a pas abouti.
+  StorageSweepResult? _reclaimable;
+  bool _purging = false;
+
   @override
   void initState() {
     super.initState();
     _config = PerformanceSettingsService.config.value;
+    _scanStorage();
+  }
+
+  /// §acctPurge — Compte les fichiers sans propriétaire, sans rien supprimer.
+  Future<void> _scanStorage() async {
+    final accounts = await StreamAccountService.listAccounts();
+    final res = await StorageJanitor.preview(
+      knownAccountIds: accounts.map((a) => a.id).toSet(),
+      // L'utilisateur a la page sous les yeux : s'il n'a aucun compte, c'est un
+      // fait qu'il voit, pas un stockage sécurisé qui a hoqueté au démarrage.
+      allowEmptyAccountList: true,
+    );
+    if (mounted) setState(() => _reclaimable = res);
+  }
+
+  /// §acctPurge — Supprime les fichiers des comptes qui n'existent plus.
+  Future<void> _purgeOrphans() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _purging = true);
+    final accounts = await StreamAccountService.listAccounts();
+    final res = await StorageJanitor.sweepOrphans(
+      knownAccountIds: accounts.map((a) => a.id).toSet(),
+      allowEmptyAccountList: true,
+    );
+    if (!mounted) return;
+    setState(() {
+      _purging = false;
+      _reclaimable = const StorageSweepResult(fileCount: 0, bytes: 0);
+      _memCardEpoch++;
+    });
+    messenger.showSnackBar(SnackBar(
+      content: Text(res.isEmpty
+          ? 'Rien à récupérer — aucun fichier orphelin'
+          : '🧹 ${res.label} libérés (${res.fileCount} fichier(s))'),
+    ));
   }
 
   /// Applique la config en live (ValueNotifier → rebuild home) et la persiste.
@@ -172,6 +213,28 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                 value: _config.autoNextEpisode,
                 onChanged: (v) => _apply(_config.copyWith(autoNextEpisode: v)),
               ),
+              // §playerBuffer — Le `LoadControl` d'ExoPlayer, enfin réglé.
+              _buildStepper(
+                label: 'Tampon de lecture',
+                value: _config.bufferSeconds,
+                min: PerfConfig.minBufferSeconds,
+                max: PerfConfig.maxBufferSeconds,
+                step: 10,
+                suffix: ' s',
+                onChanged: (v) => _apply(_config.copyWith(bufferSeconds: v)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  'Secondes de vidéo gardées d\'avance. Monter aide sur un '
+                  'fournisseur qui bride — la lecture puise dans le tampon au '
+                  'lieu de s\'arrêter — mais tient d\'autant plus de flux en '
+                  'mémoire, ce qui compte sur une box. Le compteur '
+                  '« Blocages » de l\'encart Infos vidéo dit si le réglage '
+                  'sert à quelque chose. Prend effet à la lecture suivante.',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ),
               _sectionLabel('Mémoire & usage', cs),
               // §imgMemCache — plafond du cache image EN RAM.
               _buildStepper(
@@ -261,6 +324,63 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   'Les vignettes sont gardées sur le disque pour éviter de les '
                   're-télécharger. À vider si une affiche a changé côté '
                   'fournisseur ou si le stockage sature.',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ),
+
+              // §acctPurge — Fichiers sans propriétaire.
+              _sectionLabel('Stockage', cs),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  _reclaimable == null
+                      ? 'Analyse du stockage…'
+                      : _reclaimable!.isEmpty
+                          ? 'Rien à récupérer : chaque fichier appartient à un '
+                              'compte existant.'
+                          : '${_reclaimable!.label} occupés par des fichiers '
+                              'qui n\'appartiennent plus à aucun compte '
+                              '(${_reclaimable!.fileCount} fichier(s)) — '
+                              'playlists et caches laissés derrière eux par des '
+                              'comptes supprimés.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: (_reclaimable?.isEmpty ?? true)
+                        ? cs.onSurfaceVariant
+                        : kWarning,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: FocusableCard(
+                  scaleOnFocus: false,
+                  onTap: _purging ? null : _purgeOrphans,
+                  decorateOnly: true,
+                  // §tourFix — cf. les deux boutons ci-dessus : ExcludeFocus
+                  // supprime le second arrêt D-pad apporté par le FilledButton.
+                  child: ExcludeFocus(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _purging ? null : _purgeOrphans,
+                      icon: const Icon(Icons.folder_delete_outlined, size: 18),
+                      label: Text(_purging
+                          ? 'Nettoyage…'
+                          : 'Nettoyer les fichiers orphelins'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+                child: Text(
+                  'Supprimer un compte ne supprimait pas ses fichiers : ils '
+                  'restaient sur l\'appareil, sans propriétaire et sans que '
+                  'rien ne les compte. C\'est corrigé à la source, ce bouton '
+                  'rattrape ce qui traîne déjà. Sans effet sur les comptes '
+                  'actuels, leurs listes ni tes favoris.',
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),

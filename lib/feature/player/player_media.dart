@@ -58,9 +58,18 @@ class PlayerMedia {
   /// une confirmation explicite.
   final int? seasonNumber;
 
+  /// §stallCount — Compte IPTV d'où vient ce flux.
+  ///
+  /// Sert à rattacher les blocages mesurés au **fournisseur** qui les a causés :
+  /// sans lui, on saurait que « ça a bloqué 4 fois » sans pouvoir dire lequel
+  /// des trois abonnements accuser. Vide pour une lecture de fichier local, où
+  /// la question n'a pas de sens.
+  final String accountId;
+
   const PlayerMedia({
     required this.path,
     required this.title,
+    this.accountId = '',
     this.qualityTag,
     this.episodeTag,
     this.seriesName,

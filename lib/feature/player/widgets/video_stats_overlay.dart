@@ -266,9 +266,80 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       ));
     }
 
+    // §videoStatsPlus — Images/s MESURÉES, à côté de l'annoncé.
+    //
+    // Affichées ensemble et jamais séparément : « annoncé 50 · rendu 33 » dit
+    // tout, chacun pris seul ne dit rien. C'est le relevé qui a permis §video4k.
+    final rendered = s.renderedFps;
+    if (rendered != null && rendered > 0) {
+      final annonce = s.containerFps;
+      final manque = annonce != null && annonce > 0 && rendered < annonce * 0.9;
+      rows.add(_StatRow(
+        label: 'Rendu',
+        value: '${rendered.toStringAsFixed(1)} img/s'
+            '${manque ? ' (annoncé ${annonce.toStringAsFixed(0)})' : ''}',
+        valueColor: manque ? kWarning : null,
+        alert: manque,
+      ));
+    }
+    if ((s.skippedFrames ?? 0) > 0) {
+      rows.add(_StatRow(label: 'Sautées', value: '${s.skippedFrames}'));
+    }
+
     final bitrate = s.bitrateLabel;
     if (bitrate != null) {
       rows.add(_StatRow(label: 'Débit', value: bitrate));
+    }
+
+    // §videoStatsPlus — Le débit RÉELLEMENT servi, et le tampon qu'il remplit.
+    final net = s.networkBitrateLabel;
+    if (net != null) {
+      rows.add(_StatRow(label: 'Réseau', value: net));
+    }
+    final buf = s.bufferAhead;
+    if (buf != null) {
+      // Sous 2 s d'avance, la moindre irrégularité coupe : c'est le seuil qui
+      // précède un blocage, pas une valeur anodine.
+      final court = buf.inMilliseconds < 2000;
+      rows.add(_StatRow(
+        label: 'Tampon',
+        value: '${(buf.inMilliseconds / 1000).toStringAsFixed(1)} s',
+        valueColor: court ? kWarning : null,
+        alert: court,
+      ));
+    }
+    final transferred = s.transferredLabel;
+    if (transferred != null) {
+      rows.add(_StatRow(label: 'Transféré', value: transferred));
+    }
+    final audio = s.audioLabel;
+    if (audio != null) {
+      rows.add(_StatRow(label: 'Audio', value: audio));
+    }
+
+    // §stallCount — La ligne qui accuse la SOURCE et non l'appareil.
+    //
+    // « Perdues » ci-dessus dit que le matériel ne suit pas ; « Blocages » dit
+    // que le flux ne suit pas. Ce sont deux verdicts opposés, et les confondre
+    // fait changer de box quand il fallait changer d'abonnement.
+    //
+    // Un « aucun » est affiché volontairement : c'est une mesure, pas un vide.
+    final stall = s.stallLabel;
+    if (stall != null) {
+      final bad = (s.stalls ?? 0) > 0;
+      rows.add(_StatRow(
+        label: 'Blocages',
+        value: stall,
+        valueColor: bad ? kWarning : null,
+        alert: bad,
+      ));
+    }
+    final start = s.startupMs;
+    if (start != null && start > 0) {
+      rows.add(_StatRow(
+        label: 'Démarrage',
+        value: '${(start / 1000).toStringAsFixed(1)} s',
+      ));
     }
 
     return rows;

@@ -266,9 +266,16 @@ class VideoPlayerObserver(
 
     override fun onPlayerError(error: PlaybackException) {
         NpLog.e(TAG, "Player error: ${error.message}", error)
+        // §liveRecover — Le code accompagne le message : côté Dart, c'est lui
+        // qui permet de choisir entre reprendre et recharger. Un message
+        // localisé n'est pas analysable ; un code l'est.
         eventHandler.sendEvent(
             "error",
-            mapOf("message" to (error.message ?: "Unknown error"))
+            mapOf(
+                "message" to (error.message ?: "Unknown error"),
+                "errorCode" to error.errorCode,
+                "errorCodeName" to error.errorCodeName
+            )
         )
     }
 

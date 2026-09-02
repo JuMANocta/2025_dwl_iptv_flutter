@@ -1813,6 +1813,17 @@ class NativeVideoPlayerController {
   /// rien de coûteux à faire pendant que Flutter reconstruit l'écran précédent.
   Future<void> stopNow() => _methodChannel?.stopNow() ?? Future<void>.value();
 
+  /// §liveRecover — Reprend la lecture SANS rouvrir l'URL.
+  ///
+  /// Sur une chaîne, un tampon vidé fait émettre une erreur à ExoPlayer. La
+  /// seule réponse dont disposait l'app était de tout recharger : nouvelle
+  /// connexion, décodeur recréé, écran noir. `prepare()` sur la source déjà en
+  /// place coûte infiniment moins, et Media3 le documente comme LA reprise.
+  ///
+  /// Renvoie `false` quand il n'y a rien à re-préparer.
+  Future<bool> retryPlayback() =>
+      _methodChannel?.retryPlayback() ?? Future<bool>.value(false);
+
   /// §engineVendor patch 6 — Rapidité du saut dans le flux.
   ///
   /// `true` (défaut) : saut à l'image-clé la plus proche, réponse immédiate.
