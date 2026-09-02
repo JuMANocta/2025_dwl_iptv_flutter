@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
+import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/core/utils/string_pool.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
@@ -16,14 +18,38 @@ import 'package:aetherStream/feature/search/m3u_filter.dart';
 ///   - zéro perte : `tmdb_id`, synopsis, note, genres, casting, backdrops,
 ///     `tv_archive` (replay) passent dans les entrées ;
 ///   - zéro fragilité d'échappement (guillemets dans les noms) ;
-///   - parsing en **isolate** (`compute`) : le `jsonDecode` d'un catalogue de
-///     60+ Mo ne bloque jamais le thread UI.
+///   - parsing en **isolate** (`Isolate.run`) : le `jsonDecode` d'un catalogue
+///     de 60+ Mo ne bloque jamais le thread UI.
 ///
 /// Même signature que `M3uParser.parseFile` pour rester interchangeable côté
 /// `ParsedPlaylistService` (le choix se fait sur l'extension du fichier).
 class XtreamCatalogParser {
   XtreamCatalogParser._();
 
+  /// §bootPercent — Part du travail consommée par la **lecture + le décodage
+  /// JSON**, avant que la moindre entrée soit construite.
+  ///
+  /// ⚠️ **Chiffre MESURÉ, pas estimé** (`test/boot_phase_probe.dart`, dump réel
+  /// PLATINIUM de 61,5 Mo / 83 711 entrées) :
+  ///
+  ///     lecture disque          36 ms   0,8 %
+  ///     décodage JSON          377 ms   8,3 %
+  ///     construction entrées  4122 ms  90,9 %
+  ///
+  /// Il contredit l'intuition — on suppose volontiers que décoder 61 Mo de JSON
+  /// est LE coût — et c'est ce qui a évité d'instrumenter la mauvaise phase :
+  /// un décodage *chunked*, capable de publier une progression pendant le
+  /// décodage, a été mesuré à **+34 %** de temps sur une phase qui ne pèse que
+  /// 9 %. Il a donc été écarté. Les secondes d'écran figé sont dans les
+  /// boucles, et les boucles sont exactement ce qu'on sait compter.
+  static const double _decodeWeight = 0.09;
+
+  /// Parse un catalogue JSON en isolate.
+  ///
+  /// [onProgress] reçoit une progression **réelle** de 0 à 1 : le poids fixe du
+  /// décodage, puis une fraction exacte des entrées construites. [onDetail]
+  /// reçoit le compteur vivant (« films · 24 100/53 781 ») — un pourcentage
+  /// AFFIRME qu'on avance, un compteur qui monte le PROUVE.
   static Future<void> parseFile(
     String filePath,
     List<M3uEntry> filmsList,
@@ -31,26 +57,73 @@ class XtreamCatalogParser {
     List<M3uEntry> tvList, {
     required String accountId,
     void Function(double)? onProgress,
+    void Function(String)? onDetail,
     Set<String> hidden = const {},
   }) async {
-    onProgress?.call(0.05);
-    final result = await compute(
-      _parseCatalogIsolate,
-      (path: filePath, accountId: accountId, hidden: hidden),
-    );
-    filmsList.addAll(result.films);
-    seriesList.addAll(result.series);
-    tvList.addAll(result.tv);
-    onProgress?.call(1.0);
-    debugPrint('✅ XtreamCatalogParser: films=${result.films.length} '
-        'séries=${result.series.length} tv=${result.tv.length}');
+    // §bootPercent — `compute()` a été remplacé par `Isolate.run` pour UNE
+    // raison : `compute` n'offre aucun canal de retour, donc l'isolate ne
+    // pouvait rien dire avant d'avoir tout fini. C'est ce qui produisait les
+    // « 5 % puis 100 % » avec 16 s d'immobilité au milieu.
+    //
+    // ⚠️ On garde `Isolate.run` (et NON `Isolate.spawn` + port de résultat) :
+    // `Isolate.run` rend son résultat par `Isolate.exit`, qui **transfère** le
+    // graphe d'objets sans le copier. Faire transiter 350 000 `M3uEntry` par un
+    // `SendPort` ordinaire les recopierait intégralement — l'inverse de
+    // §ramDiet. Le port ci-dessous ne porte donc QUE la progression : quelques
+    // dizaines de petits messages.
+    final bool wantsProgress = onProgress != null || onDetail != null;
+    final ReceivePort? port = wantsProgress ? ReceivePort() : null;
+    bool finished = false;
+
+    port?.listen((Object? message) {
+      // ⚠️ Un message peut encore être en vol quand l'isolate a rendu son
+      // résultat : sans ce garde-fou, la barre reviendrait de 100 % à 97 %.
+      if (finished) return;
+      if (message is! (double, String?)) return;
+      onProgress?.call(message.$1);
+      final String? detail = message.$2;
+      if (detail != null) onDetail?.call(detail);
+    });
+
+    // Variables locales : la fermeture envoyée à l'isolate ne doit capturer que
+    // des valeurs transmissibles — jamais `this`, jamais un paramètre nommé.
+    final SendPort? progress = port?.sendPort;
+    final String path = filePath;
+    final String acct = accountId;
+    final Set<String> hiddenSet = hidden;
+
+    try {
+      final result = await Isolate.run(
+        () => _parseCatalogIsolate((
+          path: path,
+          accountId: acct,
+          hidden: hiddenSet,
+          progress: progress,
+        )),
+      );
+      finished = true;
+      filmsList.addAll(result.films);
+      seriesList.addAll(result.series);
+      tvList.addAll(result.tv);
+      onProgress?.call(1.0);
+      debugPrint('✅ XtreamCatalogParser: films=${result.films.length} '
+          'séries=${result.series.length} tv=${result.tv.length}');
+    } finally {
+      finished = true;
+      port?.close();
+    }
   }
 }
 
-/// Fonction top-level exécutée dans l'isolate `compute`.
+/// Fonction top-level exécutée dans l'isolate.
 ({List<M3uEntry> films, List<M3uEntry> series, List<M3uEntry> tv})
     _parseCatalogIsolate(
-        ({String path, String accountId, Set<String> hidden}) args) {
+        ({
+          String path,
+          String accountId,
+          Set<String> hidden,
+          SendPort? progress,
+        }) args) {
   final films = <M3uEntry>[];
   final series = <M3uEntry>[];
   final tv = <M3uEntry>[];
@@ -61,8 +134,8 @@ class XtreamCatalogParser {
   // UTF-16 (~120 Mo pour un fichier de 60 Mo) et la gardait vivante pendant tout
   // le `jsonDecode`, en plus du graphe d'objets. Le décodeur fusionné consomme
   // les octets et n'émet que le résultat : l'intermédiaire disparaît.
-  // On reste dans l'isolate `compute`, donc rien de tout cela n'a jamais touché
-  // le thread UI — mais un Fire Stick compte la mémoire du PROCESSUS.
+  // On reste dans l'isolate, donc rien de tout cela n'a jamais touché le thread
+  // UI — mais un Fire Stick compte la mémoire du PROCESSUS.
   final bytes = File(args.path).readAsBytesSync();
   final data = const Utf8Decoder().fuse(const JsonDecoder()).convert(bytes)
       as Map<String, dynamic>;
@@ -90,8 +163,51 @@ class XtreamCatalogParser {
     return cat != null && args.hidden.contains(cat);
   }
 
+  // §bootPercent — La progression RÉELLE commence ici : le décodage est fini,
+  // donc les trois tailles sont connues et chaque entrée construite est un
+  // avancement qu'on peut prouver.
+  final List liveRaw = data['live'] as List? ?? const [];
+  final List vodRaw = data['vod'] as List? ?? const [];
+  final List seriesRaw = data['series'] as List? ?? const [];
+  final int total = liveRaw.length + vodRaw.length + seriesRaw.length;
+
+  final SendPort? sink = args.progress;
+  int done = 0;
+  int lastBucket = -1;
+
+  /// Publie au changement de **pourcentage entier** seulement.
+  ///
+  /// ⚠️ Sans ce filtre, une liste de 350 000 entrées enverrait 350 000
+  /// messages inter-isolates pour faire bouger une barre de 100 pixels.
+  void tick(String section) {
+    if (sink == null) return;
+    final double value = total == 0
+        ? 1.0
+        : XtreamCatalogParser._decodeWeight +
+            (1 - XtreamCatalogParser._decodeWeight) * (done / total);
+    final int bucket = (value * 100).round();
+    if (bucket == lastBucket) return;
+    lastBucket = bucket;
+    sink.send((
+      value,
+      '$section · ${formatCount(done)}/${formatCount(total)}',
+    ));
+  }
+
+  // Premier repère : le décodage est derrière nous, et on annonce l'ampleur du
+  // travail restant AVANT de le commencer.
+  if (sink != null) {
+    lastBucket = (XtreamCatalogParser._decodeWeight * 100).round();
+    sink.send((
+      XtreamCatalogParser._decodeWeight,
+      '${formatCount(total)} entrées',
+    ));
+  }
+
   // ── Live (chaînes TV) ─────────────────────────────────────────────────────
-  for (final item in (data['live'] as List? ?? const [])) {
+  for (final item in liveRaw) {
+    done++;
+    tick('chaînes');
     if (item is! Map<String, dynamic>) continue;
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
@@ -122,7 +238,9 @@ class XtreamCatalogParser {
   }
 
   // ── Films (VOD) ───────────────────────────────────────────────────────────
-  for (final item in (data['vod'] as List? ?? const [])) {
+  for (final item in vodRaw) {
+    done++;
+    tick('films');
     if (item is! Map<String, dynamic>) continue;
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
@@ -147,7 +265,9 @@ class XtreamCatalogParser {
   }
 
   // ── Séries (1 stub par série, épisodes lazy via get_series_info) ─────────
-  for (final item in (data['series'] as List? ?? const [])) {
+  for (final item in seriesRaw) {
+    done++;
+    tick('séries');
     if (item is! Map<String, dynamic>) continue;
     final id = (item['series_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();

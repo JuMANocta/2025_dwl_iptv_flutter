@@ -121,6 +121,40 @@ class PlaylistService {
     return age >= playlistCacheDuration;
   }
 
+  /// §bootHydrate — « Ce compte a-t-il VRAIMENT du travail ? », sans rien
+  /// déclencher.
+  ///
+  /// C'est la question qui permet de ne rallonger le démarrage que les jours où
+  /// c'est nécessaire : cache frais → le boot ne bouge pas d'une milliseconde ;
+  /// cache absent ou périmé → on paie devant l'écran d'étapes plutôt que
+  /// derrière l'accueil.
+  ///
+  /// ⚠️ Ne répond QUE sur le téléchargement. Un compte dont le fichier est
+  /// frais mais qui n'est pas en mémoire a quand même du travail (le parsing) —
+  /// c'est à l'appelant de croiser avec `ParsedPlaylistService.stateOf`. Sans
+  /// ce croisement, un compte dont le préchargement disque a échoué ne serait
+  /// plus jamais chargé.
+  ///
+  /// ⚠️ En cas d'erreur d'accès disque, répond **oui**. Un `stat` qui échoue ne
+  /// doit pas décider à la place du démarrage : l'hydratation, elle, sait
+  /// échouer proprement.
+  static Future<bool> hasPendingWork(StreamAccount acc) async {
+    try {
+      final file = File(await pathForAccountId(acc.id));
+      final bool exists = await file.exists();
+      return needsDownload(
+        exists: exists,
+        lengthBytes: exists ? await file.length() : 0,
+        age: exists
+            ? DateTime.now().difference(await file.lastModified())
+            : null,
+      );
+    } catch (e) {
+      debugPrint('⚠️ hasPendingWork(${acc.label}) : $e → on suppose du travail');
+      return true;
+    }
+  }
+
   /// Télécharge la playlist d'un compte spécifique (comptes non-actifs en
   /// multi-comptes). Ne lève jamais : renvoie `path: null` en cas d'échec.
   ///

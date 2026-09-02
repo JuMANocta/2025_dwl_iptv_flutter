@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/core/utils/string_pool.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
@@ -35,6 +36,7 @@ class M3uParser {
     List<M3uEntry> tvList, {
     required String accountId,
     void Function(double progress)? onProgress,
+    void Function(String detail)? onDetail,
     Set<String> hidden = const {},
   }) async {
     final file = File(filePath);
@@ -50,6 +52,7 @@ class M3uParser {
           accountId: accountId,
           hidden: hidden,
           onProgress: onProgress,
+          onDetail: onDetail,
           filmsList: films,
           seriesList: series,
           tvList: tv);
@@ -63,6 +66,7 @@ class M3uParser {
           accountId: accountId,
           hidden: hidden,
           onProgress: onProgress,
+          onDetail: onDetail,
           filmsList: films,
           seriesList: series,
           tvList: tv);
@@ -80,6 +84,7 @@ class M3uParser {
     required String accountId,
     required Set<String> hidden,
     required void Function(double progress)? onProgress,
+    required void Function(String detail)? onDetail,
     required List<M3uEntry> filmsList,
     required List<M3uEntry> seriesList,
     required List<M3uEntry> tvList,
@@ -124,6 +129,10 @@ class M3uParser {
         await Future.delayed(Duration.zero);
         sw.reset();
         onProgress?.call(totalBytes > 0 ? readBytes / totalBytes : 0.0);
+        // §bootPercent — Le compteur d'entrées, au même rythme que la barre.
+        // Il est calculé ici et pas à chaque entrée : le débit est déjà borné
+        // par le rendement toutes les 8 ms.
+        onDetail?.call('${formatCount(filmsList.length + seriesList.length + tvList.length)} entrées');
       }
 
       final trimmed = line.trim();

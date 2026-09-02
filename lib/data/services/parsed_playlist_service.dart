@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:aetherStream/core/utils/string_pool.dart';
+import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'tmdb_group_alias_service.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
@@ -95,6 +96,7 @@ class ParsedPlaylistService {
     List<M3uEntry> tv, {
     required String accountId,
     void Function(double)? onProgress,
+    void Function(String)? onDetail,
   }) {
     // §langFilter — set des régions masquées passé aux parsers (filtre au
     // parse → entrées masquées jamais stockées). Lu sur le main thread ici puis
@@ -102,10 +104,16 @@ class ParsedPlaylistService {
     final hidden = HiddenRegionsService.hidden;
     if (path.toLowerCase().endsWith('.json')) {
       return XtreamCatalogParser.parseFile(path, films, series, tv,
-          accountId: accountId, onProgress: onProgress, hidden: hidden);
+          accountId: accountId,
+          onProgress: onProgress,
+          onDetail: onDetail,
+          hidden: hidden);
     }
     return M3uParser.parseFile(path, films, series, tv,
-        accountId: accountId, onProgress: onProgress, hidden: hidden);
+        accountId: accountId,
+        onProgress: onProgress,
+        onDetail: onDetail,
+        hidden: hidden);
   }
 
   // ── API publique ───────────────────────────────────────────────────────────
@@ -119,6 +127,7 @@ class ParsedPlaylistService {
     String accountName,
     String m3uPath, {
     void Function(double)? onProgress,
+    void Function(String)? onDetail,
   }) async {
     // 1. Déjà en mémoire
     if (_memory.containsKey(accountId)) {
@@ -130,7 +139,12 @@ class ParsedPlaylistService {
     }
 
     // 2. Cache disque valide
-    final disk = await _loadFromDisk(accountId, m3uPath);
+    final disk = await _loadFromDisk(
+      accountId,
+      m3uPath,
+      onProgress: onProgress,
+      onDetail: onDetail,
+    );
     if (disk != null) {
       debugPrint('✅ ParsedPlaylist: cache disque chargé — $accountName (${disk.entries.length} entrées)');
       _auditCategories(accountName, disk.entries);
@@ -153,6 +167,7 @@ class ParsedPlaylistService {
         m3uPath, films, series, tv,
         accountId: accountId,
         onProgress: onProgress,
+        onDetail: onDetail,
       );
     } catch (e) {
       debugPrint('❌ ParsedPlaylist.loadActive — parse échoué : $e');
@@ -212,18 +227,30 @@ class ParsedPlaylistService {
   /// re-parsing du M3U). Idempotent : si déjà chargé, sort immédiatement.
   /// Utilisé par la routine d'agrégation multi-comptes pour rendre toutes
   /// les playlists disponibles à la recherche et à la home.
+  ///
+  /// §bootHydrate — [onProgress]/[onDetail] ne servent que lorsque ce
+  /// chargement est fait **pendant le démarrage**, où il devient une étape
+  /// annoncée. En arrière-plan (le cas historique), les deux restent nuls et
+  /// la méthode est silencieuse comme avant.
   static Future<void> loadSecondary(
     String accountId,
     String accountName,
-    String m3uPath,
-  ) async {
+    String m3uPath, {
+    void Function(double)? onProgress,
+    void Function(String)? onDetail,
+  }) async {
     if (_memory.containsKey(accountId)) {
       _accountNames[accountId] = accountName;
       setLoadState(accountId, AccountLoadState.loaded);
       return;
     }
     // Tentative cache disque
-    final disk = await _loadFromDisk(accountId, m3uPath);
+    final disk = await _loadFromDisk(
+      accountId,
+      m3uPath,
+      onProgress: onProgress,
+      onDetail: onDetail,
+    );
     if (disk != null) {
       _memory[accountId] = disk;
       _accountNames[accountId] = accountName;
@@ -232,13 +259,21 @@ class ParsedPlaylistService {
       debugPrint('✅ ParsedPlaylist secondaire: cache disque — $accountName');
       return;
     }
-    // Sinon parse complet (silencieux, sans onProgress)
+    // Sinon parse complet
     setLoadState(accountId, AccountLoadState.parsing);
     final films  = <M3uEntry>[];
     final series = <M3uEntry>[];
     final tv     = <M3uEntry>[];
     try {
-      await _parsePlaylistFile(m3uPath, films, series, tv, accountId: accountId);
+      await _parsePlaylistFile(
+        m3uPath,
+        films,
+        series,
+        tv,
+        accountId: accountId,
+        onProgress: onProgress,
+        onDetail: onDetail,
+      );
     } catch (e) {
       debugPrint('❌ ParsedPlaylist secondaire — parse échoué pour $accountName: $e');
       setLoadState(accountId, AccountLoadState.error);
@@ -522,8 +557,10 @@ class ParsedPlaylistService {
   static Future<ParsedPlaylist?> reloadFromDisk(
     String accountId,
     String accountName,
-    String m3uPath,
-  ) async {
+    String m3uPath, {
+    void Function(double)? onProgress,
+    void Function(String)? onDetail,
+  }) async {
     if (!File(m3uPath).existsSync()) {
       debugPrint('⚠️ ParsedPlaylist.reloadFromDisk: fichier introuvable — $m3uPath');
       return null;
@@ -534,7 +571,15 @@ class ParsedPlaylistService {
     final series = <M3uEntry>[];
     final tv     = <M3uEntry>[];
     try {
-      await _parsePlaylistFile(m3uPath, films, series, tv, accountId: accountId);
+      await _parsePlaylistFile(
+        m3uPath,
+        films,
+        series,
+        tv,
+        accountId: accountId,
+        onProgress: onProgress,
+        onDetail: onDetail,
+      );
     } catch (e) {
       debugPrint('❌ ParsedPlaylist.reloadFromDisk — parse échoué : $e');
       return null;
@@ -642,14 +687,41 @@ class ParsedPlaylistService {
   /// Lecture STREAMÉE du cache (NDJSON gzippé) : 1ʳᵉ ligne = en-tête
   /// (schema/accountId/m3uModAt), lignes suivantes = une entrée JSON chacune.
   /// On ne charge jamais toute la chaîne JSON en mémoire (anti-OOM grosse liste).
-  static Future<ParsedPlaylist?> _loadFromDisk(String accountId, String m3uPath) async {
+  ///
+  /// §bootPercent — [onProgress]/[onDetail] rendent CE chemin observable.
+  ///
+  /// ⚠️ C'est le plus important des deux chemins : le parseur de catalogue ne
+  /// tourne que lorsque le cache est absent ou périmé, alors que cette
+  /// lecture-ci est celle de **chaque démarrage normal**. Elle ne publiait
+  /// rien, puis `loadActive` annonçait 100 % — exactement le mensonge que
+  /// §bootPercent corrige côté parseur, mais sur le chemin le plus fréquent.
+  ///
+  /// La progression est dérivée des **octets compressés lus**, et non d'un
+  /// compte de lignes : le nombre total de lignes n'est connu qu'à la fin,
+  /// alors que la taille du fichier est connue avant de l'ouvrir. Le gunzip
+  /// consomme par blocs, donc la valeur avance par paliers — mais elle est
+  /// monotone et bornée à 1.
+  static Future<ParsedPlaylist?> _loadFromDisk(
+    String accountId,
+    String m3uPath, {
+    void Function(double)? onProgress,
+    void Function(String)? onDetail,
+  }) async {
     final path = await _diskCachePath(accountId);
     final cacheFile = File(path);
     if (!await cacheFile.exists()) return null;
 
     try {
+      final int totalBytes = await cacheFile.length();
+      int readBytes = 0;
+      int lastBucket = -1;
+
       final lines = cacheFile
           .openRead()
+          .map((chunk) {
+            readBytes += chunk.length;
+            return chunk;
+          })
           .transform(gzip.decoder)
           .transform(utf8.decoder)
           .transform(const LineSplitter());
@@ -699,6 +771,19 @@ class ParsedPlaylistService {
         } else {
           entries.add(
               M3uEntry.fromJson(jsonDecode(line) as Map<String, dynamic>, pool));
+          // Throttle au pourcentage entier : sans lui, 600 000 entrées
+          // reconstruiraient 600 000 fois la même ligne de texte.
+          if (onProgress != null || onDetail != null) {
+            final double v = totalBytes > 0
+                ? (readBytes / totalBytes).clamp(0.0, 1.0)
+                : 0.0;
+            final int bucket = (v * 100).round();
+            if (bucket != lastBucket) {
+              lastBucket = bucket;
+              onProgress?.call(v);
+              onDetail?.call('${formatCount(entries.length)} entrées');
+            }
+          }
         }
       }
 
