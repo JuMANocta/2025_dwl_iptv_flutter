@@ -20,7 +20,10 @@ import '../utils/log_sanitizer.dart';
 /// (`/movie/USER/PASS/123.mkv`) ou en query. La page est servie sur le réseau
 /// local : la rédaction est donc faite **au niveau du puits**, pas au niveau des
 /// appelants. Même un `debugPrint` qui oublie [redactUrl] ne peut plus faire
-/// fuiter de mot de passe.
+/// fuiter de mot de passe. ⚠️ §tourFix — cette promesse était vraie pour le
+/// tampon mais fausse pour logcat : le wrapper déléguait aussi le message BRUT
+/// à l'implémentation d'origine, release comprise. En release, on ne délègue
+/// plus du tout (voir [install]).
 abstract final class DiagnosticLog {
   /// Bornes volontairement basses : sur un Fire Stick, chaque mégaoctet compte.
   static const int maxLines = 2000;
@@ -45,12 +48,18 @@ abstract final class DiagnosticLog {
     if (_installed) return;
     _installed = true;
 
-    // On délègue toujours à l'implémentation d'origine : en développement,
-    // logcat continue de fonctionner exactement comme avant.
     _previousDebugPrint = debugPrint;
     debugPrint = (String? message, {int? wrapWidth}) {
       if (message != null) add(message);
-      _previousDebugPrint?.call(message, wrapWidth: wrapWidth);
+      // §tourFix — En release, ne PAS déléguer à l'implémentation d'origine :
+      // le tampon reçoit la version RÉDIGÉE, mais l'original recevrait le
+      // message BRUT — les URLs avec credentials finissaient sur logcat, en
+      // release aussi. Le tampon §tvLogs rédigé reste le canal de diagnostic
+      // (c'est LE canal sur TV, où il n'y a pas de logcat). En debug, rien ne
+      // change : logcat continue de fonctionner exactement comme avant.
+      if (!kReleaseMode) {
+        _previousDebugPrint?.call(message, wrapWidth: wrapWidth);
+      }
     };
 
     final FlutterExceptionHandler? previousOnError = FlutterError.onError;
@@ -206,7 +215,8 @@ abstract final class DiagnosticLog {
   /// [install] renvoie déjà tout `debugPrint` vers le tampon, donc la ligne
   /// arrive au même endroit — mais elle sort AUSSI sur logcat. Sur un appareil
   /// branché en adb (émulateur, box en débogage sans fil) la trace devient
-  /// lisible sans ouvrir la console web.
+  /// lisible sans ouvrir la console web. (§tourFix : en release, logcat est
+  /// coupé — la trace ne vit plus que dans le tampon.)
   static void trace(String message) {
     if (!_keyTrace) return;
     debugPrint(message);

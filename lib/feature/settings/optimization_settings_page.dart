@@ -205,12 +205,21 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   scaleOnFocus: false,
                   onTap: _freeMemory,
                   decorateOnly: true,
-                  child: FilledButton.tonalIcon(
-                    onPressed: _freeMemory,
-                    icon: const Icon(Icons.cleaning_services_outlined, size: 18),
-                    label: const Text('Libérer la mémoire des comptes secondaires'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(44),
+                  // §tourFix — Même défaut que les tuiles à interrupteur : un
+                  // `FilledButton` porte SON propre nœud de focus, ce qui
+                  // créait un 2e arrêt D-pad sans halo sur la même commande.
+                  // ExcludeFocus le retire de la traversée ; le tap tactile
+                  // n'est pas touché (ExcludeFocus n'agit que sur le focus).
+                  child: ExcludeFocus(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _freeMemory,
+                      icon:
+                          const Icon(Icons.cleaning_services_outlined, size: 18),
+                      label: const Text(
+                          'Libérer la mémoire des comptes secondaires'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                      ),
                     ),
                   ),
                 ),
@@ -231,13 +240,17 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   scaleOnFocus: false,
                   onTap: _clearImageCache,
                   decorateOnly: true,
-                  child: FilledButton.tonalIcon(
-                    onPressed: _clearImageCache,
-                    icon: const Icon(Icons.image_not_supported_outlined,
-                        size: 18),
-                    label: const Text('Vider le cache images'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(44),
+                  // §tourFix — cf. le bouton ci-dessus : ExcludeFocus supprime
+                  // le second arrêt D-pad apporté par le FilledButton.
+                  child: ExcludeFocus(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _clearImageCache,
+                      icon: const Icon(Icons.image_not_supported_outlined,
+                          size: 18),
+                      label: const Text('Vider le cache images'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                      ),
                     ),
                   ),
                 ),
@@ -284,11 +297,17 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
         itemBuilder: (_, i) {
           final preset = PerfConfig.presets[i];
           final active = _config == preset.config;
+          // §tourFix — reporter autoNextEpisode dans la config du preset :
+          // c'est un réglage de CONFORT volontairement hors des profils de
+          // performance (cf. §autoNextEp dans perf_config.dart) ; appliquer
+          // preset.config tel quel l'écrasait silencieusement.
+          void applyPreset() => _apply(
+              preset.config.copyWith(autoNextEpisode: _config.autoNextEpisode));
           return FocusableChip(
-            onTap: () => _apply(preset.config),
+            onTap: applyPreset,
             borderRadius: BorderRadius.circular(10),
             child: GestureDetector(
-              onTap: () => _apply(preset.config),
+              onTap: applyPreset,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 width: 104,
@@ -375,15 +394,21 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
         onTap: enabled ? () => onChanged(!value) : null,
         child: Opacity(
           opacity: enabled ? 1.0 : 0.45,
-          child: SwitchListTile(
-            secondary: Icon(icon, color: kAccentSecondary),
-            title: Text(title, style: const TextStyle(fontSize: 14)),
-            subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
-            value: value,
-            activeTrackColor: kAccentSecondary,
-            onChanged: enabled ? onChanged : null,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+          // §tourFix — même patron que SettingsPage : l'InkWell interne du
+          // SwitchListTile est focusable par défaut → 2e arrêt D-pad par tuile,
+          // sans halo. ExcludeFocus le retire de la traversée ; seul le Focus
+          // du FocusableCard reste (le tap tactile, lui, n'est pas affecté).
+          child: ExcludeFocus(
+            child: SwitchListTile(
+              secondary: Icon(icon, color: kAccentSecondary),
+              title: Text(title, style: const TextStyle(fontSize: 14)),
+              subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
+              value: value,
+              activeTrackColor: kAccentSecondary,
+              onChanged: enabled ? onChanged : null,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),

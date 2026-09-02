@@ -5,6 +5,14 @@ import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
 import '../video_fit.dart';
 
+/// §tourFix — LA liste des vitesses de lecture, unique pour toute l'app.
+///
+/// Elle existait en DOUBLE (ici et dans `PlayerControls._speeds`), chacune
+/// alimentant son propre état : le badge inline et la coche du sous-menu
+/// pouvaient se contredire (badge TV figé à 1.0×). La vitesse n'a plus qu'un
+/// propriétaire (`_PlayerPageState._speed`) et une seule liste — celle-ci.
+const List<double> kPlaybackSpeeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
 /// §tvPlayerNav — Panneau d'OPTIONS du lecteur : le « centre de contrôle » TV
 /// ouvert via ↑ à la télécommande (mobile peut aussi y accéder). Tous les items
 /// sont des [FocusableCard] → navigables au D-pad, contrairement aux boutons
@@ -117,7 +125,6 @@ Future<void> showSpeedMenu(
   required double current,
   required ValueChanged<double> onSelect,
 }) {
-  const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
   return showAdaptiveActionSheet<void>(
     context: context,
     scrollable: false,
@@ -125,7 +132,7 @@ Future<void> showSpeedMenu(
       title: 'Vitesse',
       icon: Icons.speed_rounded,
       children: [
-        for (final s in speeds)
+        for (final s in kPlaybackSpeeds)
           _OptionRow(
             icon: s == current
                 ? Icons.check_circle_rounded

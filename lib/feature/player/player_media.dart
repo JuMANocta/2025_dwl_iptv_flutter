@@ -43,7 +43,8 @@ class PlayerMedia {
   /// Durée totale du replay — alimente la barre replay (optionnel).
   final Duration? replayDuration;
 
-  /// §1e — Position de reprise, passée nativement à mpv via `Media(start:)`.
+  /// §1e — Position de reprise, passée nativement au moteur à l'ouverture
+  /// (§resumeStart) : un seek post-open peut être avalé par le buffering.
   final Duration? startPosition;
 
   /// Clé de persistance de progression. Si nulle, [path] fait office de clé.

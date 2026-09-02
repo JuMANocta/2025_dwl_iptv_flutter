@@ -3,48 +3,41 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/quality_scale.dart';
 
-/// §videoStats — Ce que mpv décode RÉELLEMENT, à un instant donné.
+/// §videoStats — Ce que le moteur décode RÉELLEMENT, à un instant donné.
 ///
 /// Outil de diagnostic avant tout : sans lui, une lecture 4K qui rame ne laisse
-/// que des hypothèses (cf. §video4k). Toutes les valeurs sont nullables — un
-/// flux qui vient de démarrer, ou un build sans accès aux propriétés mpv, n'en
-/// remplit qu'une partie.
+/// que des hypothèses (cf. §video4k — la leçon fondatrice : on mesure AVANT de
+/// toucher au décodeur). Toutes les valeurs sont nullables — un flux qui vient
+/// de démarrer n'en remplit qu'une partie, et un champ que le moteur ne sait
+/// pas renseigner reste `null`, jamais zéro (leçon §hwdecUnknown).
+///
+/// ⚠️ §tourFix (2026-09-02) — Les champs que seul mpv savait remplir
+/// (résolution corrigée du ratio de pixel, format de pixel, fps réellement
+/// rendus, pertes décodeur, sync A/V, Hz de l'écran, primaries/signalPeak) ont
+/// été retirés avec lui : Media3 ne les publie pas, et une ligne d'encart
+/// éternellement vide — ou pire, « — / X » qui se lit comme une mesure — est
+/// un mensonge d'interface.
 @immutable
 class VideoStatsSnapshot {
-  /// Résolution DÉCODÉE, sans correction de ratio de pixel.
+  /// Résolution DÉCODÉE.
   final int? width;
   final int? height;
 
-  /// Résolution d'AFFICHAGE = décodée corrigée du ratio de pixel.
-  ///
-  /// ⚠️ Un écart avec [width]/[height] signifie des **pixels non carrés**
-  /// (source anamorphique), PAS un redimensionnement de la texture de sortie.
-  /// C'est une nuance qui compte pour §video4k : voir cet écart et conclure
-  /// « ça downscale » serait une fausse piste.
-  final int? displayWidth;
-  final int? displayHeight;
-
-  /// Ratio de pixel. ≠ 1 ⇒ source anamorphique (explique l'écart ci-dessus).
-  final double? pixelAspectRatio;
-
-  final String? pixelFormat;
-
-  /// Format de pixel matériel. Renseigné uniquement quand le décodage passe
-  /// par le GPU — c'est la corroboration de [hwdec].
-  final String? hwPixelFormat;
-
-  /// Décodeur matériel réellement retenu par mpv (`hwdec-current`).
+  /// Décodage matériel réellement retenu.
   /// `no` (ou vide) = décodage **logiciel** : en 4K, stutter quasi garanti.
+  ///
+  /// Le nom vient du `hwdec-current` de mpv ; sous Media3 c'est le nom du
+  /// décodeur MediaCodec quand il est matériel, `no` sinon, et `null` tant que
+  /// l'`AnalyticsListener` n'a pas vu de décodeur s'initialiser
+  /// (cf. [hwdecKnown]).
   final String? hwdec;
 
   final String? codec;
   final String? decoder;
 
-  /// fps annoncé par le conteneur (ce qu'il FAUDRAIT tenir).
+  /// fps annoncé par le conteneur. (Media3 ne publie pas d'images/s réellement
+  /// rendues — l'`estimated-vf-fps` de mpv n'a pas d'équivalent.)
   final double? containerFps;
-
-  /// fps réellement rendu (`estimated-vf-fps`) — ce qu'on tient vraiment.
-  final double? renderedFps;
 
   /// Débit vidéo instantané, en bits/s.
   final int? videoBitrate;
@@ -52,56 +45,37 @@ class VideoStatsSnapshot {
   /// Images jetées à l'affichage (on n'arrive pas à suivre le rythme).
   final int? droppedFrames;
 
-  /// Images jetées par le décodeur lui-même (encore plus grave).
-  final int? decoderDroppedFrames;
+  /// §tourFix — Le flux est-il HDR ? Déduit par le moteur du transfert de
+  /// couleur (HLG/ST2084). `null` = le moteur ne SAIT pas (`colorInfo`
+  /// absent). Remplace l'astuce `signalPeak > 1` héritée de mpv : poser 2.0 en
+  /// dur figeait la ligne HDR de l'encart à « oui ».
+  final bool? hdr;
 
-  /// Pic lumineux signalé par la source (> 1 ⇒ contenu HDR).
-  final double? signalPeak;
-  final String? primaries;
-
-  /// §video4kBench — Sortie vidéo réellement active (`current-vo`).
+  /// Sortie vidéo réellement active.
   ///
-  /// Indispensable dès qu'un banc d'essai peut forcer `vo` : sans elle, on ne
-  /// sait pas si le réglage choisi a été RETENU par mpv ou silencieusement
-  /// refusé, et on attribuerait à la mesure ce qui n'est qu'un réglage ignoré.
+  /// Née pour le banc d'essai §video4kBench (`current-vo` mpv : vérifier qu'un
+  /// réglage forcé était RETENU et pas silencieusement refusé). Sous Media3
+  /// elle nomme le chemin de rendu — `SurfaceView` — précisément ce qui rend
+  /// le HDR natif possible (§engineVendor).
   final String? vo;
-
-  /// Fréquence de rafraîchissement de l'écran (`display-fps`).
-  ///
-  /// C'est le plafond de ce que l'affichage peut présenter. Une box qui
-  /// annonce 60 Hz mais ne tient que 16 img/s en 4K désigne la sortie, pas la
-  /// source (§video4k).
-  final double? displayFps;
-
-  /// Décalage audio/vidéo instantané, en secondes (`avsync`).
-  final double? avSync;
 
   const VideoStatsSnapshot({
     this.width,
     this.height,
-    this.displayWidth,
-    this.displayHeight,
-    this.pixelAspectRatio,
-    this.pixelFormat,
-    this.hwPixelFormat,
     this.hwdec,
     this.codec,
     this.decoder,
     this.containerFps,
-    this.renderedFps,
     this.videoBitrate,
     this.droppedFrames,
-    this.decoderDroppedFrames,
-    this.signalPeak,
-    this.primaries,
+    this.hdr,
     this.vo,
-    this.displayFps,
-    this.avSync,
   });
 
   /// Le décodage passe-t-il par le matériel ?
   ///
-  /// mpv répond littéralement « no » quand il est retombé en logiciel — un
+  /// Le moteur répond littéralement « no » quand le décodage est logiciel
+  /// (convention posée par mpv, conservée par `Media3Engine.readStats`) — un
   /// simple test de nullité passerait donc à côté du cas qu'on cherche.
   bool get hardwareDecoding {
     final h = hwdec?.trim().toLowerCase();
@@ -109,43 +83,24 @@ class VideoStatsSnapshot {
     return h != 'no' && h != 'none' && h != 'null';
   }
 
-  /// §hwdecUnknown — mpv a-t-il seulement RÉPONDU sur `hwdec-current` ?
+  /// §hwdecUnknown — Le moteur a-t-il seulement RÉPONDU sur le décodage ?
   ///
-  /// ⚠️ Distinction indispensable, et absente de la première version : pendant
-  /// les 1 à 3 premières secondes de CHAQUE lecture, la propriété est encore
-  /// vide — [hardwareDecoding] renvoyait alors `false` et l'encart affichait
-  /// « LOGICIEL » en ROUGE avec une alerte. Sur les quatre relevés §video4k,
-  /// la fausse alerte est apparue quatre fois. C'est le pire endroit possible
-  /// pour se tromper : cette ligne est celle sur laquelle repose tout le
-  /// diagnostic du ticket, et elle annonçait l'inverse de la réalité à qui
-  /// regardait au lancement.
+  /// ⚠️ Distinction indispensable, apprise sous mpv et toujours d'actualité :
+  /// au début de CHAQUE lecture la valeur est encore absente (sous Media3,
+  /// `hardware` reste `null` tant que l'`AnalyticsListener` n'a pas vu de
+  /// décodeur s'initialiser) — [hardwareDecoding] renvoyait alors `false` et
+  /// l'encart affichait « LOGICIEL » en ROUGE avec une alerte. Sur les quatre
+  /// relevés §video4k, la fausse alerte est apparue quatre fois. C'est le pire
+  /// endroit possible pour se tromper : cette ligne est celle sur laquelle
+  /// repose tout le diagnostic du ticket, et elle annonçait l'inverse de la
+  /// réalité à qui regardait au lancement.
   ///
   /// ⚠️ Ne PAS confondre avec la réponse littérale `no`, qui elle est une vraie
   /// information (décodage logiciel confirmé) — cf. le piège déjà verrouillé
   /// par test dans [hardwareDecoding].
   bool get hwdecKnown => (hwdec?.trim().isNotEmpty) ?? false;
 
-  /// Source anamorphique (pixels non carrés).
-  bool get isAnamorphic {
-    final par = pixelAspectRatio;
-    if (par == null) return false;
-    return (par - 1.0).abs() > 0.01;
-  }
-
-  /// Le rendu décroche-t-il du rythme annoncé ?
-  ///
-  /// Marge de 10 % : `estimated-vf-fps` est une moyenne glissante qui oscille
-  /// naturellement de quelques dixièmes, un seuil strict crierait au loup en
-  /// permanence.
-  bool get isDroppingRate {
-    final target = containerFps;
-    final actual = renderedFps;
-    if (target == null || actual == null || target <= 0) return false;
-    return actual < target * 0.9;
-  }
-
-  bool get hasDroppedFrames =>
-      (droppedFrames ?? 0) > 0 || (decoderDroppedFrames ?? 0) > 0;
+  bool get hasDroppedFrames => (droppedFrames ?? 0) > 0;
 
   /// Résolution telle qu'on l'affiche : « 3840×2160 ».
   String? get resolutionLabel =>
@@ -181,15 +136,15 @@ class VideoStatsSnapshot {
         'codec=${codec ?? "?"}',
         'res=${resolutionLabel ?? "?"}',
         'fps=${containerFps?.toStringAsFixed(1) ?? "?"}',
-        if (isAnamorphic) 'par=${pixelAspectRatio!.toStringAsFixed(2)}',
-        if ((signalPeak ?? 0) > 1.0) 'hdr',
-        // §video4kBench — `vo` et `display-fps` sont STATIQUES pendant une
-        // lecture : leur place est ici, pas dans la signature dynamique.
+        // Seulement quand le moteur le CONFIRME : `null` = il ne sait pas,
+        // et un « hdr » écrit dans le doute vaudrait un faux relevé.
+        if (hdr == true) 'hdr',
+        // `vo` est STATIQUE pendant une lecture : sa place est ici, pas dans
+        // la signature dynamique.
         if (vo != null) 'vo=$vo',
-        if (displayFps != null) 'écran=${displayFps!.toStringAsFixed(0)} Hz',
       ].join(' · ');
 
-  /// §video4kTrace — Les deux chiffres qui décrivent le SYMPTÔME, à part.
+  /// §video4kTrace — Les chiffres qui BOUGENT, tenus à part.
   ///
   /// ⚠️ Ils ne peuvent pas rejoindre [diagnosticSignature] : celle-ci sert de
   /// clé de dédoublonnage (`if (signature != _loggedSignature)`), et une valeur
@@ -200,21 +155,14 @@ class VideoStatsSnapshot {
   /// SEUL canal (pas de logcat). Sans eux, un utilisateur qui rapporte « une
   /// image toutes les X secondes » n'a rien dans le journal qui le montre — le
   /// symptôme reste invisible à celui qui doit le corriger.
-  String get dynamicSignature {
-    final target = containerFps;
-    final actual = renderedFps;
-    final rendu = (target != null && actual != null)
-        ? '${actual.toStringAsFixed(1)}/${target.toStringAsFixed(1)} img/s'
-        : (actual?.toStringAsFixed(1) ?? '?');
-    return [
-      'rendu=$rendu',
-      'perdues=${droppedFrames ?? 0}',
-      if ((decoderDroppedFrames ?? 0) > 0) 'décodeur=$decoderDroppedFrames',
-      if (bitrateLabel != null) 'débit=$bitrateLabel',
-      if (avSync != null) 'a/v=${avSync!.toStringAsFixed(3)} s',
-      if (isDroppingRate) 'DÉCROCHE',
-    ].join(' · ');
-  }
+  ///
+  /// Sous mpv, on y lisait aussi le fps réellement rendu et la dérive A/V ;
+  /// Media3 ne les publie pas (§tourFix). Restent les pertes et le débit —
+  /// « perdues=N » suffit à dater un effondrement.
+  String get dynamicSignature => [
+        'perdues=${droppedFrames ?? 0}',
+        if (bitrateLabel != null) 'débit=$bitrateLabel',
+      ].join(' · ');
 
   /// Débit lisible : « 18,4 Mb/s ».
   String? get bitrateLabel {

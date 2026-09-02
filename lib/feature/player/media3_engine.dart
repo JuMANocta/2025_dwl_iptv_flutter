@@ -59,16 +59,11 @@ class Media3Engine implements AetherPlaybackEngine {
   AetherTrack? _curAudio;
   AetherTrack? _curSub;
 
-  /// §replayBuffer — Conservé pour parité de signature avec le moteur mpv.
-  /// ⚠️ **Sans effet à ce stade** : ExoPlayer n'a pas d'équivalent direct des
-  /// réglages de démuxeur. Documenté plutôt que silencieusement ignoré.
-  final bool timeshift;
-
   /// Dernière langue de sous-titres demandée : le paquet la pose à l'ouverture
   /// (§trackLangPref), il faut donc la connaître avant chaque `loadUrl`.
   String? _subLang;
 
-  Media3Engine({this.timeshift = false}) {
+  Media3Engine() {
     _c = NativeVideoPlayerController(
       id: 7000,
       autoPlay: true,
@@ -321,10 +316,10 @@ class Media3Engine implements AetherPlaybackEngine {
 
   /// §engineVendor patch 3 — §videoStats depuis l'`AnalyticsListener`.
   ///
-  /// ⚠️ **Les champs sans équivalent restent `null`**, jamais zéro : `renderedFps`
-  /// (ExoPlayer ne publie pas d'images/s réellement rendues), `avSync`,
-  /// `displayFps`, `pixelAspectRatio`. Un zéro se lirait comme une mesure et
-  /// ferait conclure de travers — c'est exactement la leçon §hwdecUnknown.
+  /// ⚠️ **Un champ que le natif ne renseigne pas reste `null`**, jamais zéro :
+  /// un zéro se lirait comme une mesure et ferait conclure de travers — c'est
+  /// exactement la leçon §hwdecUnknown. (Les champs que seul mpv savait
+  /// remplir ont été retirés du modèle au §tourFix, cf. `video_stats.dart`.)
   @override
   Future<VideoStatsSnapshot> readStats() async {
     final m = await _c.getVideoStats();
@@ -342,10 +337,15 @@ class Media3Engine implements AetherPlaybackEngine {
       containerFps: _positiveDouble(m['frameRate']),
       videoBitrate: _positive(m['bitrate']),
       droppedFrames: m['droppedFrames'] as int?,
-      // 6 = HLG, 7 = ST2084 (HDR10) : c'est ce qui dit que le flux est HDR,
-      // au lieu de le supposer. `signalPeak > 1` est la convention que
-      // l'encart utilise déjà côté mpv.
-      signalPeak: (transfer == 6 || transfer == 7) ? 2.0 : null,
+      // §tourFix — 6 = ST2084 (HDR10), 7 = HLG (`C.COLOR_TRANSFER_*`) : c'est
+      // ce qui dit que le flux est HDR, au lieu de le supposer. Les deux sont
+      // acceptés ici, mais l'ordre compte le jour où l'encart distinguera
+      // « HDR10 » de « HLG » — une première rédaction les avait inversés.
+      // -1 = `colorInfo` absent → Media3 ne
+      // SAIT pas → `null`, jamais un faux « non » (leçon §hwdecUnknown).
+      // Remplace l'astuce `signalPeak: 2.0` posée en dur, qui figeait la
+      // ligne HDR de l'encart à « oui ».
+      hdr: transfer < 0 ? null : (transfer == 6 || transfer == 7),
       vo: 'SurfaceView',
     );
   }

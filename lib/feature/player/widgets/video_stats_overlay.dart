@@ -10,10 +10,10 @@ import '../video_stats.dart';
 /// §videoStats — Encart de diagnostic vidéo, en direct par-dessus l'image.
 ///
 /// Répond à une question que rien d'autre ne sait poser sur TV (pas de
-/// logcat, cf. §tvLogs) : **qu'est-ce que mpv décode vraiment ?** Décodage
-/// matériel ou logiciel, résolution réelle, fps tenu contre fps annoncé,
-/// images perdues. C'est le préalable posé par la roadmap avant de toucher au
-/// décodeur pour §video4k — on mesure d'abord.
+/// logcat, cf. §tvLogs) : **qu'est-ce que le moteur (Media3/ExoPlayer) décode
+/// vraiment ?** Décodage matériel ou logiciel, résolution réelle, HDR confirmé
+/// ou non, images perdues. Né pour §video4k, dont la leçon reste la règle
+/// ici : on mesure d'abord, on ne touche au décodeur qu'ensuite.
 ///
 /// ⚠️ **Il ne doit pas fausser ce qu'il mesure** : rafraîchissement à 1 Hz,
 /// isolé dans un [RepaintBoundary], et jamais deux lectures concourantes
@@ -106,10 +106,10 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       final now = DateTime.now();
       final due = _lastDynamicLog == null ||
           now.difference(_lastDynamicLog!) >= _dynamicPeriod;
-      // ⚠️ Le PREMIER décrochage est écrit tout de suite, sans attendre le
+      // ⚠️ Les PREMIÈRES pertes sont écrites tout de suite, sans attendre le
       // prochain palier : c'est l'instant qui intéresse, et il peut précéder
       // un plantage — auquel cas la ligne suivante n'arrivera jamais.
-      final firstDrop = !_loggedDrop && (stats.isDroppingRate || stats.hasDroppedFrames);
+      final firstDrop = !_loggedDrop && stats.hasDroppedFrames;
       if (due || firstDrop) {
         _lastDynamicLog = now;
         if (firstDrop) _loggedDrop = true;
@@ -165,11 +165,12 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
 
     // ── Décodage : LA ligne du ticket §video4k ───────────────────────────────
     // Elle est en tête et colorée parce qu'elle tranche à elle seule entre
-    // « la box n'y arrive pas » et « mpv décode en logiciel ».
-    // §hwdecUnknown — Tant que mpv n'a pas répondu (1 à 3 s au démarrage de
-    // CHAQUE lecture), on n'affirme rien. Afficher « LOGICIEL » en rouge dans
-    // cette fenêtre était une fausse alerte systématique, sur la ligne même
-    // dont dépend tout le diagnostic §video4k.
+    // « la box n'y arrive pas » et « le moteur décode en logiciel ».
+    // §hwdecUnknown — Tant que le moteur n'a pas répondu (sous Media3,
+    // `hardware` reste nul tant que l'AnalyticsListener n'a pas vu de décodeur
+    // s'initialiser — au démarrage de CHAQUE lecture), on n'affirme rien.
+    // Afficher « LOGICIEL » en rouge dans cette fenêtre était une fausse
+    // alerte systématique, sur la ligne même dont dépend tout le diagnostic.
     final hw = s.hardwareDecoding;
     rows.add(_StatRow(
       label: 'Décodage',
@@ -238,73 +239,36 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       }
     }
 
-    if (s.isAnamorphic && s.displayWidth != null && s.displayHeight != null) {
-      // Affiché SEULEMENT si les pixels sont non carrés : sinon la ligne
-      // répéterait la résolution et laisserait croire à un redimensionnement.
-      rows.add(_StatRow(
-        label: 'Affichée',
-        value: '${s.displayWidth}×${s.displayHeight}'
-            '  (pixels ${s.pixelAspectRatio!.toStringAsFixed(2)})',
-      ));
-    }
-    final pixelFormat = s.hwPixelFormat ?? s.pixelFormat;
-    if (pixelFormat != null) {
-      rows.add(_StatRow(label: 'Pixels', value: pixelFormat));
-    }
-    if ((s.signalPeak ?? 0) > 1.0) {
-      rows.add(_StatRow(
-        label: 'HDR',
-        value: s.primaries ?? 'oui',
-        valueColor: kAccentSecondary,
-      ));
-    }
+    // §tourFix — Ce que Media3 SAIT du HDR (transfert HLG/ST2084), tri-état :
+    // oui / non / « — » quand `colorInfo` est absent. L'ancienne astuce
+    // `signalPeak: 2.0` posée en dur ne laissait à cette ligne qu'une seule
+    // réponse possible — elle affichait TOUJOURS « oui ».
+    rows.add(_StatRow(
+      label: 'HDR',
+      value: s.hdr == null ? '—' : (s.hdr! ? 'oui' : 'non'),
+      valueColor: s.hdr == true ? kAccentSecondary : null,
+    ));
 
     // ── Fluidité ─────────────────────────────────────────────────────────────
-    final rendered = s.renderedFps;
+    // §tourFix — fps du CONTENEUR uniquement : Media3 ne publie pas d'images/s
+    // réellement rendues, et l'ancien « — / X » laissait lire l'absence de
+    // mesure comme une mesure.
     final target = s.containerFps;
-    if (rendered != null || target != null) {
-      final left = rendered?.toStringAsFixed(1) ?? '—';
-      final right = target?.toStringAsFixed(1) ?? '—';
-      rows.add(_StatRow(
-        label: 'Images/s',
-        value: '$left / $right',
-        valueColor: s.isDroppingRate ? kError : null,
-        alert: s.isDroppingRate,
-      ));
+    if (target != null) {
+      rows.add(_StatRow(label: 'Images/s', value: target.toStringAsFixed(1)));
     }
     if (s.hasDroppedFrames) {
-      final display = s.droppedFrames ?? 0;
-      final decoder = s.decoderDroppedFrames ?? 0;
       rows.add(_StatRow(
         label: 'Perdues',
-        value: decoder > 0 ? '$display  (décodeur $decoder)' : '$display',
+        value: '${s.droppedFrames ?? 0}',
         valueColor: kWarning,
         alert: true,
       ));
     }
 
-    // §video4kBench — Le plafond de l'affichage. Sans lui, « 16 img/s tenus »
-    // ne dit pas si c'est la source ou l'écran qui borne.
-    final dfps = s.displayFps;
-    if (dfps != null && dfps > 0) {
-      rows.add(_StatRow(label: 'Écran', value: '${dfps.toStringAsFixed(0)} Hz'));
-    }
-
     final bitrate = s.bitrateLabel;
     if (bitrate != null) {
       rows.add(_StatRow(label: 'Débit', value: bitrate));
-    }
-
-    // Dérive A/V : la seule façon de voir le prix d'un `video-sync` allégé.
-    final av = s.avSync;
-    if (av != null) {
-      final drift = av.abs() > 0.15;
-      rows.add(_StatRow(
-        label: 'Sync A/V',
-        value: '${av.toStringAsFixed(3)} s',
-        valueColor: drift ? kWarning : null,
-        alert: drift,
-      ));
     }
 
     return rows;

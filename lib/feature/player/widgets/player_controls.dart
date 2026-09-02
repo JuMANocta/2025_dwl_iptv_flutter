@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../playback_engine.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
+import 'player_options_sheet.dart' show kPlaybackSpeeds;
 
 /// Overlay de contrôles du player.
 ///
@@ -48,6 +49,15 @@ class PlayerControls extends StatefulWidget {
   /// une barre qu'on ne peut pas atteindre.
   final VoidCallback? onShowOptions;
 
+  /// §tourFix — Vitesse courante, possédée par [PlayerPage]. Ce widget avait
+  /// SA copie, jamais synchronisée avec celle du sous-menu Vitesse : le badge
+  /// restait figé à 1.0× quand on changeait la vitesse depuis le panneau TV.
+  final double speed;
+
+  /// §tourFix — Le badge inline demande le changement au propriétaire au lieu
+  /// d'appeler `setRate` lui-même : une seule voie, un seul état.
+  final ValueChanged<double> onSpeedChanged;
+
   const PlayerControls({
     super.key,
     required this.player,
@@ -60,6 +70,8 @@ class PlayerControls extends StatefulWidget {
     this.badgeType = PlayerBadgeType.none,
     required this.onBack,
     required this.onInteraction,
+    required this.speed,
+    required this.onSpeedChanged,
     this.onLockChanged,
     this.onNextEpisode,
     this.onShowTracks,
@@ -80,31 +92,36 @@ class _PlayerControlsState extends State<PlayerControls> {
   Duration _buffer = Duration.zero;
   bool _buffering = true;
 
-  // Vitesse de lecture.
-  double _speed = 1.0;
-  static const _speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-
   // Seek bar.
   bool _draggingSeek = false;
   double _seekValue = 0.0;
 
   final List<StreamSubscription> _subs = [];
 
+  /// §tourFix — Mémorise sans repeindre quand les contrôles sont cachés.
+  ///
+  /// Ils ne sont jamais démontés (AnimatedOpacity + IgnorePointer) : chaque
+  /// tick de position déclenchait donc un rebuild de l'overlay invisible —
+  /// un rebuild PERMANENT pendant toute la lecture, mesuré sur Fire Stick.
+  /// Les champs restent à jour, donc à la réapparition (rebuild déclenché par
+  /// le parent via `visible`) la seek bar repart des valeurs courantes.
+  void _update(VoidCallback apply) {
+    apply();
+    if (widget.visible) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
     _subs.addAll([
-      widget.player.playingStream
-          .listen((v) => setState(() => _playing = v)),
+      widget.player.playingStream.listen((v) => _update(() => _playing = v)),
       widget.player.positionStream.listen((v) {
-        if (!_draggingSeek) setState(() => _position = v);
+        if (!_draggingSeek) _update(() => _position = v);
       }),
-      widget.player.durationStream
-          .listen((v) => setState(() => _duration = v)),
-      widget.player.bufferStream
-          .listen((v) => setState(() => _buffer = v)),
+      widget.player.durationStream.listen((v) => _update(() => _duration = v)),
+      widget.player.bufferStream.listen((v) => _update(() => _buffer = v)),
       widget.player.bufferingStream
-          .listen((v) => setState(() => _buffering = v)),
+          .listen((v) => _update(() => _buffering = v)),
     ]);
   }
 
@@ -136,10 +153,11 @@ class _PlayerControlsState extends State<PlayerControls> {
   }
 
   void _cycleSpeed() {
-    final idx = _speeds.indexOf(_speed);
-    final next = _speeds[(idx + 1) % _speeds.length];
-    setState(() => _speed = next);
-    widget.player.setRate(next);
+    // `indexOf` renvoie -1 si la vitesse courante n'est pas dans la liste
+    // (impossible en pratique) : (-1 + 1) % n = 0 → on repart du début.
+    final idx = kPlaybackSpeeds.indexOf(widget.speed);
+    final next = kPlaybackSpeeds[(idx + 1) % kPlaybackSpeeds.length];
+    widget.onSpeedChanged(next);
     widget.onInteraction();
   }
 
@@ -458,7 +476,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            '${_speed}x',
+                            '${widget.speed}x',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,

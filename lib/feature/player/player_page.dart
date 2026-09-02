@@ -219,8 +219,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// explication passe pour une panne.
   bool _audioGaveUp = false;
 
-  /// §tvPlayerNav — Vitesse courante, pilotée par le sous-menu Vitesse du
-  /// panneau d'options TV (reflète la coche du menu).
+  /// §tvPlayerNav + §tourFix — Vitesse courante, UNIQUE source de vérité.
+  /// Alimentée par le sous-menu Vitesse ET par le badge inline des contrôles
+  /// (via [_setSpeed]) : les deux voies convergent ici, le badge et la coche
+  /// du menu ne peuvent plus se contredire.
   double _speed = 1.0;
 
   // §seekAccum — Accumulation des sauts rapprochés (double-tap mobile + flèches
@@ -255,16 +257,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
     _media = widget.initialMedia;
     _currentPath = _media.path;
-    // §replayBuffer — profil mpv timeshift (buffering propre aux frontières
-    // de segments HLS longs) quand on lit un replay.
     // §engineVendor étape 6 — Il n'y a plus qu'un moteur : Media3/ExoPlayer.
     // Le sélecteur du banc d'essai et l'implémentation libmpv sont partis avec
     // libmpv lui-même. `_ctrl` reste typé [AetherPlaybackEngine] : l'interface
     // garde son intérêt (elle borne ce que le lecteur a le droit de demander au
     // moteur, et c'est elle qui a rendu la bascule possible sans réécrire le
     // lecteur), même avec une seule implémentation.
-    final timeshift = _media.sourceType == VideoSourceType.networkReplay;
-    _ctrl = Media3Engine(timeshift: timeshift);
+    _ctrl = Media3Engine();
     _listenErrors();
     _listenPlaybackForWakelock();
     _listenVideoParamsForQuality();
@@ -595,14 +594,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   Future<void> _openMedia() async {
     try {
-      // §resumeStart — Position de reprise passée NATIVEMENT à mpv via
-      // `Media(start:)` (cf. AetherPlayerController.open) → fini la lecture qui
-      // repart à 0 (le seek post-open était avalé par media_kit v2). Pas de
-      // reprise pour les sources live/replay (`_skipProgress`).
+      // §resumeStart — Position de reprise passée NATIVEMENT au moteur via
+      // `loadUrl(startAt:)` (cf. Media3Engine.open) : même garantie qu'avant —
+      // un seek post-open peut être avalé pendant le buffering initial, la
+      // lecture repartirait alors à 0. Pas de reprise pour les sources
+      // live/replay (`_skipProgress`).
       final start = (_skipProgress) ? null : _media.startPosition;
-      // §trackLangPref — Préférence de langue posée AVANT l'open (mpv choisit la
-      // piste au chargement → plus de switch/re-demux ~3 s = « le film se
-      // relance »). Pas pour live/replay.
+      // §trackLangPref — Préférence de langue posée AVANT l'open (le moteur
+      // choisit la piste au chargement → plus de switch/re-demux ~3 s = « le
+      // film se relance »). Pas pour live/replay.
       final audioLang = _skipProgress ? null : TrackPreferencesService.audio;
       final subLang = _skipProgress ? null : TrackPreferencesService.subtitle;
       if (_media.sourceType == VideoSourceType.file) {
@@ -697,14 +697,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (mounted) _startHideTimer();
   }
 
+  /// §tourFix — Point de passage unique pour changer la vitesse (sous-menu et
+  /// badge inline) : état + moteur mis à jour ensemble, aucune voie ne peut en
+  /// oublier l'autre.
+  void _setSpeed(double s) {
+    setState(() => _speed = s);
+    _ctrl.setRate(s);
+  }
+
   /// §tvPlayerNav — Sous-menu Vitesse.
   Future<void> _showSpeedMenu() async {
     await showSpeedMenu(
       context,
       current: _speed,
       onSelect: (s) {
-        setState(() => _speed = s);
-        _ctrl.setRate(s);
+        _setSpeed(s);
         Navigator.of(context).pop();
       },
     );
@@ -712,11 +719,18 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   /// §audioFallback — Bascule sur une autre piste audio, sinon coupe le son.
   ///
+  /// ⚠️ §tourFix (2026-09-02) — Chemin actuellement INATTEIGNABLE : il n'est
+  /// déclenché que par [isAudioDecodeError], qui reconnaît des libellés
+  /// d'erreur **mpv**, alors que Media3Engine n'émet plus qu'une chaîne
+  /// constante ('Lecture impossible'). Conservé tel quel : la logique de
+  /// bascule reste juste, le rebranchement se fera sur les erreurs typées
+  /// Media3 (§engineFeatures) — cf. l'en-tête de `player_error.dart`.
+  ///
   /// Retourne `true` si on a pris la main (donc pas de retry réseau : le flux
   /// n'a rien fait de mal, c'est la piste choisie qui ne se décode pas).
   ///
-  /// ⚠️ La piste fautive est mémorisée dans [_rejectedAudioIds] : sans ça, mpv
-  /// peut la re-sélectionner et on tournerait en rond entre deux pistes
+  /// ⚠️ La piste fautive est mémorisée dans [_rejectedAudioIds] : sans ça, le
+  /// moteur peut la re-sélectionner et on tournerait en rond entre deux pistes
   /// indécodables. ⚠️ En dernier recours on lit **sans son** plutôt que
   /// d'abandonner : une image sans audio reste regardable, un écran d'erreur
   /// non — mais on le DIT, sinon ça passe pour une panne.
@@ -984,9 +998,33 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         autofocus: true,
         tapToSelect: false,
         effects: const [],
-        onSelect: _togglePlayPause,
-        onLongSelect: _showPlayerOptionsPanel,
+        // §tourFix — Le mode lock ignorait la télécommande : cadenas fermé,
+        // OK faisait play/pause, ←/→ seekaient, ↑ ouvrait les options. Tout est
+        // désormais court-circuité, mais JAMAIS en silence : ↓ et OK révèlent
+        // les contrôles (donc le cadenas), exactement comme le tap simple resté
+        // actif au tactile. Une commande verrouillée qui ne produit aucun
+        // retour se lit comme une panne, pas comme un verrou.
+        //
+        // ⚠️ Le cadenas lui-même n'est atteignable qu'au pointeur (c'est un
+        // `IconButton` hors traversée dpad, et cette racine consomme les
+        // directions) : à la télécommande SEULE on ne peut ni verrouiller ni
+        // déverrouiller — pas de piège, mais pas non plus un mode « TV ».
+        // Le rendre focusable est un sujet §navBlind, pas §tourFix.
+        onSelect: () {
+          if (_isLocked) {
+            _showControls();
+            return;
+          }
+          _togglePlayPause();
+        },
+        onLongSelect: () {
+          if (_isLocked) return;
+          _showPlayerOptionsPanel();
+        },
         onDirection: (dir) {
+          // Verrouillé : les directions bloquées sont CONSOMMÉES (`true`) —
+          // rendre `false` laisserait le focus s'échapper de la vidéo.
+          if (_isLocked && dir != TraversalDirection.down) return true;
           if (dir == TraversalDirection.left) {
             _handleSeek(const Duration(seconds: -10));
             return true;
@@ -1009,9 +1047,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           fit: StackFit.expand,
           children: [
             // 1. Rendu vidéo plein écran.
-            //    §doubleLoader — `controls: NoVideoControls` DÉSACTIVE l'UI
-            //    intégrée de media_kit_video (`AdaptiveVideoControls` par
-            //    défaut). Sans ça, ses contrôles natifs s'empilaient sur nos
+            //    §doubleLoader — L'UI intégrée du lecteur natif est coupée à
+            //    la SOURCE (`showNativeControls: false`, cf. Media3Engine) :
+            //    sans ça, ses contrôles s'empileraient sur nos
             //    `PlayerControls` + `_BufferingOverlay` → DEUX spinners de
             //    chargement au démarrage + captation des taps en double (effet
             //    de "double lancement"). On rend tout nous-mêmes.
@@ -1053,6 +1091,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               // partagé) : un `pop()` direct doublonnait avec elle.
               onBack: AppBack.popFromUi,
               onInteraction: _showControls,
+              speed: _speed,
+              onSpeedChanged: _setSpeed,
               onLockChanged: (locked) => setState(() => _isLocked = locked),
               onNextEpisode:
                   widget.onRequestNext == null ? null : _requestNextEpisode,

@@ -311,7 +311,7 @@ class _CreditFooter extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text(
-          'Made with Flutter · MediaKit · libmpv',
+          'Made with Flutter · Media3/ExoPlayer',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 11,
