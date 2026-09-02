@@ -11,8 +11,9 @@
      Pour réafficher le logo (§splashIdentity) : ajouter un second <item> avec
      <bitmap android:gravity="center" android:src="@drawable/splash"/>, et
      repasser `windowSplashScreenAnimatedIcon` sur @drawable/android12splash
-     dans values-v31/ et values-night-v31/. Les PNG sont déjà là, régénérables
-     via `python tool/gen_splash_icon.py`.
+     dans values-v31/ et values-night-v31/. Les PNG ne sont PLUS dans le dépôt
+     (§apkDiet, 2026-09-02 : 636 Ko de ressources que rien ne référençait) — les
+     régénérer d'abord avec `python tool/gen_splash_icon.py`.
 
      Ne PAS relancer `flutter_native_splash:create` : il écraserait ce fichier. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">

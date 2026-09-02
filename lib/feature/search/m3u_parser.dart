@@ -1,12 +1,33 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:aetherStream/core/utils/string_pool.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 
 class M3uParser {
   /// Parse le fichier M3U et alimente les trois listes.
   /// [onProgress] est appelé avec une valeur entre 0.0 et 1.0 pendant le parsing.
+  ///
+  /// §ramDiet (2026-09-02) — Lecture **streamée**, sur le thread UI mais sans
+  /// jamais matérialiser le fichier.
+  ///
+  /// Ce que faisait la version précédente, sur une liste réelle de 121 000
+  /// entrées (fichier de 35 Mo) : `readAsBytes` (35 Mo) **puis** `utf8.decode`
+  /// (70 Mo — les `String` Dart sont en UTF-16) **puis** `LineSplitter.convert`
+  /// (75 Mo de sous-chaînes) — les trois **vivants en même temps**, soit ~180 Mo
+  /// de pic sur l'isolate principal. Sur un Fire Stick (512 Mo à 1 Go de tas
+  /// utilisable), c'est la marche qui déclenchait les OOM silencieux.
+  ///
+  /// Désormais : `openRead` → décodeur → `LineSplitter`, une ligne à la fois.
+  /// Le pic ne dépend plus de la taille du fichier, seulement des entrées
+  /// produites — qui sont le résultat, pas un intermédiaire.
+  ///
+  /// ⚠️ Le fallback d'encodage est PRÉSERVÉ mais déplacé : en streaming, l'échec
+  /// UTF-8 ne survient qu'au milieu du flux, après avoir déjà produit des
+  /// entrées. On parse donc dans des listes locales et on ne les publie qu'une
+  /// fois le fichier entièrement lu ; si l'UTF-8 casse, on jette et on relit
+  /// tout en Latin-1. Le coût de la relecture ne se paie que dans ce cas rare.
   static Future<void> parseFile(
     String filePath,
     List<M3uEntry> filmsList,
@@ -21,15 +42,59 @@ class M3uParser {
       throw Exception('Fichier introuvable: $filePath');
     }
 
-    final bytes = await file.readAsBytes();
-    String content;
+    final films = <M3uEntry>[];
+    final series = <M3uEntry>[];
+    final tv = <M3uEntry>[];
     try {
-      content = utf8.decode(bytes);
+      await _parseStream(file, const Utf8Decoder(allowMalformed: false),
+          accountId: accountId,
+          hidden: hidden,
+          onProgress: onProgress,
+          filmsList: films,
+          seriesList: series,
+          tvList: tv);
       debugPrint('✅ M3U: encodage UTF-8 détecté');
-    } catch (_) {
-      content = latin1.decode(bytes);
-      debugPrint('⚠️ M3U: fallback Latin-1 (fichier non-UTF-8)');
+    } on FormatException {
+      films.clear();
+      series.clear();
+      tv.clear();
+      debugPrint('⚠️ M3U: fallback Latin-1 (fichier non-UTF-8) — relecture');
+      await _parseStream(file, const Latin1Decoder(),
+          accountId: accountId,
+          hidden: hidden,
+          onProgress: onProgress,
+          filmsList: films,
+          seriesList: series,
+          tvList: tv);
     }
+
+    filmsList.addAll(films);
+    seriesList.addAll(series);
+    tvList.addAll(tv);
+    onProgress?.call(1.0);
+  }
+
+  static Future<void> _parseStream(
+    File file,
+    Converter<List<int>, String> decoder, {
+    required String accountId,
+    required Set<String> hidden,
+    required void Function(double progress)? onProgress,
+    required List<M3uEntry> filmsList,
+    required List<M3uEntry> seriesList,
+    required List<M3uEntry> tvList,
+  }) async {
+    // §ramDiet — Progression en OCTETS LUS, plus en entrées.
+    //
+    // L'ancien calcul avait besoin du total d'entrées, obtenu en re-parcourant
+    // toutes les lignes avant même de commencer — un second passage complet sur
+    // 75 Mo pour afficher un pourcentage. La taille du fichier, elle, est connue
+    // d'avance et gratuite.
+    final totalBytes = await file.length();
+    int readBytes = 0;
+
+    // §ramDiet — Un pool par parsing, jeté à la sortie (cf. `StringPool`).
+    final pool = StringPool();
 
     final regExpSerie       = RegExp(r"S\s*(\d{1,2})\s*E\s*(\d{1,2})", caseSensitive: false);
     final regExpLogo        = RegExp(r'tvg-logo="([^"]*)"');
@@ -40,17 +105,25 @@ class M3uParser {
     final regExpCatchupSrc  = RegExp(r'catchup-source="([^"]*)"', caseSensitive: false);
 
     String? pendingMetadata;
-    final lines = const LineSplitter().convert(content);
-    final totalEntries = lines.where((l) => l.trimLeft().startsWith('#EXTINF')).length;
-    int parsedEntries = 0;
+    final lines = file
+        .openRead()
+        .map((chunk) {
+          readBytes += chunk.length;
+          return chunk;
+        })
+        .transform(decoder)
+        .transform(const LineSplitter());
 
     final sw = Stopwatch()..start();
 
-    for (final line in lines) {
+    await for (final line in lines) {
+      // Le rendement au thread UI reste indispensable : `LineSplitter` pousse
+      // toutes les lignes d'un même bloc de 64 Ko d'affilée, et une micro-tâche
+      // ne laisse pas Flutter dessiner une frame.
       if (sw.elapsedMilliseconds > 8) {
         await Future.delayed(Duration.zero);
         sw.reset();
-        onProgress?.call(totalEntries > 0 ? parsedEntries / totalEntries : 0.0);
+        onProgress?.call(totalBytes > 0 ? readBytes / totalBytes : 0.0);
       }
 
       final trimmed = line.trim();
@@ -58,7 +131,6 @@ class M3uParser {
 
       if (trimmed.startsWith('#EXTINF')) {
         pendingMetadata = trimmed;
-        parsedEntries++;
       } else if (trimmed.startsWith('http')) {
         String url = trimmed;
         String? title;
@@ -147,12 +219,14 @@ class M3uParser {
             filmsList: filmsList,
             seriesList: seriesList,
             tvList: tvList,
+            pool: pool,
           );
         }
       }
     }
 
-    onProgress?.call(1.0);
+    debugPrint('🧵 M3U: ${pool.distinct} valeurs distinctes mutualisées '
+        '(§ramDiet)');
   }
 
   /// Retourne l'index de la virgule séparatrice entre les attributs EXTINF et le titre.
@@ -192,9 +266,10 @@ class M3uParser {
     required List<M3uEntry> filmsList,
     required List<M3uEntry> seriesList,
     required List<M3uEntry> tvList,
+    StringPool pool = StringPool.none,
   }) {
     final lowerUrl = url.toLowerCase();
-    final metadata = TitleMetadata.parse(rawTitle);
+    final metadata = TitleMetadata.parse(rawTitle, pool);
 
     M3uContentType type;
     if (lowerUrl.contains('/movie/')) {
@@ -223,10 +298,10 @@ class M3uParser {
       logoUrl: logoUrl,
       streamId: streamId,
       tvgId: tvgId,
-      groupTitle: groupTitle,
+      groupTitle: pool.of(groupTitle),
       catchupDays: catchupDays,
-      catchupSource: catchupSource,
-      category: contentCategoryLabel(groupTitle), // §1c
+      catchupSource: pool.of(catchupSource),
+      category: pool.of(contentCategoryLabel(groupTitle)), // §1c
     );
 
     if (type == M3uContentType.series) {

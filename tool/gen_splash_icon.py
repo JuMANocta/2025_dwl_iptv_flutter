@@ -206,7 +206,16 @@ def write_preview():
 # Illisible à côté de Live TV ou Play Store, et en palette cyan/magenta,
 # c'est-à-dire l'ancienne identité, celle que l'écran Matrix a remplacée.
 BANNER_BASE = (320, 180)
-BANNER_DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0, "xxhdpi": 3.0}
+# §apkDiet (2026-09-02) — UNE seule densité, xhdpi (640×360).
+#
+# Android TV dessine son interface à 1080p et la met à l'échelle sur les dalles
+# 4K : les box et téléviseurs se déclarent donc en xhdpi (~320 dpi), jamais en
+# mdpi ni en xxhdpi. Les trois autres densités n'étaient servies à personne et
+# pesaient 238 Ko à elles seules (la xxhdpi seule : 146 Ko).
+#
+# ⚠️ Ne pas « rétablir par sécurité » : ré-ajouter une clé ici remet aussi les
+# fichiers dans le dépôt à la prochaine exécution du script.
+BANNER_DENSITIES = {"xhdpi": 2.0}
 
 # ⚠️ Aucune police n'est versionnée dans le dépôt (l'app charge les siennes à
 # l'exécution via `google_fonts`). On cherche donc une graisse lourde parmi les

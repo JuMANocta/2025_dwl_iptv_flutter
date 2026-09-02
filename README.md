@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.16.16+124-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.16.17+125-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -226,13 +226,13 @@ lib/
 | EPG XMLTV | `xml` |
 | Polices | `google_fonts` |
 | Permissions | `permission_handler` |
-| Réseau | `connectivity_plus` |
 
 ---
 
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **L'application pèse un tiers de moins** (§apkDiet + §ramDiet, 2026-09-02) — L'installateur passe de **62,8 à 40,2 Mo**. L'essentiel du poids n'était ni les images ni le code, mais le fait que la partie native du lecteur vidéo était compilée pour **trois architectures de processeur** là où deux suffisent : la troisième n'existe que sur émulateur, et elle coûtait 21,5 Mo à elle seule. Retirée, avec les traductions de 84 langues que l'application ne peut pas afficher, 636 Ko d'images d'écran de démarrage que plus rien ne référençait, et trois composants installés mais jamais appelés. Côté mémoire, l'analyse d'une liste de 121 000 titres réservait **319 Mo d'un coup**, parce qu'elle gardait en même temps le fichier entier, sa conversion et son découpage en lignes. Elle le lit désormais au fil de l'eau : **165 Mo mesurés**, pour un résultat identique titre par titre. S'y ajoute la mise en commun des valeurs qui se répètent — une catégorie, une qualité, un nom de compte étaient recopiés autant de fois qu'il y a d'entrées
 - [x] **Corrections du tour post-migration** (§tourFix, 2026-09-02) — Douze défauts trouvés en auditant l'application après le changement de moteur vidéo. Les plus visibles : choisir un profil de performance **réactivait l'enchaînement automatique des épisodes** qu'on avait coupé ; le badge de vitesse du lecteur restait **figé à 1.0x sur téléviseur** parce que deux compteurs de vitesse vivaient en parallèle sans se parler ; le **verrouillage du lecteur n'empêchait pas la télécommande d'agir** ; sur la page Optimisation chaque réglage avait **deux arrêts de télécommande** au lieu d'un, dont un invisible ; et l'encart « Infos vidéo » affichait quatre lignes qui ne pouvaient plus rien contenir, plus un « HDR : oui » écrit en dur qui s'affichait même sur un film sans HDR. Deux correctifs de **confidentialité des journaux** au passage : les identifiants du fournisseur pouvaient encore apparaître en clair dans le journal — servi en HTTP sur le réseau local — pour les chaînes TV, et l'ensemble des journaux partait vers le système même en version publiée
 - [x] **Fini les morceaux de code technique dans les titres** (§tagResidue, 2026-08-30) — Des titres s'affichaient « Toy Story 5 [ VQF/] » ou « Superman [ A/V] » : le nettoyage des étiquettes techniques retirait ce qu'il connaissait et laissait le reste. Pire, ce résidu entrait dans la clé de regroupement, donc le même film **ne fusionnait plus** d'une liste à l'autre — la cause de nombreux doublons. **1 266 titres** étaient abîmés sur 353 475, il n'en reste aucun. Corrigé au passage : `[REC]` — un vrai titre de film — était détruit par une règle qui croyait reconnaître un code langue, et le film s'affichait alors avec toutes ses balises
 - [x] **Un même film en deux langues n'est plus deux vignettes** (§tmdbMerge + §tmdbField, 2026-08-30) — « 100 METERS » et « 100 Mètres », c'est le même film ; aucune comparaison de texte ne peut le deviner, mais l'identifiant TMDB le dit. **11 528 titres** se réunissent désormais sous une seule fiche, avec toutes leurs versions. Découvert en chemin : un fournisseur envoie cet identifiant sous un autre nom, et l'application le jetait — **16 650 identifiants** étaient perdus, ce qui privait ces titres de leur affiche et de leur synopsis

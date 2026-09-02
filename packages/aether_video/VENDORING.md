@@ -96,6 +96,15 @@ pour du code mort :
 
 Le jour où l'une de ces capacités est branchée → §engineFeatures en roadmap.
 
+**§apkDiet (2026-09-02) n'a retiré ZÉRO ligne d'ici**, et c'est un résultat, pas
+un oubli. Le régime d'APK visait justement ce paquet en apparence : les
+bibliothèques natives font 94,6 % du poids. Mais la mesure a montré que le
+volume n'est pas dans les *fonctionnalités* — il est dans le nombre d'**ABI**.
+Le même code Media3, compilé pour trois architectures au lieu de deux, coûtait
+22,5 Mo ; supprimer Cast, les notifications et le PiP réunis n'aurait rendu
+qu'une fraction de cela, en brûlant la réserve. Retirer une architecture inutile
+ne coûte aucune capacité ; retirer du code en coûte.
+
 ## Écarts déjà appliqués à la copie
 
 - `CLAUDE.md` amont renommé **`UPSTREAM_CLAUDE.md`** : laissé tel quel, il serait

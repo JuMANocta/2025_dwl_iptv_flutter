@@ -1,3 +1,5 @@
+import 'package:aetherStream/core/utils/string_pool.dart';
+
 enum M3uContentType { movie, series, tv }
 
 /// Métadonnées complètes extraites d'un titre M3U (qualité, année, langues, etc.).
@@ -726,7 +728,13 @@ class TitleMetadata {
     return tag.isEmpty ? null : tag;
   }
 
-  factory TitleMetadata.parse(String rawTitle) {
+  /// §ramDiet — [pool] interne les champs à faible cardinalité (qualité, année,
+  /// libellé de version, marqueur fournisseur, langues) : quelques centaines de
+  /// valeurs distinctes pour des centaines de milliers d'entrées. Facultatif —
+  /// par défaut [StringPool.none] rend chaque valeur telle quelle, donc les
+  /// appels isolés (fiche détail, tests) sont inchangés.
+  factory TitleMetadata.parse(String rawTitle,
+      [StringPool pool = StringPool.none]) {
     // §23 — Pré-normalisation : superscripts Unicode → ASCII (live "GEO ᶠᴴᴰ")
     // pour que la détection qualité/le nettoyage fonctionnent dessus.
     String work = rawTitle;
@@ -913,34 +921,53 @@ class TitleMetadata {
       }
     }
 
+    // §ramDiet — `rawTitle`, `baseTitle` et `groupKey` ne sont PAS internés :
+    // ils sont quasiment uniques par entrée, la table ne ferait que doubler
+    // l'empreinte. Seuls les champs à vocabulaire fermé passent par le pool.
     return TitleMetadata(
       rawTitle: rawTitle,
       baseTitle: base,
       groupKey: computeGroupKey(base),
-      year: year,
+      year: pool.of(year),
       seasonNumber: seasonNumber,
       episodeNumber: episodeNumber,
-      quality: quality,
-      languages: langs,
-      versionLabel: versionLabel,
-      providerTag: _extractProviderTag(work),
+      quality: pool.of(quality),
+      languages: pool.ofList(langs),
+      versionLabel: pool.of(versionLabel),
+      providerTag: pool.of(_extractProviderTag(work)),
     );
   }
 
   /// Désérialisation depuis le cache JSON — aucune regex, lecture directe des
   /// champs pré-calculés (le `groupKey` absent d'un vieux cache est recalculé).
-  factory TitleMetadata.fromJson(Map<String, dynamic> j) => TitleMetadata(
+  ///
+  /// §ramDiet — C'est ICI que l'internement compte le plus : ce chemin est celui
+  /// de CHAQUE démarrage (cache disque), là où `parse` ne tourne qu'au premier
+  /// chargement d'une liste.
+  factory TitleMetadata.fromJson(Map<String, dynamic> j,
+          [StringPool pool = StringPool.none]) =>
+      TitleMetadata(
     rawTitle:      j['r']  as String,
     baseTitle:     j['b']  as String,
     groupKey:      j['k']  as String? ?? computeGroupKey(j['b'] as String),
-    year:          j['y']  as String?,
+    year:          pool.of(j['y'] as String?),
     seasonNumber:  j['s']  as int?,
     episodeNumber: j['e']  as int?,
-    quality:       j['q']  as String?,
-    languages:     (j['l'] as List?)?.cast<String>() ?? const [],
-    versionLabel:  j['v']  as String?,
-    providerTag:   j['p']  as String?,
+    quality:       pool.of(j['q'] as String?),
+    // §ramDiet — `List<String>.from` et non `.cast<String>()` : `cast` renvoie
+    // une VUE qui retient la `List<dynamic>` sortie de `jsonDecode`, donc la
+    // liste brute du cache survivait au chargement, une par entrée.
+    languages:     _langsFromJson(j['l'], pool),
+    versionLabel:  pool.of(j['v'] as String?),
+    providerTag:   pool.of(j['p'] as String?),
   );
+
+  static List<String> _langsFromJson(Object? raw, StringPool pool) {
+    if (raw is! List || raw.isEmpty) return const [];
+    return List<String>.generate(
+        raw.length, (i) => pool.of(raw[i] as String)!,
+        growable: false);
+  }
 
   Map<String, dynamic> toJson() => {
     'r': rawTitle,
@@ -1042,24 +1069,34 @@ class M3uEntry {
   String? get saison     => title.seasonNumber?.toString().padLeft(2, '0');
   String? get episode    => title.episodeNumber?.toString().padLeft(2, '0');
 
-  factory M3uEntry.fromJson(Map<String, dynamic> j) => M3uEntry(
+  /// §ramDiet — [pool] partage les champs à vocabulaire fermé entre toutes les
+  /// entrées d'un même chargement. `accountId` est le cas d'école : une poignée
+  /// de valeurs, mais `jsonDecode` en fabriquait une copie neuve par ligne, soit
+  /// des centaines de milliers de chaînes identiques et résidentes.
+  ///
+  /// Non internés à dessein : `url`, `tmdbId`, `plot`, `episodeTitle`,
+  /// `backdropUrl`, `logoUrl` — quasi uniques par entrée, la table coûterait
+  /// plus qu'elle ne rend.
+  factory M3uEntry.fromJson(Map<String, dynamic> j,
+          [StringPool pool = StringPool.none]) =>
+      M3uEntry(
     url:           j['u']   as String,
     type:          M3uContentType.values[j['t'] as int],
-    title:         TitleMetadata.fromJson(j['ti'] as Map<String, dynamic>),
-    accountId:     j['aid'] as String,
+    title:         TitleMetadata.fromJson(j['ti'] as Map<String, dynamic>, pool),
+    accountId:     pool.of(j['aid'] as String)!,
     logoUrl:       j['l']   as String?,
     streamId:      j['sid'] as int?,
     tvgId:         j['tid'] as String?,
     catchupDays:   j['cd']  as int?,
-    catchupSource: j['cs']  as String?,
-    groupTitle:    j['g']   as String?,
-    category:      j['cat'] as String?,
+    catchupSource: pool.of(j['cs']  as String?),
+    groupTitle:    pool.of(j['g']   as String?),
+    category:      pool.of(j['cat'] as String?),
     tmdbId:        j['tm']  as String?,
     plot:          j['p']   as String?,
     episodeTitle:  j['et']  as String?,
-    genre:         j['ge']  as String?,
+    genre:         pool.of(j['ge']  as String?),
     rating:        (j['ra'] as num?)?.toDouble(),
-    releaseDate:   j['rd']  as String?,
+    releaseDate:   pool.of(j['rd']  as String?),
     backdropUrl:   j['bd']  as String?,
     addedAt:       j['ad']  as int?,
   );

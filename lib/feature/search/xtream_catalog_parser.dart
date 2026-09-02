@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:aetherStream/core/utils/string_pool.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 
@@ -54,8 +55,22 @@ class XtreamCatalogParser {
   final series = <M3uEntry>[];
   final tv = <M3uEntry>[];
 
-  final raw = File(args.path).readAsStringSync();
-  final data = jsonDecode(raw) as Map<String, dynamic>;
+  // §ramDiet — Décodage UTF-8 **fusionné** au décodage JSON.
+  //
+  // `readAsStringSync()` produisait d'abord la chaîne entière du catalogue en
+  // UTF-16 (~120 Mo pour un fichier de 60 Mo) et la gardait vivante pendant tout
+  // le `jsonDecode`, en plus du graphe d'objets. Le décodeur fusionné consomme
+  // les octets et n'émet que le résultat : l'intermédiaire disparaît.
+  // On reste dans l'isolate `compute`, donc rien de tout cela n'a jamais touché
+  // le thread UI — mais un Fire Stick compte la mémoire du PROCESSUS.
+  final bytes = File(args.path).readAsBytesSync();
+  final data = const Utf8Decoder().fuse(const JsonDecoder()).convert(bytes)
+      as Map<String, dynamic>;
+
+  // §ramDiet — Un pool par parsing (cf. `StringPool`). Les catégories, genres
+  // et qualités d'un catalogue de 350 000 entrées tiennent en quelques
+  // centaines de valeurs distinctes.
+  final pool = StringPool();
 
   final host = (data['host'] ?? '').toString();
   final user = Uri.encodeComponent((data['user'] ?? '').toString());
@@ -80,8 +95,8 @@ class XtreamCatalogParser {
     if (item is! Map<String, dynamic>) continue;
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
-    final groupTitle = _str(item['_cat']);
-    final cat = contentCategoryLabel(groupTitle);
+    final groupTitle = pool.of(_str(item['_cat']));
+    final cat = pool.of(contentCategoryLabel(groupTitle));
     if (id.isEmpty || name.isEmpty || isHidden(name, cat)) continue;
     // Replay Xtream : `tv_archive` = 1 + durée en jours → alimente le même
     // champ `catchupDays` que l'attribut M3U `catchup-days` (bonus vs l'ancien
@@ -95,7 +110,7 @@ class XtreamCatalogParser {
     tv.add(M3uEntry(
       url: '$host/live/$user/$pass/$id.m3u8',
       type: M3uContentType.tv,
-      title: TitleMetadata.parse(name),
+      title: TitleMetadata.parse(name, pool),
       accountId: args.accountId,
       logoUrl: _str(item['stream_icon']),
       streamId: int.tryParse(id),
@@ -111,15 +126,15 @@ class XtreamCatalogParser {
     if (item is! Map<String, dynamic>) continue;
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
-    final groupTitle = _str(item['_cat']);
-    final cat = contentCategoryLabel(groupTitle);
+    final groupTitle = pool.of(_str(item['_cat']));
+    final cat = pool.of(contentCategoryLabel(groupTitle));
     if (id.isEmpty || name.isEmpty || isHidden(name, cat)) continue;
     final ext = (item['container_extension'] ?? 'mp4').toString();
 
     films.add(M3uEntry(
       url: '$host/movie/$user/$pass/$id.$ext',
       type: M3uContentType.movie,
-      title: TitleMetadata.parse(name),
+      title: TitleMetadata.parse(name, pool),
       accountId: args.accountId,
       logoUrl: _str(item['stream_icon']),
       streamId: int.tryParse(id),
@@ -136,8 +151,8 @@ class XtreamCatalogParser {
     if (item is! Map<String, dynamic>) continue;
     final id = (item['series_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
-    final groupTitle = _str(item['_cat']);
-    final cat = contentCategoryLabel(groupTitle);
+    final groupTitle = pool.of(_str(item['_cat']));
+    final cat = pool.of(contentCategoryLabel(groupTitle));
     if (id.isEmpty || name.isEmpty || isHidden(name, cat)) continue;
     final backdrops = item['backdrop_path'];
 
@@ -147,7 +162,7 @@ class XtreamCatalogParser {
       // fetcher les épisodes à la demande (inchangé vs pipeline M3U).
       url: '$host/series/$user/$pass/$id',
       type: M3uContentType.series,
-      title: TitleMetadata.parse(name),
+      title: TitleMetadata.parse(name, pool),
       accountId: args.accountId,
       logoUrl: _str(item['cover']),
       streamId: int.tryParse(id),
@@ -155,7 +170,7 @@ class XtreamCatalogParser {
       category: cat,
       tmdbId: _tmdbId(item),
       plot: _str(item['plot']),
-      genre: _htmlDecode(_str(item['genre'])),
+      genre: pool.of(_htmlDecode(_str(item['genre']))),
       rating: _rating(item['rating']),
       releaseDate: _str(item['releaseDate']) ?? _str(item['release_date']),
       backdropUrl: (backdrops is List && backdrops.isNotEmpty)
@@ -167,6 +182,8 @@ class XtreamCatalogParser {
     ));
   }
 
+  debugPrint('🧵 Catalogue: ${pool.distinct} valeurs distinctes mutualisées '
+      '(§ramDiet)');
   return (films: films, series: series, tv: tv);
 }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:aetherStream/core/utils/string_pool.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'tmdb_group_alias_service.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
@@ -656,6 +657,15 @@ class ParsedPlaylistService {
       Map<String, dynamic>? header;
       DateTime? m3uModifiedAt;
       final entries = <M3uEntry>[];
+      // §ramDiet — Pool d'internement, le temps du chargement (cf. `StringPool`).
+      //
+      // C'est le chemin de CHAQUE démarrage, et le plus coûteux en mémoire
+      // RÉSIDENTE : `jsonDecode` fabrique une chaîne neuve par champ et par
+      // ligne, donc autant de copies de « Films | Action », de « FHD » ou de
+      // l'identifiant de compte qu'il y a d'entrées — des centaines de milliers.
+      // Le pool meurt avec cette méthode ; les chaînes canoniques restent,
+      // partagées par les entrées.
+      final pool = StringPool();
 
       await for (final line in lines) {
         if (line.isEmpty) continue;
@@ -687,7 +697,8 @@ class ParsedPlaylistService {
             return null;
           }
         } else {
-          entries.add(M3uEntry.fromJson(jsonDecode(line) as Map<String, dynamic>));
+          entries.add(
+              M3uEntry.fromJson(jsonDecode(line) as Map<String, dynamic>, pool));
         }
       }
 

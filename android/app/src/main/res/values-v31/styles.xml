@@ -11,7 +11,9 @@
              fond et une icône. L'icône est TRANSPARENTE pour ne rien montrer —
              sans ça le système retombe sur l'icône du launcher.
              Pour afficher le logo (§splashIdentity) : @drawable/android12splash,
-             généré à 66 % pour survivre au masque circulaire du système.
+             généré à 66 % pour survivre au masque circulaire du système. Ce PNG
+             n'est plus versionné (§apkDiet) : le régénérer d'abord avec
+             `python tool/gen_splash_icon.py`.
              Durée d'animation 0 : Android impose de toute façon un minimum. -->
         <item name="android:windowSplashScreenBackground">@color/aether_boot_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_transparent</item>
