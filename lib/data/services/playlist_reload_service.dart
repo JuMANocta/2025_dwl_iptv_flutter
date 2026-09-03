@@ -69,12 +69,22 @@ abstract final class PlaylistReloadService {
           'Téléchargement impossible (vérifie l\'URL ou la connexion).');
     }
 
-    await ParsedPlaylistService.reloadFromDisk(
+    // §cacheKeep — Le retour était IGNORÉ. `reloadFromDisk` rend `null` quand
+    // l'analyse échoue : on journalisait alors « ✅ rechargée » sur une liste
+    // qui venait de sortir de la mémoire, l'appelant considérait le compte
+    // comme un succès, et le bilan de « Tout recharger » comptait un échec
+    // silencieux dans ses réussites. Une analyse ratée est un échec de
+    // rechargement, au même titre qu'un téléchargement impossible.
+    final reloaded = await ParsedPlaylistService.reloadFromDisk(
       account.id,
       account.label,
       newPath,
     );
-    debugPrint('✅ §reloadAll — « ${account.label} » rechargée');
+    if (reloaded == null) {
+      throw const HttpException('L\'analyse de la liste a échoué.');
+    }
+    debugPrint('✅ §reloadAll — « ${account.label} » rechargée '
+        '(${reloaded.entries.length} entrées)');
   }
 
   /// Âge du cache d'un compte, ou `null` s'il n'y en a pas.

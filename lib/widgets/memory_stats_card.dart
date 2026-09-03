@@ -23,6 +23,14 @@ class MemoryStatsCard extends StatefulWidget {
 }
 
 class _MemoryStatsCardState extends State<MemoryStatsCard> {
+  /// §fleetState — Une ligne par compte, avec de quoi ne PAS mentir :
+  ///   - [entries] : ce qui est réellement en mémoire (0 = déchargé) ;
+  ///   - [diskEntries] : ce que le cache analysé contient, lu dans son en-tête,
+  ///     pour afficher « sur disque · 18 133 entrées » au lieu de « 0 entrées »
+  ///     quand la mémoire a été libérée volontairement ;
+  ///   - [sourceBytes] / [cacheBytes] : le poids disque **détaillé**, parce
+  ///     qu'une somme opaque de 11 Mo ne dit pas ce qu'on récupérerait en
+  ///     vidant l'un ou l'autre.
   ({
     int rssMb,
     int maxRssMb,
@@ -31,7 +39,14 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
     int ramMaxMb,
     int ramCount,
     int ramMaxCount,
-    List<({String label, int entries, int diskMb})> accounts
+    List<
+        ({
+          String label,
+          int entries,
+          int? diskEntries,
+          int sourceBytes,
+          int cacheBytes
+        })> accounts
   })? _stats;
   bool _busy = false;
 
@@ -50,22 +65,44 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
       final accounts = await StreamAccountService.listAccounts();
       final supportDir = await getApplicationSupportDirectory();
       final docsDir = await getApplicationDocumentsDirectory();
-      final list = <({String label, int entries, int diskMb})>[];
+      final list = <({
+        String label,
+        int entries,
+        int? diskEntries,
+        int sourceBytes,
+        int cacheBytes
+      })>[];
       for (final acc in accounts) {
-        final entries = ParsedPlaylistService.getAccount(acc.id)?.entries.length ?? 0;
+        // ⚠️ §lazyUnload — `entriesCountOf`, **jamais** `getAccount()` : ce
+        // dernier touche `_lastAccess`, donc ouvrir la carte de diagnostic
+        // repoussait le déchargement des comptes qu'on est justement en train
+        // d'observer. C'est exactement le défaut que §secondaryCounts a corrigé
+        // sur le bandeau de la page Comptes — il vivait encore ici.
+        final entries = ParsedPlaylistService.entriesCountOf(acc.id);
         // playlist source : catalogue .json (§23) OU .m3u legacy
         final catalog = File('${docsDir.path}/playlist_${acc.id}.json');
         final m3u = File('${docsDir.path}/playlist_${acc.id}.m3u');
         // parsed cache JSON.gz
         final json = File('${supportDir.path}/parsed_playlist_${acc.id}.json.gz');
-        int disk = 0;
-        if (await catalog.exists()) disk += await catalog.length();
-        if (await m3u.exists()) disk += await m3u.length();
-        if (await json.exists()) disk += await json.length();
+        int sourceBytes = 0;
+        int cacheBytes = 0;
+        if (await catalog.exists()) sourceBytes += await catalog.length();
+        if (await m3u.exists()) sourceBytes += await m3u.length();
+        if (await json.exists()) cacheBytes += await json.length();
+        // §fleetState — Mémoire vide ≠ liste vide. L'en-tête du cache analysé
+        // dit combien d'entrées reviendraient au prochain accès ; sans lui, la
+        // carte annonçait « 0 entrées · 11 Mo », ce qui se lit comme une liste
+        // perdue alors qu'elle est intacte sur le disque.
+        int? diskEntries;
+        if (entries == 0) {
+          diskEntries = (await ParsedPlaylistService.countsOf(acc.id))?.total;
+        }
         list.add((
           label: acc.label,
           entries: entries,
-          diskMb: (disk / (1024 * 1024)).round(),
+          diskEntries: diskEntries,
+          sourceBytes: sourceBytes,
+          cacheBytes: cacheBytes,
         ));
       }
       // §imgDiskCache — poids du cache disque des vignettes.
@@ -163,16 +200,74 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
             for (final a in s.accounts)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: _statRow(
-                  context,
-                  a.label,
-                  '${a.entries.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]} ')} entrées · ${a.diskMb} Mo disque',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _statRow(context, a.label, _accountValue(a)),
+                    // Le détail du poids disque : « source » = le catalogue
+                    // téléchargé, « analysé » = le cache JSON.gz relu au
+                    // démarrage. Une somme unique ne disait pas lequel des deux
+                    // pèse, ni ce que « Recharger » va réécrire.
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: Text(
+                        'source ${_fmtBytes(a.sourceBytes)} · '
+                        'analysé ${_fmtBytes(a.cacheBytes)}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: cs.onSurfaceVariant.withAlpha(160),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
           ],
         ],
       ),
     );
+  }
+
+  /// §fleetState — Ce qu'on écrit à droite du nom d'un compte.
+  ///
+  /// Trois cas, et un seul mentait : mémoire vide + cache disque intact
+  /// affichait « 0 entrées », qui se lit comme une liste perdue. On dit
+  /// désormais « sur disque » avec le total réel du cache.
+  String _accountValue(
+      ({
+        String label,
+        int entries,
+        int? diskEntries,
+        int sourceBytes,
+        int cacheBytes
+      }) a) {
+    final total = a.sourceBytes + a.cacheBytes;
+    if (a.entries > 0) {
+      return '${_fmtCount(a.entries)} entrées · ${_fmtBytes(total)}';
+    }
+    final d = a.diskEntries;
+    if (d != null && d > 0) {
+      return 'sur disque · ${_fmtCount(d)} entrées · ${_fmtBytes(total)}';
+    }
+    // Ni mémoire ni cache lisible : là, « 0 entrées » est la vérité.
+    return '0 entrée · ${_fmtBytes(total)}';
+  }
+
+  /// Espace fine tous les 3 chiffres (18 133) — la carte se lit à 3 m sur TV.
+  String _fmtCount(int n) => n
+      .toString()
+      .replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]} ');
+
+  /// Poids lisible : sous le Mo, un arrondi au Mo affichait « 0 Mo » pour des
+  /// fichiers bien présents.
+  String _fmtBytes(int bytes) {
+    if (bytes <= 0) return '—';
+    if (bytes < 1024) return '$bytes o';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} ko';
+    final mb = bytes / (1024 * 1024);
+    return mb < 10
+        ? '${mb.toStringAsFixed(1).replaceAll('.', ',')} Mo'
+        : '${mb.round()} Mo';
   }
 
   Widget _statRow(BuildContext context, String label, String value) {

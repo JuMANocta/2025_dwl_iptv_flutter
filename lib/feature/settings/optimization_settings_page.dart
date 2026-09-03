@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:aetherStream/core/navigation/playlist_visibility.dart';
 import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
@@ -42,8 +43,20 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
   @override
   void initState() {
     super.initState();
+    // §unloadGuard — Cette page affiche les COMPTEURS par compte
+    // (`MemoryStatsCard`) : un déchargement automatique pendant qu'on la
+    // regarde ferait tomber les chiffres à zéro sous les yeux de
+    // l'utilisateur, en plein diagnostic mémoire. Le bouton « Libérer la
+    // mémoire », lui, reste actif — c'est une action demandée, pas subie.
+    PlaylistVisibility.hold();
     _config = PerformanceSettingsService.config.value;
     _scanStorage();
+  }
+
+  @override
+  void dispose() {
+    PlaylistVisibility.release();
+    super.dispose();
   }
 
   /// §acctPurge — Compte les fichiers sans propriétaire, sans rien supprimer.
@@ -259,6 +272,51 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   'mémoire, ce qui compte sur une box. Le compteur '
                   '« Blocages » de l\'encart Infos vidéo dit si le réglage '
                   'sert à quelque chose. Prend effet à la lecture suivante.',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ),
+              // §unloadGuard — Les listes en mémoire, enfin réglables.
+              //
+              // Le déchargement paresseux existait depuis §lazyUnload mais
+              // était codé en dur (5 min) et invisible : l'utilisateur voyait
+              // ses listes passer à « NON CHARGÉ » sans rien avoir demandé, et
+              // n'avait aucun moyen de l'éteindre.
+              _sectionLabel('Listes', cs),
+              _switchTile(
+                icon: Icons.playlist_add_check_circle_outlined,
+                title: 'Garder toutes les listes en mémoire',
+                subtitle:
+                    'Chaque compte reste chargé : recherche cross-comptes et '
+                    'changement de liste instantanés. Coûte de la mémoire '
+                    '(~50 à 150 Mo par liste) — à éteindre sur Fire Stick ou '
+                    'box à faible RAM.',
+                value: _config.keepAllListsInMemory,
+                onChanged: (v) =>
+                    _apply(_config.copyWith(keepAllListsInMemory: v)),
+              ),
+              _buildStepper(
+                label: 'Décharger après',
+                value: _config.idleUnloadMinutes,
+                min: PerfConfig.minIdleUnloadMinutes,
+                max: PerfConfig.maxIdleUnloadMinutes,
+                step: 5,
+                // Le délai ne sert que si on accepte de décharger : grisé tant
+                // que l'interrupteur ci-dessus est allumé, mais la valeur est
+                // conservée pour le jour où on l'éteint.
+                enabled: !_config.keepAllListsInMemory,
+                valueLabel: (v) => v <= 0 ? 'Jamais' : '$v min',
+                onChanged: (v) =>
+                    _apply(_config.copyWith(idleUnloadMinutes: v)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  'Minutes sans consulter une liste secondaire avant de la '
+                  'sortir de la mémoire. Le cache disque est conservé : elle '
+                  'revient en ~50 ms au prochain accès. « Jamais » (0) équivaut '
+                  'à garder toutes les listes. Les pages qui affichent les '
+                  'listes ou leurs compteurs suspendent le déchargement tant '
+                  'qu\'elles sont ouvertes.',
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
@@ -574,6 +632,10 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
     required ValueChanged<int> onChanged,
     bool enabled = true,
     String suffix = '',
+    /// §unloadGuard — Certaines valeurs ne se lisent pas comme un nombre :
+    /// « 0 min » veut dire « jamais ». Quand ce formateur est fourni, il
+    /// remplace `valeur + suffixe`.
+    String Function(int value)? valueLabel,
   }) {
     final ratio = ((value - min) / (max - min)).clamp(0.0, 1.0);
     final color = enabled ? kAccentSecondary : kAccentSecondary.withAlpha(90);
@@ -625,9 +687,9 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               tooltip: 'Augmenter',
             ),
             SizedBox(
-              width: suffix.isEmpty ? 26 : 52,
+              width: (suffix.isEmpty && valueLabel == null) ? 26 : 52,
               child: Text(
-                '$value$suffix',
+                valueLabel != null ? valueLabel(value) : '$value$suffix',
                 style: TextStyle(
                   fontSize: 12,
                   color: color,

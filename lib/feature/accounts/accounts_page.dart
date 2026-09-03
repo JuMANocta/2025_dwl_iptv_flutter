@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
+import 'package:aetherStream/core/navigation/playlist_visibility.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
+import 'package:aetherStream/data/services/load_failure.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/services/playback_health_service.dart';
 import 'package:aetherStream/data/services/expiration_alert_service.dart';
@@ -63,6 +65,9 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
 
   @override
   void dispose() {
+    // §unloadGuard — On rend le jeton EXACTEMENT une fois, en miroir de
+    // `initState`.
+    PlaylistVisibility.release();
     _reloadProgress.dispose();
     super.dispose();
   }
@@ -70,6 +75,12 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
   @override
   void initState() {
     super.initState();
+    // §unloadGuard (généralisé) — Cette page AFFICHE l'état et les compteurs de
+    // chaque liste : la laisser ouverte cinq minutes déclenchait le
+    // déchargement paresseux sous les yeux de l'utilisateur, qui lisait alors
+    // « NON CHARGÉ » sans qu'aucun échec n'ait eu lieu. Tant qu'elle est à
+    // l'écran, elle détient un jeton et rien n'est déchargé.
+    PlaylistVisibility.hold();
     _accountsFuture = _loadAccounts();
   }
 
@@ -607,9 +618,12 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
     // §bannerCount — On écoute AUSSI `version` : le décompte ci-dessous lit la
     // mémoire réelle, qui change sans que `loadStates` bouge (déchargement,
     // rechargement depuis le disque).
+    // §fleetState — Et `loadFailures` : « 1 en échec » ne se déduit d'aucun des
+    // deux autres notifiers.
     return ListenableBuilder(
       listenable: Listenable.merge([
         ParsedPlaylistService.loadStates,
+        ParsedPlaylistService.loadFailures,
         ParsedPlaylistService.version,
       ]),
       builder: (context, _) {
@@ -632,6 +646,21 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                 a.id != active.id &&
                 (states[a.id] == AccountLoadState.downloading ||
                     states[a.id] == AccountLoadState.parsing))
+            .length;
+        // §fleetState — Une liste manquante n'est un ÉCHEC que si son motif
+        // n'est pas bénin : « SUR DISQUE » (mémoire libérée volontairement) et
+        // « EN ATTENTE » sont des fonctionnements normaux, les compter en
+        // échec ferait passer §lazyUnload pour une panne.
+        //
+        // Restreint aux secondaires, comme le reste du décompte : le principal
+        // est compté chargé par construction (§bannerCount), l'annoncer en
+        // échec sur la même ligne se lirait comme une contradiction. Sa carte,
+        // elle, porte la chip et la raison complètes.
+        final failedOthers = accounts
+            .where((a) =>
+                a.id != active.id &&
+                ParsedPlaylistService.entriesCountOf(a.id) == 0 &&
+                (ParsedPlaylistService.failureOf(a.id)?.isBenign == false))
             .length;
         return Container(
           margin: const EdgeInsets.fromLTRB(4, 0, 4, 10),
@@ -711,7 +740,7 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                       // par construction (on est dessus), donc l'inclure ne
                       // fausse rien et rend les deux lignes cohérentes.
                       _secondaryStatusLabel(loadedOthers + 1, inProgressOthers,
-                          accounts.length),
+                          accounts.length, failedOthers),
                       style: TextStyle(
                         fontSize: 10,
                         color: cs.onSurfaceVariant.withAlpha(190),
@@ -731,9 +760,19 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
   /// forçait le retour à la ligne, ce qui épaississait le bandeau.
   ///
   /// [loaded] et [total] portent sur TOUTES les listes (§bannerCount).
-  String _secondaryStatusLabel(int loaded, int inProgress, int total) {
+  ///
+  /// §fleetState — [failed] compte les listes dont l'absence a un motif NON
+  /// bénin. Le bandeau annonçait « ✓ 1/3 chargées » avec la coche de
+  /// validation même quand deux listes avaient échoué : la coche est retirée
+  /// dès qu'il y a un échec, et le nombre est dit.
+  String _secondaryStatusLabel(
+      int loaded, int inProgress, int total, int failed) {
     if (total == 0) return '';
-    if (inProgress > 0) return '$loaded/$total · $inProgress en cours…';
+    if (inProgress > 0) {
+      final base = '$loaded/$total · $inProgress en cours…';
+      return failed > 0 ? '$base · $failed en échec' : base;
+    }
+    if (failed > 0) return '$loaded/$total · $failed en échec';
     return '✓ $loaded/$total chargées';
   }
 }
@@ -1164,24 +1203,62 @@ class _AccountStateChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // §fleetState — On écoute AUSSI le registre des motifs d'échec : il change
+    // sans que `loadStates` bouge (un `notLoaded` reste `notLoaded` que la
+    // liste ait été déchargée volontairement ou refusée par le panel).
     return ValueListenableBuilder<Map<String, AccountLoadState>>(
       valueListenable: ParsedPlaylistService.loadStates,
       builder: (context, states, _) {
-        return ValueListenableBuilder<Map<String, AccountInfo?>>(
-          valueListenable: ExpirationAlertService.infos,
-          builder: (context, infos, __) {
-            final state = states[accountId] ?? AccountLoadState.notLoaded;
-            final daysLeft =
-                ExpirationAlertService.daysUntilExpiration(accountId);
-            return Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                _statusChip(state),
-                if (daysLeft != null &&
-                    daysLeft <= ExpirationAlertService.kAlertThresholdDays)
-                  _expirationChip(daysLeft),
-              ],
+        return ValueListenableBuilder<Map<String, LoadFailure>>(
+          valueListenable: ParsedPlaylistService.loadFailures,
+          builder: (context, failures, ___) {
+            return ValueListenableBuilder<Map<String, AccountInfo?>>(
+              valueListenable: ExpirationAlertService.infos,
+              builder: (context, infos, __) {
+                final state = states[accountId] ?? AccountLoadState.notLoaded;
+                final daysLeft =
+                    ExpirationAlertService.daysUntilExpiration(accountId);
+                final LoadFailure? failure = failures[accountId];
+                // La raison ne s'affiche que si elle apporte quelque chose :
+                // une liste chargée n'a rien à expliquer, et un motif bénin
+                // (mémoire libérée volontairement) tient déjà dans la chip.
+                final bool showReason = failure != null &&
+                    !failure.isBenign &&
+                    (state == AccountLoadState.notLoaded ||
+                        state == AccountLoadState.error);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        _statusChip(state, failure),
+                        if (daysLeft != null &&
+                            daysLeft <=
+                                ExpirationAlertService.kAlertThresholdDays)
+                          _expirationChip(daysLeft),
+                      ],
+                    ),
+                    if (showReason)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          describeFailure(failure),
+                          style: TextStyle(
+                            fontSize: 11,
+                            height: 1.25,
+                            color: cs.onSurfaceVariant,
+                          ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                );
+              },
             );
           },
         );
@@ -1189,7 +1266,17 @@ class _AccountStateChips extends StatelessWidget {
     );
   }
 
-  Widget _statusChip(AccountLoadState state) {
+  /// §fleetState — « NON CHARGÉ » disait la même chose de quatre situations
+  /// différentes : jamais tentée, mémoire libérée volontairement, reportée
+  /// après le démarrage, ou réellement en échec. Le motif enregistré nomme
+  /// laquelle.
+  ///
+  /// ⚠️ **Une chip bénigne ne prend pas la couleur d'alerte.** « SUR DISQUE »
+  /// décrit un fonctionnement voulu (§lazyUnload libère la mémoire, le cache
+  /// reste) : le peindre en rouge ferait chercher une panne là où il n'y en a
+  /// pas. On garde donc le gris neutre pour le bénin, et `kError` uniquement
+  /// pour ce qui a vraiment échoué.
+  Widget _statusChip(AccountLoadState state, LoadFailure? failure) {
     if (isPriority && state == AccountLoadState.loaded) {
       return _Chip(
         text: 'PRINCIPAL',
@@ -1206,9 +1293,18 @@ class _AccountStateChips extends StatelessWidget {
       case AccountLoadState.parsing:
         return _Chip(text: 'CHARGEMENT…', color: kAccentSecondary);
       case AccountLoadState.error:
-        return _Chip(text: 'ERREUR', color: kError);
       case AccountLoadState.notLoaded:
-        return _Chip(text: 'NON CHARGÉ', color: Colors.grey);
+        // Sans motif enregistré, on retombe sur l'ancien libellé : mieux vaut
+        // une chip vague qu'une chip qui invente une cause.
+        if (failure == null) {
+          return state == AccountLoadState.error
+              ? _Chip(text: 'ERREUR', color: kError)
+              : _Chip(text: 'NON CHARGÉ', color: Colors.grey);
+        }
+        return _Chip(
+          text: labelForFailure(failure.kind),
+          color: failure.isBenign ? Colors.grey : kError,
+        );
     }
   }
 

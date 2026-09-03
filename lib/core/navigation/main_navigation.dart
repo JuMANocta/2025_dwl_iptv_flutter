@@ -10,6 +10,9 @@ import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/core/navigation/focus_route_memory.dart';
+import 'package:aetherStream/core/navigation/playlist_visibility.dart';
+import 'package:aetherStream/core/settings/perf_config.dart';
+import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/main.dart' show checkForUpdate;
 import '../../l10n/app_localizations.dart';
@@ -53,12 +56,20 @@ class _MainNavigationState extends State<MainNavigation> {
   DateTime? _lastBackPress;
 
   /// §lazyUnload — Timer périodique qui décharge de la mémoire les comptes
-  /// secondaires non consultés depuis [_idleThreshold]. Le cache disque
+  /// secondaires non consultés depuis le délai réglé. Le cache disque
   /// JSON.gz est conservé → rechargement ~50 ms quand un compte secondaire
   /// est re-demandé (recherche cross-comptes, action sheet multi-providers).
+  ///
+  /// §perfSettings — Le SEUIL n'est plus une constante : il vient de
+  /// `PerfConfig.idleUnloadDelay` (interrupteur « garder toutes les listes » +
+  /// délai en minutes, réglables dans Optimisation). Il était codé en dur à
+  /// 5 minutes, sans que rien à l'écran ne le dise ni ne permette de l'éteindre.
+  ///
+  /// Le RYTHME du réveil, lui, reste fixe : c'est un détail d'implémentation
+  /// (un tick toutes les 2 min ne coûte rien), et la config est relue à chaque
+  /// tick — changer le réglage prend donc effet sans redémarrer le timer.
   Timer? _idleUnloadTimer;
   static const Duration _idleCheckInterval = Duration(minutes: 2);
-  static const Duration _idleThreshold     = Duration(minutes: 5);
 
   @override
   void dispose() {
@@ -104,14 +115,32 @@ class _MainNavigationState extends State<MainNavigation> {
     // `widget.initialData.accountId` est figé, alors que l'utilisateur peut
     // changer de principal depuis AccountsPage — l'ancien code protégeait alors
     // le mauvais compte.
+    //
+    // §unloadGuard (généralisé) — Le garde ne connaissait QUE l'accueil. La page
+    // « Comptes », qui affiche précisément l'état et les compteurs de chaque
+    // liste, n'était pas protégée : y rester cinq minutes déchargeait les listes
+    // sous les yeux de l'utilisateur, et les chips annonçaient « NON CHARGÉ »
+    // alors que rien n'avait échoué — la page qui rapporte l'état était celle
+    // qui le détruisait.
+    //
+    // [PlaylistVisibility] généralise le principe à toute page qui montre des
+    // listes. Le test `HomePage.isForeground` est CONSERVÉ en plus (en OU) :
+    // `HomePage` ne prend pas encore de jeton, le retirer rouvrirait le bug
+    // d'origine.
     _idleUnloadTimer = Timer.periodic(_idleCheckInterval, (_) {
       final activeId = StreamAccountService.currentAccountIdNotifier.value ??
           widget.initialData.accountId;
       ParsedPlaylistService.markAccessed(activeId);
       if (HomePage.isForeground && _navIndex == 0) return;
+      if (PlaylistVisibility.hasHolders) return;
+      // §perfSettings — `null` = l'utilisateur a demandé de tout garder en
+      // mémoire (ou a mis le délai à 0). On ne décharge rien du tout.
+      final PerfConfig cfg = PerformanceSettingsService.config.value;
+      final Duration? idle = cfg.idleUnloadDelay;
+      if (idle == null) return;
       ParsedPlaylistService.unloadIdleSecondaries(
         activeAccountId: activeId,
-        idle: _idleThreshold,
+        idle: idle,
       );
     });
   }

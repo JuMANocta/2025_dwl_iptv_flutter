@@ -349,12 +349,37 @@ abstract final class DiagnosticLog {
   }
 }
 
+/// §cookieScope — Un en-tête `Cookie:` / `Set-Cookie:` et TOUT ce qui suit.
+///
+/// ⚠️ **La valeur va jusqu'au bout de la ligne, volontairement.** Contrairement
+/// à `password=hunter2`, une valeur de cookie contient des `;`, des espaces et
+/// parfois des virgules (`PHPSESSID=abc; path=/; HttpOnly`, ou plusieurs
+/// cookies dans un même `Set-Cookie`) : la borne `[^\s,;&)\]}"]+` de la règle
+/// générique s'arrêterait au premier point-virgule et laisserait le reste en
+/// clair. Seul `}` arrête le masquage, pour qu'un `debugPrint` d'une Map
+/// d'en-têtes (`{cookie: …, content-type: …}`) garde sa fin lisible.
+///
+/// `set-cookie` est placé EN PREMIER dans l'alternative : sinon l'alternative
+/// `cookie` s'appliquerait à partir du milieu du mot et laisserait `Set-` seul.
+final RegExp _cookieHeader = RegExp(
+  r'\b(set-cookie|cookie)\s*[:=]\s*[^\n}]*',
+  caseSensitive: false,
+);
+
 /// §tvLogs — Masque les identifiants d'une ligne de log avant stockage.
 ///
-/// Deux filets successifs :
+/// Trois filets successifs :
 ///   1. toute URL `http(s)://…` passe par [redactUrl] (formes Xtream en path
 ///      `/movie/USER/PASS/…` **et** en query `?username=…&password=…`) ;
-///   2. un `username=` / `password=` isolé (hors URL) est masqué par regex.
+///   2. un `username=` / `password=` isolé (hors URL) est masqué par regex ;
+///   3. §cookieScope — un en-tête `Cookie:` / `Set-Cookie:`.
+///
+/// ⚠️ **Pourquoi les cookies MAINTENANT** : un panel Xtream authentifie souvent
+/// par session, et un cookie de session vaut exactement ce que vaut le couple
+/// identifiant/mot de passe — il ouvre l'abonnement. Le journal §tvLogs étant
+/// servi en HTTP clair sur le réseau local, un `Set-Cookie:` qui traverse est
+/// une fuite de la même gravité qu'une URL non masquée. Invariant §tourFix : ce
+/// qu'on sait extraire d'une trace réseau, on doit savoir le masquer.
 String sanitizeForLog(String line) {
   String out = line.replaceAllMapped(
     RegExp(r'https?://[^\s"' r"'" r'<>\\]+'),
@@ -363,6 +388,10 @@ String sanitizeForLog(String line) {
   out = out.replaceAllMapped(
     RegExp(r'\b(username|password|pass|pwd|token)\s*[=:]\s*([^\s,;&)\]}"]+)',
         caseSensitive: false),
+    (Match m) => '${m.group(1)}=***',
+  );
+  out = out.replaceAllMapped(
+    _cookieHeader,
     (Match m) => '${m.group(1)}=***',
   );
   return out;

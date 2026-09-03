@@ -11,6 +11,8 @@ import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/feature/search/m3u_parser.dart';
 import 'package:aetherStream/feature/search/xtream_catalog_parser.dart';
 import 'package:aetherStream/data/services/hidden_regions_service.dart';
+import 'package:aetherStream/core/utils/user_error.dart';
+import 'load_failure.dart';
 
 /// État de chargement d'un compte IPTV en mémoire (§16).
 ///
@@ -36,7 +38,9 @@ enum AccountLoadState {
 ///   1. [loadActive] — démarrage, compte actif uniquement (cache disque ou parse complet)
 ///   2. [preloadOthersFromDisk] — background silencieux, autres comptes depuis disque uniquement
 ///   3. [entries] — accès synchrone à toutes les entrées disponibles en mémoire
-///   4. [invalidate] — appelé par PlaylistService après téléchargement d'une nouvelle playlist
+///   4. [markStale] — appelé par PlaylistService après téléchargement d'une
+///      nouvelle SOURCE : la copie en mémoire est périmée, le cache disque RESTE
+///   5. [forget] — suppression d'un compte / schéma obsolète : mémoire ET disque
 class ParsedPlaylistService {
   // ── Mémoire — persiste toute la session app ───────────────────────────────
   static final Map<String, ParsedPlaylist> _memory = {};
@@ -70,15 +74,76 @@ class ParsedPlaylistService {
     }
   }
 
+  /// §fleetState — POURQUOI une liste n'est pas en mémoire.
+  ///
+  /// Vit **à côté** de [loadStates], qui ne dit que l'état : les 5 valeurs de
+  /// `AccountLoadState` pilotent déjà les chips à quatre endroits, et une
+  /// migration complète coûterait plus cher qu'elle ne rapporte.
+  static final ValueNotifier<Map<String, LoadFailure>> loadFailures =
+      ValueNotifier<Map<String, LoadFailure>>({});
+
+  /// Raison courante de l'absence d'une liste — `null` quand tout va bien.
+  static LoadFailure? failureOf(String accountId) =>
+      loadFailures.value[accountId];
+
   /// Marque l'état d'un compte et notifie les listeners (immutable copy).
-  static void setLoadState(String accountId, AccountLoadState state) {
-    final next = Map<String, AccountLoadState>.from(loadStates.value);
-    if (state == AccountLoadState.notLoaded) {
-      next.remove(accountId);
+  ///
+  /// §fleetState — Trois changements par rapport à la version d'origine :
+  ///
+  ///   1. **La clé n'est PLUS supprimée sur `notLoaded`.** C'est ce `remove`
+  ///      qui rendait « jamais tenté », « déchargé pour libérer la mémoire » et
+  ///      « ré-analyse avortée » rigoureusement indiscernables : dans les trois
+  ///      cas la lecture retombait sur le défaut de [stateOf], et rien ne
+  ///      permettait de distinguer un fonctionnement voulu d'une panne.
+  ///   2. **[kind] / [detail] alimentent [loadFailures]**, le registre des
+  ///      raisons (cf. `load_failure.dart`).
+  ///   3. **Chaque transition est journalisée** (ancien → nouveau + raison) :
+  ///      la disparition d'une liste ne laissait jusqu'ici AUCUNE trace.
+  ///
+  /// ⚠️ Conséquence à connaître : `loadStates.value.length` compte désormais
+  /// tous les comptes VUS au moins une fois, et non plus seulement ceux dans un
+  /// état différent de `notLoaded`. Tout lecteur qui s'en sert comme
+  /// DÉNOMINATEUR doit être revu.
+  static void setLoadState(
+    String accountId,
+    AccountLoadState state, {
+    LoadFailureKind? kind,
+    String? detail,
+  }) {
+    final AccountLoadState? previous = loadStates.value[accountId];
+
+    // Le registre des raisons ne vit que pour les états « pas en mémoire ».
+    final LoadFailureKind? resolved = switch (state) {
+      AccountLoadState.notLoaded => kind ?? LoadFailureKind.never,
+      // Sans précision, un `error` vient des chemins réseau de `_hydrateOne` ;
+      // les échecs d'analyse passent tous `kind: parse` explicitement.
+      AccountLoadState.error => kind ?? LoadFailureKind.network,
+      _ => null,
+    };
+
+    // ⚠️ Les raisons d'ABORD : un listener de `loadStates` doit voir un
+    // registre déjà cohérent avec le nouvel état, pas celui d'avant.
+    final failures = Map<String, LoadFailure>.from(loadFailures.value);
+    if (resolved == null) {
+      failures.remove(accountId);
     } else {
-      next[accountId] = state;
+      failures[accountId] =
+          LoadFailure(resolved, detail: detail, at: DateTime.now());
     }
+    loadFailures.value = failures;
+
+    final next = Map<String, AccountLoadState>.from(loadStates.value);
+    next[accountId] = state;
     loadStates.value = next;
+
+    if (previous != state || resolved != null) {
+      final String why = resolved == null
+          ? ''
+          : ' · ${resolved.name}'
+              '${(detail == null || detail.isEmpty) ? '' : ' — $detail'}';
+      debugPrint('🔁 §fleetState $accountId : '
+          '${previous?.name ?? 'inconnu'} → ${state.name}$why');
+    }
   }
 
   /// Lecture sync d'un état (utile pour les checks rapides sans rebuild).
@@ -171,7 +236,8 @@ class ParsedPlaylistService {
       );
     } catch (e) {
       debugPrint('❌ ParsedPlaylist.loadActive — parse échoué : $e');
-      setLoadState(accountId, AccountLoadState.error);
+      setLoadState(accountId, AccountLoadState.error,
+          kind: LoadFailureKind.parse, detail: describeError(e));
       rethrow;
     }
 
@@ -209,7 +275,17 @@ class ParsedPlaylistService {
       if (!File(m3uPath).existsSync()) {
         m3uPath = '${dir.path}/playlist_${acc.id}.m3u';
       }
-      if (!File(m3uPath).existsSync()) continue;
+      if (!File(m3uPath).existsSync()) {
+        // §cacheKeep — Ce `continue` était MUET : un compte sans aucun fichier
+        // source disparaissait de l'accueil sans une ligne de journal.
+        //
+        // ⚠️ On ne touche PAS à son état ici : une hydratation peut être en
+        // train de le télécharger en parallèle, et l'écraser en « non chargé »
+        // ferait mentir le décompte de la barre du haut.
+        debugPrint('ℹ️ §cacheKeep préchargement : aucun fichier source pour '
+            '« ${acc.label} » (ni .json ni .m3u) → ignoré');
+        continue;
+      }
 
       final disk = await _loadFromDisk(acc.id, m3uPath);
       if (disk != null) {
@@ -219,6 +295,21 @@ class ParsedPlaylistService {
         debugPrint('✅ ParsedPlaylist: préchargé depuis disque — ${acc.label} (${disk.entries.length} entrées)');
         _auditCategories(acc.label, disk.entries);
         _bumpAfterLoad();
+      } else {
+        // §cacheKeep — LE cas qui rendait le défaut invisible : la source est
+        // là, le cache analysé non (supprimé trop tôt, tronqué, schéma
+        // obsolète). La liste reste absente de `_memory`, donc absente de
+        // l'accueil ET de la recherche — et jusqu'ici, personne ne le disait.
+        //
+        // ⚠️ Cette méthode NE DOIT PAS se mettre à analyser : elle tourne en
+        // arrière-plan pendant que l'accueil s'affiche. C'est au réconciliateur
+        // de reprendre le travail ; ici on se contente de NOMMER le problème.
+        setLoadState(acc.id, AccountLoadState.notLoaded,
+            kind: LoadFailureKind.cacheGone,
+            detail: 'source présente, cache analysé inexploitable');
+        debugPrint('⚠️ §cacheKeep préchargement : « ${acc.label} » a une source '
+            'sur disque mais AUCUN cache analysé exploitable → invisible de '
+            'l\'accueil tant que rien ne la ré-analyse');
       }
     }
   }
@@ -276,7 +367,8 @@ class ParsedPlaylistService {
       );
     } catch (e) {
       debugPrint('❌ ParsedPlaylist secondaire — parse échoué pour $accountName: $e');
-      setLoadState(accountId, AccountLoadState.error);
+      setLoadState(accountId, AccountLoadState.error,
+          kind: LoadFailureKind.parse, detail: describeError(e));
       return;
     }
     final allEntries = [...films, ...series, ...tv];
@@ -581,7 +673,14 @@ class ParsedPlaylistService {
         onDetail: onDetail,
       );
     } catch (e) {
+      // §cacheKeep — Cet échec était MUET : `debugPrint` + `return null`, sans
+      // aucun état d'erreur. `PlaylistReloadService` journalisait alors
+      // « ✅ rechargée » sur une liste qui venait de disparaître de l'accueil.
+      // On garde le `return null` (l'appelant en a besoin), mais on NOMME la
+      // panne — pour l'écran comme pour le journal.
       debugPrint('❌ ParsedPlaylist.reloadFromDisk — parse échoué : $e');
+      setLoadState(accountId, AccountLoadState.error,
+          kind: LoadFailureKind.parse, detail: describeError(e));
       return null;
     }
 
@@ -594,9 +693,15 @@ class ParsedPlaylistService {
       entries:      allEntries,
     );
 
-    // Swap atomique — l'ancien cache disque est effacé, le nouveau remplace
-    // l'ancien en mémoire en une seule opération synchrone.
-    await _deleteDiskCache(accountId);
+    // Swap atomique en mémoire : remove + add en une seule opération
+    // synchrone.
+    //
+    // §cacheKeep — L'ancien cache disque n'est PLUS effacé ici. Il l'était
+    // AVANT que `_saveToDisk` n'ait écrit son remplaçant : entre les deux, le
+    // compte n'avait plus rien sur disque, et une interruption le laissait
+    // durablement sans cache analysé. `_saveToDisk` écrit désormais dans un
+    // `.part` puis renomme — il écrase l'ancien de façon atomique, sans jamais
+    // ouvrir de fenêtre vide.
     _memory[accountId]       = playlist;
     _accountNames[accountId] = accountName;
     setLoadState(accountId, AccountLoadState.loaded);
@@ -609,27 +714,73 @@ class ParsedPlaylistService {
     return playlist;
   }
 
-  /// Invalide le cache mémoire + disque pour un compte (lazy : ne re-parse pas).
+  /// §cacheKeep — « La source vient de changer, la copie en mémoire est
+  /// périmée » — **sans jamais toucher au fichier `.json.gz`**.
   ///
-  /// ⚠️ Provoque un état temporairement vide en mémoire pour ce compte. À ne PAS
-  /// utiliser pour le compte actif si un rebuild de la home est imminent — préférer
-  /// [reloadFromDisk] qui swap atomiquement. Reste utile pour :
-  ///   - Suppression d'un compte (le compte n'existe plus)
-  ///   - Invalidation d'un compte secondaire (lazy reload au prochain accès)
-  static void invalidate(String accountId) {
+  /// **Le défaut corrigé** : les téléchargeurs appelaient `invalidate()` juste
+  /// après avoir écrit un nouveau catalogue. Or `invalidate` **supprime le
+  /// cache analysé**. Si l'analyse échouait ensuite — application tuée, OOM,
+  /// fichier tronqué —, il ne restait plus rien : ni mémoire, ni disque. Et une
+  /// liste absente de `_memory` est **totalement invisible** de l'accueil et de
+  /// la recherche. C'est exactement ce qui a été constaté sur l'appareil :
+  /// trois catalogues bruts sains sur disque, deux caches analysés seulement.
+  ///
+  /// Le principe : **un téléchargeur produit un fichier, il ne décide pas du
+  /// cycle de vie du cache analysé.** La péremption est **déjà** détectée à la
+  /// relecture, en comparant le `m3uModAt` de l'en-tête à la date de la source
+  /// (cf. [_loadFromDisk]) : la suppression anticipée était redondante ET
+  /// destructrice. Au pire on relit un cache périmé pendant quelques
+  /// millisecondes avant qu'il ne soit refusé ; au mieux, il sert de filet
+  /// quand l'analyse du nouveau catalogue échoue.
+  static void markStale(String accountId) {
+    final bool had = _memory.remove(accountId) != null;
+    setLoadState(accountId, AccountLoadState.notLoaded,
+        kind: LoadFailureKind.never,
+        detail: 'source renouvelée, ré-analyse à faire');
+    if (had) version.value++;
+    debugPrint('♻️ §cacheKeep : mémoire périmée, cache disque CONSERVÉ — '
+        '$accountId');
+  }
+
+  /// Oublie **tout** d'un compte : mémoire ET cache disque.
+  ///
+  /// §cacheKeep — Réservé aux deux seuls cas où le cache analysé n'a plus
+  /// aucune raison d'exister :
+  ///   - le compte est supprimé, ou ses identifiants / son URL ont changé ;
+  ///   - le schéma (ou le filtre de régions) a changé → le cache est illisible.
+  ///
+  /// ⚠️ **À ne PAS utiliser après un téléchargement** : c'est [markStale] qu'il
+  /// faut. Un cache supprimé avant que son remplaçant n'existe est un cache
+  /// perdu dès que l'analyse échoue.
+  static void forget(String accountId) {
     _memory.remove(accountId);
-    setLoadState(accountId, AccountLoadState.notLoaded);
+    invalidateCountsCache(accountId);
+    setLoadState(accountId, AccountLoadState.notLoaded,
+        kind: LoadFailureKind.cacheGone, detail: 'cache effacé volontairement');
     version.value++;
     _deleteDiskCache(accountId);
-    debugPrint('🗑️ ParsedPlaylist: cache invalidé — $accountId');
+    debugPrint('🗑️ ParsedPlaylist: oublié (mémoire + disque) — $accountId');
   }
+
+  /// Ancien nom de [forget], conservé pour les appelants hors de ce lot
+  /// (`backup_service`, `web_console_service`, `accounts_page`,
+  /// `region_filter_page`). Tous suppriment ou reconfigurent un compte : la
+  /// sémantique « oublie tout » est bien celle qu'ils veulent.
+  ///
+  /// ⚠️ Pas d'annotation `@Deprecated` : l'analyseur en ferait sept
+  /// *warnings* dans des fichiers appartenant à d'autres lots, et la consigne
+  /// est de rendre `flutter analyze` vierge. Tout nouveau code appelle
+  /// [forget] ou [markStale], jamais ce nom-ci.
+  static void invalidate(String accountId) => forget(accountId);
 
   /// Vide entièrement la mémoire (ex: déconnexion globale).
   static void clear() {
     _memory.clear();
     _accountNames.clear();
     _lastAccess.clear();
+    _diskCounts.clear();
     loadStates.value = {};
+    loadFailures.value = {};
     version.value++;
   }
 
@@ -644,7 +795,11 @@ class ParsedPlaylistService {
     if (!_memory.containsKey(accountId)) return;
     _memory.remove(accountId);
     _lastAccess.remove(accountId);
-    setLoadState(accountId, AccountLoadState.notLoaded);
+    // §fleetState — `unloadedIdle` : la liste est SUR DISQUE, elle revient en
+    // ~50 ms. Afficher « NON CHARGÉ » ici faisait passer un fonctionnement
+    // parfaitement voulu pour une panne.
+    setLoadState(accountId, AccountLoadState.notLoaded,
+        kind: LoadFailureKind.unloadedIdle);
     version.value++;
     debugPrint('💤 ParsedPlaylist: déchargé mémoire (cache disque conservé) — $accountId');
   }
@@ -709,7 +864,14 @@ class ParsedPlaylistService {
   }) async {
     final path = await _diskCachePath(accountId);
     final cacheFile = File(path);
-    if (!await cacheFile.exists()) return null;
+    if (!await cacheFile.exists()) {
+      // §cacheKeep — Sortie jusqu'ici MUETTE. C'était la plus fréquente des
+      // trois façons de perdre une liste, et la seule qui ne laissait pas la
+      // moindre trace : l'appelant enchaînait sur un parse complet (ou sur
+      // rien du tout, au préchargement) sans qu'on sache pourquoi.
+      debugPrint('ℹ️ §cacheKeep : aucun cache analysé sur disque — $accountId');
+      return null;
+    }
 
     try {
       final int totalBytes = await cacheFile.length();
@@ -728,6 +890,11 @@ class ParsedPlaylistService {
 
       Map<String, dynamic>? header;
       DateTime? m3uModifiedAt;
+      // §cacheKeep — Nombre d'entrées ANNONCÉ par l'en-tête. C'est le seul
+      // moyen de reconnaître un cache tronqué : le gunzip d'un fichier coupé
+      // lève souvent, mais pas toujours (une coupure pile sur une frontière de
+      // bloc se lit comme une fin de fichier propre).
+      int? declaredCount;
       final entries = <M3uEntry>[];
       // §ramDiet — Pool d'internement, le temps du chargement (cf. `StringPool`).
       //
@@ -750,6 +917,7 @@ class ParsedPlaylistService {
             await cacheFile.delete();
             return null;
           }
+          declaredCount = header['count'] as int?;
           m3uModifiedAt = DateTime.parse(header['m3uModAt'] as String);
           // §langFilter — Invalider si le filtre de régions a changé depuis le
           // cache (le cache ne contient que les entrées non masquées d'alors).
@@ -787,7 +955,35 @@ class ParsedPlaylistService {
         }
       }
 
-      if (header == null || m3uModifiedAt == null) return null;
+      if (header == null || m3uModifiedAt == null) {
+        debugPrint('❌ §cacheKeep : cache sans en-tête exploitable — $accountId '
+            '→ supprimé');
+        try { await cacheFile.delete(); } catch (_) {}
+        return null;
+      }
+
+      // §cacheKeep — Cache TRONQUÉ : l'en-tête annonce des entrées, le corps
+      // n'en livre aucune. C'était le SEUL scénario où la lecture « réussissait »
+      // en rendant une playlist vide — que `loadActive` acceptait ensuite comme
+      // `loaded`. Le compte devenait invisible de l'accueil et de la recherche
+      // sans qu'une seule erreur ne soit journalisée.
+      if (declaredCount != null && declaredCount > 0 && entries.isEmpty) {
+        debugPrint('❌ §cacheKeep : cache TRONQUÉ — l\'en-tête annonce '
+            '$declaredCount entrées, 0 lue → supprimé ($accountId)');
+        try { await cacheFile.delete(); } catch (_) {}
+        return null;
+      }
+
+      // Une liste à zéro entrée n'est JAMAIS un succès : la rendre ici la
+      // ferait accepter comme `loaded`, et le compte afficherait « DISPONIBLE »
+      // avec un accueil vide. On la refuse — le fichier est conservé, c'est à
+      // une ré-analyse de la source de trancher.
+      if (entries.isEmpty) {
+        debugPrint('⚠️ §cacheKeep : cache VIDE (0 entrée) — refusé pour '
+            '$accountId, une liste sans entrée n\'est pas un chargement réussi');
+        return null;
+      }
+
       return ParsedPlaylist(
         accountId:     header['accountId'] as String,
         schema:        header['schema'] as int,
@@ -807,9 +1003,20 @@ class ParsedPlaylistService {
   /// même pour ~600k entrées (l'ancienne version `jsonEncode(toJson())` faisait
   /// une chaîne géante de 150-300 Mo d'un coup → OOM silencieux sur Fire Stick →
   /// aucun cache écrit → re-parse à chaque démarrage).
+  ///
+  /// §cacheKeep — **L'écriture est ATOMIQUE.** Elle allait directement sur la
+  /// destination : une interruption (application tuée, disque plein, OOM) y
+  /// laissait un `.gz` tronqué, c'est-à-dire un cache qui existe, qu'on relit,
+  /// et qui rend une liste vide. Les deux autres écrivains de l'app
+  /// (`XtreamCatalogService`, `ensureDownloadedForAccount`) écrivaient déjà en
+  /// `.part` + `rename` ; celui-ci était le seul à ne pas le faire — et c'est
+  /// justement lui qui écrit le fichier le plus long à produire.
   static Future<void> _saveToDisk(String accountId, ParsedPlaylist playlist) async {
     final path = await _diskCachePath(accountId);
-    final raw = File(path).openWrite();
+    final partPath = '$path.part';
+    final part = File(partPath);
+    final raw = part.openWrite();
+    var closed = false;
     try {
       final gzipSink = gzip.encoder.startChunkedConversion(_IOSinkAdapter(raw));
       void writeLine(Object o) => gzipSink.add(utf8.encode('${jsonEncode(o)}\n'));
@@ -837,17 +1044,58 @@ class ParsedPlaylistService {
       for (final e in playlist.entries) {
         writeLine(e.toJson());
       }
-      gzipSink.close(); // flush du trailer gzip dans l'IOSink
+      // ⚠️ ORDRE CRITIQUE, et c'est tout l'intérêt de `_IOSinkAdapter` :
+      //   1. `gzipSink.close()` pousse le TRAILER gzip dans l'IOSink — sans
+      //      lui, le fichier est un `.gz` invalide (l'adaptateur a un `close()`
+      //      volontairement no-op pour que l'IOSink survive à cette étape) ;
+      //   2. `flush` + `close` de l'IOSink : les octets sont sur le disque ;
+      //   3. SEULEMENT ENSUITE le `rename`.
+      // Renommer avant le trailer publierait exactement le fichier tronqué
+      // qu'on cherche à ne plus jamais écrire.
+      gzipSink.close();
       await raw.flush();
+      await raw.close();
+      closed = true;
+
+      // Publication atomique. Tant que ce `rename` n'a pas eu lieu, l'ANCIEN
+      // cache reste intact et lisible ; une interruption ne laisse qu'un
+      // `.part` orphelin, jamais un cache à moitié écrit.
+      await part.rename(path);
+
       // §secondaryCounts — L'en-tête vient de changer : le mémo est périmé.
       _diskCounts.remove(playlist.accountId);
-      debugPrint('💾 ParsedPlaylist: sauvegardé (streamé) — ${playlist.entries.length} entrées');
+      debugPrint('💾 ParsedPlaylist: sauvegardé (streamé, atomique) — ${playlist.entries.length} entrées');
     } catch (e) {
-      debugPrint('❌ ParsedPlaylist: erreur sauvegarde disque — $e');
-    } finally {
-      await raw.close();
+      // §cacheKeep — On ne touche PAS à la destination : l'ancien cache, même
+      // périmé, vaut infiniment mieux que pas de cache du tout.
+      debugPrint('❌ ParsedPlaylist: erreur sauvegarde disque — $e '
+          '(ancien cache conservé)');
+      if (!closed) {
+        try { await raw.close(); } catch (_) {}
+      }
+      try { if (await part.exists()) await part.delete(); } catch (_) {}
     }
   }
+
+  // ── Ouvertures minimales pour les tests (§cacheKeep) ──────────────────────
+  //
+  // Le cycle « écrire → relire » est le cœur du correctif : c'est là que se
+  // jouent l'atomicité, la détection de cache tronqué et le refus d'une liste
+  // vide. Trois passe-plats suffisent à le tester sans rien rendre public.
+
+  @visibleForTesting
+  static Future<String> diskCachePathForTest(String accountId) =>
+      _diskCachePath(accountId);
+
+  @visibleForTesting
+  static Future<void> saveToDiskForTest(
+          String accountId, ParsedPlaylist playlist) =>
+      _saveToDisk(accountId, playlist);
+
+  @visibleForTesting
+  static Future<ParsedPlaylist?> loadFromDiskForTest(
+          String accountId, String sourcePath) =>
+      _loadFromDisk(accountId, sourcePath);
 
   static Future<void> _deleteDiskCache(String accountId) async {
     try {

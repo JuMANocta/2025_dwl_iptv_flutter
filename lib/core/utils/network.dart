@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'secure_storage_compte.dart';
 import '../../data/services/stream_account_service.dart';
+import '../../data/models/stream_account.dart';
 
 
 /// Classe utilitaire pour la configuration réseau centralisée.
@@ -90,19 +91,28 @@ class NetworkUtils {
   ///
   /// Active automatiquement le bypass SSL — les serveurs IPTV grand public
   /// utilisent fréquemment des certificats self-signed ou expirés.
-  static Future<Dio> buildDio(String url) async {
+  /// §cookieScope — [account] : le compte AU NOM DUQUEL la requête part.
+  ///
+  /// ⚠️ **Le passer dès qu'on le connaît.** Sans lui, cette méthode retombe sur
+  /// `getCurrentAccount()` — c'est-à-dire qu'elle envoyait les cookies du
+  /// compte PRINCIPAL avec les requêtes d'un compte SECONDAIRE. Sur un panel
+  /// qui lie la session au cookie, cela produit exactement le tableau observé
+  /// le 2026-09-03 : un compte se charge, les autres reçoivent des réponses
+  /// vides — et une réponse vide est indiscernable d'un catalogue vide
+  /// (§catalogTruth). Le paramètre `url` n'était d'ailleurs **jamais lu**.
+  static Future<Dio> buildDio(String url, {StreamAccount? account}) async {
     // §iptvUaCompat — `allowInvalidCertificate: true` active le profil "IPTV"
     // dans buildBaseDio : UA `IPTVSmartersPro` + Accept-Encoding gzip,
     // sans Referer/Origin. Le profil est appliqué à TOUTES les requêtes IPTV
     // (téléchargement playlist, médias, player_api.php, replay…).
     final dio = buildBaseDio(allowInvalidCertificate: true);
 
-    // On récupère les informations du compte pour enrichir la requête
-    final acc = await StreamAccountService.getCurrentAccount();
+    // Le compte explicite gagne toujours ; le repli sur le compte courant n'est
+    // là que pour les chemins qui ne savent pas de quel compte ils dépendent
+    // (téléchargement d'un média depuis une URL nue).
+    final acc = account ?? await StreamAccountService.getCurrentAccount();
     final legacy = await SecureStorageService().getCredentials();
-    final cookies = (acc?.cookies?.trim().isNotEmpty == true)
-        ? acc!.cookies!.trim()
-        : (legacy["cookies"] ?? "").toString().trim();
+    final cookies = cookiesFor(acc, legacy);
 
     // On ajoute les cookies uniquement s'ils existent
     if (cookies.isNotEmpty) {
@@ -110,5 +120,14 @@ class NetworkUtils {
     }
 
     return dio;
+  }
+
+  /// §cookieScope — Choix des cookies à envoyer, extrait pour être testable
+  /// sans appareil : le compte porte les siens, sinon on retombe sur le
+  /// stockage legacy mono-compte. Rend `''` quand il n'y en a pas.
+  static String cookiesFor(StreamAccount? account, Map<String, dynamic> legacy) {
+    final String own = (account?.cookies ?? '').trim();
+    if (own.isNotEmpty) return own;
+    return (legacy['cookies'] ?? '').toString().trim();
   }
 }

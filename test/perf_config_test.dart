@@ -122,4 +122,97 @@ void main() {
       }
     });
   });
+
+  /// §unloadGuard — Le déchargement paresseux des listes était codé en dur
+  /// (5 min) et sans interrupteur : l'utilisateur voyait ses listes passer à
+  /// « NON CHARGÉ » sans avoir rien demandé. Ces trois réglages sont des
+  /// LEVIERS DE PROFIL (mémoire contre réactivité), donc dans l'égalité —
+  /// contrairement à `autoNextEpisode` juste au-dessus, exclu exprès.
+  group('PerfConfig — §unloadGuard (listes en mémoire)', () {
+    test('défaut : on garde tout, on ne décharge jamais', () {
+      expect(PerfConfig.defaults.keepAllListsInMemory, isTrue);
+      expect(PerfConfig.defaults.idleUnloadMinutes, 0);
+      expect(PerfConfig.defaults.hostMaxConcurrent, 1);
+    });
+
+    test('clés absentes (backup .aether antérieur) → défauts, pas de crash', () {
+      final cfg = PerfConfig.fromJson(const {'he': false});
+      expect(cfg.keepAllListsInMemory, PerfConfig.defaults.keepAllListsInMemory);
+      expect(cfg.idleUnloadMinutes, PerfConfig.defaults.idleUnloadMinutes);
+      expect(cfg.hostMaxConcurrent, PerfConfig.defaults.hostMaxConcurrent);
+    });
+
+    test('roundtrip toJson/fromJson conserve les trois valeurs', () {
+      final cfg = PerfConfig.defaults.copyWith(
+        keepAllListsInMemory: false,
+        idleUnloadMinutes: 25,
+        hostMaxConcurrent: 3,
+      );
+      final back = PerfConfig.fromJson(cfg.toJson());
+      expect(back.keepAllListsInMemory, isFalse);
+      expect(back.idleUnloadMinutes, 25);
+      expect(back.hostMaxConcurrent, 3);
+      expect(back, cfg);
+    });
+
+    test('valeurs hors bornes clampées à la lecture', () {
+      final hi = PerfConfig.fromJson(const {'ium': 99999, 'hmc': 99});
+      expect(hi.idleUnloadMinutes, PerfConfig.maxIdleUnloadMinutes);
+      expect(hi.hostMaxConcurrent, PerfConfig.maxHostMaxConcurrent);
+      final lo = PerfConfig.fromJson(const {'ium': -30, 'hmc': -1});
+      // ⚠️ 0 est une valeur SIGNIFIANTE des deux côtés (« jamais décharger » /
+      // « déduire du panel ») : le plancher est bien 0, pas 1.
+      expect(lo.idleUnloadMinutes, 0);
+      expect(lo.hostMaxConcurrent, 0);
+    });
+
+    test('idleUnloadDelay : null dès que rien ne doit être déchargé', () {
+      // Interrupteur allumé → le délai est conservé mais inerte.
+      expect(
+        PerfConfig.defaults
+            .copyWith(keepAllListsInMemory: true, idleUnloadMinutes: 15)
+            .idleUnloadDelay,
+        isNull,
+      );
+      // Interrupteur éteint mais délai à 0 → « jamais » aussi.
+      expect(
+        PerfConfig.defaults
+            .copyWith(keepAllListsInMemory: false, idleUnloadMinutes: 0)
+            .idleUnloadDelay,
+        isNull,
+      );
+      expect(
+        PerfConfig.defaults
+            .copyWith(keepAllListsInMemory: false, idleUnloadMinutes: 5)
+            .idleUnloadDelay,
+        const Duration(minutes: 5),
+      );
+    });
+
+    test('inclus dans l\'égalité → bascule bien en « Personnalisé »', () {
+      final custom =
+          PerfConfig.defaults.copyWith(keepAllListsInMemory: false);
+      for (final p in PerfConfig.presets) {
+        expect(custom == p.config, isFalse,
+            reason: 'ne devrait correspondre à aucun profil');
+      }
+    });
+
+    test('presets : seul « Performance » décharge', () {
+      expect(PerfConfig.defaults.idleUnloadDelay, isNull);
+      expect(PerfConfig.equilibre.idleUnloadDelay, isNull);
+      expect(PerfConfig.performance.keepAllListsInMemory, isFalse);
+      expect(PerfConfig.performance.idleUnloadDelay,
+          const Duration(minutes: 5));
+    });
+
+    test('§cookieScope — aucun profil n\'ouvre plusieurs connexions par hôte',
+        () {
+      // Un panel Xtream compte les connexions par abonnement : passer à 2 sans
+      // le vouloir se répond par un refus qui ressemble à une panne réseau.
+      for (final p in PerfConfig.presets) {
+        expect(p.config.hostMaxConcurrent, 1, reason: p.name);
+      }
+    });
+  });
 }

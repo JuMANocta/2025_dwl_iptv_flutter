@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import '../../core/utils/network.dart';
+import '../../core/utils/host_gate.dart';
 import 'stream_account_service.dart';
 import 'parsed_playlist_service.dart';
 import 'xtream_catalog_service.dart';
@@ -21,6 +22,30 @@ import 'xtream_catalog_service.dart';
 class PlaylistService {
   static const String _playlistBaseName = 'playlist';
   static const Duration playlistCacheDuration = Duration(hours: 24);
+
+  /// §cacheKeep — Taille PLANCHER d'un catalogue crédible, en octets.
+  ///
+  /// Le seul test était `> 0 octet`. Or ce que renvoie un panel en panne n'est
+  /// pas un fichier vide : c'est une page d'erreur HTML, un « Access denied »
+  /// ou un JSON `{"user_info":{"auth":0}}` — deux ou trois kilo-octets qui
+  /// passent le test, sont renommés en `.json`/`.m3u`, et **font autorité
+  /// pendant 24 h** parce que le TTL les considère comme un cache sain. La
+  /// liste de l'utilisateur disparaît alors pour une journée entière, sans
+  /// qu'aucune erreur ne soit levée nulle part.
+  ///
+  /// **Pourquoi 4 Ko et pas 1 Ko** : un plancher à 1 Ko ne réglerait PAS le cas
+  /// qui a motivé ce garde-fou — une page d'erreur de 2 Ko le franchit sans
+  /// difficulté. Il faut se placer au-dessus de ce qu'un panel en panne peut
+  /// produire (quelques kilo-octets de HTML ou de JSON d'erreur) et très en
+  /// dessous du plus petit catalogue réel observé, qui dépasse le mégaoctet :
+  /// entre les deux, il y a trois ordres de grandeur, donc aucune finesse à
+  /// avoir.
+  ///
+  /// Le prix d'un faux positif est faible et réversible — une liste écrite à la
+  /// main de moins d'une quarantaine de lignes serait retéléchargée à chaque
+  /// contrôle. Le prix d'un faux négatif, lui, est la disparition de la liste
+  /// pendant 24 h. Le curseur penche donc du côté prudent.
+  static const int minPlaylistBytes = 4096;
 
   static Future<String> playlistPath() async {
     final acc = await StreamAccountService.getCurrentAccount();
@@ -109,14 +134,21 @@ class PlaylistService {
   /// [respectTtl] à `false` = on ne télécharge que si le fichier manque
   /// (ancien comportement de [ensureDownloadedForAccount], conservé pour les
   /// appelants qui veulent seulement *peupler* un compte).
+  ///
+  /// §cacheKeep — [minBytes] est le plancher de crédibilité (cf.
+  /// [minPlaylistBytes]) : un fichier plus petit est traité comme absent, quel
+  /// que soit son âge et **même en mode « peupler seulement »**. Une page
+  /// d'erreur de 2 Ko renommée en `.m3u` n'est pas un cache, c'est un cache
+  /// empoisonné.
   @visibleForTesting
   static bool needsDownload({
     required bool exists,
     required int lengthBytes,
     required Duration? age,
     bool respectTtl = true,
+    int minBytes = minPlaylistBytes,
   }) {
-    if (!exists || lengthBytes <= 0) return true;
+    if (!exists || lengthBytes < minBytes) return true;
     if (!respectTtl || age == null) return false;
     return age >= playlistCacheDuration;
   }
@@ -195,8 +227,12 @@ class PlaylistService {
       return (path: existing, downloaded: false);
     }
     if (exists) {
-      debugPrint('⏳ Playlist « ${acc.label} » périmée '
-          '(${age!.inHours} h) → rafraîchissement.');
+      // §cacheKeep — Distinguer « vieille » de « trop petite pour être vraie » :
+      // le second cas trahit une page d'erreur en cache, pas un TTL dépassé.
+      final String pourquoi = length < minPlaylistBytes
+          ? 'suspecte ($length octets < $minPlaylistBytes)'
+          : 'périmée (${age!.inHours} h)';
+      debugPrint('⏳ Playlist « ${acc.label} » $pourquoi → rafraîchissement.');
     }
 
     final url = acc.buildM3uUrl();
@@ -208,12 +244,22 @@ class PlaylistService {
     // §23 — Tentative 1 : catalogue JSON direct. Si OK, on évite get.php.
     try {
       final jsonPath = await jsonPathForAccountId(acc.id);
-      if (await XtreamCatalogService.downloadCatalog(acc, jsonPath)) {
+      final res = await XtreamCatalogService.downloadCatalog(acc, jsonPath);
+      if (res.written) {
         await _deleteIfExists(await m3uPathForAccountId(acc.id));
-        ParsedPlaylistService.invalidate(acc.id);
+        // §cacheKeep — `markStale`, PAS `invalidate` : ce service vient
+        // d'écrire une nouvelle source, il n'a pas à supprimer le cache
+        // analysé de l'ancienne. Si l'analyse qui suit échoue, ce cache est
+        // tout ce qui reste entre l'utilisateur et un accueil vide.
+        ParsedPlaylistService.markStale(acc.id);
         debugPrint('✅ Catalogue JSON téléchargé pour ${acc.label}.');
         return (path: jsonPath, downloaded: true);
       }
+      // §catalogTruth — Un refus d'écriture est MOTIVÉ : on le nomme au journal
+      // avant de dégrader, au lieu de laisser croire à un simple « pas de JSON ».
+      debugPrint('⚠️ Catalogue JSON refusé pour ${acc.label} : '
+          '${res.failure?.name ?? 'motif inconnu'}'
+          '${res.detail == null ? '' : ' — ${res.detail}'} → fallback get.php');
     } catch (e) {
       debugPrint('⚠️ Catalogue JSON ${acc.label} échec ($e), fallback get.php');
     }
@@ -222,16 +268,24 @@ class PlaylistService {
     final m3uPath = await m3uPathForAccountId(acc.id);
     final tempPath = '$m3uPath.part';
     try {
-      final dio = await NetworkUtils.buildDio(url);
-      await dio.download(
-        url,
-        tempPath,
-        options: Options(
-          receiveTimeout: const Duration(seconds: 60),
-          followRedirects: true,
-          validateStatus: (s) => s != null && s >= 200 && s < 300,
-        ),
-      );
+      // §cookieScope — Le compte est PASSÉ au constructeur : sans lui, la
+      // requête d'un compte secondaire partait avec les cookies du principal.
+      final dio = await NetworkUtils.buildDio(url, account: acc);
+      // §hostGate — Le repli `get.php` passe par le MÊME portillon que les
+      // requêtes `player_api.php` : sans lui, deux comptes du même fournisseur
+      // pouvaient encore se marcher dessus par ce chemin, sur des panels
+      // limités à une connexion simultanée.
+      await HostGate.run(url, () async {
+        await dio.download(
+          url,
+          tempPath,
+          options: Options(
+            receiveTimeout: const Duration(seconds: 60),
+            followRedirects: true,
+            validateStatus: (s) => s != null && s >= 200 && s < 300,
+          ),
+        );
+      });
       final temp = File(tempPath);
       if (!await temp.exists() || await temp.length() == 0) {
         if (await temp.exists()) await temp.delete();
@@ -241,7 +295,7 @@ class PlaylistService {
       }
       await temp.rename(m3uPath);
       await _deleteIfExists(await jsonPathForAccountId(acc.id));
-      ParsedPlaylistService.invalidate(acc.id);
+      ParsedPlaylistService.markStale(acc.id); // §cacheKeep — cf. plus haut.
       debugPrint("✅ Playlist via get.php (fallback) pour ${acc.label}.");
       return (path: m3uPath, downloaded: true);
     } catch (e) {
@@ -311,14 +365,22 @@ class PlaylistService {
       if (acc != null) {
         try {
           final jsonPath = await jsonPathForAccountId(acc.id);
-          if (await XtreamCatalogService.downloadCatalog(acc, jsonPath)) {
+          final res = await XtreamCatalogService.downloadCatalog(acc, jsonPath);
+          if (res.written) {
             await _deleteIfExists(await m3uPathForAccountId(acc.id));
             debugPrint('✅ Catalogue JSON téléchargé '
                 '(${await File(jsonPath).length()} octets).');
-            ParsedPlaylistService.invalidate(acc.id);
+            // §cacheKeep — La source est neuve, la copie en mémoire est
+            // périmée : `markStale`. Supprimer le cache analysé ici, c'était
+            // parier que l'analyse suivante réussirait toujours.
+            ParsedPlaylistService.markStale(acc.id);
             return jsonPath;
           }
-          debugPrint('⚠️ JSON API n\'a rien retourné, fallback sur get.php');
+          // §catalogTruth — Le refus a un motif : le dire.
+          debugPrint('⚠️ JSON API refusée : '
+              '${res.failure?.name ?? 'motif inconnu'}'
+              '${res.detail == null ? '' : ' — ${res.detail}'}'
+              ' → fallback sur get.php');
         } catch (e) {
           debugPrint('⚠️ JSON API a échoué ($e), fallback sur get.php');
         }
@@ -331,18 +393,27 @@ class PlaylistService {
           ? await m3uPathForAccountId(acc.id)
           : await playlistPath();
       tempPath = '$m3uPath.part';
-      final dio = await NetworkUtils.buildDio(url);
+      // §cookieScope — Idem : chaque compte a son propre bocal à cookies.
+      // `acc` peut être nul ici (chemin legacy sans compte résolu), la
+      // signature l'accepte.
+      final dio = await NetworkUtils.buildDio(url, account: acc);
 
-      await dio.download(
-        url,
-        tempPath,
-        options: Options(
-          receiveTimeout: const Duration(seconds: 60),
-          followRedirects: true,
-          validateStatus: (status) =>
-          status != null && status >= 200 && status < 300,
-        ),
-      );
+      // §hostGate — Le repli `get.php` passe par le MÊME portillon que les
+      // requêtes `player_api.php` : sans lui, deux comptes du même fournisseur
+      // pouvaient encore se marcher dessus par ce chemin, sur des panels
+      // limités à une connexion simultanée.
+      await HostGate.run(url, () async {
+        await dio.download(
+          url,
+          tempPath,
+          options: Options(
+            receiveTimeout: const Duration(seconds: 60),
+            followRedirects: true,
+            validateStatus: (status) =>
+                status != null && status >= 200 && status < 300,
+          ),
+        );
+      });
 
       final tempFile = File(tempPath);
       if (!await tempFile.exists() || await tempFile.length() == 0) {
@@ -355,8 +426,10 @@ class PlaylistService {
       }
       debugPrint("✅ Playlist téléchargée via get.php (fallback) et mise en cache.");
 
-      // Invalider le cache parsé — le prochain loadActive() re-parsera le fichier.
-      if (acc != null) ParsedPlaylistService.invalidate(acc.id);
+      // §cacheKeep — Marquer la mémoire périmée : le prochain loadActive()
+      // re-parsera le fichier. Le cache analysé, lui, RESTE sur disque — il est
+      // le filet si ce re-parse n'aboutit pas.
+      if (acc != null) ParsedPlaylistService.markStale(acc.id);
 
       return m3uPath;
     } on DioException catch (e) {
