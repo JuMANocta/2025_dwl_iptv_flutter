@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
-import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
@@ -16,6 +15,7 @@ import 'package:aetherStream/feature/replay/replay_date_picker_sheet.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/main.dart';
+import 'package:aetherStream/widgets/confirm_or_undo.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/quality_buttons.dart';
@@ -610,25 +610,29 @@ class _PlayResumeTiles extends StatelessWidget {
                 style: TextStyle(fontSize: 13, color: kWarning),
               ),
               dense: true,
+              // §undoTv — La feuille reste OUVERTE pendant la décision : sur TV
+              // `confirmOrUndo` ouvre un dialogue, qui a besoin d'un contexte
+              // encore monté. On ferme donc APRÈS, et seulement si l'action a
+              // bien eu lieu — un « Annuler » au D-pad ramène l'utilisateur là
+              // où il était, sans le renvoyer à la liste.
               onTap: () async {
                 final snapshot = p;
-                final messenger = ScaffoldMessenger.of(context);
-                Navigator.pop(context);
-                await WatchProgressService.clearProgress(entry.url);
-                AppSnackBar.showVia(messenger, SnackBar(
-                  content: const Text('Reprise oubliée'),
-                  duration: const Duration(seconds: 5),
-                  action: SnackBarAction(
-                    label: 'Annuler',
-                    onPressed: () {
-                      WatchProgressService.saveProgress(
-                        entry.url,
-                        snapshot.position,
-                        snapshot.duration,
-                      );
-                    },
-                  ),
-                ));
+                final done = await confirmOrUndo(
+                  context,
+                  title: 'Oublier la reprise ?',
+                  question: 'La position de lecture de ce titre sera oubliée.',
+                  confirmLabel: 'Oublier',
+                  doneMessage: 'Reprise oubliée',
+                  action: () => WatchProgressService.clearProgress(entry.url),
+                  onUndo: () {
+                    WatchProgressService.saveProgress(
+                      entry.url,
+                      snapshot.position,
+                      snapshot.duration,
+                    );
+                  },
+                );
+                if (done && context.mounted) Navigator.pop(context);
               },
             ),
           ],

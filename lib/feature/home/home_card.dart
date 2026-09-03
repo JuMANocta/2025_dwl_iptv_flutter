@@ -258,28 +258,34 @@ class _HomeCardState extends State<_HomeCard> {
                         style: TextStyle(fontSize: 13, color: kWarning),
                       ),
                       dense: true,
+                      // §undoTv — On demande AVANT de fermer la feuille : sur TV
+                      // `confirmOrUndo` ouvre un dialogue, qui exige un contexte
+                      // encore monté. Le `pop` passe après, et seulement si
+                      // l'oubli a bien eu lieu.
                       onTap: () async {
                         final snapshot = progress;
                         final clearedUrl = entry.url;
-                        final messenger = ScaffoldMessenger.of(context);
-                        Navigator.pop(sheetCtx);
-                        for (final v in widget.versions) {
-                          await WatchProgressService.clearProgress(v.url);
-                        }
-                        AppSnackBar.showVia(messenger, SnackBar(
-                          content: const Text('Reprise oubliée'),
-                          duration: const Duration(seconds: 5),
-                          action: SnackBarAction(
-                            label: 'Annuler',
-                            onPressed: () {
-                              WatchProgressService.saveProgress(
-                                clearedUrl,
-                                snapshot.position,
-                                snapshot.duration,
-                              );
-                            },
-                          ),
-                        ));
+                        final done = await confirmOrUndo(
+                          sheetCtx,
+                          title: 'Oublier la reprise ?',
+                          question:
+                              'La position de lecture de ce titre sera oubliée.',
+                          confirmLabel: 'Oublier',
+                          doneMessage: 'Reprise oubliée',
+                          action: () async {
+                            for (final v in widget.versions) {
+                              await WatchProgressService.clearProgress(v.url);
+                            }
+                          },
+                          onUndo: () {
+                            WatchProgressService.saveProgress(
+                              clearedUrl,
+                              snapshot.position,
+                              snapshot.duration,
+                            );
+                          },
+                        );
+                        if (done && sheetCtx.mounted) Navigator.pop(sheetCtx);
                       },
                     ),
                   ],

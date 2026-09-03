@@ -30,6 +30,7 @@ import 'package:aetherStream/feature/search/details_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/widgets/aether_image.dart';
+import 'package:aetherStream/widgets/confirm_or_undo.dart';
 import 'package:aetherStream/widgets/confirm_reload_dialog.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
@@ -462,6 +463,17 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // remplace l'ancienne FocusTraversalGroup/_TvRailsTraversalPolicy qui
     // entrait en conflit avec le moteur dpad). ExcludeFocus garde les pages
     // offstage (PageView adjacentes) hors du focus.
+    // §tabTicker — ⛔ HYPOTHÈSE TESTÉE ET RÉFUTÉE le 2026-09-03, ne pas la
+    // reprendre sans nouvelle mesure. On soupçonnait les hero des deux pages
+    // invisibles d'animer pour rien et de peser sur le changement d'onglet. Un
+    // `TickerMode(enabled: _currentIndex == index)` posé ici gèle bien leurs
+    // `Ticker` — donc le `setState` par frame de `_HeroFanBanner._onTick`.
+    // Mesuré sur Galaxy S25 en build profile, trois bascules Chaînes → Films de
+    // chaque côté : **39,8 ms avant, 40,6 ms après**, c'est-à-dire rien. Le
+    // coût restant n'est pas l'animation des pages cachées, c'est l'inflation
+    // de widgets de la page reconstruite.
+    // (Un bénéfice en CPU au repos sur une box faible reste plausible mais
+    // n'a PAS été mesuré : ce serait un autre relevé, pas celui-ci.)
     return ExcludeFocus(
       excluding: _currentIndex != index,
       child: DpadRegion(debugLabel: 'homePage$index', child: wrapped),

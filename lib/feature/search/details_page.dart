@@ -14,6 +14,7 @@ import '../../data/services/xtream_api_service.dart';
 import '../../data/models/quality_scale.dart';
 import '../../data/services/measured_quality_service.dart';
 import '../../core/utils/app_snackbar.dart';
+import '../../widgets/confirm_or_undo.dart';
 import '../../data/models/media_model.dart';
 import '../player/player_page.dart';
 import '../player/player_media.dart';
@@ -2109,29 +2110,30 @@ class _DetailsPageState extends State<DetailsPage> {
     return urls.toList();
   }
 
-  /// §forgetResume — Efface la reprise du contenu en cours (TOUTES ses versions)
-  /// + snackbar UNDO 4 s (restauration via `saveProgress` du snapshot).
+  /// §forgetResume + §undoTv — Efface la reprise du contenu en cours (TOUTES
+  /// ses versions). Au doigt : snackbar UNDO 5 s. À la télécommande :
+  /// confirmation AVANT — l'action d'une snackbar n'est pas atteignable au
+  /// D-pad. Dans les deux cas, la restauration passe par `saveProgress` du
+  /// snapshot capturé par l'appelant.
   Future<void> _forgetResume(WatchProgress snapshot) async {
-    for (final u in _resumeUrls()) {
-      await WatchProgressService.clearProgress(u);
-    }
-    if (!mounted) return;
-    AppSnackBar.showCustom(
+    await confirmOrUndo(
       context,
-      SnackBar(
-        content: const Text('Reprise oubliée'),
-        duration: const Duration(seconds: 5),
-        action: SnackBarAction(
-          label: 'Annuler',
-          onPressed: () {
-            WatchProgressService.saveProgress(
-              snapshot.url,
-              snapshot.position,
-              snapshot.duration,
-            );
-          },
-        ),
-      ),
+      title: 'Oublier la reprise ?',
+      question: 'La position de lecture de ce titre sera oubliée.',
+      confirmLabel: 'Oublier',
+      doneMessage: 'Reprise oubliée',
+      action: () async {
+        for (final u in _resumeUrls()) {
+          await WatchProgressService.clearProgress(u);
+        }
+      },
+      onUndo: () {
+        WatchProgressService.saveProgress(
+          snapshot.url,
+          snapshot.position,
+          snapshot.duration,
+        );
+      },
     );
   }
 

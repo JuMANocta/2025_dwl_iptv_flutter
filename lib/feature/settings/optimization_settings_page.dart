@@ -3,11 +3,11 @@ import 'package:aetherStream/core/navigation/playlist_visibility.dart';
 import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
-import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/storage_janitor.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/widgets/confirm_or_undo.dart';
 import 'package:aetherStream/widgets/memory_stats_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
@@ -99,29 +99,33 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
     PerformanceSettingsService.save(config);
   }
 
-  /// §undoReset — « Réinitialiser » est réversible 5 s : un tap sur l'icône de
-  /// l'AppBar effaçait sans retour des réglages ajustés un par un.
+  /// §undoReset + §undoTv — « Réinitialiser » reste réversible : un tap sur
+  /// l'icône de l'AppBar effaçait sans retour des réglages ajustés un par un.
+  ///
+  /// Au doigt : on applique, puis snackbar « Annuler » 5 s. À la télécommande :
+  /// on DEMANDE avant, car l'action d'une snackbar n'est pas atteignable au
+  /// D-pad (l'annulation y était décorative).
   ///
   /// ⚠️ Le snackbar survit à la page (il vit sur le `ScaffoldMessenger` racine) :
   /// si l'utilisateur a quitté avant d'annuler, on persiste sans `setState`.
-  void _resetWithUndo() {
+  Future<void> _resetWithUndo() async {
     final PerfConfig old = _config;
     if (old == PerfConfig.defaults) return; // rien à réinitialiser
-    _apply(PerfConfig.defaults);
-    AppSnackBar.show(
+    await confirmOrUndo(
       context,
-      'Réglages réinitialisés',
-      duration: const Duration(seconds: 5),
-      action: SnackBarAction(
-        label: 'Annuler',
-        onPressed: () {
-          if (mounted) {
-            _apply(old);
-          } else {
-            PerformanceSettingsService.save(old);
-          }
-        },
-      ),
+      title: 'Réinitialiser les réglages ?',
+      question:
+          'Tous les réglages d\'optimisation reviennent aux valeurs par défaut.',
+      confirmLabel: 'Réinitialiser',
+      doneMessage: 'Réglages réinitialisés',
+      action: () async => _apply(PerfConfig.defaults),
+      onUndo: () {
+        if (mounted) {
+          _apply(old);
+        } else {
+          PerformanceSettingsService.save(old);
+        }
+      },
     );
   }
 

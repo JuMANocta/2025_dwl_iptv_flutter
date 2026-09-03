@@ -565,23 +565,38 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
               }
               final accounts = snap.data ?? [];
               if (accounts.isEmpty) return _buildEmptyState(cs);
-              return RefreshIndicator(
-                onRefresh: _refresh,
-                child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 16, 12, 100),
-                  itemCount: accounts.length + 1, // +1 pour le bandeau info
-                  itemBuilder: (_, i) {
-                    if (i == 0) return _buildPriorityBanner(accounts, cs);
-                    final acc = accounts[i - 1];
-                    final isPriority = _priorityAccountId == acc.id;
-                    return _AccountCard(
-                      account: acc,
-                      isPriority: isPriority,
-                      onTap: () => _setPriority(acc.id),
-                      onMore: () => _showAccountMenu(acc),
-                      onReloaded: _refresh,
-                    );
-                  },
+              // §fabOverlap — Le FAB « Ajouter » flotte au-dessus de la liste
+              // et recouvrait le bouton ⋯ de la dernière carte (constaté sur
+              // TV). Le rembourrage bas du `ListView` ne suffit PAS à la
+              // télécommande : `ensureVisible` gare l'élément focalisé contre
+              // le bord BAS du *viewport*, donc sous le FAB, quel que soit le
+              // rembourrage du contenu. Sur TV on raccourcit donc le viewport
+              // lui-même (`Padding` À L'EXTÉRIEUR du scrollable) : plus rien ne
+              // peut être garé sous le bouton. Au doigt on garde le défilement
+              // sous le FAB (rendu Material habituel), avec la marge de contenu
+              // qui met la dernière carte hors de portée du bouton.
+              const double fabInset = 88; // 56 (FAB) + 16 marge + 16 respiration
+              final bool isTv = PlatformTv.isTv;
+              return Padding(
+                padding: EdgeInsets.only(bottom: isTv ? fabInset : 0),
+                child: RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView.builder(
+                    padding: EdgeInsets.fromLTRB(12, 16, 12, isTv ? 12 : 100),
+                    itemCount: accounts.length + 1, // +1 pour le bandeau info
+                    itemBuilder: (_, i) {
+                      if (i == 0) return _buildPriorityBanner(accounts, cs);
+                      final acc = accounts[i - 1];
+                      final isPriority = _priorityAccountId == acc.id;
+                      return _AccountCard(
+                        account: acc,
+                        isPriority: isPriority,
+                        onTap: () => _setPriority(acc.id),
+                        onMore: () => _showAccountMenu(acc),
+                        onReloaded: _refresh,
+                      );
+                    },
+                  ),
                 ),
               );
             },

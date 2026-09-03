@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
-import '../../core/utils/app_snackbar.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../widgets/confirm_or_undo.dart';
 import '../../widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
@@ -47,28 +47,32 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
     ThemeService.save(config);
   }
 
-  /// §undoReset — « Réinitialiser » est réversible 5 s : un thème réglé
+  /// §undoReset + §undoTv — « Réinitialiser » reste réversible : un thème réglé
   /// couleur par couleur ne doit pas disparaître sur un tap malheureux.
+  ///
+  /// Au doigt : on applique, puis snackbar « Annuler » 5 s. À la télécommande :
+  /// on DEMANDE avant, car l'action d'une snackbar n'est pas atteignable au
+  /// D-pad (l'annulation y était décorative).
   ///
   /// ⚠️ Le snackbar survit à la page (il vit sur le `ScaffoldMessenger` racine) :
   /// si l'utilisateur a quitté avant d'annuler, on persiste sans `setState`.
-  void _resetWithUndo() {
+  Future<void> _resetWithUndo() async {
     final AppThemeConfig old = _config;
-    _apply(AppThemeConfig.defaults);
-    AppSnackBar.show(
+    await confirmOrUndo(
       context,
-      'Réglages réinitialisés',
-      duration: const Duration(seconds: 5),
-      action: SnackBarAction(
-        label: 'Annuler',
-        onPressed: () {
-          if (mounted) {
-            _apply(old);
-          } else {
-            ThemeService.save(old);
-          }
-        },
-      ),
+      title: 'Réinitialiser le thème ?',
+      question:
+          'Toutes les couleurs et tous les effets reviennent aux valeurs par défaut.',
+      confirmLabel: 'Réinitialiser',
+      doneMessage: 'Réglages réinitialisés',
+      action: () async => _apply(AppThemeConfig.defaults),
+      onUndo: () {
+        if (mounted) {
+          _apply(old);
+        } else {
+          ThemeService.save(old);
+        }
+      },
     );
   }
 
