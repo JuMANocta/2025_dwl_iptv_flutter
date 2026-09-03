@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
@@ -17,6 +18,7 @@ import 'package:aetherStream/feature/settings/web_console/web_console_page.dart'
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
+import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 
@@ -352,7 +354,7 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
       } catch (e) {
         if (!mounted) return;
         messenger..hideCurrentSnackBar()..showSnackBar(
-          SnackBar(content: Text('Échec : $e')),
+          SnackBar(content: Text('Échec : ${describeError(e)}')),
         );
         return;
       }
@@ -374,7 +376,7 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
       } catch (e) {
         if (!mounted) return;
         messenger..hideCurrentSnackBar()..showSnackBar(
-          SnackBar(content: Text('Échec : $e')),
+          SnackBar(content: Text('Échec : ${describeError(e)}')),
         );
         return;
       }
@@ -820,7 +822,7 @@ class _AccountCardState extends State<_AccountCard> {
       widget.onReloaded();
     } catch (e) {
       if (!mounted) return;
-      messenger..hideCurrentSnackBar()..showSnackBar(SnackBar(content: Text('❌ Échec : $e')));
+      messenger..hideCurrentSnackBar()..showSnackBar(SnackBar(content: Text('❌ Échec : ${describeError(e)}')));
     } finally {
       if (mounted) setState(() => _reloading = false);
     }
@@ -858,220 +860,285 @@ class _AccountCardState extends State<_AccountCard> {
     final cs = Theme.of(context).colorScheme;
     final isPriority = widget.isPriority;
 
-    // §3c-3 — Wrap focus TV en decorateOnly : on garde la bordure isPriority
-    // (signale le compte principal) ET on ajoute la bordure de focus glow
-    // Matrix au D-pad. Le bouton Recharger et ⋯ restent focusables séparément.
+    // §3c-3 → §dpadChildFocus — Le conteneur visuel (fond + bordure isPriority
+    // + glow) reste UN bloc ; à l'intérieur, la zone « choisir ce compte » et
+    // la rangée d'actions (Recharger / ⋯) sont des focusables FRÈRES, jamais
+    // imbriqués, à rectangles disjoints (la rangée est SOUS la zone).
+    //
+    // ⚠️ L'ancien commentaire disait « Recharger et ⋯ restent focusables
+    // séparément » : vrai sous dpad 2.x, FAUX depuis 3.0. `DpadFocusable`
+    // enveloppe son enfant d'un `ExcludeFocus` → tout bouton imbriqué sort de
+    // la traversée (modifier / vider le cache / SUPPRIMER / recharger étaient
+    // inatteignables à la télécommande). Et `excludeChildFocus: false` ne
+    // corrigerait rien : `DpadTraversalPolicy._isCandidate` exige que le
+    // candidat DÉPASSE la source sur l'axe — un rect CONTENU dans la carte n'est
+    // candidat dans aucune direction. Le correctif est donc structurel.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: FocusableCard(
-        decorateOnly: true,
-        // §tvErgo — tuile pleine largeur : pas de scale (sinon débordement écran).
-        scaleOnFocus: false,
-        onTap: widget.onTap,
+      child: Material(
+        color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(16),
-        child: Material(
-          color: cs.surfaceContainer,
-          borderRadius: BorderRadius.circular(16),
-          child: InkWell(
-            onTap: widget.onTap,
-            // §tvErgo — InkWell non focusable : évite le doublon d'arrêt D-pad
-            // (FocusableCard + InkWell sur la même action) tout en gardant les
-            // boutons imbriqués (Recharger / ⋯) focusables et le tap tactile.
-            canRequestFocus: false,
+        child: Ink(
+          decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            splashColor: kAccentPrimary.withAlpha(30),
-            highlightColor: kAccentPrimary.withAlpha(15),
-            child: Ink(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isPriority ? kAccentPrimary : cs.outline.withAlpha(60),
-                  width: isPriority ? 1.5 : 1,
+            border: Border.all(
+              color: isPriority ? kAccentPrimary : cs.outline.withAlpha(60),
+              width: isPriority ? 1.5 : 1,
+            ),
+            boxShadow: isPriority
+                ? [
+                    BoxShadow(
+                        color: kAccentPrimary.withAlpha(40), blurRadius: 14),
+                  ]
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Zone « choisir ce compte » : un seul arrêt D-pad ──────────
+              FocusableCard(
+                decorateOnly: true,
+                // §tvErgo — tuile pleine largeur : pas de scale (sinon
+                // débordement écran).
+                scaleOnFocus: false,
+                onTap: widget.onTap,
+                // Coins arrondis en HAUT seulement : la zone épouse le bord de
+                // la carte, la rangée d'actions la prolonge en dessous.
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
+                child: InkWell(
+                  onTap: widget.onTap,
+                  // §tvErgo — InkWell non focusable : évite le doublon d'arrêt
+                  // D-pad (FocusableCard + InkWell sur la même action) tout en
+                  // gardant le tap tactile.
+                  canRequestFocus: false,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(16)),
+                  splashColor: kAccentPrimary.withAlpha(30),
+                  highlightColor: kAccentPrimary.withAlpha(15),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                    child: _buildInfoColumn(context),
+                  ),
                 ),
-                boxShadow: isPriority
-                    ? [
-                        BoxShadow(
-                            color: kAccentPrimary.withAlpha(40), blurRadius: 14),
-                      ]
-                    : null,
               ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              // ── Rangée d'actions : FRÈRE de la zone, sous elle ────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                child: _buildActionsRow(context),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// En-tête (radio principal + label + chips) + compteurs + bloc Xtream.
+  /// Aucun bouton ici : tout ce qui est actionnable vit dans [_buildActionsRow].
+  Widget _buildInfoColumn(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isPriority = widget.isPriority;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── En-tête : radio principal + label + chips ────────────────────
+        Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                color: isPriority
+                    ? kAccentPrimary.withAlpha(30)
+                    : cs.surfaceContainerHighest,
+                border: Border.all(
+                  color: isPriority
+                      ? kAccentPrimary
+                      : cs.outline.withAlpha(60),
+                  width: 1,
+                ),
+              ),
+              child: Icon(
+                isPriority
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked,
+                color:
+                    isPriority ? kAccentPrimary : cs.onSurfaceVariant,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.account.label,
+                    style: TextStyle(
+                      fontWeight: isPriority
+                          ? FontWeight.bold
+                          : FontWeight.w600,
+                      fontSize: 15,
+                      color: cs.onSurface,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  // §16 + §17b — chips état + expiration.
+                  _AccountStateChips(
+                    accountId: widget.account.id,
+                    isPriority: isPriority,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        // ── Stats playlist (live via ParsedPlaylistService) ─────
+        // §secondaryCounts — Les compteurs ne dépendent plus de la
+        // présence du compte EN MÉMOIRE.
+        //
+        // ⚠️ Deux défauts corrigés d'un coup :
+        //   1. `getAccount()` **touche `_lastAccess`** — consulter
+        //      les stats repoussait le déchargement du compte,
+        //      alors que la page n'est pas un usage de la liste.
+        //   2. On parcourait jusqu'à 153 000 entrées à CHAQUE
+        //      reconstruction, juste pour compter — et le résultat
+        //      tombait à **zéro** dès que le compte était déchargé,
+        //      donnant l'impression d'une liste vide.
+        //
+        // `countsOf` lit les listes pré-splittées si le compte est
+        // en mémoire, sinon l'EN-TÊTE du cache disque (une seule
+        // ligne décompressée, mémoïsée).
+        ListenableBuilder(
+          listenable: ParsedPlaylistService.version,
+          builder: (context, _) {
+            return FutureBuilder<PlaylistCounts?>(
+              future:
+                  ParsedPlaylistService.countsOf(widget.account.id),
+              builder: (context, snap) {
+                final c = snap.data;
+                return Column(
                   children: [
-                    // ── En-tête : radio principal + label + chips + ⋯ ──────
-                    Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            color: isPriority
-                                ? kAccentPrimary.withAlpha(30)
-                                : cs.surfaceContainerHighest,
-                            border: Border.all(
-                              color: isPriority
-                                  ? kAccentPrimary
-                                  : cs.outline.withAlpha(60),
-                              width: 1,
-                            ),
-                          ),
-                          child: Icon(
-                            isPriority
-                                ? Icons.check_circle
-                                : Icons.radio_button_unchecked,
-                            color:
-                                isPriority ? kAccentPrimary : cs.onSurfaceVariant,
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.account.label,
-                                style: TextStyle(
-                                  fontWeight: isPriority
-                                      ? FontWeight.bold
-                                      : FontWeight.w600,
-                                  fontSize: 15,
-                                  color: cs.onSurface,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              // §16 + §17b — chips état + expiration.
-                              _AccountStateChips(
-                                accountId: widget.account.id,
-                                isPriority: isPriority,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _subtitle,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: cs.onSurfaceVariant,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.more_vert,
-                              color: cs.onSurfaceVariant.withAlpha(180)),
-                          onPressed: widget.onMore,
-                          tooltip: 'Actions',
-                        ),
-                      ],
+                    _CountsRow(
+                      films: c?.films,
+                      series: c?.series,
+                      tv: c?.tv,
                     ),
-                    const SizedBox(height: 14),
-                    // ── Stats playlist (live via ParsedPlaylistService) ─────
-                    // §secondaryCounts — Les compteurs ne dépendent plus de la
-                    // présence du compte EN MÉMOIRE.
-                    //
-                    // ⚠️ Deux défauts corrigés d'un coup :
-                    //   1. `getAccount()` **touche `_lastAccess`** — consulter
-                    //      les stats repoussait le déchargement du compte,
-                    //      alors que la page n'est pas un usage de la liste.
-                    //   2. On parcourait jusqu'à 153 000 entrées à CHAQUE
-                    //      reconstruction, juste pour compter — et le résultat
-                    //      tombait à **zéro** dès que le compte était déchargé,
-                    //      donnant l'impression d'une liste vide.
-                    //
-                    // `countsOf` lit les listes pré-splittées si le compte est
-                    // en mémoire, sinon l'EN-TÊTE du cache disque (une seule
-                    // ligne décompressée, mémoïsée).
-                    ListenableBuilder(
-                      listenable: ParsedPlaylistService.version,
-                      builder: (context, _) {
-                        return FutureBuilder<PlaylistCounts?>(
-                          future:
-                              ParsedPlaylistService.countsOf(widget.account.id),
-                          builder: (context, snap) {
-                            final c = snap.data;
-                            return Column(
-                              children: [
-                                _CountsRow(
-                                  films: c?.films,
-                                  series: c?.series,
-                                  tv: c?.tv,
-                                ),
-                                _PlaybackHealthLine(
-                                    accountId: widget.account.id),
-                                const SizedBox(height: 12),
-                                _FileStatsBlock(
-                                  accountId: widget.account.id,
-                                  hasParsed: c != null,
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      },
-                    ),
-                    // §17c — Le bloc « Expiration / Connexions » était réservé
-                    // aux comptes en mode `separate`. Ce garde-fou est resté en
-                    // place alors que §17a a justement appris à
-                    // `fetchAccountInfo` à extraire les identifiants d'une URL
-                    // COMPLÈTE (la plupart des « .m3u complets » sont du Xtream
-                    // déguisé, `get.php?username=…&password=…`).
-                    //
-                    // Constaté sur appareil avec 4 listes : le journal dit
-                    // « ✅ Infos du compte 'Platinium' récupérées », mais la
-                    // carte n'affichait ni expiration ni connexions — parce
-                    // qu'elle est en mode URL complète. Seul Xeno, en mode
-                    // separate, les montrait.
-                    //
-                    // On s'aligne donc sur la vraie condition : le compte
-                    // sait-il produire une URL `player_api.php` ? Un M3U qui
-                    // n'est pas du Xtream déguisé renvoie `null` et reste,
-                    // comme avant, sans bloc.
-                    if (widget.account.buildPlayerApiUrl() != null) ...[
-                      const SizedBox(height: 10),
-                      _XtreamInfoBlock(future: _accountInfoFuture),
-                    ],
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _reloading ? null : _reload,
-                        icon: _reloading
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.black,
-                                ),
-                              )
-                            : const Icon(Icons.refresh),
-                        label: Text(
-                          _reloading
-                              ? 'Téléchargement…'
-                              : 'Recharger la playlist',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: kAccentPrimary,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                      ),
+                    _PlaybackHealthLine(
+                        accountId: widget.account.id),
+                    const SizedBox(height: 12),
+                    _FileStatsBlock(
+                      accountId: widget.account.id,
+                      hasParsed: c != null,
                     ),
                   ],
-                ),
+                );
+              },
+            );
+          },
+        ),
+        // §17c — Le bloc « Expiration / Connexions » était réservé
+        // aux comptes en mode `separate`. Ce garde-fou est resté en
+        // place alors que §17a a justement appris à
+        // `fetchAccountInfo` à extraire les identifiants d'une URL
+        // COMPLÈTE (la plupart des « .m3u complets » sont du Xtream
+        // déguisé, `get.php?username=…&password=…`).
+        //
+        // Constaté sur appareil avec 4 listes : le journal dit
+        // « ✅ Infos du compte 'Platinium' récupérées », mais la
+        // carte n'affichait ni expiration ni connexions — parce
+        // qu'elle est en mode URL complète. Seul Xeno, en mode
+        // separate, les montrait.
+        //
+        // On s'aligne donc sur la vraie condition : le compte
+        // sait-il produire une URL `player_api.php` ? Un M3U qui
+        // n'est pas du Xtream déguisé renvoie `null` et reste,
+        // comme avant, sans bloc.
+        if (widget.account.buildPlayerApiUrl() != null) ...[
+          const SizedBox(height: 10),
+          _XtreamInfoBlock(future: _accountInfoFuture),
+        ],
+      ],
+    );
+  }
+
+  /// §dpadChildFocus — « Recharger » et ⋯, chacun dans sa `FocusableChip`.
+  ///
+  /// Le bouton Material à l'intérieur garde son `onPressed` pour le TACTILE ;
+  /// au D-pad il est exclu par l'`ExcludeFocus` du wrapper (voulu : un seul
+  /// arrêt), c'est la chip qui reçoit le focus, peint le halo et relaie OK vers
+  /// la même action. Pendant un rechargement, le bouton est désactivé ET la chip
+  /// sort de la traversée (`enabled: !_reloading`).
+  Widget _buildActionsRow(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(
+          child: FocusableChip(
+            enabled: !_reloading,
+            onTap: _reload,
+            borderRadius: BorderRadius.circular(12),
+            child: FilledButton.icon(
+              onPressed: _reloading ? null : _reload,
+              icon: _reloading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.black,
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+              label: Text(
+                _reloading ? 'Téléchargement…' : 'Recharger la playlist',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: kAccentPrimary,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                // Coins alignés sur le halo de la chip (le stadium M3 par
+                // défaut laisserait le halo déborder dans les angles).
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ),
         ),
-      ),
+        const SizedBox(width: 8),
+        FocusableChip(
+          onTap: widget.onMore,
+          borderRadius: BorderRadius.circular(12),
+          child: IconButton.outlined(
+            icon: Icon(Icons.more_vert,
+                color: cs.onSurfaceVariant.withAlpha(180)),
+            onPressed: widget.onMore,
+            tooltip: 'Actions',
+            style: IconButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              side: BorderSide(color: cs.outline.withAlpha(60)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
+import '../../core/utils/app_snackbar.dart';
 import '../../core/utils/platform_tv.dart';
 import '../../widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -46,6 +47,31 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
     ThemeService.save(config);
   }
 
+  /// §undoReset — « Réinitialiser » est réversible 5 s : un thème réglé
+  /// couleur par couleur ne doit pas disparaître sur un tap malheureux.
+  ///
+  /// ⚠️ Le snackbar survit à la page (il vit sur le `ScaffoldMessenger` racine) :
+  /// si l'utilisateur a quitté avant d'annuler, on persiste sans `setState`.
+  void _resetWithUndo() {
+    final AppThemeConfig old = _config;
+    _apply(AppThemeConfig.defaults);
+    AppSnackBar.show(
+      context,
+      'Réglages réinitialisés',
+      duration: const Duration(seconds: 5),
+      action: SnackBarAction(
+        label: 'Annuler',
+        onPressed: () {
+          if (mounted) {
+            _apply(old);
+          } else {
+            ThemeService.save(old);
+          }
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -60,7 +86,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
           IconButton(
             icon: const Icon(Icons.restart_alt),
             tooltip: 'Réinitialiser',
-            onPressed: () => _apply(AppThemeConfig.defaults),
+            onPressed: _resetWithUndo,
           ),
         ],
       ),

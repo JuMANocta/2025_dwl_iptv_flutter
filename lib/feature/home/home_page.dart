@@ -10,6 +10,7 @@ import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
+import 'package:aetherStream/data/services/playlist_reload_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/search_history_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
@@ -18,6 +19,7 @@ import 'package:aetherStream/data/services/tmdb_poster_cache.dart';
 import 'package:aetherStream/data/services/tmdb_group_alias_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
+import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/feature/search/actor_details_page.dart';
@@ -25,6 +27,7 @@ import 'package:aetherStream/feature/search/details_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/widgets/aether_image.dart';
+import 'package:aetherStream/widgets/confirm_reload_dialog.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/measured_quality_badge.dart';
@@ -37,6 +40,7 @@ import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:dpad/dpad.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
+import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/main.dart' show appRouteObserver;
 
 // §lotD — Découpage du fichier (3400+ lignes) en `part` : même librairie, donc
@@ -125,6 +129,10 @@ class _HomePageState extends State<HomePage> with RouteAware {
   /// [widget.initialData], puis on l'aligne sur le notifier.
   late String _activeAccountId;
   late String _activeAccountName;
+
+  /// §reloadKeep — Vrai pendant un rechargement lancé par le ↻ de l'AppBar :
+  /// le bouton est désactivé, un second tap ne relance pas un téléchargement.
+  bool _refreshing = false;
 
   // ── État du mode recherche ─────────────────────────────────────────────
   final TextEditingController _searchCtrl = TextEditingController();
@@ -426,19 +434,44 @@ class _HomePageState extends State<HomePage> with RouteAware {
     );
   }
 
-  /// §refreshHome — Vide le cache disque du compte actif, re-télécharge le M3U
-  /// (via le pipeline §xtreamApi qui retentera la JSON API puis fallback get.php)
-  /// et re-parse. Tient l'utilisateur au courant via snackbars succès/erreur.
+  /// §refreshHome — Re-télécharge la liste du compte actif (pipeline §xtreamApi :
+  /// JSON API puis fallback get.php) et la re-parse. Tient l'utilisateur au
+  /// courant via snackbars succès/erreur.
+  ///
+  /// §reloadKeep — Passe par `PlaylistReloadService.reloadAccount`, le MÊME
+  /// chemin que « Recharger » d'une carte : plus de `deleteForAccountId` à la
+  /// main avant le téléchargement, donc un échec réseau laisse l'ancienne liste
+  /// en place au lieu de vider l'accueil. Même confirmation si la liste a moins
+  /// de 24 h, même anti-double-tap ([_refreshing]).
   Future<void> _refreshActivePlaylist() async {
+    if (_refreshing) return;
+    final account = await StreamAccountService.getAccount(_activeAccountId);
+    if (!mounted) return;
+    if (account == null) {
+      AppSnackBar.show(context, 'Aucun compte actif à recharger');
+      return;
+    }
+
+    final Duration? age = await PlaylistReloadService.cacheAge(account.id);
+    if (!mounted) return;
+    if (PlaylistReloadService.shouldConfirm(age)) {
+      final bool? ok = await showConfirmReloadDialog(
+        context,
+        accountLabel: account.label,
+        age: age!,
+      );
+      if (ok != true || !mounted) return;
+    }
+
+    setState(() => _refreshing = true);
     final messenger = ScaffoldMessenger.of(context);
     AppSnackBar.show(context, 'Rafraîchissement de la playlist…',
         duration: const Duration(seconds: 4));
     try {
-      await PlaylistService.deleteForAccountId(_activeAccountId);
-      ParsedPlaylistService.invalidate(_activeAccountId);
-      final path = await PlaylistService.downloadCurrentM3U();
-      await ParsedPlaylistService.loadActive(
-          _activeAccountId, _activeAccountName, path);
+      // Le compte actif = le compte principal → chemin `downloadCurrentM3U()`
+      // (messages d'erreur précis). `reloadFromDisk` swap la mémoire en une
+      // frame et bumpe `ParsedPlaylistService.version` → la home rebuild seule.
+      await PlaylistReloadService.reloadAccount(account, isPriority: true);
       if (!mounted) return;
       messenger
         ..hideCurrentSnackBar()
@@ -448,12 +481,15 @@ class _HomePageState extends State<HomePage> with RouteAware {
         ));
     } catch (e) {
       if (!mounted) return;
+      // §userError — jamais `$e` brut à l'écran (URL + identifiants Xtream).
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-          content: Text('❌ Échec : $e'),
+          content: Text('❌ ${describeError(e)}'),
           duration: const Duration(seconds: 4),
         ));
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
     }
   }
 
@@ -495,9 +531,16 @@ class _HomePageState extends State<HomePage> with RouteAware {
                 // §refreshHome — Rafraîchissement du compte actif sans passer
                 // par Paramètres → Comptes IPTV.
                 IconButton(
-                  icon: const Icon(Icons.refresh),
+                  icon: _refreshing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
                   tooltip: 'Recharger la playlist',
-                  onPressed: _refreshActivePlaylist,
+                  // §reloadKeep — désactivé pendant le rechargement (anti-double-tap).
+                  onPressed: _refreshing ? null : _refreshActivePlaylist,
                 ),
                 if (!PlatformTv.isTv)
                   IconButton(
@@ -858,14 +901,19 @@ class _AnimatedTabIndicator extends StatelessWidget {
                     // §3c Phase 1 — FocusableChip rend l'onglet atteignable au
                     // D-pad (avant : GestureDetector tap-only → impossible de
                     // changer de section Séries/Films/Chaînes à la télécommande).
+                    //
+                    // §emptyTab — Un onglet VIDE reste grisé mais focusable et
+                    // tapable : il mène à l'`EmptyState` de la page (explication
+                    // + CTA « Gérer les comptes ») au lieu de ne rien faire. Les
+                    // trois `_TypePage` existent toujours dans la `PageView`,
+                    // et `_buildEmpty` garde la barre d'onglets pour revenir.
                     return Expanded(
                       child: FocusableChip(
-                        enabled: !isEmpty,
-                        onTap: isEmpty ? null : () => onTap(i),
+                        onTap: () => onTap(i),
                         borderRadius: BorderRadius.circular(8),
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: isEmpty ? null : () => onTap(i),
+                          onTap: () => onTap(i),
                           child: AnimatedDefaultTextStyle(
                             duration: const Duration(milliseconds: 220),
                             curve: Curves.easeOut,
@@ -1838,22 +1886,40 @@ class _TypePageState extends State<_TypePage> {
     );
   }
 
+  /// §emptyHome — État vide d'un onglet, aligné sur `EmptyState` (même widget
+  /// que la recherche et les téléchargements) : un titre, une explication et
+  /// un CTA vers les comptes — avant, une icône grise et deux mots, sans issue.
+  ///
+  /// ⚠️ La barre Séries/Films/Chaînes reste affichée au-dessus : depuis
+  /// §emptyTab un onglet vide est atteignable, et sur TV (pas de swipe) c'est
+  /// la SEULE façon de revenir sur un onglet plein. Sans hero pour la porter,
+  /// elle descend sous l'AppBar transparente (`kToolbarHeight`) pour ne pas
+  /// passer sous les icônes ↻/⚙️.
   Widget _buildEmpty(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final (icon, label) = switch (widget.type) {
       M3uContentType.movie  => (Icons.movie_outlined, 'Aucun film'),
       M3uContentType.series => (Icons.tv_outlined, 'Aucune série'),
       M3uContentType.tv     => (Icons.live_tv_outlined, 'Aucune chaîne'),
     };
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 64, color: cs.onSurfaceVariant.withAlpha(120)),
-          const SizedBox(height: 12),
-          Text(label, style: TextStyle(color: cs.onSurfaceVariant)),
-        ],
+    final empty = EmptyState(
+      icon: icon,
+      title: label,
+      subtitle: 'Aucune de tes listes n\'en contient. '
+          'Recharge une liste ou ajoute un compte.',
+      ctaLabel: 'Gérer les comptes',
+      ctaIcon: Icons.manage_accounts_outlined,
+      onCtaTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AccountsPage()),
       ),
+    );
+    final tabs = widget.tabsBuilder;
+    if (tabs == null) return empty;
+    return Column(
+      children: [
+        SizedBox(height: widget.topInset + kToolbarHeight),
+        tabs(context),
+        Expanded(child: empty),
+      ],
     );
   }
 

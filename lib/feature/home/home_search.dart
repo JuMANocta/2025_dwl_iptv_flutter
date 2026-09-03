@@ -958,7 +958,32 @@ class _SearchEmptyState extends StatelessWidget {
                     ),
                     const Spacer(),
                     TextButton(
-                      onPressed: () => SearchHistoryService.clear(),
+                      // §undoClear — Effacer l'historique est réversible 5 s :
+                      // snapshot AVANT, puis « Annuler » rejoue `record()` du
+                      // plus ANCIEN au plus récent (record insère en tête, donc
+                      // l'ordre d'origine est reconstitué). `version` bumpe à
+                      // chaque appel → la liste se redessine d'elle-même.
+                      onPressed: () async {
+                        final List<String> snapshot = SearchHistoryService.all;
+                        if (snapshot.isEmpty) return;
+                        final messenger = ScaffoldMessenger.of(context);
+                        await SearchHistoryService.clear();
+                        AppSnackBar.showVia(
+                          messenger,
+                          SnackBar(
+                            content: const Text('Historique effacé'),
+                            duration: const Duration(seconds: 5),
+                            action: SnackBarAction(
+                              label: 'Annuler',
+                              onPressed: () async {
+                                for (final q in snapshot.reversed) {
+                                  await SearchHistoryService.record(q);
+                                }
+                              },
+                            ),
+                          ),
+                        );
+                      },
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                         minimumSize: const Size(0, 28),

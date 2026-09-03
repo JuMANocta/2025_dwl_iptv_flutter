@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
 import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -43,7 +44,7 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('❌ Échec : $e')),
+        SnackBar(content: Text('❌ Échec : ${describeError(e)}')),
       );
     } finally {
       if (mounted) setState(() => _exporting = false);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/storage_janitor.dart';
@@ -85,6 +86,32 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
     PerformanceSettingsService.save(config);
   }
 
+  /// §undoReset — « Réinitialiser » est réversible 5 s : un tap sur l'icône de
+  /// l'AppBar effaçait sans retour des réglages ajustés un par un.
+  ///
+  /// ⚠️ Le snackbar survit à la page (il vit sur le `ScaffoldMessenger` racine) :
+  /// si l'utilisateur a quitté avant d'annuler, on persiste sans `setState`.
+  void _resetWithUndo() {
+    final PerfConfig old = _config;
+    if (old == PerfConfig.defaults) return; // rien à réinitialiser
+    _apply(PerfConfig.defaults);
+    AppSnackBar.show(
+      context,
+      'Réglages réinitialisés',
+      duration: const Duration(seconds: 5),
+      action: SnackBarAction(
+        label: 'Annuler',
+        onPressed: () {
+          if (mounted) {
+            _apply(old);
+          } else {
+            PerformanceSettingsService.save(old);
+          }
+        },
+      ),
+    );
+  }
+
   /// §lazyUnload — Décharge immédiatement les comptes secondaires de la
   /// mémoire (caches disque conservés → rechargement ~50 ms au prochain accès).
   Future<void> _freeMemory() async {
@@ -130,7 +157,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           IconButton(
             icon: const Icon(Icons.restart_alt),
             tooltip: 'Réinitialiser',
-            onPressed: () => _apply(PerfConfig.defaults),
+            onPressed: _resetWithUndo,
           ),
         ],
       ),

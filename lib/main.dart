@@ -105,6 +105,16 @@ void main() async {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]));
+    // §dpadChildFocus — Sur TV, les surbrillances de focus MATERIAL (voile des
+    // `ListTile`, anneau des boutons) ne se peignaient JAMAIS : Android TV se
+    // présente comme `android`, donc `FocusManager.highlightMode` démarre à
+    // `touch` et rien ne le fait basculer. Constaté à l'AVD TV : le focus
+    // passait bien d'une tuile à l'autre du menu ⋯ (traceur), deux captures
+    // byte-à-byte identiques. Une télévision n'a pas de doigt : on impose le
+    // mode clavier. Sans effet au tactile — §touchNoFocus (téléphone) est
+    // gouverné par la stratégie automatique, inchangée.
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTraditional;
   }
 
   runApp(const MyApp());

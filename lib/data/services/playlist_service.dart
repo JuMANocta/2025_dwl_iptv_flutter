@@ -170,6 +170,7 @@ class PlaylistService {
   static Future<({String? path, bool downloaded})> ensureDownloadedForAccount(
     StreamAccount acc, {
     bool respectTtl = true,
+    bool force = false,
   }) async {
     final existing = await pathForAccountId(acc.id);
     final file = File(existing);
@@ -179,12 +180,18 @@ class PlaylistService {
         ? DateTime.now().difference(await file.lastModified())
         : null;
 
-    if (!needsDownload(
-      exists: exists,
-      lengthBytes: length,
-      age: age,
-      respectTtl: respectTtl,
-    )) {
+    // §reloadKeep — [force] = rechargement demandé par l'utilisateur : on
+    // télécharge SANS regarder l'existant, mais sans le supprimer non plus —
+    // il reste la liste de secours si le serveur ne répond pas. C'est ce qui
+    // remplace l'ancien « supprimer puis télécharger » de
+    // `PlaylistReloadService`, qui laissait l'utilisateur sans liste sur échec.
+    if (!force &&
+        !needsDownload(
+          exists: exists,
+          lengthBytes: length,
+          age: age,
+          respectTtl: respectTtl,
+        )) {
       return (path: existing, downloaded: false);
     }
     if (exists) {
