@@ -12,6 +12,8 @@ import 'data/services/storage_janitor.dart';
 import 'data/services/playback_health_service.dart';
 import 'data/models/stream_account.dart';
 import 'data/services/parsed_playlist_service.dart';
+import 'data/services/playlist_fleet_service.dart';
+import 'data/services/load_failure.dart';
 import 'data/services/watch_progress_service.dart';
 import 'data/services/search_history_service.dart';
 import 'data/services/last_watched_channel_service.dart';
@@ -49,6 +51,7 @@ import 'core/utils/platform_tv.dart';
 import 'core/platform/storage_service.dart';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:window_manager/window_manager.dart';
+import 'core/utils/host_gate.dart';
 import 'package:dpad/dpad.dart';
 
 /// Clé globale pour le Navigator, permettant une navigation programmatique sans `BuildContext`.
@@ -111,6 +114,10 @@ void main() async {
   // `PlatformTv.isTv` de façon synchrone dès leur premier build.
   await PlatformTv.init();
   await ThemeService.load();
+  // §hostGate — La profondeur de file par fournisseur vient des réglages :
+  // 0 = déduire de `max_connections` quand on l'aura lu, sinon on force.
+  final int hmc = PerformanceSettingsService.config.value.hostMaxConcurrent;
+  if (hmc >= 1) HostGate.defaultLimit = hmc;
 
   // §3c-bis — Lock landscape global sur TV. La TV n'a pas de mode portrait
   // physique, mais Flutter peut quand même appliquer `setPreferredOrientations`
@@ -122,6 +129,16 @@ void main() async {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]));
+    // §dpadChildFocus — Sur TV, les surbrillances de focus MATERIAL (voile des
+    // `ListTile`, anneau des boutons) ne se peignaient JAMAIS : Android TV se
+    // présente comme `android`, donc `FocusManager.highlightMode` démarre à
+    // `touch` et rien ne le fait basculer. Constaté à l'AVD TV : le focus
+    // passait bien d'une tuile à l'autre du menu ⋯ (traceur), deux captures
+    // byte-à-byte identiques. Une télévision n'a pas de doigt : on impose le
+    // mode clavier. Sans effet au tactile — §touchNoFocus (téléphone) est
+    // gouverné par la stratégie automatique, inchangée.
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTraditional;
   }
 
   runApp(const MyApp());
@@ -504,6 +521,15 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // un téléviseur il n'y a pas de logcat, et l'écran de boot disparaît au
     // moment précis où l'on voudrait lire ses chiffres.
     BootStatus.dumpToLog();
+    // §fleetLoad — LA REPRISE QUI N'EXISTAIT PAS. Jusqu'ici, un compte qui
+    // avait débordé du budget, échoué, ou été sauté au préchargement n'était
+    // plus JAMAIS rechargé de la session : `_hydrateOne` n'était jamais
+    // rappelé, et le seul filet (`preloadOthersFromDisk`) ne sait pas analyser.
+    // Une passe séquentielle, non attendue, une fois l'accueil affiché.
+    unawaited(Future.delayed(
+      const Duration(seconds: 4),
+      () => PlaylistFleetService.ensureAllLoaded(reason: 'reprise'),
+    ));
     // §bootHydrate — Le guide des chaînes, une fois le boot fini (cf. `main`).
     Future.delayed(
       const Duration(seconds: 3),
@@ -610,12 +636,23 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       final StreamAccount acc = pending[i];
       final Duration left = deadline.difference(DateTime.now());
       if (left <= Duration.zero) {
-        // Budget épuisé : le reste reprend le comportement historique —
-        // silencieux, en arrière-plan.
-        debugPrint('⏳ §bootHydrate : budget épuisé, « ${acc.label} » passe en '
-            'arrière-plan.');
-        started.add(_hydrateOne(acc));
-        continue;
+        // §fleetLoad — ⚠️ L'ancien code lançait ici tous les comptes restants
+        // d'un coup, SANS `await`. La rafale se déclenchait précisément quand
+        // le fournisseur ramait : la lenteur fabriquait le parallélisme qui
+        // aggravait la lenteur, sur des panels limités à UNE connexion.
+        // On s'arrête net ; le réconciliateur reprend après le boot, et les
+        // comptes restants sont marqués « en attente », plus perdus en silence.
+        debugPrint('⏳ §bootHydrate : budget épuisé — « ${acc.label} » et la '
+            'suite sont reportées au réconciliateur.');
+        for (final StreamAccount rest in pending.sublist(i)) {
+          ParsedPlaylistService.setLoadState(
+            rest.id,
+            AccountLoadState.notLoaded,
+            kind: LoadFailureKind.deferred,
+            detail: 'budget de démarrage épuisé',
+          );
+        }
+        break;
       }
       BootStatus.set(
         '// mise à jour ${i + 1}/${pending.length} · ${acc.label}…',

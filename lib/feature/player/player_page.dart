@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'mpv_playback_engine.dart';
@@ -11,6 +12,7 @@ import 'package:aetherStream/data/services/track_preferences_service.dart';
 import 'package:aetherStream/data/services/remote_control_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
+import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'media3_engine.dart';
 import 'playback_engine.dart';
@@ -195,6 +197,16 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// Vrai pendant qu'une reprise en place est en vol : empêche qu'une rafale
   /// d'erreurs (§retryBurst) en déclenche plusieurs à la fois.
   bool _recovering = false;
+
+  /// §recoverLabel — Ce que le lecteur est en train de faire pour se remettre
+  /// d'une coupure, en clair pour l'utilisateur. `null` = rien à dire.
+  ///
+  /// Avant : reprise en place puis 3 réouvertures espacées de 5 s pouvaient
+  /// durer jusqu'à 30 s sous un spinner MUET — l'utilisateur ne savait pas si
+  /// l'app travaillait ou avait planté. Lu par `_BufferingOverlay`, qui
+  /// s'affiche dès que la valeur est non nulle, même si le moteur ne signale
+  /// pas de mise en tampon.
+  final ValueNotifier<String?> _recoveryLabel = ValueNotifier<String?>(null);
   // Chemin courant utilisé pour le retry (peut alterner .m3u8 ↔ .ts).
   late String _currentPath;
 
@@ -367,6 +379,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         }
         _inPlaceRecoveries = 0;
         _retryCount = 0;
+        _recoveryLabel.value = null; // §recoverLabel — ça joue, plus rien à dire
       } else {
         _releaseWakelock();
       }
@@ -560,6 +573,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // §audioFallback — Les pistes écartées valaient pour le média PRÉCÉDENT.
     _rejectedAudioIds.clear();
     _audioGaveUp = false;
+    _recoveryLabel.value = null; // §recoverLabel — idem, autre média
 
     await _openMedia();
     if (!mounted) return;
@@ -882,6 +896,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (_inPlaceRecoveries < _maxInPlaceRecoveries) {
       _inPlaceRecoveries++;
       _recovering = true;
+      _recoveryLabel.value = 'Reprise de la lecture… '
+          '($_inPlaceRecoveries/$_maxInPlaceRecoveries)';
       debugPrint('🔁 §liveRecover — tentative de reprise en place '
           '$_inPlaceRecoveries/$_maxInPlaceRecoveries');
       _ctrl.recoverInPlace().then((ok) {
@@ -913,19 +929,27 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       }
       debugPrint(
           '⚠️ PlayerPage: erreur stream — retry $_retryCount/$_maxRetries dans 5s\n$error');
+      _recoveryLabel.value =
+          'Reconnexion dans 5 s… ($_retryCount/$_maxRetries)';
       // Timer trackable → on peut l'annuler quand l'app passe en arrière-plan.
       _pendingRetryTimer?.cancel();
       _pendingRetryTimer = Timer(const Duration(seconds: 5), () {
         _pendingRetryTimer = null;
-        if (mounted) _openMedia();
+        if (!mounted) return;
+        _recoveryLabel.value = 'Reconnexion… ($_retryCount/$_maxRetries)';
+        _openMedia();
       });
     } else {
       debugPrint(
           '❌ PlayerPage: échec définitif après $_maxRetries tentatives\n$error');
+      // §recoverLabel — l'écran d'erreur prend le relais, l'overlay se tait.
+      _recoveryLabel.value = null;
       if (mounted) {
         setState(() {
           _hasError = true;
-          _errorMessage = error;
+          // §userError — `error` peut être le `toString()` d'une exception
+          // d'ouverture (l. _openMedia) : on n'affiche jamais ce texte brut.
+          _errorMessage = describeError(error);
         });
       }
     }
@@ -1028,6 +1052,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _retryCount = 0;
       _currentPath = _media.path;
     });
+    _recoveryLabel.value = null; // §recoverLabel — nouveau départ, compteur à zéro
     _openMedia();
   }
 
@@ -1071,8 +1096,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _releaseWakelock();
     _ctrl.dispose();
+    _recoveryLabel.dispose();
     BrightnessService.reset();
-    
     // §3c-bis — Sur TV, la sortie du player NE DOIT PAS basculer en portrait
     // (la TV n'a pas de portrait, ça casserait toute l'UI). On reste en
     // landscape. Sur mobile, on restaure le comportement portrait par défaut.
@@ -1246,7 +1271,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // §1i — Overlay buffering central : visible quand le player charge
             // un nouveau segment HLS. Désactivé en mode lock pour ne pas troubler
             // la zone cliquable du cadenas.
-            _BufferingOverlay(player: _ctrl, hidden: _isLocked),
+            _BufferingOverlay(
+              player: _ctrl,
+              hidden: _isLocked,
+              recoveryLabel: _recoveryLabel,
+            ),
 
             // §videoStats — Encart de diagnostic, au-dessus des contrôles pour
             // rester lisible quand ils apparaissent. Rien n'est construit tant
@@ -1340,10 +1369,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 /// est vrai. Petit délai d apparition (300ms) pour éviter le clignotement sur
 /// les micro-stalls. Caché quand le player est verrouillé pour ne pas masquer
 /// le bouton cadenas.
+///
+/// §recoverLabel — [recoveryLabel] non nul → l'overlay s'affiche AUSSI (même si
+/// le moteur ne dit pas « buffering ») et ce texte remplace « Mise en mémoire
+/// tampon… ». Pas de délai anti-clignotement dans ce cas : une reconnexion
+/// dure plusieurs secondes par construction, et c'est justement le silence
+/// qu'on corrige.
 class _BufferingOverlay extends StatefulWidget {
   final AetherPlaybackEngine player;
   final bool hidden;
-  const _BufferingOverlay({required this.player, required this.hidden});
+  final ValueListenable<String?> recoveryLabel;
+  const _BufferingOverlay({
+    required this.player,
+    required this.hidden,
+    required this.recoveryLabel,
+  });
 
   @override
   State<_BufferingOverlay> createState() => _BufferingOverlayState();
@@ -1379,38 +1419,44 @@ class _BufferingOverlayState extends State<_BufferingOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_buffering || widget.hidden) return const SizedBox.shrink();
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 36,
-              height: 36,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                color: Colors.white,
-              ),
+    if (widget.hidden) return const SizedBox.shrink();
+    return ValueListenableBuilder<String?>(
+      valueListenable: widget.recoveryLabel,
+      builder: (context, label, _) {
+        if (!_buffering && label == null) return const SizedBox.shrink();
+        return Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(14),
             ),
-            SizedBox(height: 10),
-            Text(
-              "Mise en mémoire tampon…",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0.3,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  label ?? "Mise en mémoire tampon…",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

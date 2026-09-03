@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:better_native_video_player/better_native_video_player.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../core/diagnostics/log_buffer.dart' show sanitizeForLog;
 import '../../core/settings/performance_settings_service.dart';
 import 'playback_engine.dart';
+import 'playback_error_message.dart';
 import 'video_stats.dart';
 
 /// §engineVendor étape 4 — Implémentation **Media3/ExoPlayer** de
@@ -216,8 +218,11 @@ class Media3Engine implements AetherPlaybackEngine {
     _lastErrorCode = (e.data?['errorCode'] as int?) ?? 0;
     final name = e.data?['errorCodeName'] as String?;
     debugPrint('❌ §liveRecover — erreur moteur : '
-        '${name ?? 'inconnue'} ($_lastErrorCode) — $_lastError');
-    _error.add(_lastError.isEmpty ? 'Lecture impossible' : _lastError);
+        '${name ?? 'inconnue'} ($_lastErrorCode) — ${sanitizeForLog(_lastError)}');
+    // §userError — Ce qui part ici finit À L'ÉCRAN (`player_page` l'affiche
+    // tel quel). Le message brut de Media3 est anglais et non filtré → on
+    // parle à partir du code d'erreur, jamais du texte.
+    _error.add(playbackErrorMessage(codeName: name, rawMessage: _lastError));
   }
 
   /// §liveRecover — cf. `AetherPlaybackEngine.recoverInPlace`.

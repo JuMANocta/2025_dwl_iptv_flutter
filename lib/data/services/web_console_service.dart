@@ -5,8 +5,10 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/diagnostics/log_buffer.dart';
+import 'load_failure.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
 import '../models/stream_account.dart';
@@ -193,6 +195,24 @@ class WebConsoleService {
         return;
       }
 
+      // §fleetState — La SEULE route de lecture avec `/logs.txt`.
+      //
+      // ⚠️ Toutes les routes `/api/*` sont en POST **parce qu'elles mutent** :
+      // aucune ne doit basculer en GET (un GET se pré-charge, se met en cache,
+      // se rejoue depuis l'historique — une suppression de compte n'a rien à
+      // faire là). Celle-ci ne fait que lire, d'où le GET, et elle vit à côté
+      // de `/logs.txt` plutôt que sous `/api/`.
+      //
+      // ⚠️ Servie en HTTP CLAIR sur le réseau local : la sortie ne contient
+      // donc **aucune URL et aucun identifiant** — que des libellés, des états,
+      // des compteurs et des tailles.
+      if (req.method == 'GET' && uri.path == '/fleet.json') {
+        res.headers.contentType = ContentType.json;
+        res.write(jsonEncode(await _fleetSnapshot()));
+        await res.close();
+        return;
+      }
+
       if (req.method == 'POST' && uri.path.startsWith('/api/')) {
         await _handleApi(req, uri.path);
         return;
@@ -250,12 +270,106 @@ class WebConsoleService {
         page = html.buildLogs(_theme, tk, DiagnosticLog.dump(),
             DiagnosticLog.keyTrace, DiagnosticLog.lineCount);
         break;
+      // §fleetState — Vue « État des listes » : le rendu lisible de
+      // `/fleet.json`, rafraîchi côté navigateur. La page elle-même est vide de
+      // données : tout arrive par la route JSON.
+      case 'fleet':
+        page = html.buildFleet(_theme, tk);
+        break;
       default:
         page = html.buildDashboard(_theme, tk);
     }
     req.response.headers.contentType = ContentType.html;
     req.response.write(page);
     await req.response.close();
+  }
+
+  /// §fleetState — Photographie de l'état des listes, sans un seul identifiant.
+  ///
+  /// **Le problème résolu** : une liste peut être absente de la mémoire sans
+  /// qu'aucune UI ne le dise, et la seule page qui rapportait cet état — la page
+  /// Comptes — est aussi celle qui le détruisait (le déchargement paresseux
+  /// tournait pendant qu'on la regardait). Une route de lecture consultée depuis
+  /// un téléphone permet enfin d'observer sans perturber.
+  ///
+  /// ⚠️ Chaque valeur est prise **sans toucher `_lastAccess`** :
+  /// `entriesCountOf` et `countsOf` sont sûrs, `getAccount()` ne l'est pas — il
+  /// repousserait le déchargement des comptes qu'on observe.
+  Future<Map<String, dynamic>> _fleetSnapshot() async {
+    final accounts = await StreamAccountService.listAccounts();
+    final current = await StreamAccountService.getCurrentAccount();
+    final supportDir = await getApplicationSupportDirectory();
+    final now = DateTime.now();
+
+    final list = <Map<String, dynamic>>[];
+    for (final a in accounts) {
+      final state = ParsedPlaylistService.stateOf(a.id);
+      final failure = ParsedPlaylistService.failureOf(a.id);
+      final memoryEntries = ParsedPlaylistService.entriesCountOf(a.id);
+      final counts = await ParsedPlaylistService.countsOf(a.id);
+
+      // Fichier source (catalogue `.json` §23 ou `.m3u` legacy) : taille et
+      // âge. L'âge est ce qui dit si le TTL de 24 h a expiré.
+      int sourceBytes = 0;
+      int? sourceAgeMinutes;
+      String? sourceKind;
+      try {
+        final srcPath = await PlaylistService.pathForAccountId(a.id);
+        final src = File(srcPath);
+        if (await src.exists()) {
+          final stat = await src.stat();
+          sourceBytes = stat.size;
+          sourceAgeMinutes = now.difference(stat.modified).inMinutes;
+          sourceKind = srcPath.toLowerCase().endsWith('.json')
+              ? 'catalogue JSON'
+              : 'M3U';
+        }
+      } catch (_) {/* un fichier illisible se rapporte comme absent */}
+
+      // Cache analysé (NDJSON gzippé) : sa présence dit si la liste peut
+      // revenir en ~50 ms ou s'il faut re-télécharger et ré-analyser.
+      int parsedBytes = 0;
+      bool hasParsed = false;
+      try {
+        final f = File('${supportDir.path}/parsed_playlist_${a.id}.json.gz');
+        if (await f.exists()) {
+          hasParsed = true;
+          parsedBytes = await f.length();
+        }
+      } catch (_) {/* idem */}
+
+      list.add({
+        'label': a.label, // ⚠️ le libellé, JAMAIS l'URL ni les identifiants
+        'primary': a.id == current?.id,
+        'state': state.name,
+        'inMemory': memoryEntries > 0,
+        'memoryEntries': memoryEntries,
+        'cacheFilms': counts?.films,
+        'cacheSeries': counts?.series,
+        'cacheTv': counts?.tv,
+        'cacheTotal': counts?.total,
+        'sourceKind': sourceKind,
+        'sourceBytes': sourceBytes,
+        'sourceAgeMinutes': sourceAgeMinutes,
+        'hasParsedCache': hasParsed,
+        'parsedCacheBytes': parsedBytes,
+        if (failure != null) ...{
+          'failureKind': failure.kind.name,
+          'failureLabel': labelForFailure(failure.kind),
+          // `describeFailure` inclut le détail, qui vient parfois du réseau :
+          // il repasse par `sanitizeForLog` en dernier filet (invariant
+          // §tourFix — ce qu'on sait extraire, on doit savoir le masquer).
+          'failureText': sanitizeForLog(describeFailure(failure)),
+          'failureBenign': failure.isBenign,
+          'failureAt': failure.at.toIso8601String(),
+        },
+      });
+    }
+
+    return {
+      'at': now.toIso8601String(),
+      'accounts': list,
+    };
   }
 
   Future<Map<String, dynamic>> _readJson(HttpRequest req) async {

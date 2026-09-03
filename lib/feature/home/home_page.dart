@@ -6,11 +6,15 @@ import 'package:aetherStream/core/diagnostics/jank_meter.dart';
 import 'package:aetherStream/core/diagnostics/log_buffer.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/navigation/playlist_visibility.dart';
+import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
+import 'package:aetherStream/data/services/playlist_reload_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
+import 'package:aetherStream/data/services/playlist_fleet_service.dart';
 import 'package:aetherStream/data/services/search_history_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
@@ -18,6 +22,7 @@ import 'package:aetherStream/data/services/tmdb_poster_cache.dart';
 import 'package:aetherStream/data/services/tmdb_group_alias_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
+import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/feature/search/actor_details_page.dart';
@@ -25,6 +30,8 @@ import 'package:aetherStream/feature/search/details_page.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/widgets/aether_image.dart';
+import 'package:aetherStream/widgets/confirm_or_undo.dart';
+import 'package:aetherStream/widgets/confirm_reload_dialog.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/measured_quality_badge.dart';
@@ -37,6 +44,7 @@ import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:dpad/dpad.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
+import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/main.dart' show appRouteObserver;
 
 // §lotD — Découpage du fichier (3400+ lignes) en `part` : même librairie, donc
@@ -125,6 +133,10 @@ class _HomePageState extends State<HomePage> with RouteAware {
   /// [widget.initialData], puis on l'aligne sur le notifier.
   late String _activeAccountId;
   late String _activeAccountName;
+
+  /// §reloadKeep — Vrai pendant un rechargement lancé par le ↻ de l'AppBar :
+  /// le bouton est désactivé, un second tap ne relance pas un téléchargement.
+  bool _refreshing = false;
 
   // ── État du mode recherche ─────────────────────────────────────────────
   final TextEditingController _searchCtrl = TextEditingController();
@@ -234,12 +246,34 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // n'est appelé qu'au RETOUR d'une autre route, jamais à la première
     // apparition.
     HomePage.isForeground = true;
+    // §fleetLoad — Jeton de visibilité : tant qu'une page qui montre des listes
+    // est à l'écran, on ne décharge rien. L'ancien garde ne connaissait que
+    // l'accueil, si bien que la page Comptes déchargeait les listes sous les
+    // yeux de l'utilisateur venu voir pourquoi elles manquaient.
+    //
+    // ⚠️ `didChangeDependencies` peut être rappelé (changement de thème, de
+    // taille…) : sans ce drapeau, le compteur monterait sans jamais redescendre
+    // et le déchargement ne se ferait plus JAMAIS.
+    if (!_holdsVisibility) {
+      _holdsVisibility = true;
+      PlaylistVisibility.hold();
+    }
+  }
+
+  /// Vrai tant que cet écran détient le jeton de visibilité (cf. ci-dessus).
+  bool _holdsVisibility = false;
+
+  void _releaseVisibility() {
+    if (!_holdsVisibility) return;
+    _holdsVisibility = false;
+    PlaylistVisibility.release();
   }
 
   @override
   void didPushNext() {
     _inBackground = true;
     HomePage.isForeground = false;
+    _releaseVisibility();
     // §perfBgFull — Cancel debounce recherche (timer de 220 ms pendant frappe) :
     // sinon il peut fire pendant la lecture et provoquer un setState dans la
     // home invisible derrière le player → CPU pour rien + contention décodeur.
@@ -251,6 +285,10 @@ class _HomePageState extends State<HomePage> with RouteAware {
   void didPopNext() {
     _inBackground = false;
     HomePage.isForeground = true;
+    if (!_holdsVisibility) {
+      _holdsVisibility = true;
+      PlaylistVisibility.hold();
+    }
     // §lazyUnload — Si des comptes secondaires ont été déchargés pendant qu'on
     // était sur le player, on les re-précharge depuis le cache disque JSON.gz
     // (~50 ms par compte). Idempotent : skip ceux déjà en mémoire.
@@ -262,17 +300,27 @@ class _HomePageState extends State<HomePage> with RouteAware {
     }
   }
 
+  /// §fleetLoad — Au retour sur l'accueil, on ne se contente plus du
+  /// préchargement disque : celui-ci **abandonne en silence** tout compte dont
+  /// le cache analysé manque, alors que son catalogue brut est souvent là.
+  /// Le réconciliateur, lui, ré-analyse. Réseau interdit : on ne fait pas
+  /// attendre quelqu'un qui vient de fermer le lecteur.
+  ///
+  /// ⚠️ `getAccount()` touche la date de dernier accès et repousserait le
+  /// déchargement : on lit `entriesCountOf`, comme §secondaryCounts l'impose.
   Future<void> _rehydrateSecondariesIfNeeded() async {
     try {
       final accounts = await StreamAccountService.listAccounts();
       final current  = await StreamAccountService.getCurrentAccount();
       final others   = accounts.where((a) => a.id != current?.id).toList();
       if (others.isEmpty) return;
-      // Vérifie qu'au moins un compte secondaire a été déchargé.
       final missing = others.any(
-          (a) => ParsedPlaylistService.getAccount(a.id) == null);
+          (a) => ParsedPlaylistService.entriesCountOf(a.id) == 0);
       if (!missing) return;
-      await ParsedPlaylistService.preloadOthersFromDisk(others);
+      await PlaylistFleetService.ensureAllLoaded(
+        reason: 'accueil',
+        allowNetwork: false,
+      );
     } catch (_) {/* silent — pas de cache disque = re-DL au prochain boot */}
   }
 
@@ -286,6 +334,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
 
   @override
   void dispose() {
+    _releaseVisibility();
     appRouteObserver.unsubscribe(this);
     _homeListenable.removeListener(_onHomeNotifier);
     _searchDebounce?.cancel();
@@ -414,6 +463,17 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // remplace l'ancienne FocusTraversalGroup/_TvRailsTraversalPolicy qui
     // entrait en conflit avec le moteur dpad). ExcludeFocus garde les pages
     // offstage (PageView adjacentes) hors du focus.
+    // §tabTicker — ⛔ HYPOTHÈSE TESTÉE ET RÉFUTÉE le 2026-09-03, ne pas la
+    // reprendre sans nouvelle mesure. On soupçonnait les hero des deux pages
+    // invisibles d'animer pour rien et de peser sur le changement d'onglet. Un
+    // `TickerMode(enabled: _currentIndex == index)` posé ici gèle bien leurs
+    // `Ticker` — donc le `setState` par frame de `_HeroFanBanner._onTick`.
+    // Mesuré sur Galaxy S25 en build profile, trois bascules Chaînes → Films de
+    // chaque côté : **39,8 ms avant, 40,6 ms après**, c'est-à-dire rien. Le
+    // coût restant n'est pas l'animation des pages cachées, c'est l'inflation
+    // de widgets de la page reconstruite.
+    // (Un bénéfice en CPU au repos sur une box faible reste plausible mais
+    // n'a PAS été mesuré : ce serait un autre relevé, pas celui-ci.)
     return ExcludeFocus(
       excluding: _currentIndex != index,
       child: DpadRegion(debugLabel: 'homePage$index', child: wrapped),
@@ -426,19 +486,44 @@ class _HomePageState extends State<HomePage> with RouteAware {
     );
   }
 
-  /// §refreshHome — Vide le cache disque du compte actif, re-télécharge le M3U
-  /// (via le pipeline §xtreamApi qui retentera la JSON API puis fallback get.php)
-  /// et re-parse. Tient l'utilisateur au courant via snackbars succès/erreur.
+  /// §refreshHome — Re-télécharge la liste du compte actif (pipeline §xtreamApi :
+  /// JSON API puis fallback get.php) et la re-parse. Tient l'utilisateur au
+  /// courant via snackbars succès/erreur.
+  ///
+  /// §reloadKeep — Passe par `PlaylistReloadService.reloadAccount`, le MÊME
+  /// chemin que « Recharger » d'une carte : plus de `deleteForAccountId` à la
+  /// main avant le téléchargement, donc un échec réseau laisse l'ancienne liste
+  /// en place au lieu de vider l'accueil. Même confirmation si la liste a moins
+  /// de 24 h, même anti-double-tap ([_refreshing]).
   Future<void> _refreshActivePlaylist() async {
+    if (_refreshing) return;
+    final account = await StreamAccountService.getAccount(_activeAccountId);
+    if (!mounted) return;
+    if (account == null) {
+      AppSnackBar.show(context, 'Aucun compte actif à recharger');
+      return;
+    }
+
+    final Duration? age = await PlaylistReloadService.cacheAge(account.id);
+    if (!mounted) return;
+    if (PlaylistReloadService.shouldConfirm(age)) {
+      final bool? ok = await showConfirmReloadDialog(
+        context,
+        accountLabel: account.label,
+        age: age!,
+      );
+      if (ok != true || !mounted) return;
+    }
+
+    setState(() => _refreshing = true);
     final messenger = ScaffoldMessenger.of(context);
     AppSnackBar.show(context, 'Rafraîchissement de la playlist…',
         duration: const Duration(seconds: 4));
     try {
-      await PlaylistService.deleteForAccountId(_activeAccountId);
-      ParsedPlaylistService.invalidate(_activeAccountId);
-      final path = await PlaylistService.downloadCurrentM3U();
-      await ParsedPlaylistService.loadActive(
-          _activeAccountId, _activeAccountName, path);
+      // Le compte actif = le compte principal → chemin `downloadCurrentM3U()`
+      // (messages d'erreur précis). `reloadFromDisk` swap la mémoire en une
+      // frame et bumpe `ParsedPlaylistService.version` → la home rebuild seule.
+      await PlaylistReloadService.reloadAccount(account, isPriority: true);
       if (!mounted) return;
       messenger
         ..hideCurrentSnackBar()
@@ -448,12 +533,15 @@ class _HomePageState extends State<HomePage> with RouteAware {
         ));
     } catch (e) {
       if (!mounted) return;
+      // §userError — jamais `$e` brut à l'écran (URL + identifiants Xtream).
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-          content: Text('❌ Échec : $e'),
+          content: Text('❌ ${describeError(e)}'),
           duration: const Duration(seconds: 4),
         ));
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
     }
   }
 
@@ -495,9 +583,16 @@ class _HomePageState extends State<HomePage> with RouteAware {
                 // §refreshHome — Rafraîchissement du compte actif sans passer
                 // par Paramètres → Comptes IPTV.
                 IconButton(
-                  icon: const Icon(Icons.refresh),
+                  icon: _refreshing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
                   tooltip: 'Recharger la playlist',
-                  onPressed: _refreshActivePlaylist,
+                  // §reloadKeep — désactivé pendant le rechargement (anti-double-tap).
+                  onPressed: _refreshing ? null : _refreshActivePlaylist,
                 ),
                 if (!PlatformTv.isTv)
                   IconButton(
@@ -858,14 +953,19 @@ class _AnimatedTabIndicator extends StatelessWidget {
                     // §3c Phase 1 — FocusableChip rend l'onglet atteignable au
                     // D-pad (avant : GestureDetector tap-only → impossible de
                     // changer de section Séries/Films/Chaînes à la télécommande).
+                    //
+                    // §emptyTab — Un onglet VIDE reste grisé mais focusable et
+                    // tapable : il mène à l'`EmptyState` de la page (explication
+                    // + CTA « Gérer les comptes ») au lieu de ne rien faire. Les
+                    // trois `_TypePage` existent toujours dans la `PageView`,
+                    // et `_buildEmpty` garde la barre d'onglets pour revenir.
                     return Expanded(
                       child: FocusableChip(
-                        enabled: !isEmpty,
-                        onTap: isEmpty ? null : () => onTap(i),
+                        onTap: () => onTap(i),
                         borderRadius: BorderRadius.circular(8),
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: isEmpty ? null : () => onTap(i),
+                          onTap: () => onTap(i),
                           child: AnimatedDefaultTextStyle(
                             duration: const Duration(milliseconds: 220),
                             curve: Curves.easeOut,
@@ -991,34 +1091,65 @@ class _SecondaryAccountsProgressLine extends StatelessWidget {
 /// §loadingLine — Décompte « n/N » des listes chargées, dans la barre du haut.
 ///
 /// Reprend l'information que portait l'ancien bandeau — savoir pourquoi les
-/// contenus d'une liste « manquent » encore — sans lui rendre sa hauteur. Muet
-/// dès que tout est chargé.
+/// contenus d'une liste « manquent » — sans lui rendre sa hauteur.
+///
+/// §fleetLoad — Deux défauts corrigés ici :
+///   1. le dénominateur était `loadStates.length`, c'est-à-dire le nombre de
+///      comptes **vus par le service**, pas le nombre de listes configurées ;
+///   2. le compteur se taisait dès qu'aucune liste n'était « en cours » — donc
+///      **exactement dans le cas d'échec**, celui où il fallait parler. Une
+///      liste manquante disparaissait de l'accueil sans un mot.
+/// Il affiche désormais `n/N` en vert quand ça travaille, et `n/N ⚠` en
+/// couleur d'alerte quand des listes manquent sans être en cours de chargement.
 class SecondaryAccountsCounter extends StatelessWidget {
   const SecondaryAccountsCounter({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<Map<String, AccountLoadState>>(
-      valueListenable: ParsedPlaylistService.loadStates,
-      builder: (ctx, states, _) {
-        final total = states.length;
-        final loading = states.values
-            .where((v) =>
-                v == AccountLoadState.downloading ||
-                v == AccountLoadState.parsing)
-            .length;
-        if (loading == 0 || total == 0) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            '${total - loading}/$total',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.4,
-              color: kAccentPrimary.withAlpha(210),
-            ),
-          ),
+    return ValueListenableBuilder<int>(
+      valueListenable: ParsedPlaylistService.version,
+      builder: (ctx, _, __) {
+        return ValueListenableBuilder<Map<String, AccountLoadState>>(
+          valueListenable: ParsedPlaylistService.loadStates,
+          builder: (ctx, states, __) {
+            return FutureBuilder<List<StreamAccount>>(
+              future: StreamAccountService.listAccounts(),
+              builder: (ctx, snap) {
+                final accounts = snap.data;
+                if (accounts == null || accounts.length < 2) {
+                  return const SizedBox.shrink();
+                }
+                final total = accounts.length;
+                // La mémoire est la seule vérité : une liste sert l'accueil ou
+                // ne le sert pas. ⚠️ `entriesCountOf` et pas `getAccount()`,
+                // qui repousserait le déchargement (§secondaryCounts).
+                final ready = accounts
+                    .where((a) =>
+                        ParsedPlaylistService.entriesCountOf(a.id) > 0)
+                    .length;
+                if (ready == total) return const SizedBox.shrink();
+                final busy = accounts.any((a) {
+                  final st = states[a.id];
+                  return st == AccountLoadState.downloading ||
+                      st == AccountLoadState.parsing;
+                });
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    busy ? '$ready/$total' : '$ready/$total ⚠',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                      color: busy
+                          ? kAccentPrimary.withAlpha(210)
+                          : kWarning.withAlpha(230),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
         );
       },
     );
@@ -1838,22 +1969,40 @@ class _TypePageState extends State<_TypePage> {
     );
   }
 
+  /// §emptyHome — État vide d'un onglet, aligné sur `EmptyState` (même widget
+  /// que la recherche et les téléchargements) : un titre, une explication et
+  /// un CTA vers les comptes — avant, une icône grise et deux mots, sans issue.
+  ///
+  /// ⚠️ La barre Séries/Films/Chaînes reste affichée au-dessus : depuis
+  /// §emptyTab un onglet vide est atteignable, et sur TV (pas de swipe) c'est
+  /// la SEULE façon de revenir sur un onglet plein. Sans hero pour la porter,
+  /// elle descend sous l'AppBar transparente (`kToolbarHeight`) pour ne pas
+  /// passer sous les icônes ↻/⚙️.
   Widget _buildEmpty(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final (icon, label) = switch (widget.type) {
       M3uContentType.movie  => (Icons.movie_outlined, 'Aucun film'),
       M3uContentType.series => (Icons.tv_outlined, 'Aucune série'),
       M3uContentType.tv     => (Icons.live_tv_outlined, 'Aucune chaîne'),
     };
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 64, color: cs.onSurfaceVariant.withAlpha(120)),
-          const SizedBox(height: 12),
-          Text(label, style: TextStyle(color: cs.onSurfaceVariant)),
-        ],
+    final empty = EmptyState(
+      icon: icon,
+      title: label,
+      subtitle: 'Aucune de tes listes n\'en contient. '
+          'Recharge une liste ou ajoute un compte.',
+      ctaLabel: 'Gérer les comptes',
+      ctaIcon: Icons.manage_accounts_outlined,
+      onCtaTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AccountsPage()),
       ),
+    );
+    final tabs = widget.tabsBuilder;
+    if (tabs == null) return empty;
+    return Column(
+      children: [
+        SizedBox(height: widget.topInset + kToolbarHeight),
+        tabs(context),
+        Expanded(child: empty),
+      ],
     );
   }
 

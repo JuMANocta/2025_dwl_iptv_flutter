@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/themes/colors.dart';
+import '../../core/utils/user_error.dart';
 import '../../data/services/hidden_regions_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/services/playlist_service.dart';
@@ -70,7 +71,7 @@ class _RegionFilterPageState extends State<RegionFilterPage> with TvInitialFocus
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-            content: Text('❌ Échec : $e'), backgroundColor: kError));
+            content: Text('❌ Échec : ${describeError(e)}'), backgroundColor: kError));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

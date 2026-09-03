@@ -140,6 +140,8 @@ class _FocusableCardState extends State<FocusableCard>
               onTap: widget.onTap,
               onLongPress: widget.onLongPress,
               borderRadius: radius,
+              // §dpadChildFocus — jamais un 2e arrêt D-pad : seul le nœud dpad porte le focus.
+              canRequestFocus: false,
               child: ClipRRect(borderRadius: radius, child: widget.child),
             ),
           );

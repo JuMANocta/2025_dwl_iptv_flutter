@@ -244,6 +244,7 @@ String buildDashboard(AppThemeConfig t, String token) {
     <div class="ghead"><span class="gbar"></span><span class="glbl">Sources &amp; comptes</span></div>
     <div class="grid">
       ${_navCard(token, 'accounts', '📺', 'Comptes IPTV', 'Ajouter / modifier / recharger')}
+      ${_navCard(token, 'fleet', '🩺', 'État des listes', 'Ce qui est chargé, et pourquoi pas')}
       ${_navCard(token, 'tmdb', '🎬', 'Clé TMDB', 'Affiches & métadonnées')}
       ${_navCard(token, 'xmltv', '📡', 'Guide chaînes', 'EPG XMLTV — TNT France')}
     </div>
@@ -371,6 +372,160 @@ String buildLogs(AppThemeConfig t, String token, String content, bool keyTrace,
   </script>
   ''';
   return _shell(t, 'Journal', body);
+}
+
+// ─── État des listes (§fleetState) ───────────────────────────────────────────
+
+/// Vue « État des listes » : le rendu lisible de `GET /fleet.json`.
+///
+/// **Pourquoi elle existe** : une liste peut être absente de la mémoire sans
+/// qu'aucune UI ne le dise, et la seule page qui rapportait cet état — la page
+/// Comptes, sur la TV — est aussi celle qui le détruisait (le déchargement
+/// paresseux tournait pendant qu'on la regardait). Depuis un téléphone, on
+/// observe sans perturber.
+///
+/// La page est **vide de données** : tout arrive par la route JSON, qui est la
+/// seule route de LECTURE avec `/logs.txt`. Aucune URL, aucun identifiant n'y
+/// transite — la console est servie en HTTP clair sur le réseau local.
+String buildFleet(AppThemeConfig t, String token) {
+  final tk = Uri.encodeQueryComponent(token);
+  final body = '''
+  ${_backLink(token)}
+  <div class="sec">
+    <h2>État des listes</h2>
+    <p class="muted">Ce que l'application a réellement en mémoire, ce qui reste
+      sur le disque, et pourquoi une liste manque. Consulter cette page ne
+      décharge rien et ne repousse rien.</p>
+    <div class="row">
+      <button class="btn" onclick="loadFleet()">↻ Rafraîchir</button>
+      <a class="btn" href="/fleet.json?t=$tk" target="_blank">{ } fleet.json</a>
+    </div>
+    <p class="muted" id="fleetAt">Lecture…</p>
+    <div id="fleet"></div>
+  </div>
+  <style>
+    .kv { font-size: 12px; color: var(--text-dim); margin-top: 5px; }
+    .kv b { color: var(--text); font-weight: 600; }
+    .why { font-size: 12px; margin-top: 7px; padding: 7px 9px;
+           border-radius: 8px; background: rgba(255,68,68,0.10);
+           border: 1px solid rgba(255,68,68,0.35); color: #ffb3b3; }
+    .badge.warn { background: rgba(255,68,68,0.14); color: #ff8a8a;
+                  border-color: rgba(255,68,68,0.45); }
+    .badge.dim { background: rgba(255,255,255,0.06); color: var(--text-dim);
+                 border-color: rgba(255,255,255,0.14); }
+  </style>
+  <script>
+    function fmtNum(n){
+      if (n === null || n === undefined) return '—';
+      var s = String(n), o = '', c = 0;
+      for (var i = s.length - 1; i >= 0; i--) {
+        o = s[i] + o;
+        if (++c % 3 === 0 && i > 0) o = ' ' + o;
+      }
+      return o;
+    }
+    function fmtBytes(n){
+      if (!n) return '—';
+      if (n < 1024) return n + ' o';
+      if (n < 1048576) return Math.round(n / 1024) + ' ko';
+      var m = n / 1048576;
+      return (m < 10 ? m.toFixed(1).replace('.', ',') : Math.round(m)) + ' Mo';
+    }
+    function fmtAge(min){
+      if (min === null || min === undefined) return 'âge inconnu';
+      if (min < 60) return 'il y a ' + min + ' min';
+      var h = Math.floor(min / 60);
+      if (h < 48) return 'il y a ' + h + ' h';
+      return 'il y a ' + Math.floor(h / 24) + ' j';
+    }
+    function esc(s){
+      var d = document.createElement('div');
+      d.textContent = (s === null || s === undefined) ? '' : String(s);
+      return d.innerHTML;
+    }
+    var STATE_LABEL = {
+      loaded: 'DISPONIBLE',
+      downloading: 'TÉLÉCHARGEMENT',
+      parsing: 'ANALYSE',
+      error: 'ERREUR',
+      notLoaded: 'NON CHARGÉ'
+    };
+    function badgeFor(a){
+      // Le motif enregistré prime : « NON CHARGÉ » recouvrait quatre
+      // situations différentes, dont deux parfaitement normales.
+      var txt = STATE_LABEL[a.state] || a.state;
+      var cls = 'dim';
+      if (a.state === 'loaded') cls = '';
+      if (a.failureLabel && (a.state === 'notLoaded' || a.state === 'error')) {
+        txt = a.failureLabel;
+        // ⚠️ Un motif bénin ne prend PAS la couleur d'alerte : « SUR DISQUE »
+        // est un fonctionnement voulu, pas une panne.
+        cls = a.failureBenign ? 'dim' : 'warn';
+      }
+      return '<span class="badge ' + cls + '">' + esc(txt) + '</span>';
+    }
+    function render(d){
+      var el = document.getElementById('fleet');
+      var accs = (d && d.accounts) || [];
+      if (!accs.length) { el.innerHTML = '<p class="muted">Aucun compte.</p>'; return; }
+      var out = '';
+      for (var i = 0; i < accs.length; i++) {
+        var a = accs[i];
+        out += '<div class="acc">';
+        out += '<div class="row" style="justify-content:space-between">';
+        out += '<div class="nm">' + esc(a.label) + '</div>';
+        out += '<div class="row">'
+             + (a.primary ? '<span class="badge">PRINCIPAL</span>' : '')
+             + badgeFor(a) + '</div>';
+        out += '</div>';
+
+        // Mémoire vive : 0 entrée ne veut PAS dire liste perdue.
+        if (a.memoryEntries > 0) {
+          out += '<div class="kv">En mémoire : <b>' + fmtNum(a.memoryEntries)
+               + '</b> entrées</div>';
+        } else if (a.cacheTotal) {
+          out += '<div class="kv">Pas en mémoire — <b>' + fmtNum(a.cacheTotal)
+               + '</b> entrées dans le cache analysé</div>';
+        } else {
+          out += '<div class="kv">Pas en mémoire, aucun compteur en cache</div>';
+        }
+        if (a.cacheTotal) {
+          out += '<div class="kv">' + fmtNum(a.cacheFilms) + ' films · '
+               + fmtNum(a.cacheSeries) + ' séries · '
+               + fmtNum(a.cacheTv) + ' chaînes</div>';
+        }
+        out += '<div class="kv">Source : '
+             + (a.sourceKind ? esc(a.sourceKind) + ' · ' + fmtBytes(a.sourceBytes)
+                               + ' · ' + fmtAge(a.sourceAgeMinutes)
+                             : 'aucun fichier')
+             + '</div>';
+        out += '<div class="kv">Cache analysé : '
+             + (a.hasParsedCache ? fmtBytes(a.parsedCacheBytes)
+                                 : 'absent (re-analyse nécessaire)')
+             + '</div>';
+        if (a.failureText && !a.failureBenign) {
+          out += '<div class="why">' + esc(a.failureText) + '</div>';
+        }
+        out += '</div>';
+      }
+      el.innerHTML = out;
+    }
+    async function loadFleet(){
+      try {
+        var r = await fetch('/fleet.json?t=' + encodeURIComponent(T));
+        var d = await r.json();
+        render(d);
+        document.getElementById('fleetAt').textContent =
+          'Mesuré à ' + new Date(d.at).toLocaleTimeString();
+      } catch (e) {
+        document.getElementById('fleetAt').textContent = 'Lecture impossible.';
+      }
+    }
+    setInterval(loadFleet, 5000);
+    window.addEventListener('load', loadFleet);
+  </script>
+  ''';
+  return _shell(t, 'État des listes', body);
 }
 
 String _navCard(String token, String view, String ic, String title, String sub) {

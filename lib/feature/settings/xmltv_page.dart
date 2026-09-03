@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
@@ -41,7 +42,7 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
       messenger.clearSnackBars();
       messenger.showSnackBar(
         SnackBar(
-          content: Text('❌ Échec mise à jour : $e'),
+          content: Text('❌ Échec mise à jour : ${describeError(e)}'),
           backgroundColor: kError,
         ),
       );

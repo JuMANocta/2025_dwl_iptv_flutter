@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import '../../core/utils/log_sanitizer.dart';
+import '../../core/utils/user_error.dart';
 import '../../data/services/replay_service.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/tv/focusable_card.dart';
@@ -28,9 +29,13 @@ class ReplaySheet extends StatelessWidget {
           }
           if (snap.hasError) {
             debugPrint('ReplaySheet FutureBuilder: Erreur: ${snap.error}');
-            return Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Text('Erreur EPG: ${snap.error}', style: TextStyle(color: kError)),
+            // §userError — plus de `snap.error` brut à l'écran : une
+            // DioException peut embarquer l'URL avec les identifiants.
+            return EmptyState(
+              icon: Icons.cloud_off,
+              title: 'Guide indisponible',
+              subtitle: describeError(snap.error),
+              accentColor: kError,
             );
           }
           final programs = snap.data ?? [];

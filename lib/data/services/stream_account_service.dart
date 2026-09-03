@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:aetherStream/core/utils/secure_storage_compte.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/models/account_info.dart';
+import 'package:aetherStream/core/utils/host_gate.dart';
 import 'package:aetherStream/core/utils/network.dart';
 import 'package:aetherStream/data/services/storage_janitor.dart';
 
@@ -223,21 +224,50 @@ class StreamAccountService {
     };
 
     try {
-      // 3. Dio configuré pour serveur IPTV (cert self-signed possible)
-      final dio = NetworkUtils.buildBaseDio(allowInvalidCertificate: true);
-
-      // 4. On exécute la requête GET
-      final response = await dio.get(apiUrl, queryParameters: params);
+      // §hostGate — Cet appel part en `Future.wait` sur TOUS les comptes
+      // (`ExpirationAlertService.fetchAll`, lancé sans await au démarrage) :
+      // il entrait donc en concurrence directe avec le téléchargement des
+      // listes sur le même panel. Sur un abonnement « 1 / 1 », l'un des deux
+      // se faisait refuser — et l'échec du catalogue était invisible.
+      final response = await HostGate.run(apiUrl, () async {
+        // 3. Dio configuré pour serveur IPTV (cert self-signed possible)
+        final dio = NetworkUtils.buildBaseDio(allowInvalidCertificate: true);
+        try {
+          // 4. On exécute la requête GET
+          return await dio.get(apiUrl, queryParameters: params);
+        } finally {
+          // Referme le socket AVANT de rendre le jeton : un keep-alive qui
+          // traîne compte encore comme une connexion côté panel.
+          dio.close(force: true);
+        }
+      });
 
       if (response.statusCode == 200) {
         final data = response.data;
+        final info = AccountInfo.fromJson(data);
         debugPrint("✅ Infos du compte '${account.label}' récupérées.");
-        return AccountInfo.fromJson(data);
+        // §hostGate — Le panel vient d'annoncer sa limite de connexions
+        // simultanées. ⚠️ On en réserve UNE au lecteur vidéo, qui ne passe
+        // jamais par le portillon : sinon ouvrir un film pendant un
+        // rafraîchissement de liste couperait la lecture.
+        if (info.maxConnections > 0) {
+          HostGate.setLimit(
+            apiUrl,
+            info.maxConnections > 1 ? info.maxConnections - 1 : 1,
+          );
+        }
+        return info;
       } else {
-        // Log d'erreur avec plus de détails
-        debugPrint("❌ Erreur API Info Compte (${response.statusCode}): ${response.data}");
+        // §logHygiene — surtout PAS `response.data` : le bloc `user_info` d'un
+        // panel Xtream contient le mot de passe en clair.
+        debugPrint("❌ Erreur API Info Compte '${account.label}' "
+            "(HTTP ${response.statusCode})");
         return null;
       }
+    } on HostGateTimeoutException {
+      debugPrint("⚠️ Infos compte '${account.label}' indisponibles — "
+          "file d'attente saturée pour ce serveur");
+      return null;
     } on DioException catch (e) {
       // §logHygiene — Ne JAMAIS dumper `$e` brut : pour certains types
       // l'exception inclut l'URL de requête AVEC les credentials Xtream

@@ -12,6 +12,7 @@ import 'package:aetherStream/feature/downloads/logic/download_tile_actions.dart'
 import 'package:aetherStream/widgets/info_row.dart';
 import 'package:aetherStream/widgets/terminal_download_dialog.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
+import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
@@ -103,6 +104,9 @@ class DownloadTaskTile extends StatelessWidget {
         ),
         actions: [
           TextButton(
+            // §safeFocus — Le focus d'entrée va sur « Annuler » : sur TV, OK
+            // est le geste réflexe, il ne doit pas arrêter le transfert.
+            autofocus: true,
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(l10n.cancel),
           ),
@@ -256,6 +260,9 @@ class DownloadTaskTile extends StatelessWidget {
         // 3. Des boutons d'action sans ambiguïté
         actions: [
           TextButton(
+            // §safeFocus — Suppression : le focus d'entrée va sur « Annuler »
+            // (sur TV, OK est le geste réflexe).
+            autofocus: true,
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(l10n.cancel),
           ),
@@ -500,51 +507,72 @@ class DownloadTaskTile extends StatelessWidget {
     }
 
     // §dlErgo — Le tap ne déclenche plus que l'action PRINCIPALE (jamais
-    // destructive) ; tout le reste passe par le menu ⋯, focusable séparément
-    // au D-pad (même motif que les cartes de comptes).
+    // destructive) ; tout le reste passe par le menu ⋯.
     final primary = downloadTileActions(task.status).primary;
-    // §3c-3 — Wrap focus TV (decorateOnly = on garde le ListTile et son tap
-    // mobile/souris ; sur TV, la touche OK télécommande déclenche la même
-    // action principale).
-    return FocusableCard(
-      decorateOnly: true,
-      // §tvErgo — tuile pleine largeur : pas de scale (sinon débordement écran).
-      scaleOnFocus: false,
-      onTap: () => _run(context, primary),
-      borderRadius: BorderRadius.circular(8),
-      child: ListTile(
-        leading: _getLeadingIcon(context),
-        title: Text(titleText, maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: _buildSubtitle(context),
-        // §dlErgo — Les actions portent un CONTOUR : sans lui, l'œil ne
-        // repérait qu'un seul bouton et « Relancer » restait introuvable.
-        // Relancer est sorti du menu ⋯ : c'est l'action qu'on cherche quand le
-        // débit s'effondre, elle doit être atteignable en un geste.
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_restartAction != null) ...[
-              _outlinedAction(
-                context,
-                icon: Icons.refresh,
-                tooltip: _actionLabel(_restartAction!),
-                color: kAccentSecondary,
-                onPressed: () => _run(context, _restartAction!),
-              ),
-              const SizedBox(width: 8),
-            ],
-            _outlinedAction(
-              context,
-              icon: Icons.more_vert,
-              tooltip: 'Autres actions',
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              onPressed: () => _openMenu(context),
+    // §3c-3 → §dpadChildFocus — La tuile et ses actions sont des focusables
+    // FRÈRES dans une `Row`, à rectangles disjoints (même motif que les cartes
+    // de comptes). Avant, Relancer et ⋯ étaient le `trailing` du `ListTile`,
+    // DANS la `FocusableCard` : depuis dpad 3.0, `DpadFocusable` enveloppe son
+    // enfant d'un `ExcludeFocus`, donc arrêter / supprimer un téléchargement
+    // était impossible à la télécommande. `excludeChildFocus: false` n'y
+    // changerait rien (un rect CONTENU dans la carte n'est candidat dans
+    // aucune direction pour la politique de traversée).
+    //
+    // Les actions portent un CONTOUR (§dlErgo) : sans lui, l'œil ne repérait
+    // qu'un seul bouton et « Relancer » restait introuvable. Relancer est sorti
+    // du menu ⋯ : c'est l'action qu'on cherche quand le débit s'effondre, elle
+    // doit être atteignable en un geste. Le bouton garde son `onPressed` pour
+    // le tactile ; au D-pad c'est la chip qui prend le focus et relaie OK.
+    return Row(
+      children: [
+        Expanded(
+          // decorateOnly = on garde le ListTile et son tap mobile/souris ; sur
+          // TV, la touche OK télécommande déclenche la même action principale.
+          child: FocusableCard(
+            decorateOnly: true,
+            // §tvErgo — tuile pleine largeur : pas de scale (sinon débordement
+            // écran).
+            scaleOnFocus: false,
+            onTap: () => _run(context, primary),
+            borderRadius: BorderRadius.circular(8),
+            child: ListTile(
+              leading: _getLeadingIcon(context),
+              title: Text(titleText,
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: _buildSubtitle(context),
+              onTap: () => _run(context, primary),
+              isThreeLine: task.status == DownloadStatus.downloading,
             ),
-          ],
+          ),
         ),
-        onTap: () => _run(context, primary),
-        isThreeLine: task.status == DownloadStatus.downloading,
-      ),
+        if (_restartAction != null) ...[
+          FocusableChip(
+            onTap: () => _run(context, _restartAction!),
+            borderRadius: BorderRadius.circular(10),
+            child: _outlinedAction(
+              context,
+              icon: Icons.refresh,
+              tooltip: _actionLabel(_restartAction!),
+              color: kAccentSecondary,
+              onPressed: () => _run(context, _restartAction!),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+        FocusableChip(
+          onTap: () => _openMenu(context),
+          borderRadius: BorderRadius.circular(10),
+          child: _outlinedAction(
+            context,
+            icon: Icons.more_vert,
+            tooltip: 'Autres actions',
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            onPressed: () => _openMenu(context),
+          ),
+        ),
+        // Aligné sur le `contentPadding` horizontal du ListTile.
+        const SizedBox(width: 16),
+      ],
     );
   }
 }

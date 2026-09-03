@@ -43,12 +43,48 @@ WidgetStateProperty<BorderSide?> _focusSide(Color c) =>
     WidgetStateProperty.resolveWith((s) =>
         s.contains(WidgetState.focused) ? BorderSide(color: c, width: 2.6) : null);
 
-FilledButtonThemeData _filledFocusTheme(Color ring) => FilledButtonThemeData(
-      style: ButtonStyle(overlayColor: _focusOverlay(ring), side: _focusSide(ring)),
+/// §focusContrast — Un `FilledButton` est PLEIN, et souvent de la couleur
+/// primaire : un anneau de la même couleur y est invisible (page « À propos »,
+/// constaté sur TV le 2026-09-03 : « on ne voit pas bien celui qui est
+/// sélectionné »). L'anneau des boutons pleins prend donc la couleur du TEXTE
+/// (blanc en sombre, noir en clair) — contrastée contre le fond ET le bouton.
+/// ⚠️ `FilledButton.styleFrom(foregroundColor:)` écrase l'`overlayColor` du
+/// thème (il le dérive du texte), donc l'anneau est le SEUL signal fiable ici.
+FilledButtonThemeData _filledFocusTheme(Color ring, Color contrast) =>
+    FilledButtonThemeData(
+      style: ButtonStyle(
+        overlayColor: _focusOverlay(ring),
+        side: _focusSide(contrast),
+      ),
     );
 
 IconButtonThemeData _iconFocusTheme(Color ring) => IconButtonThemeData(
       style: ButtonStyle(overlayColor: _focusOverlay(ring), side: _focusSide(ring)),
+    );
+
+// §dpadChildFocus — Halo de focus pour les surfaces qui n'en avaient AUCUN :
+// `ListTile` nus des feuilles d'action (`media_action_sheet.dart`, menus ⋯ des
+// téléchargements…), `Chip`s et `OutlinedButton`s. Le focus natif Material ne
+// s'allume qu'au clavier / D-pad (`FocusManager.highlightMode == traditional`,
+// l'`InkWell` cache son voile en mode `touch`), donc rien ne teinte au tactile
+// — §touchNoFocus respecté.
+//
+// ⚠️ `ListTileThemeData` n'a AUCUN réglage de focus : le voile du `ListTile`
+// est celui de son `InkWell`, qui se replie sur `ThemeData.focusColor` (gris à
+// 12 % par défaut — invisible sur un fond sombre). C'est donc `focusColor` de
+// `ThemeData` qui porte le halo des tuiles, cf. [_listTileFocusColor].
+OutlinedButtonThemeData _outlinedFocusTheme(Color ring) =>
+    OutlinedButtonThemeData(
+      style: ButtonStyle(overlayColor: _focusOverlay(ring), side: _focusSide(ring)),
+    );
+
+/// Voile de focus des `ListTile` (et de tout `InkWell` sans `focusColor`
+/// explicite). Même intensité que [_focusOverlay] à l'état `focused`.
+Color _listTileFocusColor(Color ring) => ring.withAlpha(72);
+
+ChipThemeData _chipFocusTheme(Color ring) => ChipThemeData(
+      side: WidgetStateBorderSide.resolveWith((s) =>
+          s.contains(WidgetState.focused) ? BorderSide(color: ring, width: 2.6) : null),
     );
 
 // Thème Clair AetherStream
@@ -115,8 +151,12 @@ ThemeData lightTheme(AppThemeConfig config) {
       ),
     ),
     // §focusVisibility — boutons pleins + boutons-icônes des sous-pages.
-    filledButtonTheme: _filledFocusTheme(config.primaryColor),
+    filledButtonTheme: _filledFocusTheme(config.primaryColor, Colors.black),
     iconButtonTheme: _iconFocusTheme(config.primaryColor),
+    // §dpadChildFocus — ListTile / Chip / OutlinedButton : halo au D-pad.
+    outlinedButtonTheme: _outlinedFocusTheme(config.primaryColor),
+    focusColor: _listTileFocusColor(config.primaryColor),
+    chipTheme: _chipFocusTheme(config.primaryColor),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: config.primaryColor).copyWith(
         overlayColor: _focusOverlay(config.primaryColor),
@@ -219,8 +259,12 @@ ThemeData darkTheme(AppThemeConfig config) {
       ),
     ),
     // §focusVisibility — boutons pleins + boutons-icônes des sous-pages.
-    filledButtonTheme: _filledFocusTheme(config.primaryColor),
+    filledButtonTheme: _filledFocusTheme(config.primaryColor, Colors.white),
     iconButtonTheme: _iconFocusTheme(config.primaryColor),
+    // §dpadChildFocus — ListTile / Chip / OutlinedButton : halo au D-pad.
+    outlinedButtonTheme: _outlinedFocusTheme(config.primaryColor),
+    focusColor: _listTileFocusColor(config.primaryColor),
+    chipTheme: _chipFocusTheme(config.primaryColor),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: config.accentColor).copyWith(
         overlayColor: _focusOverlay(config.accentColor),

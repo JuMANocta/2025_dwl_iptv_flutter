@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 
@@ -32,7 +33,7 @@ Future<bool> runBackupImportFlow(BuildContext context) async {
   try {
     content = await BackupService.readBackup(path, password);
   } catch (e) {
-    if (context.mounted) messenger.showSnackBar(SnackBar(content: Text('❌ $e')));
+    if (context.mounted) messenger.showSnackBar(SnackBar(content: Text('❌ ${describeError(e)}')));
     return false;
   }
   if (!context.mounted) return false;
@@ -47,7 +48,7 @@ Future<bool> runBackupImportFlow(BuildContext context) async {
     if (context.mounted) await _showImportSuccessDialog(context, content);
     return true;
   } catch (e) {
-    if (context.mounted) messenger.showSnackBar(SnackBar(content: Text('❌ Échec : $e')));
+    if (context.mounted) messenger.showSnackBar(SnackBar(content: Text('❌ Échec : ${describeError(e)}')));
     return false;
   }
 }
@@ -156,6 +157,9 @@ Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {
       ),
       actions: [
         TextButton(
+          // §safeFocus — Restauration (tout est ÉCRASÉ) : le focus d'entrée va
+          // sur « Annuler », sur TV OK est le geste réflexe.
+          autofocus: true,
           onPressed: () => Navigator.pop(ctx, false),
           child: const Text('Annuler'),
         ),

@@ -29,6 +29,53 @@ void main() {
       );
     });
 
+    test('page d\'erreur HTML de 2 Ko renommée en .m3u → retélécharger', () {
+      // §cacheKeep — LE cas que `lengthBytes > 0` laissait passer : ce qu'un
+      // panel en panne renvoie n'est pas un fichier vide, c'est une page
+      // d'erreur de quelques kilo-octets. Elle était acceptée comme un cache
+      // sain et faisait autorité pendant 24 h.
+      expect(
+        PlaylistService.needsDownload(
+            exists: true, lengthBytes: 2000, age: Duration.zero),
+        isTrue,
+        reason: '2000 octets ne peuvent pas être un catalogue IPTV',
+      );
+    });
+
+    test('pile sur le plancher → accepté (borne inclusive)', () {
+      expect(
+        PlaylistService.needsDownload(
+          exists: true,
+          lengthBytes: PlaylistService.minPlaylistBytes,
+          age: Duration.zero,
+        ),
+        isFalse,
+      );
+    });
+
+    test('un octet sous le plancher → refusé', () {
+      expect(
+        PlaylistService.needsDownload(
+          exists: true,
+          lengthBytes: PlaylistService.minPlaylistBytes - 1,
+          age: Duration.zero,
+        ),
+        isTrue,
+      );
+    });
+
+    test('le plancher est paramétrable', () {
+      expect(
+        PlaylistService.needsDownload(
+          exists: true,
+          lengthBytes: 500,
+          age: Duration.zero,
+          minBytes: 100,
+        ),
+        isFalse,
+      );
+    });
+
     test('cache frais → ne rien faire', () {
       expect(
         PlaylistService.needsDownload(
@@ -90,6 +137,20 @@ void main() {
           exists: false,
           lengthBytes: 0,
           age: null,
+          respectTtl: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('§cacheKeep — le plancher s\'applique AUSSI ici', () {
+      // Ignorer le TTL, oui ; accepter un cache empoisonné, non. « Peupler
+      // seulement » ne doit pas vouloir dire « peupler avec n'importe quoi ».
+      expect(
+        PlaylistService.needsDownload(
+          exists: true,
+          lengthBytes: 800,
+          age: const Duration(minutes: 1),
           respectTtl: false,
         ),
         isTrue,

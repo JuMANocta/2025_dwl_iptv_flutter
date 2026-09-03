@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -37,6 +38,28 @@ class UpdateInfo {
   });
 }
 
+/// §userError — Résultat d'une vérification de mise à jour, en trois états.
+sealed class UpdateCheckResult {
+  const UpdateCheckResult();
+}
+
+/// Une version plus récente existe.
+class UpdateAvailable extends UpdateCheckResult {
+  final UpdateInfo info;
+  const UpdateAvailable(this.info);
+}
+
+/// La version installée est la dernière publiée.
+class UpToDate extends UpdateCheckResult {
+  const UpToDate();
+}
+
+/// On n'a PAS pu répondre — et [reason] dit pourquoi, en français, sans URL.
+class UpdateUnavailable extends UpdateCheckResult {
+  final String reason;
+  const UpdateUnavailable(this.reason);
+}
+
 /// Service de mise à jour in-app via GitHub Releases.
 ///
 /// Flow :
@@ -53,8 +76,22 @@ class UpdateService {
 
   /// Vérifie si une mise à jour est disponible.
   /// Retourne [UpdateInfo] si une version plus récente existe, null sinon.
-  /// Silencieux en cas d'erreur réseau (l'utilisateur n'est pas dérangé).
+  /// Silencieux en cas d'erreur réseau (l'utilisateur n'est pas dérangé) —
+  /// c'est la forme voulue pour la vérification AUTOMATIQUE du démarrage.
+  /// Pour une vérification DEMANDÉE par l'utilisateur, préférer
+  /// [checkForUpdateDetailed] : « à jour » et « GitHub injoignable » ne
+  /// doivent pas se confondre (§userError, audit 2026-09-03 n°3).
   static Future<UpdateInfo?> checkForUpdate() async {
+    final UpdateCheckResult r = await checkForUpdateDetailed();
+    return r is UpdateAvailable ? r.info : null;
+  }
+
+  /// §userError — Même vérification, mais qui DIT ce qui s'est passé.
+  ///
+  /// Avant, `null` couvrait quatre cas (à jour, GitHub injoignable, HTTP ≠ 200,
+  /// release sans APK) et la page « À propos » répondait « Vous êtes à jour »
+  /// aux quatre. Sur une action explicite, c'est un texte qui ment.
+  static Future<UpdateCheckResult> checkForUpdateDetailed() async {
     try {
       final response = await http
           .get(Uri.parse(_apiUrl),
@@ -63,7 +100,8 @@ class UpdateService {
 
       if (response.statusCode != 200) {
         debugPrint('⚠️ UpdateService: HTTP ${response.statusCode}');
-        return null;
+        return UpdateUnavailable(
+            'GitHub a répondu HTTP ${response.statusCode}.');
       }
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -80,7 +118,8 @@ class UpdateService {
       );
       if (asset == null) {
         debugPrint('⚠️ UpdateService: aucun $extension dans la release $tagName');
-        return null;
+        return UpdateUnavailable(
+            "La dernière release ($tagName) ne contient pas de fichier $extension.");
       }
 
       final downloadUrl = asset['browser_download_url'] as String? ?? '';
@@ -94,10 +133,10 @@ class UpdateService {
 
       if (!_isNewer(tagName, localVersion)) {
         debugPrint('✅ UpdateService: déjà à jour ($localVersion)');
-        return null;
+        return const UpToDate();
       }
 
-      return UpdateInfo(
+      return UpdateAvailable(UpdateInfo(
         tagName: tagName,
         releaseName: releaseName,
         body: body,
@@ -107,10 +146,14 @@ class UpdateService {
         // qui distingue deux versions au même numéro public.
         localVersion: '${info.version}+${info.buildNumber}',
         htmlUrl: data['html_url'] as String?,
-      );
+      ));
+    } on TimeoutException {
+      debugPrint('⚠️ UpdateService: vérification échouée → délai dépassé');
+      return const UpdateUnavailable("GitHub n'a pas répondu à temps.");
     } catch (e) {
       debugPrint('⚠️ UpdateService: vérification échouée → $e');
-      return null;
+      return const UpdateUnavailable(
+          'Impossible de joindre GitHub. Vérifie la connexion.');
     }
   }
 

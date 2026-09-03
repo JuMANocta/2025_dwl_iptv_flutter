@@ -958,7 +958,35 @@ class _SearchEmptyState extends StatelessWidget {
                     ),
                     const Spacer(),
                     TextButton(
-                      onPressed: () => SearchHistoryService.clear(),
+                      // §undoClear + §undoTv — Effacer l'historique reste
+                      // réversible, mais la forme dépend de l'appareil : au
+                      // doigt une snackbar « Annuler » 5 s, à la télécommande
+                      // une confirmation AVANT (la snackbar n'est pas
+                      // atteignable au D-pad). Dans les deux cas, le snapshot
+                      // est pris AVANT l'effacement, puis « Annuler » rejoue
+                      // `record()` du plus ANCIEN au plus récent (record insère
+                      // en tête, donc l'ordre d'origine est reconstitué).
+                      // `version` bumpe à chaque appel → la liste se redessine
+                      // d'elle-même.
+                      onPressed: () async {
+                        final List<String> snapshot = SearchHistoryService.all;
+                        if (snapshot.isEmpty) return;
+                        await confirmOrUndo(
+                          context,
+                          title: 'Effacer l\'historique ?',
+                          question: snapshot.length == 1
+                              ? 'La dernière recherche sera supprimée.'
+                              : 'Les ${snapshot.length} dernières recherches seront supprimées.',
+                          confirmLabel: 'Effacer',
+                          doneMessage: 'Historique effacé',
+                          action: () => SearchHistoryService.clear(),
+                          onUndo: () async {
+                            for (final q in snapshot.reversed) {
+                              await SearchHistoryService.record(q);
+                            }
+                          },
+                        );
+                      },
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                         minimumSize: const Size(0, 28),

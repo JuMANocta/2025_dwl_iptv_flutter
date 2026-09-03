@@ -50,6 +50,50 @@ void main() {
     });
   });
 
+  /// §cookieScope — Un cookie de session vaut ce que vaut le mot de passe : il
+  /// ouvre l'abonnement. La règle générique `password=…` s'arrêtait au premier
+  /// `;`, ce qui laissait la moitié d'un `Set-Cookie` en clair dans un journal
+  /// servi en HTTP sur le réseau local.
+  group('sanitizeForLog — en-têtes Cookie (§cookieScope)', () {
+    test('Set-Cookie complet masqué, point-virgules inclus', () {
+      final out = sanitizeForLog(
+          'Set-Cookie: PHPSESSID=9f2c1ab; path=/; HttpOnly; Max-Age=3600');
+      expect(out, isNot(contains('9f2c1ab')));
+      expect(out, isNot(contains('PHPSESSID')));
+      // ⚠️ Le piège : s'arrêter au premier `;` laissait `path=/; HttpOnly…`.
+      expect(out, isNot(contains('HttpOnly')));
+      expect(out, contains('***'));
+    });
+
+    test('Cookie: (requête sortante) masqué aussi', () {
+      final out = sanitizeForLog('→ GET headers {Cookie: sid=abc123; lang=fr}');
+      expect(out, isNot(contains('abc123')));
+      expect(out, contains('***'));
+    });
+
+    test('dans une Map d\'en-têtes, la suite reste lisible', () {
+      // Le masquage s'arrête à `}` : le reste du dump garde sa valeur de
+      // diagnostic (c'est tout l'intérêt du journal).
+      final out = sanitizeForLog('{cookie: sid=abc123} content-type: json');
+      expect(out, isNot(contains('abc123')));
+      expect(out, contains('content-type: json'));
+    });
+
+    test('casse indifférente (set-cookie / SET-COOKIE)', () {
+      for (final h in ['set-cookie', 'SET-COOKIE', 'Set-Cookie']) {
+        final out = sanitizeForLog('$h: token_de_session_xyz; path=/');
+        expect(out, isNot(contains('token_de_session_xyz')),
+            reason: 'variante « $h » non masquée');
+      }
+    });
+
+    test('« cookies: 3 » n\'est pas un en-tête → intact', () {
+      // Pas de faux positif : le mot doit être suivi directement de `:` ou `=`.
+      const line = '🍪 cookies: 3 conservés';
+      expect(sanitizeForLog(line), line);
+    });
+  });
+
   group('DiagnosticLog — tampon', () {
     test('add() horodate et conserve le message', () {
       DiagnosticLog.add('🚀 démarrage');

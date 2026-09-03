@@ -55,17 +55,24 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
     messenger.showSnackBar(
       const SnackBar(content: Text('🔍 Vérification des mises à jour…')),
     );
-    final info = await UpdateService.checkForUpdate();
+    final result = await UpdateService.checkForUpdateDetailed();
     if (!mounted) return;
     setState(() => _checking = false);
-    if (info == null) {
-      messenger.clearSnackBars();
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Vous êtes à jour.')),
-      );
-      return;
+    messenger.clearSnackBars();
+    // §userError — « Vous êtes à jour » n'est dit QUE si on a vraiment comparé
+    // les versions ; un GitHub injoignable le dit, au lieu de rassurer à tort.
+    switch (result) {
+      case UpToDate():
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Vous êtes à jour.')),
+        );
+      case UpdateUnavailable(reason: final reason):
+        messenger.showSnackBar(
+          SnackBar(content: Text('⚠️ Vérification impossible : $reason')),
+        );
+      case UpdateAvailable(info: final info):
+        await UpdateDialog.show(context, info);
     }
-    await UpdateDialog.show(context, info);
   }
 
   Future<void> _open(String url) async {

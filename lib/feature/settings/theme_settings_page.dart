@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../widgets/confirm_or_undo.dart';
 import '../../widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
@@ -46,6 +47,35 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
     ThemeService.save(config);
   }
 
+  /// §undoReset + §undoTv — « Réinitialiser » reste réversible : un thème réglé
+  /// couleur par couleur ne doit pas disparaître sur un tap malheureux.
+  ///
+  /// Au doigt : on applique, puis snackbar « Annuler » 5 s. À la télécommande :
+  /// on DEMANDE avant, car l'action d'une snackbar n'est pas atteignable au
+  /// D-pad (l'annulation y était décorative).
+  ///
+  /// ⚠️ Le snackbar survit à la page (il vit sur le `ScaffoldMessenger` racine) :
+  /// si l'utilisateur a quitté avant d'annuler, on persiste sans `setState`.
+  Future<void> _resetWithUndo() async {
+    final AppThemeConfig old = _config;
+    await confirmOrUndo(
+      context,
+      title: 'Réinitialiser le thème ?',
+      question:
+          'Toutes les couleurs et tous les effets reviennent aux valeurs par défaut.',
+      confirmLabel: 'Réinitialiser',
+      doneMessage: 'Réglages réinitialisés',
+      action: () async => _apply(AppThemeConfig.defaults),
+      onUndo: () {
+        if (mounted) {
+          _apply(old);
+        } else {
+          ThemeService.save(old);
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -60,7 +90,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
           IconButton(
             icon: const Icon(Icons.restart_alt),
             tooltip: 'Réinitialiser',
-            onPressed: () => _apply(AppThemeConfig.defaults),
+            onPressed: _resetWithUndo,
           ),
         ],
       ),

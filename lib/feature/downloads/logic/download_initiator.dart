@@ -4,7 +4,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart' show openAppSettings;
 import '../../../main.dart'; // Pour le navigatorKey
+import '../../../core/utils/app_snackbar.dart';
+import '../downloads_page.dart';
 import '../../../data/models/download_task.dart';
 import '../../../data/services/download_manager_service.dart';
 import '../../../core/utils/network.dart';
@@ -99,9 +102,26 @@ Future<void> verifierEtTelecharger({
   if (existingTask.id.isNotEmpty) {
     switch (existingTask.status) {
 
-    // CAS 1 : C'est déjà téléchargé. On notifie l'utilisateur.
+    // CAS 1 : C'est déjà téléchargé. On le DIT (avant : un `debugPrint` et
+    // rien à l'écran — le bouton semblait cassé) et on offre d'aller voir.
+    // `MainNavigation` n'expose aucun moyen de changer d'onglet de l'extérieur,
+    // donc « Voir » pousse `DownloadsPage` comme une route (elle a son propre
+    // Scaffold + AppBar, le retour arrière fonctionne).
       case DownloadStatus.completed:
         debugPrint("✅ Ce fichier est déjà sauvegardé.");
+        AppSnackBar.show(
+          context,
+          'Déjà téléchargé',
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Voir',
+            onPressed: () {
+              navigatorKey.currentState?.push(
+                MaterialPageRoute(builder: (_) => const DownloadsPage()),
+              );
+            },
+          ),
+        );
         return;
 
     // CAS 2 : C'est déjà en cours, en attente ou en pause. On ouvre le moniteur.
@@ -136,8 +156,17 @@ Future<void> verifierEtTelecharger({
               ));
         }
         return;
+      // CAS 4 : le flux est fini, la finalisation (rename / MediaStore) tourne
+      // encore → même moniteur que pour un téléchargement en cours, il affiche
+      // l'étape et basculera tout seul sur « terminé ».
       case DownloadStatus.finalizing:
         debugPrint("✅ Stream terminé. Finalisation...");
+        final rootContext = navigatorKey.currentContext;
+        if (rootContext != null && rootContext.mounted) {
+          showAppDialog(
+              context: rootContext,
+              builder: (_) => TerminalDownloadDialog(taskId: existingTask.id));
+        }
         return;
     }
   }
@@ -277,11 +306,18 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   final String? finalSaveDirectory = await StorageService.getAppMoviesPath();
 
   if (finalSaveDirectory == null) {
-    // Si on n'a pas pu obtenir le chemin (permission refusée), on notifie et on arrête.
+    // Permission refusée : on le dit en français (§frOnly) et on donne l'issue —
+    // une fois refusée « pour toujours », seule la fiche de l'app dans les
+    // réglages Android permet de la rendre, d'où `openAppSettings()`.
     if (context.mounted) {
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Permission denied. The download cannot begin.")),
+      AppSnackBar.show(
+        context,
+        'Permission de stockage refusée : le téléchargement ne peut pas démarrer.',
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Ouvrir les réglages',
+          onPressed: () => openAppSettings(),
+        ),
       );
     }
     return;
