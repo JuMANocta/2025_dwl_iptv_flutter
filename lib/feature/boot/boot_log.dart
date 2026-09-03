@@ -72,7 +72,32 @@ class BootLog extends StatelessWidget {
                   fontSize: fontSize,
                   cursor: true,
                 ),
-                SizedBox(height: isTv ? 22 : 16),
+                // §bootPercent — Le détail vit sur sa PROPRE ligne, de hauteur
+                // RÉSERVÉE.
+                //
+                // ⚠️ Le coller au libellé était le réflexe, et c'est un piège :
+                // le `Text` de `_LogLine` n'a pas de `maxLines`, donc son
+                // `TextOverflow.ellipsis` ne s'applique jamais — un libellé
+                // trop long **passe à la ligne** au lieu d'être tronqué. Il
+                // pousse alors la barre vers le bas, les `Spacer` du décor
+                // re-centrent tout le bloc, et l'écran de démarrage sursaute à
+                // chaque palier. Sur téléphone, « // analyse du catalogue… »
+                // occupe déjà 24 des ~31 caractères tenables.
+                //
+                // Hauteur réservée en permanence : sans elle, l'apparition et
+                // la disparition du détail produiraient le même sursaut.
+                SizedBox(
+                  height: fontSize * 1.7,
+                  child: step.detail == null
+                      ? null
+                      : _LogLine(
+                          prefix: ' ',
+                          label: step.detail!,
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.55),
+                          fontSize: fontSize,
+                        ),
+                ),
+                SizedBox(height: isTv ? 14 : 10),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
@@ -126,8 +151,16 @@ class _LogLine extends StatelessWidget {
       children: [
         Text(prefix, style: style),
         const SizedBox(width: 8),
+        // ⚠️ `maxLines: 1` est OBLIGATOIRE : sans lui, `TextOverflow.ellipsis`
+        // ne s'applique pas (le texte a une hauteur libre, donc il revient à la
+        // ligne au lieu d'être tronqué) et la mise en page du décor sursaute.
         Expanded(
-          child: Text(label, style: style, overflow: TextOverflow.ellipsis),
+          child: Text(
+            label,
+            style: style,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         if (cursor) _BlinkingCursor(color: color, fontSize: fontSize),
         if (trailing != null) ...[

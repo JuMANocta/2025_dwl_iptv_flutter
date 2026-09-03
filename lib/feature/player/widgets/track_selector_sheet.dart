@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
+import '../playback_engine.dart';
 
 import '../../../core/themes/colors.dart';
 import '../../../data/services/track_preferences_service.dart';
@@ -15,7 +15,8 @@ import '../../../widgets/tv/tv_adaptive_modal.dart';
 /// vert / sous-titres cyan) avec barre d'accent, badges de langue, et état
 /// sélectionné en contour néon + glow. Le choix est mémorisé globalement
 /// ([TrackPreferencesService]) et ré-appliqué aux médias suivants.
-Future<void> showTrackSelector(BuildContext context, Player player) {
+Future<void> showTrackSelector(
+    BuildContext context, AetherPlaybackEngine player) {
   return showAdaptiveActionSheet<void>(
     context: context,
     // §5 — Le sélecteur fournit son PROPRE scroll borné (cf. _TrackSelector) :
@@ -27,14 +28,18 @@ Future<void> showTrackSelector(BuildContext context, Player player) {
 }
 
 class _TrackSelector extends StatelessWidget {
-  final Player player;
+  final AetherPlaybackEngine player;
   const _TrackSelector({required this.player});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final tracks = player.state.tracks;
-    final cur = player.state.track;
+    // §engineVendor étape 3 — listes et sélection viennent du moteur, plus
+    // d'un objet d'état propre au moteur.
+    final audio = player.audioTracks;
+    final subs = player.subtitleTracks;
+    final curAudio = player.currentAudioTrack;
+    final curSub = player.currentSubtitleTrack;
     final maxH = MediaQuery.of(context).size.height * 0.72;
 
     return SafeArea(
@@ -78,10 +83,10 @@ class _TrackSelector extends StatelessWidget {
                     icon: Icons.graphic_eq_rounded,
                     accent: kAccentPrimary),
                 const SizedBox(height: 8),
-                if (tracks.audio.isEmpty)
+                if (audio.isEmpty)
                   _emptyHint('Aucune piste audio détectée', cs)
                 else
-                  ...tracks.audio.map((t) => _audioRow(context, t, cur)),
+                  ...audio.map((t) => _audioRow(context, t, curAudio)),
 
                 const SizedBox(height: 20),
 
@@ -91,10 +96,10 @@ class _TrackSelector extends StatelessWidget {
                     icon: Icons.closed_caption_rounded,
                     accent: kAccentSecondary),
                 const SizedBox(height: 8),
-                if (tracks.subtitle.isEmpty)
+                if (subs.isEmpty)
                   _emptyHint('Aucun sous-titre détecté', cs)
                 else
-                  ...tracks.subtitle.map((t) => _subtitleRow(context, t, cur)),
+                  ...subs.map((t) => _subtitleRow(context, t, curSub)),
               ],
             ),
           ),
@@ -103,7 +108,8 @@ class _TrackSelector extends StatelessWidget {
     );
   }
 
-  Widget _audioRow(BuildContext context, AudioTrack t, Track cur) {
+  Widget _audioRow(
+      BuildContext context, AetherTrack t, AetherTrack? cur) {
     final isAuto = t.id == 'auto';
     final isNo = t.id == 'no';
     final title = isAuto
@@ -127,7 +133,7 @@ class _TrackSelector extends StatelessWidget {
               : _LangBadge(_langShort(t.language), kAccentPrimary),
       title: title,
       subtitle: sub,
-      selected: t.id == cur.audio.id,
+      selected: t.id == cur?.id,
       onTap: () {
         player.setAudioTrack(t);
         TrackPreferencesService.setAudio(_trackKey(t.language, t.id));
@@ -136,7 +142,8 @@ class _TrackSelector extends StatelessWidget {
     );
   }
 
-  Widget _subtitleRow(BuildContext context, SubtitleTrack t, Track cur) {
+  Widget _subtitleRow(
+      BuildContext context, AetherTrack t, AetherTrack? cur) {
     final isNo = t.id == 'no';
     final isAuto = t.id == 'auto';
     final title = isNo
@@ -160,7 +167,7 @@ class _TrackSelector extends StatelessWidget {
               : _LangBadge(_langShort(t.language), kAccentSecondary),
       title: title,
       subtitle: sub,
-      selected: t.id == cur.subtitle.id,
+      selected: t.id == cur?.id,
       onTap: () {
         player.setSubtitleTrack(t);
         TrackPreferencesService.setSubtitle(

@@ -11,7 +11,7 @@ import 'player_page.dart' show PlayerBadgeType, VideoSourceType;
 ///      (les métadonnées TMDB du suivant n'étaient pas encore chargées au
 ///      moment de la reconstruction, et plus rien ne pouvait les rafraîchir
 ///      ensuite puisque les champs étaient `final`) ;
-///   2. le contrôleur `media_kit` était détruit et recréé à chaque épisode :
+///   2. le contrôleur du moteur vidéo était détruit et recréé à chaque épisode :
 ///      écran noir et re-buffering complet, très visible sur box TV.
 ///
 /// Regrouper ces champs dans un objet porté par le State rend le player
@@ -43,7 +43,8 @@ class PlayerMedia {
   /// Durée totale du replay — alimente la barre replay (optionnel).
   final Duration? replayDuration;
 
-  /// §1e — Position de reprise, passée nativement à mpv via `Media(start:)`.
+  /// §1e — Position de reprise, passée nativement au moteur à l'ouverture
+  /// (§resumeStart) : un seek post-open peut être avalé par le buffering.
   final Duration? startPosition;
 
   /// Clé de persistance de progression. Si nulle, [path] fait office de clé.
@@ -57,9 +58,18 @@ class PlayerMedia {
   /// une confirmation explicite.
   final int? seasonNumber;
 
+  /// §stallCount — Compte IPTV d'où vient ce flux.
+  ///
+  /// Sert à rattacher les blocages mesurés au **fournisseur** qui les a causés :
+  /// sans lui, on saurait que « ça a bloqué 4 fois » sans pouvoir dire lequel
+  /// des trois abonnements accuser. Vide pour une lecture de fichier local, où
+  /// la question n'a pas de sens.
+  final String accountId;
+
   const PlayerMedia({
     required this.path,
     required this.title,
+    this.accountId = '',
     this.qualityTag,
     this.episodeTag,
     this.seriesName,

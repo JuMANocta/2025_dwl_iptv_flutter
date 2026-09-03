@@ -1,5 +1,14 @@
 /// §audioFallback — Classification des erreurs remontées par mpv.
 ///
+/// ⚠️ §tourFix (2026-09-02) — INATTEIGNABLE depuis le retrait de libmpv
+/// (§engineVendor 6/6) : les chaînes reconnues ici sont des libellés d'erreur
+/// **mpv**, or le seul moteur restant (`Media3Engine`) n'émet plus qu'une
+/// chaîne constante ('Lecture impossible') — [isAudioDecodeError] ne matche
+/// donc jamais, et le chemin §audioFallback de `player_page.dart` avec lui.
+/// La logique est conservée telle quelle : le POURQUOI ci-dessous reste vrai,
+/// et le rebranchement est prévu sur les erreurs typées de Media3
+/// (§engineFeatures), pas sur une réécriture de ces regex.
+///
 /// Le lecteur doit répondre différemment selon la nature de la panne : un flux
 /// injoignable se retente (réseau), une piste audio indécodable se contourne
 /// (on change de piste). Les confondre donne le comportement observé sur

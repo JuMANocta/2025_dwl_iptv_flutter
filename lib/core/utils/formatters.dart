@@ -7,6 +7,29 @@ String formatFileSize(int bytes) {
   return "${(bytes / (1 << (10 * i))).toStringAsFixed(2)} ${suffixes[i]}";
 }
 
+/// §bootPercent — Séparateur de milliers : « 53 781 » se lit, « 53781 » non.
+///
+/// ⚠️ Écrit à la main plutôt que via `intl` : cette fonction est appelée DANS
+/// un isolate de parsing, où l'on ne veut ni initialisation de locale, ni
+/// dépendance supplémentaire, ni allocation superflue par entrée.
+///
+/// ⚠️ Espace ORDINAIRE (U+0020), et pas l'espace fine insécable U+202F que la
+/// typographie française appellerait ici. Le seul consommateur est l'écran de
+/// démarrage, rendu en **Source Code Pro** : un glyphe absent de la police n'y
+/// donnerait pas un espace un peu trop large, mais un carré vide — et sur un
+/// téléviseur, personne ne serait là pour le voir.
+const String _thousandsSeparator = ' ';
+
+String formatCount(int n) {
+  final s = n.abs().toString();
+  final b = StringBuffer(n < 0 ? '-' : '');
+  for (int i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) b.write(_thousandsSeparator);
+    b.write(s[i]);
+  }
+  return b.toString();
+}
+
 String formatDuration(int totalSeconds) {
   if (totalSeconds < 0) return "--:--";
   final duration = Duration(seconds: totalSeconds);

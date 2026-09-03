@@ -278,7 +278,7 @@ String buildAbout(AppThemeConfig t, String token, String version) {
   <div class="sec">
     <h2>AetherStream</h2>
     <p class="muted">Client IPTV multi-comptes (Flutter Android) — playlist M3U,
-      enrichissement TMDB, lecteur libmpv, téléchargements, EPG XMLTV.</p>
+      enrichissement TMDB, lecteur Media3/ExoPlayer, téléchargements, EPG XMLTV.</p>
     <label>Version installée</label>
     <div class="acc"><div class="nm">${esc(version)}</div></div>
     <label>Liens</label>

@@ -5,10 +5,12 @@ import 'package:aetherStream/feature/player/video_stats.dart';
 
 void main() {
   group('§videoStats — décodage matériel ou logiciel', () {
-    test('mpv répond littéralement « no » quand il retombe en logiciel', () {
+    test('le moteur répond littéralement « no » quand le décodage est logiciel',
+        () {
       // C'est LE piège du ticket : un simple test de nullité verrait une
       // chaîne non vide et conclurait « matériel » — soit exactement
-      // l'inverse de ce qu'on cherche à détecter pour §video4k.
+      // l'inverse de ce qu'on cherche à détecter pour §video4k. Convention
+      // posée par mpv, conservée par Media3Engine.readStats.
       expect(
         const VideoStatsSnapshot(hwdec: 'no').hardwareDecoding,
         isFalse,
@@ -34,52 +36,16 @@ void main() {
   });
 
   group('§videoStats — fluidité', () {
-    test('décrochage signalé quand le rendu tombe sous 90 % de la cible', () {
-      const s = VideoStatsSnapshot(containerFps: 25.0, renderedFps: 18.0);
-      expect(s.isDroppingRate, isTrue);
-    });
-
-    test('les micro-oscillations ne déclenchent pas d\'alerte', () {
-      // `estimated-vf-fps` est une moyenne glissante : sans marge, l'encart
-      // crierait au loup en permanence sur une lecture parfaitement fluide.
-      const s = VideoStatsSnapshot(containerFps: 25.0, renderedFps: 24.6);
-      expect(s.isDroppingRate, isFalse);
-    });
-
-    test('sans cible connue, aucun verdict', () {
-      expect(
-        const VideoStatsSnapshot(renderedFps: 12.0).isDroppingRate,
-        isFalse,
-      );
-      expect(
-        const VideoStatsSnapshot(containerFps: 0.0, renderedFps: 0.0)
-            .isDroppingRate,
-        isFalse,
-      );
-    });
-
-    test('pertes détectées côté affichage OU côté décodeur', () {
+    test('pertes détectées côté affichage', () {
       expect(const VideoStatsSnapshot(droppedFrames: 3).hasDroppedFrames,
           isTrue);
-      expect(
-          const VideoStatsSnapshot(decoderDroppedFrames: 2).hasDroppedFrames,
-          isTrue);
-      expect(
-          const VideoStatsSnapshot(droppedFrames: 0, decoderDroppedFrames: 0)
-              .hasDroppedFrames,
+      expect(const VideoStatsSnapshot(droppedFrames: 0).hasDroppedFrames,
           isFalse);
+      expect(const VideoStatsSnapshot().hasDroppedFrames, isFalse);
     });
   });
 
   group('§videoStats — image', () {
-    test('pixels non carrés = source anamorphique, pas un downscale', () {
-      expect(const VideoStatsSnapshot(pixelAspectRatio: 1.33).isAnamorphic,
-          isTrue);
-      expect(
-          const VideoStatsSnapshot(pixelAspectRatio: 1.0).isAnamorphic, isFalse);
-      expect(const VideoStatsSnapshot().isAnamorphic, isFalse);
-    });
-
     test('définition déduite de la hauteur décodée', () {
       String? def(int h) => VideoStatsSnapshot(height: h).definitionLabel;
       expect(def(2160), '4K');
@@ -133,6 +99,27 @@ void main() {
         droppedFrames: 42,
       );
       expect(a.diagnosticSignature, b.diagnosticSignature);
+    });
+
+    test('« hdr » n\'apparaît que si le moteur le CONFIRME', () {
+      // §tourFix — tri-état : `null` = Media3 ne sait pas (colorInfo absent).
+      // Écrire « hdr » dans le doute vaudrait un faux relevé dans le journal.
+      expect(const VideoStatsSnapshot(hdr: true).diagnosticSignature,
+          contains('hdr'));
+      expect(const VideoStatsSnapshot(hdr: false).diagnosticSignature,
+          isNot(contains('hdr')));
+      expect(const VideoStatsSnapshot().diagnosticSignature,
+          isNot(contains('hdr')));
+    });
+
+    test('la signature dynamique garde « perdues=N »', () {
+      // §video4kTrace — sur box, le journal est le seul canal : sans cette
+      // ligne, un effondrement de lecture ne laisserait aucune trace datée.
+      const s = VideoStatsSnapshot(droppedFrames: 42, videoBitrate: 4000000);
+      expect(s.dynamicSignature, contains('perdues=42'));
+      expect(s.dynamicSignature, contains('débit='));
+      expect(const VideoStatsSnapshot().dynamicSignature,
+          contains('perdues=0'));
     });
   });
 

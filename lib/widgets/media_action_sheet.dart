@@ -336,6 +336,7 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                       MaterialPageRoute(builder: (_) => PlayerPage(
                         path: timeshiftUrl,
                         title: replayProgram.title,
+                        accountId: entry.accountId,
                         sourceType: VideoSourceType.networkReplay,
                         badgeType: PlayerBadgeType.replay,
                         replayStart: replayProgram.start,
@@ -421,6 +422,8 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
     Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
       path: v.url,
       title: v.displayName,
+      // §stallCount — rattache les blocages au fournisseur.
+      accountId: v.accountId,
       // §watchContext a/c — qualité du flux choisi affichée dans le player
       // (lève l'ambiguïté « sur quel produit/qualité suis-je ? »).
       qualityTag: v.title.qualityOrDefault,
@@ -484,6 +487,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                           MaterialPageRoute(builder: (_) => PlayerPage(
                             path: timeshiftUrl,
                             title: replayProgram.title,
+                            accountId: entryForReplay.accountId,
                             sourceType: VideoSourceType.networkReplay,
                             badgeType: PlayerBadgeType.replay,
                             replayStart: replayProgram.start,
@@ -531,6 +535,8 @@ void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPositio
   Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
     path: entry.url,
     title: entry.displayName,
+    // §stallCount — rattache les blocages au fournisseur.
+    accountId: entry.accountId,
     // §watchContext a/b — badges qualité + saison/épisode.
     qualityTag: entry.title.qualityOrDefault,
     episodeTag: entry.title.seasonEpisodeLabel,

@@ -143,7 +143,20 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
           },
         );
       },
-    );
+    ).whenComplete(() {
+      // §tourFix — Le mot de passe de chiffrement ne doit pas survivre au
+      // dialogue : on l'efface TOUT DE SUITE (c'est l'objectif de sécurité, et
+      // c'est déterministe). Le `dispose`, lui, attend la frame suivante : la
+      // fenêtre est encore montée pendant sa transition de sortie et touche
+      // encore au controller (`clearComposing()` à la perte de focus) —
+      // le disposer dans la foulée déclenche « used after being disposed ».
+      pwd1.clear();
+      pwd2.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        pwd1.dispose();
+        pwd2.dispose();
+      });
+    });
   }
 
   void _showExportSuccessDialog(String fileName) {

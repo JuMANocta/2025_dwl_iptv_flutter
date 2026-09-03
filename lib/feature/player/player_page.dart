@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
+import 'mpv_playback_engine.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:aetherStream/data/services/playback_health_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:aetherStream/data/services/track_preferences_service.dart';
@@ -12,7 +12,8 @@ import 'package:aetherStream/data/services/remote_control_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
-import 'player_controller.dart';
+import 'media3_engine.dart';
+import 'playback_engine.dart';
 import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
@@ -35,7 +36,7 @@ enum VideoSourceType {
   network, // live / VOD réseau (et timeshift simple)
   networkReplay, // timeshift avec barre replay + bouton "Retour au direct"
   file, // fichier local
-  // networkWithCache supprimé : media_kit gère le cache nativement
+  // networkWithCache supprimé : le moteur vidéo gère le cache nativement
 }
 
 /// Badge affiché en haut à droite du player.
@@ -103,10 +104,16 @@ class PlayerPage extends StatefulWidget {
   /// franchissement de saison. `null` hors séries.
   final int? seasonNumber;
 
+  /// §stallCount — Compte IPTV source, pour rattacher les blocages mesurés au
+  /// fournisseur qui les a causés. Vide = fichier local ou source inconnue :
+  /// on n'enregistre alors rien plutôt que d'attribuer au hasard.
+  final String accountId;
+
   const PlayerPage({
     super.key,
     required this.path,
     required this.title,
+    this.accountId = '',
     this.qualityTag,
     this.episodeTag,
     this.seriesName,
@@ -136,6 +143,7 @@ class PlayerPage extends StatefulWidget {
         startPosition: startPosition,
         progressKey: progressKey,
         seasonNumber: seasonNumber,
+        accountId: accountId,
       );
 
   @override
@@ -143,7 +151,9 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
-  late final AetherPlayerController _ctrl;
+  /// §engineVendor étape 4 — Typé par l'INTERFACE, plus par une implémentation :
+  /// c'est ce qui permet de choisir le moteur au lancement de la lecture.
+  late final AetherPlaybackEngine _ctrl;
 
   /// §episodeMeta — Contenu courant. Remplacé par [_switchTo] sans démonter la
   /// page : c'est ce qui permet aux infos affichées de suivre l'épisode lu.
@@ -164,6 +174,27 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   String _errorMessage = '';
   int _retryCount = 0;
   static const _maxRetries = 3;
+
+  /// §liveRecover — Reprises en place déjà tentées pour ce média.
+  int _inPlaceRecoveries = 0;
+
+  /// Au-delà, on considère que re-préparer ne suffit pas et on rouvre.
+  ///
+  /// **5 et non 3, et le chiffre vient de la mesure.** Sur appareil, le moteur
+  /// ré-émet son erreur toutes les ~3 s : trois tentatives couvraient donc à
+  /// peine **6 secondes** de coupure avant de retomber sur la réouverture — trop
+  /// court pour la plupart des respirations réseau, c'est-à-dire précisément le
+  /// cas que §liveRecover doit absorber. Cinq couvrent ~15 s.
+  ///
+  /// Le budget se reconstitue dès que la lecture repart, donc l'allonger ne
+  /// coûte rien sur la durée ; et il reste borné pour qu'une source réellement
+  /// morte finisse par emprunter le chemin de la réouverture — le seul qui
+  /// tente aussi l'extension alternative (.m3u8 ↔ .ts).
+  static const _maxInPlaceRecoveries = 5;
+
+  /// Vrai pendant qu'une reprise en place est en vol : empêche qu'une rafale
+  /// d'erreurs (§retryBurst) en déclenche plusieurs à la fois.
+  bool _recovering = false;
   // Chemin courant utilisé pour le retry (peut alterner .m3u8 ↔ .ts).
   late String _currentPath;
 
@@ -181,7 +212,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   /// §qualityTruth — Écoute des paramètres vidéo, pour mesurer la définition
   /// RÉELLEMENT servie par le flux.
-  StreamSubscription<VideoParams>? _videoParamsSub;
+  StreamSubscription<AetherVideoSize>? _videoParamsSub;
 
   /// Clé du flux déjà mesuré pendant cette lecture. Remise à zéro par
   /// [_switchTo] : sans ça, l'épisode suivant hériterait de la mesure du
@@ -220,8 +251,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// explication passe pour une panne.
   bool _audioGaveUp = false;
 
-  /// §tvPlayerNav — Vitesse courante, pilotée par le sous-menu Vitesse du
-  /// panneau d'options TV (reflète la coche du menu).
+  /// §tvPlayerNav + §tourFix — Vitesse courante, UNIQUE source de vérité.
+  /// Alimentée par le sous-menu Vitesse ET par le badge inline des contrôles
+  /// (via [_setSpeed]) : les deux voies convergent ici, le badge et la coche
+  /// du menu ne peuvent plus se contredire.
   double _speed = 1.0;
 
   // §seekAccum — Accumulation des sauts rapprochés (double-tap mobile + flèches
@@ -234,9 +267,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   // Luminosité courante (0.0–1.0), initialisée à 0.5 par défaut.
   double _brightness = 0.5;
-  // Volume courant (0.0–200.0). Démarre boosté à 130% pour compenser les flux
-  // IPTV souvent encodés faibles — voir AetherPlayerController.initialVolume.
-  double _volume = AetherPlayerController.initialVolume;
+  // Volume courant (0.0–200.0). Démarre boosté (125 % sur TV, 130 % ailleurs)
+  // pour compenser les flux IPTV souvent encodés faibles — cf. [AetherVolume],
+  // qui vit dans l'interface et NON dans une implémentation : ces valeurs
+  // avaient été écrites côté mpv, et le moteur suivant ne les aurait jamais
+  // appliquées (§engineVendor étape 5).
+  double _volume = AetherVolume.initial;
 
   bool _isFullScreen = false;
 
@@ -255,11 +291,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
     _media = widget.initialMedia;
     _currentPath = _media.path;
-    // §replayBuffer — profil mpv timeshift (buffering propre aux frontières
-    // de segments HLS longs) quand on lit un replay.
-    _ctrl = AetherPlayerController(
-      timeshift: _media.sourceType == VideoSourceType.networkReplay,
-    );
+    // §dualEngine — Sur Windows Desktop, on utilise MpvPlaybackEngine (libmpv
+    // accéléré matériellement par DirectX 11). Sur Android, Media3Engine.
+    _ctrl = Platform.isWindows ? MpvPlaybackEngine() : Media3Engine();
     _listenErrors();
     _listenPlaybackForWakelock();
     _listenVideoParamsForQuality();
@@ -315,9 +349,24 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// Évite que l'écran s'éteigne pendant un long film, sans le maintenir allumé
   /// quand l'utilisateur a mis en pause ou que le flux est planté.
   void _listenPlaybackForWakelock() {
-    _playingSub = _ctrl.player.stream.playing.listen((playing) {
+    _playingSub = _ctrl.playingStream.listen((playing) {
       if (playing) {
         _acquireWakelock();
+        // §liveRecover — La lecture est repartie : les compteurs de secours
+        // repartent avec elle.
+        //
+        // ⚠️ Défaut trouvé À LA VÉRIFICATION sur appareil : sans cette remise à
+        // zéro, `_inPlaceRecoveries` ne redescendait jamais. Trois coupures
+        // espacées d'une heure épuisaient le budget, et le reste de la séance
+        // ne connaissait plus que la réouverture complète — exactement ce que
+        // §liveRecover corrige. Même raisonnement pour `_retryCount` : trois
+        // incidents distincts ne sont pas un incident qui s'aggrave.
+        if (_inPlaceRecoveries != 0 || _retryCount != 0) {
+          debugPrint('✅ §liveRecover — lecture rétablie, compteurs remis à zéro '
+              '(reprises=$_inPlaceRecoveries, réouvertures=$_retryCount)');
+        }
+        _inPlaceRecoveries = 0;
+        _retryCount = 0;
       } else {
         _releaseWakelock();
       }
@@ -330,12 +379,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// ⚠️ Volontairement **indépendant de l'encart §videoStats** : celui-ci
   /// s'active à la demande, alors que la mesure n'a de valeur que si elle
   /// s'accumule toute seule, sur tous les flux lus. Elle ne coûte rien de plus
-  /// — `videoParams` est un flux que media_kit publie déjà.
+  /// — la taille vidéo est un flux que le moteur publie déjà.
   ///
-  /// Une seule écriture par lecture (`_measuredKey`) : mpv republie ces
+  /// Une seule écriture par lecture (`_measuredKey`) : le moteur republie ces
   /// paramètres à chaque reconfiguration de la chaîne vidéo.
   void _listenVideoParamsForQuality() {
-    _videoParamsSub = _ctrl.player.stream.videoParams.listen((params) {
+    _videoParamsSub = _ctrl.videoParamsStream.listen((params) {
       final h = params.h;
       final w = params.w;
       if (h == null || w == null || h <= 0 || w <= 0) return;
@@ -387,7 +436,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         // nouveau cycle de retry. Sinon, re-armer le wakelock si on joue.
         if (_hasError) {
           _retry();
-        } else if (_ctrl.player.state.playing) {
+        } else if (_ctrl.playing) {
           _acquireWakelock();
         }
         break;
@@ -409,8 +458,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   void _saveProgress() {
     if (_skipProgress) return;
-    final pos = _ctrl.player.state.position;
-    final dur = _ctrl.player.state.duration;
+    final pos = _ctrl.position;
+    final dur = _ctrl.duration;
     if (dur <= Duration.zero) return;
     // §episodeMeta — clé du contenu COURANT, pas celle du widget : après une
     // bascule d'épisode, écrire sur l'ancienne clé fausserait les reprises.
@@ -437,14 +486,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   bool _handlingCompletion = false;
 
   void _listenCompleted() {
-    _completedSub = _ctrl.player.stream.completed.listen((done) {
+    _completedSub = _ctrl.completedStream.listen((done) {
       if (!done || !mounted) return;
       // Live et replay n'ont pas de « fin » exploitable.
       if (_skipProgress) return;
       if (_handlingCompletion || _endOfPlayback != null) return;
       // Une durée nulle = flux pas encore chargé : `completed` peut passer à
       // `true` transitoirement à l'ouverture, ce n'est pas une vraie fin.
-      if (_ctrl.player.state.duration <= Duration.zero) return;
+      if (_ctrl.duration <= Duration.zero) return;
       _onPlaybackCompleted();
     });
   }
@@ -500,6 +549,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _endOfPlayback = null;
       _currentPath = next.path; // sinon un retry .ts/.m3u8 de l'épisode
       _retryCount = 0; //        précédent contaminerait le suivant
+      _inPlaceRecoveries = 0; // §liveRecover — même raison
       _measuredKey = null; // §qualityTruth — le suivant doit être mesuré aussi
       _hasError = false;
       _errorMessage = '';
@@ -591,14 +641,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   Future<void> _openMedia() async {
     try {
-      // §resumeStart — Position de reprise passée NATIVEMENT à mpv via
-      // `Media(start:)` (cf. AetherPlayerController.open) → fini la lecture qui
-      // repart à 0 (le seek post-open était avalé par media_kit v2). Pas de
-      // reprise pour les sources live/replay (`_skipProgress`).
+      // §resumeStart — Position de reprise passée NATIVEMENT au moteur via
+      // `loadUrl(startAt:)` (cf. Media3Engine.open) : même garantie qu'avant —
+      // un seek post-open peut être avalé pendant le buffering initial, la
+      // lecture repartirait alors à 0. Pas de reprise pour les sources
+      // live/replay (`_skipProgress`).
       final start = (_skipProgress) ? null : _media.startPosition;
-      // §trackLangPref — Préférence de langue posée AVANT l'open (mpv choisit la
-      // piste au chargement → plus de switch/re-demux ~3 s = « le film se
-      // relance »). Pas pour live/replay.
+      // §trackLangPref — Préférence de langue posée AVANT l'open (le moteur
+      // choisit la piste au chargement → plus de switch/re-demux ~3 s = « le
+      // film se relance »). Pas pour live/replay.
       final audioLang = _skipProgress ? null : TrackPreferencesService.audio;
       final subLang = _skipProgress ? null : TrackPreferencesService.subtitle;
       if (_media.sourceType == VideoSourceType.file) {
@@ -621,7 +672,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// vidéo est géré nativement par `dpad` (`restoreFocus`).
   Future<void> _showTrackSelector() async {
     _hideTimer?.cancel();
-    await showTrackSelector(context, _ctrl.player);
+    await showTrackSelector(context, _ctrl);
     if (mounted) _startHideTimer();
   }
 
@@ -693,14 +744,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (mounted) _startHideTimer();
   }
 
+  /// §tourFix — Point de passage unique pour changer la vitesse (sous-menu et
+  /// badge inline) : état + moteur mis à jour ensemble, aucune voie ne peut en
+  /// oublier l'autre.
+  void _setSpeed(double s) {
+    setState(() => _speed = s);
+    _ctrl.setRate(s);
+  }
+
   /// §tvPlayerNav — Sous-menu Vitesse.
   Future<void> _showSpeedMenu() async {
     await showSpeedMenu(
       context,
       current: _speed,
       onSelect: (s) {
-        setState(() => _speed = s);
-        _ctrl.player.setRate(s);
+        _setSpeed(s);
         Navigator.of(context).pop();
       },
     );
@@ -708,21 +766,31 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   /// §audioFallback — Bascule sur une autre piste audio, sinon coupe le son.
   ///
+  /// ⚠️ §tourFix (2026-09-02) — Chemin actuellement INATTEIGNABLE : il n'est
+  /// déclenché que par [isAudioDecodeError], qui reconnaît des libellés
+  /// d'erreur **mpv**, alors que Media3Engine n'émet plus qu'une chaîne
+  /// constante ('Lecture impossible'). Conservé tel quel : la logique de
+  /// bascule reste juste, le rebranchement se fera sur les erreurs typées
+  /// Media3 (§engineFeatures) — cf. l'en-tête de `player_error.dart`.
+  ///
   /// Retourne `true` si on a pris la main (donc pas de retry réseau : le flux
   /// n'a rien fait de mal, c'est la piste choisie qui ne se décode pas).
   ///
-  /// ⚠️ La piste fautive est mémorisée dans [_rejectedAudioIds] : sans ça, mpv
-  /// peut la re-sélectionner et on tournerait en rond entre deux pistes
+  /// ⚠️ La piste fautive est mémorisée dans [_rejectedAudioIds] : sans ça, le
+  /// moteur peut la re-sélectionner et on tournerait en rond entre deux pistes
   /// indécodables. ⚠️ En dernier recours on lit **sans son** plutôt que
   /// d'abandonner : une image sans audio reste regardable, un écran d'erreur
   /// non — mais on le DIT, sinon ça passe pour une panne.
   bool _recoverFromAudioError() {
-    final player = _ctrl.player;
-    final current = player.state.track.audio;
+    final current = _ctrl.currentAudioTrack;
+    if (current == null) return false;
     _rejectedAudioIds.add(current.id);
 
-    final candidates = player.state.tracks.audio.where((t) {
-      if (t.id == 'no' || t.id == 'auto') return false;
+    // §engineVendor étape 3 — `isSpecial` remplace le test en dur sur les
+    // identifiants mpv « no »/« auto » : ces valeurs n'existent que pour ce
+    // moteur, et le prochain n'aura pas les mêmes.
+    final candidates = _ctrl.audioTracks.where((t) {
+      if (t.isSpecial) return false;
       return !_rejectedAudioIds.contains(t.id);
     }).toList();
 
@@ -730,7 +798,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       final next = candidates.first;
       debugPrint('🔈 §audioFallback — piste « ${current.id} » indécodable, '
           'bascule sur « ${next.id} » (${next.language ?? "langue inconnue"})');
-      player.setAudioTrack(next);
+      _ctrl.setAudioTrack(next);
       if (mounted) {
         AppSnackBar.show(
           context,
@@ -746,7 +814,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _audioGaveUp = true;
     debugPrint('🔇 §audioFallback — aucune piste audio décodable, '
         'lecture sans son');
-    player.setAudioTrack(AudioTrack.no());
+    _ctrl.disableAudio();
     if (mounted) {
       AppSnackBar.show(
         context,
@@ -767,7 +835,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   void _listenErrors() {
-    _errorSub = _ctrl.player.stream.error.listen((error) {
+    _errorSub = _ctrl.errorStream.listen((error) {
       if (error.isNotEmpty && mounted) {
         _handleError(error);
       }
@@ -786,7 +854,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // la reconnexion « ×3, délai 5 s » ne servait à RIEN — pas même pour les
     // coupures réseau pour lesquelles elle a été écrite.
     // Tant qu'un retry est armé, ou qu'on a déjà rendu les armes, on ignore.
-    if (_pendingRetryTimer != null || _hasError) return;
+    if (_pendingRetryTimer != null || _hasError || _recovering) return;
 
     // §audioFallback — Un échec de DÉCODAGE AUDIO ne doit pas tuer la lecture.
     // Mesuré sur device : sur un fichier 4K, mpv rendait déjà la vidéo
@@ -794,6 +862,42 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // Ces fichiers embarquent presque toujours une piste de secours (AC3/EAC3).
     if (isAudioDecodeError(error) && _recoverFromAudioError()) return;
 
+    // §liveRecover — REPRENDRE avant de RECHARGER.
+    //
+    // Le défaut mesuré sur une chaîne 4K : couper le réseau vidait le tampon,
+    // le moteur émettait une erreur, et la seule réponse de l'app était
+    // `_openMedia()` — une réouverture complète. Relevé au journal : un `load`
+    // natif, toutes les statistiques remises à zéro, décodeur recréé, ~3,5 s
+    // d'écran noir. Pour une simple respiration du réseau.
+    //
+    // `recoverInPlace()` re-prépare la source DÉJÀ chargée : même connexion
+    // logique, même sélection de pistes, pas de nouvelle vue. C'est la reprise
+    // que Media3 documente. On l'essaie EN PREMIER, et **sans le délai de 5 s** :
+    // attendre n'a de sens que pour laisser un serveur se remettre, pas pour
+    // relancer un tampon.
+    //
+    // ⚠️ Budget borné : si la reprise en place échoue à se stabiliser (erreur
+    // qui revient aussitôt), on retombe sur la réouverture. Sans ce plafond,
+    // une source réellement morte ferait boucler la reprise en silence.
+    if (_inPlaceRecoveries < _maxInPlaceRecoveries) {
+      _inPlaceRecoveries++;
+      _recovering = true;
+      debugPrint('🔁 §liveRecover — tentative de reprise en place '
+          '$_inPlaceRecoveries/$_maxInPlaceRecoveries');
+      _ctrl.recoverInPlace().then((ok) {
+        _recovering = false;
+        if (ok || !mounted) return;
+        // Le moteur n'avait rien à reprendre → filet historique.
+        _scheduleReload(error);
+      });
+      return;
+    }
+
+    _scheduleReload(error);
+  }
+
+  /// Réouverture complète — le filet, quand la reprise en place ne suffit pas.
+  void _scheduleReload(String error) {
     if (_retryCount < _maxRetries) {
       _retryCount++;
       // Retry 2 : tente l'extension alternative
@@ -841,8 +945,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   void _handleSeek(Duration delta) {
-    final pos = _ctrl.player.state.position + delta;
-    _ctrl.player.seek(pos.isNegative ? Duration.zero : pos);
+    final pos = _ctrl.position + delta;
+    _ctrl.seek(pos.isNegative ? Duration.zero : pos);
     _showControls();
     _accumulateSeek(delta);
   }
@@ -873,8 +977,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   void _handleVolumeChange(double delta) {
-    _volume = (_volume + delta).clamp(0.0, AetherPlayerController.maxVolume);
-    _ctrl.player.setVolume(_volume);
+    _volume = (_volume + delta).clamp(0.0, AetherVolume.max);
+    _ctrl.setVolume(_volume);
   }
 
   Future<void> _toggleFullscreen() async {
@@ -887,7 +991,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   // §3c-5 — Helpers consommés par TvPlayerShortcuts pour la nav télécommande.
   void _togglePlayPause() {
-    _ctrl.player.playOrPause();
+    _ctrl.playOrPause();
     _showControls();
   }
 
@@ -896,9 +1000,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// relancerait.
   void _setPlaying(bool play) {
     if (play) {
-      _ctrl.player.play();
+      _ctrl.play();
     } else {
-      _ctrl.player.pause();
+      _ctrl.pause();
     }
     _showControls();
   }
@@ -927,6 +1031,28 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _openMedia();
   }
 
+  /// §stallCount — Verse le bilan de la session au compte source.
+  ///
+  /// ⚠️ **Lu ICI et pas ailleurs** : c'est le seul instant où la mesure est
+  /// complète, et `AetherPlaybackHealth` est justement synchrone pour être
+  /// lisible depuis un `dispose()`. Appelé AVANT `_ctrl.dispose()`, qui coupe
+  /// les analytics.
+  ///
+  /// Rien n'est enregistré pour un fichier local (`accountId` vide) ni pour une
+  /// session trop courte : le service refuse les deux, parce qu'ils ne disent
+  /// rien du fournisseur et fausseraient la moyenne.
+  void _recordPlaybackHealth() {
+    final h = _ctrl.health;
+    if (!h.isMeaningful) return;
+    PlaybackHealthService.record(
+      accountId: _media.accountId,
+      stalls: h.stalls,
+      stalled: h.stalled,
+      watched: h.watched,
+      startup: h.startup,
+    );
+  }
+
   @override
   void dispose() {
     _hideTimer?.cancel();
@@ -936,6 +1062,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _seekOverlayTimer?.cancel();
     RemoteControlService.instance.clearPlayer(_remoteHandlers);
     _saveProgress(); // dernière sauvegarde à la sortie du player
+    _recordPlaybackHealth();
     _playingSub?.cancel();
     _videoParamsSub?.cancel();
     _errorSub?.cancel();
@@ -987,9 +1114,33 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         autofocus: true,
         tapToSelect: false,
         effects: const [],
-        onSelect: _togglePlayPause,
-        onLongSelect: _showPlayerOptionsPanel,
+        // §tourFix — Le mode lock ignorait la télécommande : cadenas fermé,
+        // OK faisait play/pause, ←/→ seekaient, ↑ ouvrait les options. Tout est
+        // désormais court-circuité, mais JAMAIS en silence : ↓ et OK révèlent
+        // les contrôles (donc le cadenas), exactement comme le tap simple resté
+        // actif au tactile. Une commande verrouillée qui ne produit aucun
+        // retour se lit comme une panne, pas comme un verrou.
+        //
+        // ⚠️ Le cadenas lui-même n'est atteignable qu'au pointeur (c'est un
+        // `IconButton` hors traversée dpad, et cette racine consomme les
+        // directions) : à la télécommande SEULE on ne peut ni verrouiller ni
+        // déverrouiller — pas de piège, mais pas non plus un mode « TV ».
+        // Le rendre focusable est un sujet §navBlind, pas §tourFix.
+        onSelect: () {
+          if (_isLocked) {
+            _showControls();
+            return;
+          }
+          _togglePlayPause();
+        },
+        onLongSelect: () {
+          if (_isLocked) return;
+          _showPlayerOptionsPanel();
+        },
         onDirection: (dir) {
+          // Verrouillé : les directions bloquées sont CONSOMMÉES (`true`) —
+          // rendre `false` laisserait le focus s'échapper de la vidéo.
+          if (_isLocked && dir != TraversalDirection.down) return true;
           if (dir == TraversalDirection.left) {
             _handleSeek(const Duration(seconds: -10));
             return true;
@@ -1012,22 +1163,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           fit: StackFit.expand,
           children: [
             // 1. Rendu vidéo plein écran.
-            //    §doubleLoader — `controls: NoVideoControls` DÉSACTIVE l'UI
-            //    intégrée de media_kit_video (`AdaptiveVideoControls` par
-            //    défaut). Sans ça, ses contrôles natifs s'empilaient sur nos
+            //    §doubleLoader — L'UI intégrée du lecteur natif est coupée à
+            //    la SOURCE (`showNativeControls: false`, cf. Media3Engine) :
+            //    sans ça, ses contrôles s'empileraient sur nos
             //    `PlayerControls` + `_BufferingOverlay` → DEUX spinners de
             //    chargement au démarrage + captation des taps en double (effet
             //    de "double lancement"). On rend tout nous-mêmes.
-            Video(
-              controller: _ctrl.videoController,
-              controls: NoVideoControls,
-              // §videoFit — `cover` rogne les bords pour effacer les bandes
-              // noires, `fill` déforme pour remplir. Le rognage se fait à
-              // l'affichage de la texture : mpv décode toujours l'image
-              // entière, donc changer de format est instantané et n'entraîne
-              // aucun re-décodage.
-              fit: _fit.boxFit,
-            ),
+            // §engineVendor étape 3 — Le MOTEUR produit sa surface. L'app ne
+            // sait plus s'il rend dans une texture ou dans une SurfaceView, et
+            // c'est précisément la différence qui motive la migration.
+            //
+            // §videoFit — `cover` rogne les bords pour effacer les bandes
+            // noires, `fill` déforme pour remplir. Le rognage se fait à
+            // l'affichage : l'image entière est toujours décodée, donc changer
+            // de format est instantané et n'entraîne aucun re-décodage.
+            _ctrl.buildSurface(_fit.boxFit),
 
             // 2. Couche gesture (transparente, capte tout sauf les contrôles).
             //    Désactivée sur TV — toutes les interactions passent par le
@@ -1036,7 +1186,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               cursor: _controlsVisible ? SystemMouseCursors.basic : SystemMouseCursors.none,
               onHover: (_) => _showControls(),
               child: PlayerGestures(
-                player: _ctrl.player,
+                player: _ctrl,
                 onTap: _showControls,
                 onSeek: _handleSeek,
                 onVolumeChange: _handleVolumeChange,
@@ -1050,7 +1200,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
             // 3. Overlay contrôles.
             PlayerControls(
-              player: _ctrl.player,
+              player: _ctrl,
               title: _media.title,
               qualityTag: _media.qualityTag,
               episodeTag: _media.episodeTag,
@@ -1064,6 +1214,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               onBack: AppBack.popFromUi,
               onInteraction: _showControls,
               onToggleFullScreen: _toggleFullscreen,
+              speed: _speed,
+              onSpeedChanged: _setSpeed,
               onLockChanged: (locked) => setState(() => _isLocked = locked),
               onNextEpisode:
                   widget.onRequestNext == null ? null : _requestNextEpisode,
@@ -1094,14 +1246,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // §1i — Overlay buffering central : visible quand le player charge
             // un nouveau segment HLS. Désactivé en mode lock pour ne pas troubler
             // la zone cliquable du cadenas.
-            _BufferingOverlay(player: _ctrl.player, hidden: _isLocked),
+            _BufferingOverlay(player: _ctrl, hidden: _isLocked),
 
             // §videoStats — Encart de diagnostic, au-dessus des contrôles pour
             // rester lisible quand ils apparaissent. Rien n'est construit tant
             // que l'utilisateur ne l'a pas activé.
             if (_statsEnabled)
               VideoStatsOverlay(
-                player: _ctrl.player,
+                player: _ctrl,
                 hidden: _isLocked,
                 // §qualityTruth — la qualité que la LISTE annonce, à confronter
                 // à ce qui est réellement décodé.
@@ -1125,7 +1277,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                 right: 16,
                 bottom: 90,
                 child: PlayerReplayBar(
-                  player: _ctrl.player,
+                  player: _ctrl,
                   replayStart: _media.replayStart,
                   replayDuration: _media.replayDuration,
                   visible: _controlsVisible,
@@ -1189,7 +1341,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 /// les micro-stalls. Caché quand le player est verrouillé pour ne pas masquer
 /// le bouton cadenas.
 class _BufferingOverlay extends StatefulWidget {
-  final Player player;
+  final AetherPlaybackEngine player;
   final bool hidden;
   const _BufferingOverlay({required this.player, required this.hidden});
 
@@ -1205,7 +1357,7 @@ class _BufferingOverlayState extends State<_BufferingOverlay> {
   @override
   void initState() {
     super.initState();
-    _sub = widget.player.stream.buffering.listen((v) {
+    _sub = widget.player.bufferingStream.listen((v) {
       _showTimer?.cancel();
       if (v) {
         // Évite le clignotement : on attend 300ms avant d afficher.

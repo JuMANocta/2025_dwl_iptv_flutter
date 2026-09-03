@@ -14,7 +14,14 @@ class BootStep {
   /// `null` = progression indéterminée (barre animée) ; `0..1` = déterminée.
   final double? progress;
 
-  const BootStep(this.label, {this.progress});
+  /// §bootPercent — Complément vivant de l'étape : « 34 279 films », « 2/3 ».
+  ///
+  /// Un pourcentage AFFIRME qu'on avance ; un compteur qui monte le **prouve**.
+  /// Sur une étape longue, c'est la seule chose qui distingue « ça travaille »
+  /// de « c'est figé » quand la barre progresse lentement.
+  final String? detail;
+
+  const BootStep(this.label, {this.progress, this.detail});
 }
 
 /// §bootLog — Étape TERMINÉE, avec le temps qu'elle a réellement pris.
@@ -55,6 +62,12 @@ abstract final class BootStatus {
 
   static String _label = _initial.label;
 
+  /// Progression courante, mémorisée pour que [setDetail] ne l'écrase pas.
+  static double? _progress;
+
+  /// Détail courant, mémorisé pour que [report] ne l'écrase pas.
+  static String? _detail;
+
   /// Début de l'étape courante, pour mesurer sa durée à sa clôture.
   static DateTime _startedAt = DateTime.now();
 
@@ -74,7 +87,7 @@ abstract final class BootStatus {
   ///
   /// L'étape précédente est **close et horodatée** dans [history] — sauf la
   /// toute première (`// initialisation…`), qui n'est qu'un état d'attente.
-  static void set(String label, {double? progress}) {
+  static void set(String label, {double? progress, String? detail}) {
     final DateTime now = DateTime.now();
     if (_label != _initial.label) {
       history.value = <BootStepDone>[
@@ -84,8 +97,12 @@ abstract final class BootStatus {
     }
     _label = label;
     _startedAt = now;
+    _progress = progress;
+    // Le détail appartient à l'étape : changer d'étape le remet à zéro, sinon
+    // « 34 279 films » resterait affiché sous « // prêt. ».
+    _detail = detail;
     _lastBucket = progress == null ? -1 : _bucketOf(progress.clamp(0.0, 1.0));
-    step.value = BootStep(label, progress: progress);
+    step.value = BootStep(label, progress: progress, detail: detail);
   }
 
   /// Met à jour la progression de l'étape courante.
@@ -102,7 +119,25 @@ abstract final class BootStatus {
     final bucket = _bucketOf(v);
     if (bucket == _lastBucket) return;
     _lastBucket = bucket;
-    step.value = BootStep(_label, progress: v);
+    _progress = v;
+    step.value = BootStep(_label, progress: v, detail: _detail);
+  }
+
+  /// §bootPercent — Met à jour le **détail** de l'étape courante sans toucher à
+  /// sa progression (« films · 24 100/53 781 »).
+  ///
+  /// ⚠️ Séparé de [report] plutôt que fusionné en un paramètre nommé : le
+  /// rappel de progression des parsers est typé `void Function(double)` et
+  /// circule à travers `ParsedPlaylistService`. Un second rappel indépendant
+  /// n'oblige aucun appelant existant à changer de signature.
+  ///
+  /// Le débit est celui du parseur, qui n'émet qu'au changement de pourcentage
+  /// entier — donc une centaine d'appels pour un catalogue entier, quel que
+  /// soit son nombre d'entrées.
+  static void setDetail(String? detail) {
+    if (detail == _detail) return;
+    _detail = detail;
+    step.value = BootStep(_label, progress: _progress, detail: detail);
   }
 
   /// Clôt la dernière étape sans en ouvrir de nouvelle (fin du démarrage).
@@ -116,8 +151,28 @@ abstract final class BootStatus {
     _label = _initial.label;
     _startedAt = DateTime.now();
     _lastBucket = -1;
+    _progress = null;
+    _detail = null;
     history.value = const <BootStepDone>[];
     step.value = _initial;
+  }
+
+  /// §bootLog — Recrache le journal chronométré vers `debugPrint`, donc vers le
+  /// tampon de diagnostic (§tvLogs) et la console web.
+  ///
+  /// ⚠️ **C'est le seul instrument de mesure du démarrage sur un téléviseur** :
+  /// il n'y a pas de logcat, et l'écran de boot disparaît au moment précis où
+  /// l'on voudrait lire ses chiffres. Sans ce vidage, comparer un avant/après
+  /// (§bootHydrate) supposerait de filmer l'écran.
+  static void dumpToLog() {
+    final List<BootStepDone> done = history.value;
+    if (done.isEmpty) return;
+    final Duration total = elapsedTotal;
+    debugPrint('⏱️ §bootLog — démarrage en '
+        '${(total.inMilliseconds / 1000).toStringAsFixed(1)} s :');
+    for (final BootStepDone d in done) {
+      debugPrint('   ${d.durationLabel.padLeft(8)}  ${d.label}');
+    }
   }
 
   /// Temps écoulé depuis le début de l'étape courante — utilisé par le journal

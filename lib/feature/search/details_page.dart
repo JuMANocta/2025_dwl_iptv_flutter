@@ -1721,26 +1721,53 @@ class _DetailsPageState extends State<DetailsPage> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            // §versionSelected — La sélection ne peut PAS reposer sur la seule
+            // couleur. Elle s'exprimait par un fond à 21 % d'opacité contre
+            // 8 %, une bordure un peu plus dense et une graisse : à trois
+            // mètres d'un téléviseur, ces trois écarts sont invisibles.
+            //
+            // ⚠️ Pire : sur TV, `FocusableChip` peint un anneau vert vif autour
+            // de la puce FOCALISÉE. Focus et sélection partageaient donc le même
+            // canal — la puce sous le curseur avait l'air choisie, et la vraie
+            // sélection se noyait. « Où je suis » et « ce qui va être lu » sont
+            // deux informations différentes : la première garde l'anneau, la
+            // seconde prend un marqueur EXPLICITE et non chromatique.
             decoration: BoxDecoration(
-              color: selected ? color.withAlpha(55) : color.withAlpha(20),
+              color: selected ? color.withAlpha(70) : color.withAlpha(16),
               border: Border.all(
-                color: selected ? color.withAlpha(200) : color.withAlpha(60),
-                width: selected ? 1.5 : 1,
+                color: selected ? color : color.withAlpha(60),
+                width: selected ? 2 : 1,
               ),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                    color: color,
-                    height: 1.3,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Même motif que le sélecteur de pistes (`_TrackRow`) :
+                    // pastille cochée / cercle vide. L'emplacement est TOUJOURS
+                    // réservé, donc rien ne se décale quand on change de choix.
+                    Icon(
+                      selected
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked,
+                      size: 13,
+                      color: selected ? color : color.withAlpha(90),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                        color: color,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
                 ),
                 // §qualityTruth — Ce que ce flux a RÉELLEMENT servi la
                 // dernière fois qu'on l'a lu. Rien tant qu'il n'a pas été
@@ -1853,6 +1880,8 @@ class _DetailsPageState extends State<DetailsPage> {
       builder: (_) => PlayerPage(
         path: _selectedEntry.url,
         title: _playerTitle,
+        // §stallCount — rattache les blocages au fournisseur.
+        accountId: _selectedEntry.accountId,
         // §watchContext a/b — badges qualité + saison/épisode dans le player.
         qualityTag: _selectedEntry.title.qualityOrDefault,
         episodeTag: _selectedEntry.title.seasonEpisodeLabel,
@@ -1955,6 +1984,17 @@ class _DetailsPageState extends State<DetailsPage> {
                   flex: 3,
                   child: _glowButton(
                     color: kAccentPrimary,
+                    // §detailsPlayFocus — Sur TV, l'ordre de traversée donnait le
+                    // focus d'entrée au bouton RETOUR de l'AppBar : le réflexe
+                    // télécommande (OK pour lancer) REFERMAIT la fiche, et le
+                    // bouton de lecture était 3 crans plus bas, derrière une carte
+                    // secondaire. `DetailsPage` était la seule page TV sans focus
+                    // d'entrée maîtrisé — et `TvInitialFocus` n'aurait pas suffi :
+                    // son `nextFocus()` reprend l'ordre de traversée, donc le
+                    // bouton retour. Il faut nommer explicitement la cible.
+                    // ⚠️ TV uniquement (§touchNoFocus : au tactile, donner un
+                    // focus fait apparaître un « faux focus »).
+                    autofocus: PlatformTv.isTv,
                     onPressed: () => _launchSelected(
                         from: hasResume ? progress.position : null),
                     child: _btnContent(
@@ -2031,11 +2071,13 @@ class _DetailsPageState extends State<DetailsPage> {
     required VoidCallback? onPressed,
     required Widget child,
     bool active = true,
+    bool autofocus = false,
   }) =>
       _ActionButton(
         color: color,
         onPressed: onPressed,
         active: active,
+        autofocus: autofocus,
         child: child,
       );
 
@@ -2455,11 +2497,17 @@ class _ActionButton extends StatefulWidget {
   final Widget child;
   final bool active;
 
+  /// §detailsPlayFocus — Réservé au bouton PRINCIPAL de la fiche. Un seul
+  /// bouton doit le porter : deux `autofocus` dans le même scope se disputent
+  /// le focus d'entrée.
+  final bool autofocus;
+
   const _ActionButton({
     required this.color,
     required this.onPressed,
     required this.child,
     this.active = true,
+    this.autofocus = false,
   });
 
   @override
@@ -2487,6 +2535,7 @@ class _ActionButtonState extends State<_ActionButton> {
     return FocusableChip(
       onTap: widget.onPressed,
       enabled: widget.onPressed != null,
+      autofocus: widget.autofocus,
       borderRadius: BorderRadius.circular(14),
       onFocusChange: (f) {
         if (mounted) setState(() => _focused = f);

@@ -93,7 +93,16 @@ Future<String?> _askImportPassword(BuildContext context) async {
         ),
       );
     },
-  );
+  ).whenComplete(() {
+    // §tourFix — Le mot de passe de la sauvegarde ne doit pas survivre au
+    // dialogue : on l'efface TOUT DE SUITE (c'est l'objectif de sécurité, et
+    // c'est déterministe). Le `dispose`, lui, attend la frame suivante : la
+    // fenêtre est encore montée pendant sa transition de sortie et touche
+    // encore au controller (`clearComposing()` à la perte de focus) — le
+    // disposer dans la foulée déclenche « used after being disposed ».
+    ctrl.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
+  });
 }
 
 Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {

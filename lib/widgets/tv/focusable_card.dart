@@ -3,6 +3,7 @@ import 'package:dpad/dpad.dart';
 import '../../core/themes/aether_theme_extension.dart';
 import '../../data/services/remote_control_service.dart';
 import 'dpad_row_anchor.dart';
+import 'focus_visibility.dart';
 
 /// Wrapper de focus pour la navigation D-pad / clavier (§3c-2 → §dpadNav).
 ///
@@ -86,7 +87,8 @@ class FocusableCard extends StatefulWidget {
   State<FocusableCard> createState() => _FocusableCardState();
 }
 
-class _FocusableCardState extends State<FocusableCard> {
+class _FocusableCardState extends State<FocusableCard>
+    with FocusEffectVisibility {
   @override
   void dispose() {
     // Filet de sécurité : libère l'enregistrement télécommande web.
@@ -111,14 +113,20 @@ class _FocusableCardState extends State<FocusableCard> {
 
     final focusColor = ext?.focusGlowColor ?? cs.primary;
 
-    // §focusVisibility (porté sur dpad) : bordure + glow toujours ; scale pour
-    // les vignettes, voile teinté pour les tuiles pleine largeur.
+    // §focusVisibility (porté sur dpad) : bordure + glow ; scale pour les
+    // vignettes, voile teinté pour les tuiles pleine largeur.
+    //
+    // §touchNoFocus — Rien n'est peint tant qu'on navigue au doigt : le nœud
+    // garde son focus (la télécommande et le clavier continuent de marcher),
+    // mais il ne s'AFFICHE pas. Cf. `focus_visibility.dart`.
     final effects = <DpadEffect>[
-      if (widget.scaleOnFocus) const DpadScaleEffect(scale: 1.05),
-      DpadBorderEffect(color: focusColor, width: 2.6, borderRadius: radius),
-      DpadGlowEffect(color: focusColor, opacity: 0.5, borderRadius: radius),
-      if (!widget.scaleOnFocus)
-        DpadTintEffect(color: focusColor, opacity: 0.12, borderRadius: radius),
+      if (focusEffectsVisible) ...[
+        if (widget.scaleOnFocus) const DpadScaleEffect(scale: 1.05),
+        DpadBorderEffect(color: focusColor, width: 2.6, borderRadius: radius),
+        DpadGlowEffect(color: focusColor, opacity: 0.5, borderRadius: radius),
+        if (!widget.scaleOnFocus)
+          DpadTintEffect(color: focusColor, opacity: 0.12, borderRadius: radius),
+      ],
     ];
 
     // Mode normal : Material + InkWell pour le tap tactile + ripple. En

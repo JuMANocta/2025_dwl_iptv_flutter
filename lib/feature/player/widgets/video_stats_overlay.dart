@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
+import '../playback_engine.dart';
 
 import '../../../core/themes/colors.dart';
 import '../../../data/models/quality_scale.dart';
@@ -10,17 +10,17 @@ import '../video_stats.dart';
 /// §videoStats — Encart de diagnostic vidéo, en direct par-dessus l'image.
 ///
 /// Répond à une question que rien d'autre ne sait poser sur TV (pas de
-/// logcat, cf. §tvLogs) : **qu'est-ce que mpv décode vraiment ?** Décodage
-/// matériel ou logiciel, résolution réelle, fps tenu contre fps annoncé,
-/// images perdues. C'est le préalable posé par la roadmap avant de toucher au
-/// décodeur pour §video4k — on mesure d'abord.
+/// logcat, cf. §tvLogs) : **qu'est-ce que le moteur (Media3/ExoPlayer) décode
+/// vraiment ?** Décodage matériel ou logiciel, résolution réelle, HDR confirmé
+/// ou non, images perdues. Né pour §video4k, dont la leçon reste la règle
+/// ici : on mesure d'abord, on ne touche au décodeur qu'ensuite.
 ///
 /// ⚠️ **Il ne doit pas fausser ce qu'il mesure** : rafraîchissement à 1 Hz,
 /// isolé dans un [RepaintBoundary], et jamais deux lectures concourantes
 /// (`_reading`). Un overlay qui coûterait cher pendant une lecture 4K déjà en
 /// difficulté rendrait ses propres chiffres suspects.
 class VideoStatsOverlay extends StatefulWidget {
-  final Player player;
+  final AetherPlaybackEngine player;
 
   /// Masqué en mode lock, comme les autres surcouches du lecteur.
   final bool hidden;
@@ -59,6 +59,12 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
   /// CHANGEMENT, pas à chaque tic.
   String? _loggedSignature;
 
+  /// §video4kTrace — Dernière écriture des chiffres dynamiques, et mémoire du
+  /// décrochage déjà signalé.
+  DateTime? _lastDynamicLog;
+  bool _loggedDrop = false;
+  static const Duration _dynamicPeriod = Duration(seconds: 10);
+
   /// §qualityTruth — Un flux ne se fait épingler qu'UNE fois par lecture :
   /// la ligne intéresse, sa répétition à chaque changement de débit non.
   bool _loggedVerdict = false;
@@ -80,7 +86,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     if (_reading || !mounted) return;
     _reading = true;
     try {
-      final stats = await VideoStatsReader.read(widget.player);
+      final stats = await widget.player.readStats();
       if (!mounted) return;
       // §tvLogs — La TV n'a pas de logcat : tant que l'encart est actif, ce
       // qu'il affiche part aussi dans le journal, lisible depuis la console
@@ -94,6 +100,21 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       // §qualityTruth — Une liste qui survend laisse une trace datée dans le
       // journal : c'est ce qui permet, après coup, de savoir QUEL fournisseur
       // ment et sur quels titres.
+      // §video4kTrace — Les chiffres qui bougent, à cadence LENTE : le rythme
+      // tenu et les pertes. Une ligne toutes les 10 s suffit à voir une lecture
+      // s'effondrer, sans transformer le journal en flot continu.
+      final now = DateTime.now();
+      final due = _lastDynamicLog == null ||
+          now.difference(_lastDynamicLog!) >= _dynamicPeriod;
+      // ⚠️ Les PREMIÈRES pertes sont écrites tout de suite, sans attendre le
+      // prochain palier : c'est l'instant qui intéresse, et il peut précéder
+      // un plantage — auquel cas la ligne suivante n'arrivera jamais.
+      final firstDrop = !_loggedDrop && stats.hasDroppedFrames;
+      if (due || firstDrop) {
+        _lastDynamicLog = now;
+        if (firstDrop) _loggedDrop = true;
+        debugPrint('📉 §videoStats — ${stats.dynamicSignature}');
+      }
       if (!_loggedVerdict &&
           stats.verdictFor(widget.announcedQuality) ==
               QualityVerdict.survendu) {
@@ -144,14 +165,29 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
 
     // ── Décodage : LA ligne du ticket §video4k ───────────────────────────────
     // Elle est en tête et colorée parce qu'elle tranche à elle seule entre
-    // « la box n'y arrive pas » et « mpv décode en logiciel ».
+    // « la box n'y arrive pas » et « le moteur décode en logiciel ».
+    // §hwdecUnknown — Tant que le moteur n'a pas répondu (sous Media3,
+    // `hardware` reste nul tant que l'AnalyticsListener n'a pas vu de décodeur
+    // s'initialiser — au démarrage de CHAQUE lecture), on n'affirme rien.
+    // Afficher « LOGICIEL » en rouge dans cette fenêtre était une fausse
+    // alerte systématique, sur la ligne même dont dépend tout le diagnostic.
     final hw = s.hardwareDecoding;
     rows.add(_StatRow(
       label: 'Décodage',
-      value: hw ? 'matériel · ${s.hwdec}' : 'LOGICIEL',
-      valueColor: hw ? kSuccess : kError,
-      alert: !hw,
+      value: !s.hwdecKnown
+          ? 'en cours…'
+          : (hw ? 'matériel · ${s.hwdec}' : 'LOGICIEL'),
+      valueColor: !s.hwdecKnown ? null : (hw ? kSuccess : kError),
+      alert: s.hwdecKnown && !hw,
     ));
+
+    // §engineVendor étape 6 — La sortie vidéo. Elle était masquée hors banc
+    // d'essai parce que sous mpv elle ne disait presque rien (`mediacodec-copy`
+    // partout). Sous Media3 elle nomme `SurfaceView`, c'est-à-dire précisément
+    // le chemin qui rend le HDR possible — l'information vaut d'être montrée.
+    if (s.vo != null) {
+      rows.add(_StatRow(label: 'Sortie', value: s.vo!));
+    }
 
     if (s.codec != null) {
       final decoder = s.decoder;
@@ -203,54 +239,107 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       }
     }
 
-    if (s.isAnamorphic && s.displayWidth != null && s.displayHeight != null) {
-      // Affiché SEULEMENT si les pixels sont non carrés : sinon la ligne
-      // répéterait la résolution et laisserait croire à un redimensionnement.
-      rows.add(_StatRow(
-        label: 'Affichée',
-        value: '${s.displayWidth}×${s.displayHeight}'
-            '  (pixels ${s.pixelAspectRatio!.toStringAsFixed(2)})',
-      ));
-    }
-    final pixelFormat = s.hwPixelFormat ?? s.pixelFormat;
-    if (pixelFormat != null) {
-      rows.add(_StatRow(label: 'Pixels', value: pixelFormat));
-    }
-    if ((s.signalPeak ?? 0) > 1.0) {
-      rows.add(_StatRow(
-        label: 'HDR',
-        value: s.primaries ?? 'oui',
-        valueColor: kAccentSecondary,
-      ));
-    }
+    // §tourFix — Ce que Media3 SAIT du HDR (transfert HLG/ST2084), tri-état :
+    // oui / non / « — » quand `colorInfo` est absent. L'ancienne astuce
+    // `signalPeak: 2.0` posée en dur ne laissait à cette ligne qu'une seule
+    // réponse possible — elle affichait TOUJOURS « oui ».
+    rows.add(_StatRow(
+      label: 'HDR',
+      value: s.hdr == null ? '—' : (s.hdr! ? 'oui' : 'non'),
+      valueColor: s.hdr == true ? kAccentSecondary : null,
+    ));
 
     // ── Fluidité ─────────────────────────────────────────────────────────────
-    final rendered = s.renderedFps;
+    // §tourFix — fps du CONTENEUR uniquement : Media3 ne publie pas d'images/s
+    // réellement rendues, et l'ancien « — / X » laissait lire l'absence de
+    // mesure comme une mesure.
     final target = s.containerFps;
-    if (rendered != null || target != null) {
-      final left = rendered?.toStringAsFixed(1) ?? '—';
-      final right = target?.toStringAsFixed(1) ?? '—';
-      rows.add(_StatRow(
-        label: 'Images/s',
-        value: '$left / $right',
-        valueColor: s.isDroppingRate ? kError : null,
-        alert: s.isDroppingRate,
-      ));
+    if (target != null) {
+      rows.add(_StatRow(label: 'Images/s', value: target.toStringAsFixed(1)));
     }
     if (s.hasDroppedFrames) {
-      final display = s.droppedFrames ?? 0;
-      final decoder = s.decoderDroppedFrames ?? 0;
       rows.add(_StatRow(
         label: 'Perdues',
-        value: decoder > 0 ? '$display  (décodeur $decoder)' : '$display',
+        value: '${s.droppedFrames ?? 0}',
         valueColor: kWarning,
         alert: true,
       ));
     }
 
+    // §videoStatsPlus — Images/s MESURÉES, à côté de l'annoncé.
+    //
+    // Affichées ensemble et jamais séparément : « annoncé 50 · rendu 33 » dit
+    // tout, chacun pris seul ne dit rien. C'est le relevé qui a permis §video4k.
+    final rendered = s.renderedFps;
+    if (rendered != null && rendered > 0) {
+      final annonce = s.containerFps;
+      final manque = annonce != null && annonce > 0 && rendered < annonce * 0.9;
+      rows.add(_StatRow(
+        label: 'Rendu',
+        value: '${rendered.toStringAsFixed(1)} img/s'
+            '${manque ? ' (annoncé ${annonce.toStringAsFixed(0)})' : ''}',
+        valueColor: manque ? kWarning : null,
+        alert: manque,
+      ));
+    }
+    if ((s.skippedFrames ?? 0) > 0) {
+      rows.add(_StatRow(label: 'Sautées', value: '${s.skippedFrames}'));
+    }
+
     final bitrate = s.bitrateLabel;
     if (bitrate != null) {
       rows.add(_StatRow(label: 'Débit', value: bitrate));
+    }
+
+    // §videoStatsPlus — Le débit RÉELLEMENT servi, et le tampon qu'il remplit.
+    final net = s.networkBitrateLabel;
+    if (net != null) {
+      rows.add(_StatRow(label: 'Réseau', value: net));
+    }
+    final buf = s.bufferAhead;
+    if (buf != null) {
+      // Sous 2 s d'avance, la moindre irrégularité coupe : c'est le seuil qui
+      // précède un blocage, pas une valeur anodine.
+      final court = buf.inMilliseconds < 2000;
+      rows.add(_StatRow(
+        label: 'Tampon',
+        value: '${(buf.inMilliseconds / 1000).toStringAsFixed(1)} s',
+        valueColor: court ? kWarning : null,
+        alert: court,
+      ));
+    }
+    final transferred = s.transferredLabel;
+    if (transferred != null) {
+      rows.add(_StatRow(label: 'Transféré', value: transferred));
+    }
+    final audio = s.audioLabel;
+    if (audio != null) {
+      rows.add(_StatRow(label: 'Audio', value: audio));
+    }
+
+    // §stallCount — La ligne qui accuse la SOURCE et non l'appareil.
+    //
+    // « Perdues » ci-dessus dit que le matériel ne suit pas ; « Blocages » dit
+    // que le flux ne suit pas. Ce sont deux verdicts opposés, et les confondre
+    // fait changer de box quand il fallait changer d'abonnement.
+    //
+    // Un « aucun » est affiché volontairement : c'est une mesure, pas un vide.
+    final stall = s.stallLabel;
+    if (stall != null) {
+      final bad = (s.stalls ?? 0) > 0;
+      rows.add(_StatRow(
+        label: 'Blocages',
+        value: stall,
+        valueColor: bad ? kWarning : null,
+        alert: bad,
+      ));
+    }
+    final start = s.startupMs;
+    if (start != null && start > 0) {
+      rows.add(_StatRow(
+        label: 'Démarrage',
+        value: '${(start / 1000).toStringAsFixed(1)} s',
+      ));
     }
 
     return rows;

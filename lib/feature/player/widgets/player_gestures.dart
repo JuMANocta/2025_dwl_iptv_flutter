@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart';
+import '../playback_engine.dart';
 import 'player_seek_overlay.dart';
 
 /// Couche transparente de gestion des gestures du player.
@@ -13,7 +13,7 @@ import 'player_seek_overlay.dart';
 /// - Drag vertical gauche → luminosité
 /// - Drag vertical droite → volume
 class PlayerGestures extends StatefulWidget {
-  final Player player;
+  final AetherPlaybackEngine player;
   final VoidCallback onTap;
   final void Function(Duration delta) onSeek;
   final void Function(double delta) onVolumeChange;
@@ -90,7 +90,7 @@ class _PlayerGesturesState extends State<PlayerGestures> {
 
   void _onHorizontalDragStart(DragStartDetails d) {
     _dragStart = d.localPosition;
-    _seekBase = widget.player.state.position;
+    _seekBase = widget.player.position;
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails d) {

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import '../diagnostics/log_buffer.dart';
 import '../../main.dart' show navigatorKey;
 
 /// §dpadRestore — Mémoire de focus attachée aux routes.
@@ -51,16 +52,77 @@ class FocusRouteMemory extends NavigatorObserver {
   @visibleForTesting
   int get trackedRouteCount => _memory.length;
 
+  /// Nœud actuellement mémorisé pour [route] — le CONTRAT de cette classe.
+  ///
+  /// ⚠️ Exposé pour les tests parce que le focus final ne suffit pas à juger :
+  /// dans un `testWidgets` nu, la `FocusScopeNode` de la route révélée restaure
+  /// déjà son `focusedChild` toute seule, donc un test qui n'observe que
+  /// `primaryFocus` passe **même avec la mémoire empoisonnée**. C'est le repli
+  /// de `dpad` — absent en test — qui rend la panne visible sur l'appareil. La
+  /// seule chose vérifiable ici, c'est ce qu'on a retenu.
+  @visibleForTesting
+  FocusNode? memorizedFor(Route<dynamic> route) => _memory[route]?.target;
+
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     _top = route;
     if (previousRoute == null) return;
     final FocusNode? focused = FocusManager.instance.primaryFocus;
     if (focused == null || focused is FocusScopeNode) {
-      _memory.remove(previousRoute);
+      // ⚠️ On n'EFFACE PAS une mémoire déjà en place : « je ne sais pas quoi
+      // mémoriser » ne vaut pas « il n'y a rien à restaurer ». La mémoire est
+      // consommée au pop, donc une entrée qui survit ici est forcément celle de
+      // la route qu'on est en train de recouvrir.
+      DiagnosticLog.trace('🧭 push ${_name(route)} — rien à mémoriser');
+      return;
+    }
+    // §tvExitPage — Le nœud doit appartenir à la route qu'on recouvre.
+    //
+    // ⚠️ **La faille mesurée le 2026-08-30.** `showTvActionSheet.playVersion`
+    // fait `Navigator.pop(feuille)` PUIS `Navigator.push(player)` dans la même
+    // frame. Au moment du push, la feuille anime encore sa sortie et détient
+    // toujours le focus : `primaryFocus` vaut « Regarder · FHD », un nœud de la
+    // FEUILLE. On l'enregistrait comme « ce qu'il faudra restaurer sur
+    // l'accueil » — écrasant « LCP », la vraie carte d'origine. À la sortie du
+    // player ce nœud est mort, la restauration ne fait rien, et c'est le repli
+    // de `dpad` (1er nœud `entry` du scope = 1re carte de la 1re rangée) qui
+    // décide où atterrir. D'où « on revient ailleurs dans la liste ».
+    if (!_belongsTo(focused, previousRoute)) {
+      DiagnosticLog.trace('🧭 push ${_name(route)} — focus IGNORÉ (appartient à '
+          'une autre route) : ${DiagnosticLog.describeFocusNode(focused)}');
       return;
     }
     _memory[previousRoute] = WeakReference<FocusNode>(focused);
+    DiagnosticLog.trace('🧭 push ${_name(route)} — mémorise pour '
+        '${_name(previousRoute)} : ${DiagnosticLog.describeFocusNode(focused)}');
+  }
+
+  /// [node] vit-il DANS le sous-arbre de [route] ?
+  ///
+  /// La réponse est exacte, sans heuristique : `ModalRoute.subtreeContext` est
+  /// l'élément racine du contenu de la route, il suffit de le chercher parmi les
+  /// ancêtres du nœud focalisé. (Le `FocusScopeNode` de la route serait plus
+  /// direct, mais il vit dans un `_ModalScopeState` privé.)
+  ///
+  /// Une route sans sous-arbre identifiable → on garde le comportement
+  /// historique (on fait confiance au focus courant) plutôt que de rejeter :
+  /// mieux vaut une mémoire imparfaite que pas de mémoire du tout.
+  static bool _belongsTo(FocusNode node, Route<dynamic> route) {
+    if (route is! ModalRoute) return true;
+    final BuildContext? subtree = route.subtreeContext;
+    if (subtree == null || !subtree.mounted) return true;
+    final BuildContext? ctx = node.context;
+    if (ctx == null || !ctx.mounted) return false;
+    if (identical(ctx, subtree)) return true;
+    bool found = false;
+    ctx.visitAncestorElements((Element el) {
+      if (identical(el, subtree)) {
+        found = true;
+        return false;
+      }
+      return true;
+    });
+    return found;
   }
 
   @override
@@ -69,11 +131,36 @@ class FocusRouteMemory extends NavigatorObserver {
     if (identical(_top, route)) _top = previousRoute;
     if (previousRoute == null) return;
     final FocusNode? node = _memory.remove(previousRoute)?.target;
-    if (node == null) return;
+    if (node == null) {
+      DiagnosticLog.trace(
+          '🧭 pop ${_name(route)} → ${_name(previousRoute)} : aucun nœud mémorisé '
+          '(le repli de dpad va décider)');
+      return;
+    }
     _afterExitTransition(route, () {
       // Une autre route a été empilée entre-temps : c'est elle qui doit garder
       // le focus, pas celle qu'on vient de révéler.
-      if (!identical(_top, previousRoute)) return;
+      if (!identical(_top, previousRoute)) {
+        // §tvExitPage — On REND le nœud à la mémoire de la route recouverte.
+        //
+        // Ce chemin est exactement le motif « feuille fermée → écran ouvert
+        // dans la même frame » : la restauration n'a pas lieu d'être maintenant,
+        // mais elle le sera à la sortie de la route qui vient d'être empilée.
+        // Jeter le nœud ici, c'est perdre la SEULE trace de la carte d'origine —
+        // et laisser le repli de `dpad` choisir à notre place.
+        // ⚠️ `isActive` : la route du dessous peut elle-même être en train de
+        // partir (on ferme le sélecteur de pistes ET le player d'affilée) —
+        // réarmer une route morte ne laisserait qu'une entrée orpheline dans la
+        // table, que plus aucun `didPop` ne viendrait retirer.
+        if (previousRoute.isActive && _memory[previousRoute]?.target == null) {
+          _memory[previousRoute] = WeakReference<FocusNode>(node);
+        }
+        DiagnosticLog.trace('🧭 restauration DIFFÉRÉE (une route a été empilée '
+            'depuis) — nœud rendu à ${_name(previousRoute)}');
+        return;
+      }
+      DiagnosticLog.trace('🧭 restaure sur ${_name(previousRoute)} : '
+          '${DiagnosticLog.describeFocusNode(node)}');
       _restore(node);
     });
   }
@@ -88,6 +175,14 @@ class FocusRouteMemory extends NavigatorObserver {
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     if (oldRoute != null) _memory.remove(oldRoute);
     if (oldRoute != null && identical(_top, oldRoute)) _top = newRoute;
+  }
+
+  /// Nom court d'une route pour les traces (§focusTrace).
+  static String _name(Route<dynamic>? route) {
+    if (route == null) return 'null';
+    final String? n = route.settings.name;
+    if (n != null && n.isNotEmpty) return n;
+    return '${route.runtimeType}#${identityHashCode(route).toRadixString(16)}';
   }
 
   /// Exécute [action] une fois la route sortante réellement disposée.

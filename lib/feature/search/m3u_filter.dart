@@ -1,4 +1,5 @@
 import 'package:aetherStream/data/models/m3u_entry.dart';
+import 'package:aetherStream/data/services/tmdb_group_alias_service.dart';
 
 /// §Ultimate — Labels de catégorie correspondant à une **région étrangère**
 /// (préfixe `|XX|` non-FR : `|IT|`, `|AR|`, `|TR|`…). La home les relègue sous
@@ -211,7 +212,13 @@ String? contentCategoryLabel(String? groupTitle) {
 /// la forme d'origine (`group.first.displayName`), seule la CLÉ est
 /// normalisée. Fallback calcul à la volée pour les entrées construites sans
 /// `parse()` (épisodes API…).
-String contentGroupKey(M3uEntry e) => e.title.groupKey.isNotEmpty
+/// §tmdbMerge — La clé passe par [TmdbGroupAliasService] : deux titres qui
+/// portent le MÊME identifiant TMDB partagent la même clé, même écrits dans
+/// deux langues (`100 Mètres` / `100 METERS`). Sans identifiant — VOD, XENO —
+/// la fonction rend la clé telle quelle, comme avant.
+String contentGroupKey(M3uEntry e) => TmdbGroupAliasService.canonical(_rawGroupKey(e));
+
+String _rawGroupKey(M3uEntry e) => e.title.groupKey.isNotEmpty
     ? e.title.groupKey
     : TitleMetadata.computeGroupKey(e.displayName);
 

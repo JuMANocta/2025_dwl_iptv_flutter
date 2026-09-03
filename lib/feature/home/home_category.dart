@@ -17,6 +17,7 @@ class _CategoryRow extends StatelessWidget {
   final IconData icon;
 
   const _CategoryRow({
+    super.key,
     required this.category,
     required this.groups,
     required this.allGroups,
@@ -126,6 +127,8 @@ class _CategoryRow extends StatelessWidget {
                       (constraints.maxWidth - spacing * (cols - 1)) / cols;
                   final tiles = <Widget>[
                     ...groups.asMap().entries.map((e) => _HomeCard(
+                          // §tvExitPage — Clé de CONTENU (cf. _CategoryRow).
+                          key: ValueKey(FavoritesService.keyFor(e.value.first)),
                           versions: e.value,
                           type: type,
                           width: tileWidth,
@@ -197,7 +200,20 @@ class _CategoryRow extends StatelessWidget {
                   enter: DpadEnterBehavior.entry,
                   child: SizedBox(
                     height: cardW * 1.5 + vSlack,
-                    child: ListView.separated(
+                    // §jankMeter — « même l'horizontalité » : une rangée qui
+                    // accroche se voit autant qu'un défilement vertical, parce
+                    // que l'œil suit un mouvement continu et que les affiches
+                    // s'y décodent en cours de route.
+                    child: JankScrollProbe(
+                      label: 'rangée ${type.name} · $category',
+                      child: ListView.separated(
+                      // §rowStorageKey — Case de sauvegarde propre à CETTE
+                      // rangée (cf. le long commentaire sur la liste verticale
+                      // de `home_page.dart`). Sans elle, toutes les rangées et
+                      // la liste verticale partageaient un seul emplacement :
+                      // remonter l'accueil recalait les carrousels au hasard,
+                      // sur l'offset écrit par le dernier scrollable en date.
+                      key: PageStorageKey('row_${type.name}_$category'),
                       scrollDirection: Axis.horizontal,
                       clipBehavior: PlatformTv.isTv ? Clip.none : Clip.hardEdge,
                       padding: EdgeInsets.symmetric(
@@ -226,6 +242,8 @@ class _CategoryRow extends StatelessWidget {
                           );
                         }
                         return _HomeCard(
+                          // §tvExitPage — Clé de CONTENU (cf. _CategoryRow).
+                          key: ValueKey(FavoritesService.keyFor(groups[i].first)),
                           versions: groups[i],
                           type: type,
                           width: cardW,
@@ -234,6 +252,7 @@ class _CategoryRow extends StatelessWidget {
                           isEntry: i == 0,
                         );
                       },
+                      ),
                     ),
                   ),
                 );

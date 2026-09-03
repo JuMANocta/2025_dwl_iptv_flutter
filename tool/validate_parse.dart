@@ -28,6 +28,38 @@ void main() {
   // titre PERDU à l'écran. Ce compteur doit rester à ZÉRO.
   final degenerate = <String, List<String>>{};
   final orphan = <String, List<String>>{};
+  // §tagResidue — Un groupe de crochets/parenthèses que le strip de tags a
+  // ENTAMÉ sans le vider : `[MULTi VO/VQF]` → `[ /VQF]`.
+  //
+  // ⚠️ Le compteur `orphan` ci-dessus ne voit PAS ces cas : il cherche des
+  // délimiteurs NON APPARIÉS, et `[ A/V]` est une paire parfaitement formée.
+  // Un garde-fou qui rapporte 0 alors que 5 000 titres sont abîmés, c'est pire
+  // que pas de garde-fou.
+  //
+  // La preuve qu'un jeton a été retiré À L'INTÉRIEUR : le contenu du groupe
+  // commence ou finit par un séparateur/espace, ou contient deux séparateurs
+  // collés. `(3D)`, `(H)`, `(SUB-AR)` — jamais touchés — n'y répondent pas.
+  final residue = <String, List<String>>{};
+  final residueRe = RegExp(r'[\(\[]([^\)\]]*)[\)\]]');
+  //
+  // ⚠️ Il faut comparer au titre BRUT. Un premier jet ne regardait que le
+  // titre nettoyé et signalait « résidu » dès qu'un groupe commençait ou
+  // finissait par une espace — or beaucoup de fournisseurs ÉCRIVENT
+  // `( EVENT ONLY )`, `( S )`, `(Le silence du marais )`. Le compteur
+  // rapportait alors des dizaines de faux positifs, qui masquaient les vrais.
+  // Un groupe présent VERBATIM dans le brut n'a par définition pas été entamé.
+  bool hasResidue(String raw, String base) {
+    for (final m in residueRe.allMatches(base)) {
+      final inner = m.group(1)!;
+      if (inner.isEmpty) continue;
+      if (raw.contains(m.group(0)!)) continue; // jamais touché par le strip
+      final first = inner[0], last = inner[inner.length - 1];
+      const sep = ' 	/-_+.';
+      if (sep.contains(first) || sep.contains(last)) return true;
+      if (inner.contains('//') || inner.contains('--')) return true;
+    }
+    return false;
+  }
   final tagOnly = RegExp(
     r'^[\s\(\)\[\]\-_.]*'
     r'(?:FR|EN|VO|VF|VOST|VOSTFR|MULTI|SUB|AUDIO|4K|UHD|FHD|HD|SD|'
@@ -56,6 +88,9 @@ void main() {
         if (_unbalanced(meta.baseTitle)) {
           (orphan[e.key] ??= <String>[]).add('$name  ->  "${meta.baseTitle}"');
         }
+        if (hasResidue(name, meta.baseTitle)) {
+          (residue[e.key] ??= <String>[]).add('$name  ->  "${meta.baseTitle}"');
+        }
         if (meta.baseTitle.trim().isEmpty || tagOnly.hasMatch(meta.baseTitle)) {
           (degenerate[e.key] ??= <String>[]).add('$name  ->  "${meta.baseTitle}"');
         }
@@ -68,6 +103,35 @@ void main() {
       }
       parsed[e.key]![kind] = bases;
     }
+  }
+
+  // §tagResidue — La liste « Ultimate » (compte VOD) ne passe PAS par la JSON
+  // API : l'app la récupère par le fallback `get.php`, dans un format qui n'est
+  // même pas du M3U (`URL #Name: Titre`). 153 062 titres que ce script ne
+  // mesurait pas du tout — et c'est là que vivent la plupart des bugs signalés.
+  final ultimate = File('$dir/VOD_get.m3u');
+  if (ultimate.existsSync()) {
+    final re = RegExp(r'#Name:\s*(.+)');
+    final bases = <String>[];
+    for (final m in re.allMatches(ultimate.readAsStringSync())) {
+      final name = m.group(1)!.trim();
+      if (name.isEmpty) continue;
+      final meta = TitleMetadata.parse(name);
+      bases.add(meta.groupKey);
+      if (_unbalanced(meta.baseTitle)) {
+        (orphan['ULTIMATE'] ??= <String>[]).add('$name  ->  "${meta.baseTitle}"');
+      }
+      if (hasResidue(name, meta.baseTitle)) {
+        (residue['ULTIMATE'] ??= <String>[]).add('$name  ->  "${meta.baseTitle}"');
+      }
+      if (meta.baseTitle.trim().isEmpty || tagOnly.hasMatch(meta.baseTitle)) {
+        (degenerate['ULTIMATE'] ??= <String>[]).add('$name  ->  "${meta.baseTitle}"');
+      }
+    }
+    parsed['ULTIMATE'] = {'live': const [], 'vod': bases, 'series': const []};
+    print('── Liste Ultimate (VOD_get.m3u) : ${bases.length} titres ──');
+  } else {
+    print('── Liste Ultimate absente (python tool/refresh_dumps.py) ──');
   }
 
   print('── Échantillons parse ──');
@@ -151,6 +215,63 @@ void main() {
         'q=${m.quality} y=${m.year} langs=${m.languages} label=${m.versionLabel}');
   }
 
+  // §tmdbMerge — Combien de titres se réunissent grâce à l'identifiant TMDB ?
+  //
+  // La question n'est pas « combien d'identifiants » mais « combien de CLÉS
+  // distinctes portent le même », car c'est ça qui fait deux vignettes au lieu
+  // d'une. On mesure aussi les cas ÉCARTÉS par le garde-fou d'année : ce sont
+  // des identifiants fournisseur qu'on soupçonne d'être faux.
+  print('');
+  print('== Fusion par identifiant TMDB ==');
+  {
+    final byId = <String, Map<String, int>>{};
+    final years = <String, Set<String>>{};
+    var withId = 0, total = 0;
+    for (final e in files.entries) {
+      final data =
+          jsonDecode(File(e.value).readAsStringSync()) as Map<String, dynamic>;
+      for (final kind in ['vod', 'series']) {
+        for (final item in (data[kind] as List? ?? const [])) {
+          if (item is! Map) continue;
+          final name = (item['name'] ?? '').toString().trim();
+          if (name.isEmpty) continue;
+          total++;
+          final raw = item['tmdb_id'] ?? item['tmdb'];
+          final id = raw?.toString() ?? '';
+          if (id.isEmpty || id == '0' || id == 'null') continue;
+          withId++;
+          final meta = TitleMetadata.parse(name);
+          if (meta.groupKey.isEmpty) continue;
+          final bucket = '$kind|$id';
+          (byId[bucket] ??= <String, int>{})
+              .update(meta.groupKey, (n) => n + 1, ifAbsent: () => 1);
+          if (meta.year != null) {
+            (years[bucket] ??= <String>{}).add(meta.year!);
+          }
+        }
+      }
+    }
+    var multi = 0, merged = 0, rejected = 0;
+    final samples = <String>[];
+    for (final b in byId.entries) {
+      if (b.value.length < 2) continue;
+      multi++;
+      if ((years[b.key]?.length ?? 0) > 1) {
+        rejected++;
+        continue;
+      }
+      merged += b.value.length - 1;
+      if (samples.length < 6) samples.add('${b.key} → ${b.value.keys.join("  |  ")}');
+    }
+    print('  titres avec identifiant : $withId / $total');
+    print('  identifiants portant PLUSIEURS clés : $multi');
+    print('  clés fusionnées : $merged');
+    print('  ecartes par le garde-fou d annee : $rejected');
+    for (final s in samples) {
+      print('      $s');
+    }
+  }
+
   // §orphanBracket — Bilan des titres à délimiteur orphelin.
   print('');
   print('== Bases à crochet/parenthèse orphelin ==');
@@ -164,6 +285,20 @@ void main() {
   }
   if (orphan.isEmpty) print('  aucun (attendu)');
   print('  TOTAL: $totalOrphan');
+
+  // §tagResidue — Bilan des groupes ENTAMÉS par le strip. Doit tomber à 0.
+  print('');
+  print('== Résidus de tags dans le titre affiché (groupe entamé) ==');
+  var totalResidue = 0;
+  for (final e in residue.entries) {
+    totalResidue += e.value.length;
+    print('  ${e.key.padRight(11)} ${e.value.length}');
+    for (final sample in e.value.take(5)) {
+      print('      $sample');
+    }
+  }
+  if (residue.isEmpty) print('  aucun (attendu)');
+  print('  TOTAL: $totalResidue');
 
   // §yearTitle — Bilan des titres PERDUS (base vide ou réduite à un tag).
   print('');

@@ -34,12 +34,18 @@ void main() {
   group('Bug B — pipes résiduels après le préfixe (~6 900 occurrences réelles)', () {
     test('corruption amont mot-coupé "CORP|US| CHRISTI" → "CORPUS CHRISTI"', () {
       final m = parse('|US| ABC 3 (KIII) CORP|US| CHRISTI (H)');
-      expect(m.baseTitle, 'ABC 3 CORPUS CHRISTI (H)');
+      // §tagResidue (2026-08-30) — L'attente était `ABC 3 CORPUS CHRISTI (H)`.
+      // `(KIII)` disparaissait par ACCIDENT : `_reLangParens` s'écrivait
+      // `[A-Z]{2,6}` en `caseSensitive: false`, donc elle mangeait n'importe
+      // quel mot de 2 à 6 lettres — y compris `[REC]`, qui est un vrai titre.
+      // La liste est fermée ; `KIII` est l'indicatif de la station, il reste.
+      expect(m.baseTitle, 'ABC 3 (KIII) CORPUS CHRISTI (H)');
     });
 
     test('corruption amont "COLUMB|US|" → "COLUMBUS"', () {
       final m = parse('|US| CBS 4 (WCBI) COLUMB|US| (F)');
-      expect(m.baseTitle, 'CBS 4 COLUMBUS (F)');
+      // §tagResidue — Même raison que ci-dessus : `WCBI` est un indicatif.
+      expect(m.baseTitle, 'CBS 4 (WCBI) COLUMBUS (F)');
     });
 
     test('corruption amont "PL|US|" → "PLUS"', () {
@@ -88,7 +94,12 @@ void main() {
     test('(50 FPS) — chaîne sport BEIN SPORTS → nettoyé', () {
       final m = parse(
           '|AR| BEIN SPORTS MAX 1 SD (50 FPS)  (World Cup 2026™)');
-      expect(m.baseTitle, 'BEIN SPORTS MAX 1 (World Cup ™)');
+      // §tagResidue — L'attente était `(World Cup ™)`, c'est-à-dire le nom de
+      // l'épreuve AMPUTÉ de son année. Un groupe conservé est désormais masqué
+      // pendant le strip, donc `_stripYears` ne peut plus l'entamer : on lit
+      // `World Cup 2026`, le vrai nom. Même famille que §midYear — une année
+      // qui fait partie d'un nom n'est pas une date de sortie.
+      expect(m.baseTitle, 'BEIN SPORTS MAX 1 (World Cup 2026™)');
       expect(m.quality, 'SD');
     });
 
@@ -409,6 +420,64 @@ void main() {
   });
 
   // §midYear — Une annee NUE au milieu d'un titre appartient au TITRE.
+  group("tagResidue", () {
+    // §tagResidue — Un groupe entamé par le strip laissait ses débris DANS la
+    // clé de regroupement, donc le titre ne fusionnait plus entre listes.
+    // Mesuré : 1 266 titres sur 353 475 avant correctif, 0 après.
+    test("groupe entame -> retire en entier, pas a moitie", () {
+      expect(TitleMetadata.parse("Toy Story 5 (2026) [MULTi VQF/VO]").baseTitle,
+          "Toy Story 5");
+      expect(
+          TitleMetadata.parse("Superman (2025) [4K HDR10+ Dolby A/V]").baseTitle,
+          "Superman");
+      expect(
+          TitleMetadata.parse(
+                  "Un homme en colere (2021) [FHD MULTi Audio/Subs]")
+              .baseTitle,
+          "Un homme en colere");
+    });
+
+    test("un debris ne devient jamais un libelle de version", () {
+      // Sans le filtre final, la pastille de version affichait « A/V ».
+      expect(
+          TitleMetadata.parse("Superman (2025) [4K HDR10+ Dolby A/V]")
+              .versionLabel,
+          isNull);
+    });
+
+    test("un groupe JAMAIS touche par le strip reste intact", () {
+      // La garantie du correctif : aucun jeton connu dedans -> on n'y touche pas.
+      for (final raw in [
+        "Totally Killer (Dezesseis Facadas) (2023)",
+        "|FR| Aucun homme ni dieu (Hold The Dark) (2018)",
+        "The Meg (3D) MULTI 2018",
+        "|NO| V SPORT 1 ( S ) HD",
+      ]) {
+        expect(TitleMetadata.parse(raw).baseTitle, contains("("), reason: raw);
+      }
+    });
+
+    test("[REC] est un VRAI titre, pas un code langue", () {
+      // Signale en seance. `_reLangParens` le detruisait : le titre devenait
+      // vide et le repli rendait alors le titre BRUT, tags compris.
+      final m = TitleMetadata.parse("[REC] (2007) [MULTi]");
+      expect(m.baseTitle, "[REC]");
+      expect(m.groupKey, "rec");
+    });
+
+    test("LEGO ne doit pas etre ampute par le jeton LEG", () {
+      expect(
+          TitleMetadata.parse("|AR| LEGO Marvel Super Heroes (2013)").baseTitle,
+          "LEGO Marvel Super Heroes");
+    });
+
+    test("une annee entre delimiteurs reste lisible par _stripYears", () {
+      // La retirer trop tot faisait passer 1965 pour la date de sortie.
+      expect(TitleMetadata.parse("|FR| Valensole 1965 (2025)").baseTitle,
+          "Valensole 1965");
+    });
+  });
+
   group("midYear", () {
     test("le cas signale : l'annee fait partie du nom", () {
       final m = TitleMetadata.parse(

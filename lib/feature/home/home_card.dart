@@ -15,7 +15,8 @@ class _HomeCard extends StatefulWidget {
   final bool isEntry;
 
   const _HomeCard(
-      {required this.versions,
+      {super.key,
+      required this.versions,
       required this.type,
       this.width,
       this.isEntry = false});
@@ -190,6 +191,8 @@ class _HomeCardState extends State<_HomeCard> {
                   Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerPage(
                     path: entry.url,
                     title: entry.displayName,
+                    // §stallCount — rattache les blocages au fournisseur.
+                    accountId: entry.accountId,
                     // §watchContext a/b — badges qualité + saison/épisode.
                     qualityTag: entry.title.qualityOrDefault,
                     episodeTag: entry.title.seasonEpisodeLabel,

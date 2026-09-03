@@ -8,6 +8,8 @@ import 'l10n/app_localizations.dart';
 import 'data/services/download_manager_service.dart';
 import 'data/services/favorites_service.dart';
 import 'data/services/stream_account_service.dart';
+import 'data/services/storage_janitor.dart';
+import 'data/services/playback_health_service.dart';
 import 'data/models/stream_account.dart';
 import 'data/services/parsed_playlist_service.dart';
 import 'data/services/watch_progress_service.dart';
@@ -26,6 +28,7 @@ import 'feature/settings/perf_suggest_dialog.dart';
 import 'core/boot/boot_status.dart';
 import 'feature/boot/boot_screen.dart';
 import 'core/diagnostics/log_buffer.dart';
+import 'core/diagnostics/jank_meter.dart';
 import 'feature/settings/web_console/web_console_page.dart';
 import 'data/services/playlist_service.dart';
 import 'data/services/remote_control_service.dart';
@@ -86,6 +89,14 @@ void main() async {
   // logcat accessible, ce tampon est le seul moyen de voir ce qui se passe
   // (consultable et exportable depuis la console web du téléphone).
   DiagnosticLog.install();
+  // §jankMeter — Mesure de fluidité. Le rappel ne fait rien tant qu'aucune
+  // fenêtre n'est ouverte ; ses relevés partent dans le tampon ci-dessus,
+  // donc dans la console web — seul canal lisible depuis un téléviseur.
+  //
+  // ⚠️ En build DEBUG, les chiffres sont inexploitables (Dart non
+  // optimisé) : chaque relevé le dit de lui-même plutôt que de laisser
+  // citer une valeur fausse.
+  JankMeter.install();
 
   // §bootFast — On n'attend AVANT `runApp` que ce qui est nécessaire pour
   // peindre juste : la plateforme (tailles TV) et le thème (couleurs). Tout le
@@ -115,11 +126,20 @@ void main() async {
 
   runApp(const MyApp());
 
-  // Préchargement du guide des chaînes (EPG XMLTV) en arrière-plan, non-bloquant.
-  // Sans ça, le guide était vide au 1er lancement tant qu'on n'ouvrait pas une
-  // fiche chaîne. `ensureLoaded()` est gardé par le TTL 12h + cache fichier
-  // persistant → coût quasi nul aux lancements suivants.
-  Future.delayed(const Duration(seconds: 4), () => XmltvService.ensureLoaded());
+  // §updateDelay — La vérification de MAJ est déplacée vers
+  // `_MainNavigationState.initState` (avec un délai plus long) : avant, lancée
+  // à 3 s depuis `main()`, elle se superposait à l'apparition du menu → focus
+  // TV se battait avec le dialog → impossible de sélectionner / fermer la MAJ.
+
+  // §bootHydrate — Le préchargement du guide des chaînes (EPG XMLTV) a été
+  // DÉPLACÉ en fin de `_initializeApp`.
+  //
+  // ⚠️ Ici, son `Future.delayed(4 s)` partait du lancement du PROCESSUS : sur un
+  // démarrage qui dure plus de 4 s — c'est-à-dire tous ceux qui comptent — il
+  // tombait au milieu du boot et disputait le réseau au téléchargement de la
+  // playlist, puis le thread UI à son propre parsing (`readAsBytesSync` +
+  // `utf8.decode` SYNCHRONES, cf. `XmltvService`). Le déclencher après le boot
+  // le remet là où il ne gêne personne, sans rien changer à son TTL.
 }
 
 /// §bootFast — Initialisations déplacées APRÈS `runApp`.
@@ -133,7 +153,9 @@ Future<void> ensureServicesReady() => _servicesReady ??= _initServices();
 Future<void> _initServices() async {
   // L'ordre compte : `MediaStore.appFolder` doit être posé avant
   // `DownloadManagerService.init()`, qui réconcilie les tâches sur disque.
-  MediaKit.ensureInitialized();
+  if (Platform.isWindows) {
+    MediaKit.ensureInitialized();
+  }
   await StorageService.init();
   // Migration legacy d'abord (touche le secure storage des comptes).
   await StreamAccountService.migrateFromLegacyIfNeeded();
@@ -148,6 +170,8 @@ Future<void> _initServices() async {
     WatchProgressService.init(),
     SearchHistoryService.init(),
     LastWatchedChannelService.init(),
+    // §stallCount — Historique de blocages par compte (quel abonnement rame).
+    PlaybackHealthService.init(),
     HiddenRegionsService.init(),
     TrackPreferencesService.init(),
     PerformanceSettingsService.load(), // §perfSettings
@@ -185,6 +209,12 @@ class MyApp extends StatelessWidget {
 
   /// §dpadNav — Thème de focus global (reproduit §focusVisibility avec la couleur
   /// du thème actif) : effet par défaut des `DpadFocusable` sans `effects` propres.
+  ///
+  /// ⚠️ §touchNoFocus — Ces effets-là ne sont PAS filtrés par le mode d'entrée.
+  /// Aucun `DpadFocusable` de l'app ne les utilise aujourd'hui (tous passent par
+  /// `FocusableCard`/`FocusableChip`, ou fournissent `effects: const []`) ; un
+  /// nouveau widget qui s'en contenterait ferait revenir le faux focus tactile.
+  /// Dans ce cas, passer par `FocusEffectVisibility` (`focus_visibility.dart`).
   DpadThemeData _dpadTheme(AppThemeConfig config) {
     final r = BorderRadius.circular(config.borderRadius);
     return DpadThemeData(
@@ -256,9 +286,21 @@ class MyApp extends StatelessWidget {
 
         // §dpadNav — Racine de la navigation D-pad (package `dpad`). Installée
         // sur TOUTES les plateformes (requise par FocusableCard/FocusableChip et
-        // bénéfique au clavier desktop ; inerte au tactile mobile). Remplace
-        // l'ancien TvBackHandler : la touche Retour est gérée par `onBack`.
+        // bénéfique au clavier desktop). Remplace l'ancien TvBackHandler : la
+        // touche Retour est gérée par `onBack`.
         wrapped = Dpad(
+          // §touchNoFocus — ⚠️ Elle n'était PAS « inerte au tactile mobile »,
+          // comme l'affirmait le commentaire d'origine. `restoreFocus` est un
+          // filet de sécurité : dès que plus rien de réel n'a le focus (route
+          // dépilée, dialogue fermé), dpad en DONNE un — au nœud marqué `entry`
+          // ou au plus proche géométriquement. Sur TV c'est vital ; sur
+          // téléphone ça allumait un élément au hasard (mesuré : le bouton de
+          // rechargement de l'AppBar, en navigation 100 % tactile), et Material
+          // dessinait sa surbrillance de focus par-dessus.
+          //
+          // Le filet ne sert qu'à une navigation directionnelle : au doigt, rien
+          // ne doit JAMAIS avoir le focus.
+          restoreFocus: PlatformTv.isTv,
           theme: _dpadTheme(config),
           keySet: const DpadKeySet().copyWith(
             back: const [
@@ -275,7 +317,7 @@ class MyApp extends StatelessWidget {
           ),
           // §mediaKeys — Touches média de la télécommande (PLAY, PAUSE, STOP,
           // avance/recul rapide, piste suivante). Elles n'étaient captées nulle
-          // part : ni ici, ni côté Android, ni par media_kit. Routées vers le
+          // part : ni ici, ni côté Android, ni par le moteur vidéo. Routées vers le
           // même dispatch que la télécommande web → un seul chemin d'actions.
           // Hors lecture, ces actions sont ignorées (pas de faux positif sur
           // l'accueil).
@@ -360,6 +402,22 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     final accounts = await StreamAccountService.listAccounts();
     if (accounts.isEmpty) return null;
 
+    // §acctPurge — Ménage des fichiers sans propriétaire, en tâche de fond.
+    //
+    // Le correctif de source (`deleteAccount` supprime désormais les fichiers)
+    // ne nettoie que l'avenir : les installations existantes portent déjà leurs
+    // orphelins — 290 Mo sur l'appareil de test, dont un `.m3u` de 217 Mo
+    // rattaché à un compte effacé trois mois plus tôt.
+    //
+    // ⚠️ NON attendu (`unawaited`) : c'est du confort, jamais un préalable au
+    // démarrage. Et il n'est lancé qu'APRÈS le test `accounts.isEmpty`
+    // ci-dessus — une liste vide est précisément le cas où le balayage se
+    // refuse à agir (cf. `StorageJanitor`), pour qu'un stockage sécurisé qui
+    // hoquette n'efface jamais les playlists de l'utilisateur.
+    unawaited(StorageJanitor.sweepOrphans(
+      knownAccountIds: accounts.map((a) => a.id).toSet(),
+    ));
+
     // Téléchargement / vérification cache M3U du compte actif.
     BootStatus.set('// lecture de la playlist…');
     final path = await PlaylistService.getOrDownloadPlaylist(
@@ -385,6 +443,9 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         acc.label,
         path,
         onProgress: BootStatus.report,
+        // §bootPercent — Le compteur d'entrées PROUVE que ça travaille, là où
+        // un pourcentage se contente de l'affirmer.
+        onDetail: BootStatus.setDetail,
       );
     }
 
@@ -393,8 +454,9 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     //   1. Préchargement disque AWAITED (rapide, ~quelques ms par compte) →
     //      le menu n'apparait que quand tout est prêt à afficher (plus de
     //      "carrousels qui se remplissent en différé" derrière le menu).
-    //   2. Téléchargement + parsing réseau des manquants RESTE en arrière-plan
-    //      (peut prendre plusieurs secondes, on ne bloque pas le boot dessus).
+    //   2. §bootHydrate — Téléchargement + parsing des comptes PÉRIMÉS faits
+    //      ici, dans le boot, annoncés compte par compte. Ceux qui n'ont rien à
+    //      faire ne coûtent qu'un `stat`.
     if (accounts.length > 1) {
       final others = accounts.where((a) => a.id != acc?.id).toList();
       // §bootStatus — Retour à une barre indéterminée : ce préchargement disque
@@ -405,15 +467,22 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       // + préchargés disque). La passe FINALE (qui pose le flag one-shot) est
       // déclenchée en fin d'hydratation, quand TOUS les comptes sont chargés.
       FavoritesService.reconcileWithPlaylist(); // fire & forget
-      // §secondaryRefresh — Différé de quelques secondes : l'hydratation peut
-      // désormais RETÉLÉCHARGER (contrôle de TTL, plus seulement peupler les
-      // manquants). On laisse la home s'afficher et se stabiliser avant de
-      // lancer du réseau + du parsing en isolate — sur box TV, les deux en même
-      // temps se sentent. Même motif que le préchargement XMLTV.
-      Future.delayed(
-        const Duration(seconds: 5),
-        () => _hydrateSecondaryAccounts(others),
-      ); // fire & forget
+      // §bootHydrate — L'hydratation se fait MAINTENANT, dans le boot.
+      //
+      // ⚠️ Ceci REVIENT sur §secondaryRefresh, qui différait volontairement ce
+      // travail de 5 s « pour laisser la home se stabiliser avant de lancer du
+      // réseau + du parsing ». Le raisonnement d'origine restait juste — les
+      // deux en même temps se sentent sur box TV — mais il se trompait de
+      // remède : différer ne supprime pas le parallélisme, il le déplace sous
+      // les doigts de l'utilisateur. Mesuré sur le téléviseur le 2026-09-01 :
+      // 46 s de téléchargement + parsing + écriture gzip APRÈS l'affichage de
+      // l'accueil, pendant qu'on fait défiler des vignettes — et chaque compte
+      // terminé y déclenche 3 regroupements complets + 3 recompositions de hero.
+      //
+      // Ce qui rend le déplacement acceptable, c'est qu'on ne bloque QUE sur les
+      // comptes qui ont réellement du travail : un jour de caches valides, le
+      // boot ne bouge pas d'une milliseconde (cf. `_hydrateInBoot`).
+      await _hydrateInBoot(others);
     } else {
       // §favReconcile — Mono-compte : tout est en mémoire → passe unique qui
       // pose le flag directement.
@@ -429,7 +498,17 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // (fire & forget, one-shot, seulement si la config perf est aux défauts).
     _suggestTvPerfProfile();
 
+    _bootAnnouncing = false;
     BootStatus.set('// prêt.', progress: 1);
+    // §bootLog — Le journal chronométré part dans le tampon de diagnostic : sur
+    // un téléviseur il n'y a pas de logcat, et l'écran de boot disparaît au
+    // moment précis où l'on voudrait lire ses chiffres.
+    BootStatus.dumpToLog();
+    // §bootHydrate — Le guide des chaînes, une fois le boot fini (cf. `main`).
+    Future.delayed(
+      const Duration(seconds: 3),
+      () => XmltvService.ensureLoaded(),
+    ); // fire & forget
 
     return (
       path:        path,
@@ -475,53 +554,168 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     }
   }
 
-  /// Télécharge le M3U manquant des comptes secondaires et les charge en
-  /// mémoire (parsing). Asynchrone & silencieux — la home se met à jour via
-  /// `ParsedPlaylistService.version` quand chaque compte termine. §16 : push
-  /// les transitions d'état via `setLoadState` pour que `_AccountTile` affiche
-  /// "EN COURS…" pendant download/parse puis "DISPONIBLE" à la fin.
-  Future<void> _hydrateSecondaryAccounts(List<StreamAccount> others) async {
+  /// §bootHydrate — Budget TOTAL accordé à l'hydratation pendant le démarrage.
+  ///
+  /// ⚠️ **Cette borne n'est pas décorative.** Rien, dans la chaîne
+  /// `ensureDownloadedForAccount`, n'a de délai global : la tentative catalogue
+  /// JSON tolère 30 s de connexion + 2 min de réception, le repli `get.php`
+  /// 30 s + 60 s, et la boucle est séquentielle. Un seul panel injoignable
+  /// pouvait donc retenir un démarrage pendant plusieurs minutes — un défaut
+  /// bien pire que celui qu'on corrige.
+  ///
+  /// Ce qui déborde n'est PAS annulé : le travail continue en arrière-plan
+  /// exactement comme avant, on cesse simplement de l'attendre. L'annuler
+  /// laisserait un `.part` orphelin ; le relancer téléchargerait deux fois le
+  /// même fichier au même endroit.
+  static const Duration _bootHydrateBudget = Duration(seconds: 60);
+
+  /// §bootHydrate — Le journal de démarrage accepte-t-il encore des étapes ?
+  ///
+  /// ⚠️ Un compte qui a débordé du budget **continue de travailler** en
+  /// arrière-plan (on cesse de l'attendre, on ne l'annule pas). Sans ce
+  /// drapeau, il publierait ses étapes et sa progression APRÈS la fin du
+  /// démarrage : le journal chronométré s'allongerait après avoir été relevé,
+  /// et l'étape courante changerait alors que l'écran de boot n'existe plus.
+  bool _bootAnnouncing = true;
+
+  /// §bootHydrate — Met à jour les comptes secondaires **pendant le boot**,
+  /// mais uniquement ceux qui ont du travail.
+  Future<void> _hydrateInBoot(List<StreamAccount> others) async {
+    // ⚠️ Le croisement des DEUX conditions est obligatoire. « Cache frais » ne
+    // veut pas dire « prêt » : un compte dont le préchargement disque a échoué
+    // a un fichier valide et rien en mémoire. Ne regarder que le TTL le
+    // sauterait pour toujours.
+    final List<StreamAccount> pending = <StreamAccount>[];
     for (final acc in others) {
-      // §secondaryRefresh — On ne saute PLUS les comptes déjà chargés depuis le
-      // disque : ils passent quand même par le contrôle de TTL. Avant, un compte
-      // secondaire dont le cache existait n'était jamais retéléchargé, quelle
-      // que soit son ancienneté — sa liste restait figée à vie.
-      final bool alreadyLoaded =
+      final bool loaded =
           ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded;
-      if (!alreadyLoaded) {
-        ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.downloading);
+      if (!loaded || await PlaylistService.hasPendingWork(acc)) {
+        pending.add(acc);
       }
-      try {
-        final res = await PlaylistService.ensureDownloadedForAccount(acc);
-        if (res.path == null) {
-          if (!alreadyLoaded) {
-            ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
-          }
-          continue;
-        }
-        if (alreadyLoaded) {
-          // Rien de neuf : la copie en mémoire est déjà la bonne.
-          if (!res.downloaded) continue;
-          // Fichier renouvelé → la mémoire est périmée, on la remplace
-          // atomiquement (reloadFromDisk parse AVANT de permuter, donc pas
-          // d'état vide intermédiaire visible sur la home).
-          await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, res.path!);
-          debugPrint('🔄 §secondaryRefresh : « ${acc.label} » rechargée en mémoire.');
-          continue;
-        }
-        // loadSecondary gère lui-même les transitions parsing → loaded / error.
-        await ParsedPlaylistService.loadSecondary(acc.id, acc.label, res.path!);
-      } catch (_) {
+    }
+
+    if (pending.isEmpty) {
+      debugPrint('✅ §bootHydrate : rien à mettre à jour, le boot ne bouge pas.');
+      // §favReconcile — Tout est en mémoire : la passe finale peut être posée.
+      unawaited(FavoritesService.reconcileWithPlaylist(finalPass: true));
+      return;
+    }
+
+    debugPrint('🚚 §bootHydrate : ${pending.length}/${others.length} compte(s) '
+        'à mettre à jour dans le boot.');
+    final DateTime deadline = DateTime.now().add(_bootHydrateBudget);
+    final List<Future<void>> started = <Future<void>>[];
+
+    for (int i = 0; i < pending.length; i++) {
+      final StreamAccount acc = pending[i];
+      final Duration left = deadline.difference(DateTime.now());
+      if (left <= Duration.zero) {
+        // Budget épuisé : le reste reprend le comportement historique —
+        // silencieux, en arrière-plan.
+        debugPrint('⏳ §bootHydrate : budget épuisé, « ${acc.label} » passe en '
+            'arrière-plan.');
+        started.add(_hydrateOne(acc));
+        continue;
+      }
+      BootStatus.set(
+        '// mise à jour ${i + 1}/${pending.length} · ${acc.label}…',
+      );
+      final Future<void> f = _hydrateOne(acc, announce: true);
+      started.add(f);
+      // ⚠️ `catchError` en plus du try/catch interne de `_hydrateOne` : ce
+      // `await` est sur le chemin du DÉMARRAGE. Une exception qui remonterait
+      // ici ferait échouer `_initializeApp` en entier — un compte secondaire
+      // cassé empêcherait d'ouvrir l'application.
+      await f.timeout(left, onTimeout: () {
+        debugPrint('⏳ §bootHydrate : « ${acc.label} » dépasse le budget ; on '
+            'cesse de l\'attendre, le travail continue.');
+      }).catchError((Object e) {
+        debugPrint('⚠️ §bootHydrate : « ${acc.label} » a échoué ($e) — on passe '
+            'au suivant.');
+      });
+    }
+
+    // §favReconcile — La passe FINALE pose un drapeau one-shot : elle ne doit
+    // tomber qu'une fois TOUT retombé, y compris ce qui a débordé du budget.
+    // Sans le `catchError`, un compte cassé ferait échouer le `Future.wait` et
+    // le drapeau ne serait jamais posé.
+    unawaited(
+      Future.wait(started.map((f) => f.catchError((_) {})))
+          .then((_) => FavoritesService.reconcileWithPlaylist(finalPass: true)),
+    );
+  }
+
+  /// Télécharge le M3U manquant d'UN compte secondaire et le charge en mémoire.
+  /// Ne lève jamais. §16 : pousse les transitions d'état via `setLoadState`
+  /// pour que `_AccountTile` affiche "EN COURS…" pendant download/parse.
+  ///
+  /// [announce] câble la progression sur `BootStatus` : réservé à l'hydratation
+  /// faite DANS le boot, où l'étape est visible et où une barre figée pendant
+  /// 14 s serait exactement le défaut que §bootPercent corrige. En arrière-plan,
+  /// la méthode reste silencieuse comme avant.
+  Future<void> _hydrateOne(StreamAccount acc, {bool announce = false}) async {
+    // Fermetures plutôt que tear-offs : le droit de parler est réévalué à
+    // CHAQUE publication, pas figé au lancement de l'hydratation.
+    void report(double v) {
+      if (_bootAnnouncing) BootStatus.report(v);
+    }
+
+    void detail(String d) {
+      if (_bootAnnouncing) BootStatus.setDetail(d);
+    }
+
+    final void Function(double)? onProgress = announce ? report : null;
+    final void Function(String)? onDetail = announce ? detail : null;
+    // §secondaryRefresh — On ne saute PLUS les comptes déjà chargés depuis le
+    // disque : ils passent quand même par le contrôle de TTL. Avant, un compte
+    // secondaire dont le cache existait n'était jamais retéléchargé, quelle
+    // que soit son ancienneté — sa liste restait figée à vie.
+    final bool alreadyLoaded =
+        ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded;
+    if (!alreadyLoaded) {
+      ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.downloading);
+    }
+    try {
+      final res = await PlaylistService.ensureDownloadedForAccount(acc);
+      if (res.path == null) {
         if (!alreadyLoaded) {
           ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
         }
-        // Ne pas planter le démarrage à cause d'un compte cassé (network, IO…).
+        return;
       }
+      if (announce && _bootAnnouncing) {
+        BootStatus.set('// analyse · ${acc.label}…', progress: 0);
+      }
+      if (alreadyLoaded) {
+        // Rien de neuf : la copie en mémoire est déjà la bonne.
+        if (!res.downloaded) return;
+        // Fichier renouvelé → la mémoire est périmée, on la remplace
+        // atomiquement (reloadFromDisk parse AVANT de permuter, donc pas
+        // d'état vide intermédiaire visible sur la home).
+        await ParsedPlaylistService.reloadFromDisk(
+          acc.id,
+          acc.label,
+          res.path!,
+          onProgress: onProgress,
+          onDetail: onDetail,
+        );
+        debugPrint('🔄 §secondaryRefresh : « ${acc.label} » rechargée en mémoire.');
+        return;
+      }
+      // loadSecondary gère lui-même les transitions parsing → loaded / error.
+      await ParsedPlaylistService.loadSecondary(
+        acc.id,
+        acc.label,
+        res.path!,
+        onProgress: onProgress,
+        onDetail: onDetail,
+      );
+    } catch (_) {
+      if (!alreadyLoaded) {
+        ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
+      }
+      // Ne pas planter le démarrage à cause d'un compte cassé (network, IO…).
     }
-    // §favReconcile — Passe FINALE : tous les comptes secondaires ont été
-    // tentés (chargés ou en erreur) → ré-appariement des favoris orphelins
-    // avec la vue la plus complète possible, puis pose du flag one-shot.
-    await FavoritesService.reconcileWithPlaylist(finalPass: true);
   }
 
   /// Permet de relancer la validation, typiquement après une action de l'utilisateur.
