@@ -2,7 +2,7 @@ name: aetherStream
 description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
-version: 1.17.3+131
+version: 1.17.4+132
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -15,7 +15,7 @@ dependencies:
     sdk: flutter
 
   http: ^1.6.0
-  dio: ^5.5.0                       # téléchargement avec suivi de progression
+  dio: ^5.11.0                       # téléchargement avec suivi de progression
   path_provider: ^2.1.5             # accéder aux répertoires locaux
   flutter_secure_storage: ^9.2.4    # stockage sécurisé
   device_info_plus: ^12.2.0         # informations sur l'appareil
