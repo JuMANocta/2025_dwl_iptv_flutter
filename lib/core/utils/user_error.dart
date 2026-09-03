@@ -64,6 +64,7 @@ String _describeDio(DioException e) {
     case DioExceptionType.connectionTimeout:
     case DioExceptionType.sendTimeout:
     case DioExceptionType.receiveTimeout:
+    case DioExceptionType.transformTimeout:
       return 'Le serveur a mis trop de temps à répondre. '
           'Vérifie ta connexion ou l\'adresse du serveur.';
     case DioExceptionType.badResponse:
