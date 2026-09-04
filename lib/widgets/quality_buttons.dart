@@ -149,8 +149,10 @@ class _QualityButtonsRowState extends State<QualityButtonsRow> {
                 borderRadius: BorderRadius.circular(8),
                 onTap: () => setState(() => _expanded = !_expanded),
                 child: Padding(
+                  // §touchTarget — 30 dp de haut avant : l'icône n'a pas
+                  // bougé, l'espace autour oui (18 + 2x15 = 48).
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

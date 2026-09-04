@@ -13,6 +13,7 @@ import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
+import 'package:aetherStream/widgets/tv/section_beacon.dart';
 
 /// §perfSettings — Page « Optimisation » (Fire Stick / terminaux faibles).
 ///
@@ -194,14 +195,20 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                 )
               : null,
         ),
-        child: SingleChildScrollView(
+        // §navBlind — La page la plus longue de l'app : sept sections, aucun
+        // repere. Le bandeau nomme celle qu'on regarde (TV uniquement).
+        child: SectionBeacon(
+          pageTitle: 'Optimisation',
+          // Repli tactile : au doigt rien n'a le focus, on lit au tiers haut.
+          thresholdFraction: 0.3,
+          child: SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 40),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionLabel('Profils', cs),
+              const SectionMark('Profils'),
               _buildProfilesRow(cs),
-              _sectionLabel('Hero banner', cs),
+              const SectionMark('Hero banner'),
               _switchTile(
                 icon: Icons.style_outlined,
                 title: 'Hero banner',
@@ -227,7 +234,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                 enabled: _config.heroEnabled,
                 onChanged: (v) => _apply(_config.copyWith(heroCardCount: v)),
               ),
-              _sectionLabel('Rangées de catégories', cs),
+              const SectionMark('Rangées de catégories'),
               _buildStepper(
                 label: 'Vignettes',
                 value: _config.maxItemsPerRow,
@@ -246,7 +253,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               ),
               // §autoNextEp — Réglage de CONFORT, volontairement hors des
               // profils de performance (les 3 presets le laissent intact).
-              _sectionLabel('Lecture', cs),
+              const SectionMark('Lecture'),
               _switchTile(
                 icon: Icons.skip_next_rounded,
                 title: 'Épisode suivant automatique',
@@ -285,7 +292,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               // était codé en dur (5 min) et invisible : l'utilisateur voyait
               // ses listes passer à « NON CHARGÉ » sans rien avoir demandé, et
               // n'avait aucun moyen de l'éteindre.
-              _sectionLabel('Listes', cs),
+              const SectionMark('Listes'),
               _switchTile(
                 icon: Icons.playlist_add_check_circle_outlined,
                 title: 'Garder toutes les listes en mémoire',
@@ -324,7 +331,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
-              _sectionLabel('Mémoire & usage', cs),
+              const SectionMark('Mémoire & usage'),
               // §imgMemCache — plafond du cache image EN RAM.
               _buildStepper(
                 label: 'Images (RAM)',
@@ -418,7 +425,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               ),
 
               // §acctPurge — Fichiers sans propriétaire.
-              _sectionLabel('Stockage', cs),
+              const SectionMark('Stockage'),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Text(
@@ -475,25 +482,13 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               ),
             ],
           ),
+          ),
         ),
       ),
     );
   }
 
   // ── Helpers UI (mêmes patterns que ThemeSettingsPage) ────────────────────
-
-  Widget _sectionLabel(String title, ColorScheme cs) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
-        child: Text(
-          title.toUpperCase(),
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.8,
-            color: cs.onSurfaceVariant,
-          ),
-        ),
-      );
 
   Widget _buildProfilesRow(ColorScheme cs) {
     return SizedBox(
@@ -653,12 +648,17 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               width: 72,
               child: Text(label, style: const TextStyle(fontSize: 13)),
             ),
+            // §boundFocus — `onPressed: null` retire le bouton de la
+            // traversee ALORS QU'IL A LE FOCUS : arrive a la borne, le bouton
+            // focuse disparait et la telecommande se retrouve nulle part.
+            // Il reste donc actif — le `clamp` en fait deja un geste sans
+            // effet — et c'est la COULEUR qui dit qu'on est au bout.
             IconButton(
               icon: const Icon(Icons.remove_circle_outline),
-              onPressed: enabled && value > min
+              onPressed: enabled
                   ? () => onChanged((value - step).clamp(min, max))
                   : null,
-              color: color,
+              color: value > min ? color : color.withAlpha(70),
               tooltip: 'Diminuer',
             ),
             Expanded(
@@ -684,10 +684,10 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
             ),
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
-              onPressed: enabled && value < max
+              onPressed: enabled
                   ? () => onChanged((value + step).clamp(min, max))
                   : null,
-              color: color,
+              color: value < max ? color : color.withAlpha(70),
               tooltip: 'Augmenter',
             ),
             SizedBox(

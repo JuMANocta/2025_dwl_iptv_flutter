@@ -13,6 +13,7 @@ import 'package:aetherStream/data/services/expiration_alert_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/data/services/storage_janitor.dart';
 import 'package:aetherStream/data/services/playlist_reload_service.dart';
 import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
@@ -325,86 +326,44 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
     }
   }
 
-  Future<void> _clearCache(StreamAccount acc) async {
-    final l10n = AppLocalizations.of(context)!;
-    final isActive = acc.id == _priorityAccountId;
-    final ok = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Vider le cache ?'),
-        content: Text(
-          'La playlist du compte "${acc.label}" sera re-téléchargée depuis le '
-          'serveur maintenant.',
-        ),
-        actions: [
-          TextButton(
-              // §safeFocus — Le focus d'entrée va sur le bouton SÛR : sur TV,
-              // OK est le geste réflexe et le dialogue pouvait s'ouvrir sur
-              // l'action destructrice.
-              autofocus: true,
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(l10n.cancel)),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Vider', style: TextStyle(color: kWarning)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    if (!mounted) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-    if (isActive) {
-      // §bugPrio — compte actif : on supprime, on re-télécharge et on
-      // re-parse atomiquement pour éviter une home vide entre les deux.
-      try {
-        await PlaylistService.deleteForAccountId(acc.id);
-        final path = await PlaylistService.downloadCurrentM3U();
-        await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
-      } catch (e) {
-        if (!mounted) return;
-        messenger..hideCurrentSnackBar()..showSnackBar(
-          SnackBar(content: Text('Échec : ${describeError(e)}')),
-        );
-        return;
-      }
-      _priorityChanged = true;
-    } else {
-      // §secondaryRefresh — Avant, on se contentait d'invalider en pariant sur
-      // « le DL se fera quand l'utilisateur basculera dessus » — or basculer de
-      // compte principal ne télécharge rien : la liste restait vide jusqu'au
-      // redémarrage suivant. On retélécharge donc tout de suite, comme pour le
-      // compte actif.
-      try {
-        await PlaylistService.deleteForAccountId(acc.id);
-        ParsedPlaylistService.invalidate(acc.id);
-        final res = await PlaylistService.ensureDownloadedForAccount(acc);
-        if (res.path != null) {
-          await ParsedPlaylistService.reloadFromDisk(
-              acc.id, acc.label, res.path!);
-        }
-      } catch (e) {
-        if (!mounted) return;
-        messenger..hideCurrentSnackBar()..showSnackBar(
-          SnackBar(content: Text('Échec : ${describeError(e)}')),
-        );
-        return;
-      }
-    }
-    if (!mounted) return;
-    messenger..hideCurrentSnackBar()..showSnackBar(
-      SnackBar(content: Text('✅ Cache vidé pour ${acc.label}')),
-    );
-  }
-
   Future<void> _delete(StreamAccount acc) async {
     final l10n = AppLocalizations.of(context)!;
+
+    // §acctDeleteTruth — On MESURE ce qui va partir avant de le demander.
+    // « Cette action est définitive » ne disait ni que la liste téléchargée
+    // partait avec (jusqu'à 217 Mo mesurés, §acctPurge), ni que les favoris et
+    // les reprises SURVIVENT — deux informations qui changent la réponse.
+    final int footprint = await StorageJanitor.accountFootprint(acc.id);
+    if (!mounted) return;
+
     final ok = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(l10n.deleteAccountDialogTitle),
-        content: Text(l10n.deleteAccountDialogContent),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('« ${acc.label} » et ses identifiants seront effacés '
+                'définitivement.'),
+            const SizedBox(height: 12),
+            _DeleteBullet(
+              icon: Icons.delete_sweep_outlined,
+              color: kError,
+              text: footprint > 0
+                  ? 'La liste téléchargée part avec '
+                      '(${StorageJanitor.humanBytes(footprint)} libérés).'
+                  : 'Aucune liste téléchargée à effacer pour ce compte.',
+            ),
+            const SizedBox(height: 6),
+            _DeleteBullet(
+              icon: Icons.favorite_outline,
+              color: kSuccess,
+              text: 'Favoris, reprises de lecture et téléchargements '
+                  'terminés sont conservés.',
+            ),
+          ],
+        ),
         actions: [
           TextButton(
               // §safeFocus — Suppression de COMPTE : le focus d'entrée va sur
@@ -422,10 +381,22 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
       ),
     );
     if (ok != true) return;
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
     await StreamAccountService.deleteAccount(acc.id);
     ParsedPlaylistService.invalidate(acc.id);
     _priorityChanged = true;
     _refresh();
+    // §acctDeleteTruth — Il ne se passait RIEN après coup : la carte
+    // disparaissait, et c'était tout. On dit ce qui a été fait.
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(footprint > 0
+            ? '✅ « ${acc.label} » supprimé — '
+                '${StorageJanitor.humanBytes(footprint)} libérés'
+            : '✅ « ${acc.label} » supprimé'),
+      ));
   }
 
   /// Menu contextuel ⋯ par compte.
@@ -458,15 +429,13 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                   _openEditor(initial: acc);
                 },
               ),
-              ListTile(
-                leading: Icon(Icons.sync, color: kAccentSecondary),
-                title: const Text('Vider le cache playlist'),
-                subtitle: const Text('Force un re-téléchargement depuis le serveur'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _clearCache(acc);
-                },
-              ),
+              // §reloadNaming — Il y avait ici « Vider le cache playlist »,
+              // QUATRIÈME nom pour la même opération que « Recharger » (le
+              // bouton de la carte, juste à côté), avec sa propre logique
+              // dupliquée — qui supprimait encore la liste AVANT de la
+              // retélécharger, le défaut que §reloadKeep avait corrigé sur les
+              // trois autres chemins. Retiré : l'opération reste accessible au
+              // même endroit, sous le nom qu'elle porte partout ailleurs.
               ListTile(
                 leading: Icon(Icons.delete_outline, color: kError),
                 title: Text(l10n.accountActionDelete,
@@ -1793,6 +1762,41 @@ class _MiniStat extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// §acctDeleteTruth — Une ligne du dialogue de suppression : ce qui part, ce
+/// qui reste. Deux couleurs plutôt qu'un paragraphe — à 3 m d'un téléviseur,
+/// un bloc de texte n'est pas lu.
+class _DeleteBullet extends StatelessWidget {
+  const _DeleteBullet({
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

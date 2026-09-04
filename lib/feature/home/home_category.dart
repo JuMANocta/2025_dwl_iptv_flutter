@@ -36,6 +36,12 @@ class _CategoryRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // §navBlind — La rangée s'inscrit auprès du repère de section : sur
+          // TV, la pastille en tête d'accueil nomme la catégorie regardée.
+          // ⚠️ `child:` et pas le libellé par défaut — l'en-tête existe déjà.
+          SectionMark(
+            category,
+            child:
           // Header : barre verticale gradient + icône + titre + count
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
@@ -82,11 +88,15 @@ class _CategoryRow extends StatelessWidget {
                               color: kAccentPrimary)),
                       label: Icon(Icons.chevron_right,
                           size: 18, color: kAccentPrimary),
+                      // §touchTarget — `shrinkWrap` + 28 dp de haut : la
+                      // seule porte tactile vers « tout voir » d'une catégorie
+                      // était sous la borne. La cible passe à 48, l'apparence
+                      // ne change pas (le contenu reste un compteur + chevron).
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 0),
-                        minimumSize: const Size(0, 28),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        minimumSize: const Size(48, 48),
+                        tapTargetSize: MaterialTapTargetSize.padded,
                       ),
                     ),
                   )
@@ -109,6 +119,7 @@ class _CategoryRow extends StatelessWidget {
                   ),
               ],
             ),
+          ),
           ),
           // Films / Séries → carrousel horizontal (poster 2:3, narration visuelle)
           // Chaînes        → grille (logo carré, balayage rapide façon télécommande)
@@ -233,7 +244,19 @@ class _CategoryRow extends StatelessWidget {
                       // (10 → 16) pour aérer le carrousel sans toucher au style.
                       separatorBuilder: (_, __) => const SizedBox(width: 16),
                       itemBuilder: (ctx, i) {
-                        if (hasMore && i == groups.length) {
+                        // §seeAllReach — Sur TÉLÉVISEUR, « Voir tout » passe en
+                        // TÊTE de carrousel. En queue, il fallait 15 à 25
+                        // appuis sur → pour l'atteindre, et l'en-tête de
+                        // catégorie est volontairement hors traversée sur TV
+                        // (elle « sélectionnait le compteur ») : c'était donc
+                        // la seule porte, et elle était au bout du couloir.
+                        //
+                        // ⚠️ Le point d'entrée de la rangée reste le PREMIER
+                        // POSTER, jamais cette tuile : descendre depuis la
+                        // rangée du dessus doit tomber sur du contenu, pas sur
+                        // un raccourci. « Voir tout » est alors à un ← .
+                        final bool seeAllFirst = hasMore && PlatformTv.isTv;
+                        if (seeAllFirst && i == 0) {
                           return _SeeAllTile(
                             type: type,
                             remaining: totalCount - groups.length,
@@ -241,15 +264,24 @@ class _CategoryRow extends StatelessWidget {
                             onTap: () => _openCategoryListPage(context),
                           );
                         }
+                        if (hasMore && !seeAllFirst && i == groups.length) {
+                          return _SeeAllTile(
+                            type: type,
+                            remaining: totalCount - groups.length,
+                            width: cardW,
+                            onTap: () => _openCategoryListPage(context),
+                          );
+                        }
+                        final int g = seeAllFirst ? i - 1 : i;
                         return _HomeCard(
                           // §tvExitPage — Clé de CONTENU (cf. _CategoryRow).
-                          key: ValueKey(FavoritesService.keyFor(groups[i].first)),
-                          versions: groups[i],
+                          key: ValueKey(FavoritesService.keyFor(groups[g].first)),
+                          versions: groups[g],
                           type: type,
                           width: cardW,
                           // §dpadRowEntry — 1re carte = point d'entrée de la
                           // rangée (↓ se cale à gauche, pas à droite).
-                          isEntry: i == 0,
+                          isEntry: g == 0,
                         );
                       },
                       ),

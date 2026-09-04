@@ -436,7 +436,8 @@ class _PlayerControlsState extends State<PlayerControls> {
                       // §playerOptionsTouch — Accès tactile au panneau
                       // d'options (format d'image, infos vidéo…).
                       if (widget.onShowOptions != null) ...[
-                        GestureDetector(
+                        _TapTarget(
+                          tooltip: 'Options de lecture',
                           onTap: () {
                             widget.onShowOptions?.call();
                             widget.onInteraction();
@@ -447,12 +448,13 @@ class _PlayerControlsState extends State<PlayerControls> {
                             size: 24,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 4),
                       ],
                       // §5 — Bouton CC : ouvre le sélecteur de pistes audio /
                       // sous-titres (PlayerPage suspend l'auto-hide pendant).
                       if (widget.onShowTracks != null) ...[
-                        GestureDetector(
+                        _TapTarget(
+                          tooltip: 'Pistes audio et sous-titres',
                           onTap: () {
                             widget.onShowTracks?.call();
                             widget.onInteraction();
@@ -463,10 +465,11 @@ class _PlayerControlsState extends State<PlayerControls> {
                             size: 26,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 4),
                       ],
                       // Sélecteur de vitesse.
-                      GestureDetector(
+                      _TapTarget(
+                        tooltip: 'Vitesse de lecture',
                         onTap: _cycleSpeed,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -484,7 +487,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 4),
                       // Play / Pause.
                       GestureDetector(
                         onTap: _togglePlayPause,
@@ -498,8 +501,9 @@ class _PlayerControlsState extends State<PlayerControls> {
                       ),
                       // §1i — Bouton épisode suivant (séries uniquement).
                       if (widget.onNextEpisode != null) ...[
-                        const SizedBox(width: 12),
-                        GestureDetector(
+                        const SizedBox(width: 4),
+                        _TapTarget(
+                          tooltip: 'Episode suivant',
                           onTap: () {
                             widget.onNextEpisode?.call();
                             widget.onInteraction();
@@ -511,7 +515,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                           ),
                         ),
                       ],
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 4),
                       // Bouton lock.
                       _LockButton(
                         locked: false,
@@ -624,6 +628,48 @@ class _ContentBadge extends StatelessWidget {
 }
 
 /// Bouton cadenas (verrouille / déverrouille les contrôles).
+/// §touchTarget — Une cible tactile d'au moins 48 dp autour d'une icône, sans
+/// changer sa taille visuelle.
+///
+/// **Le défaut corrigé** (§audit0903 n° 15) : quatre boutons sur six de la
+/// barre du lecteur étaient sous 48 dp — les options ⚙ à **24×24**, et c'est
+/// le SEUL accès tactile au panneau — sous une barre qui se cache en 3 s.
+/// Play/Pause (48) et le cadenas (`IconButton`, 48) étaient corrects : la
+/// rangée était donc incohérente avec elle-même.
+///
+/// ⚠️ `HitTestBehavior.opaque` est indispensable : sans lui, la zone
+/// transparente autour de l'icône ne reçoit aucun tap et l'élargissement ne
+/// sert à rien.
+class _TapTarget extends StatelessWidget {
+  const _TapTarget({
+    required this.onTap,
+    required this.child,
+    this.tooltip,
+  });
+
+  /// La regle Material : 48 dp. Pas un reglage — une borne.
+  static const double size = 48;
+
+  final VoidCallback onTap;
+  final Widget child;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget target = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Center(child: child),
+      ),
+    );
+    if (tooltip == null) return target;
+    return Tooltip(message: tooltip!, child: target);
+  }
+}
+
 class _LockButton extends StatelessWidget {
   final bool locked;
   final VoidCallback onTap;

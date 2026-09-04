@@ -80,8 +80,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   bool get _isTv => PlatformTv.isTv;
 
-  /// TV : Welcome + Console web. Mobile : les 3 slides informationnels.
-  int get _slideCount => _isTv ? 2 : 3;
+  /// TV : Welcome + Console web. Mobile : les 4 slides informationnels.
+  ///
+  /// §menuHint — Le 4e dit que l'appui long sur une vignette ouvre le menu
+  /// d'actions rapides. C'est le raccourci principal de l'app (Lire, Reprendre,
+  /// Oublier, Telecharger, Favoris n'existent QUE la) et rien ne l'annoncait
+  /// (§audit0903 n. 17). Slide MOBILE seulement : sur televiseur, la carte
+  /// n'affiche pas d'affordance et le geste est l'appui long sur OK.
+  int get _slideCount => _isTv ? 2 : 4;
 
   Future<void> _finish() async {
     if (_finishing) return;
@@ -293,12 +299,22 @@ class _OnboardingPageState extends State<OnboardingPage> {
         accent: kAccentSecondary,
       );
     }
+    if (i == 2) {
+      return _InfoSlide(
+        icon: Icons.movie_creation_outlined,
+        title: 'Affiches et synopsis (optionnel)',
+        body:
+            'Génère un Bearer Token TMDB gratuit sur themoviedb.org et colle-le dans Paramètres → Clé API TMDB pour enrichir tes films et séries.',
+        accent: kAccentTertiary,
+      );
+    }
+    // §menuHint — i == 3 : le raccourci que personne ne trouvait.
     return _InfoSlide(
-      icon: Icons.movie_creation_outlined,
-      title: 'Affiches et synopsis (optionnel)',
+      icon: Icons.more_horiz,
+      title: 'Le menu ⋯ des vignettes',
       body:
-          'Génère un Bearer Token TMDB gratuit sur themoviedb.org et colle-le dans Paramètres → Clé API TMDB pour enrichir tes films et séries.',
-      accent: kAccentTertiary,
+          'Appuie longuement sur une affiche — ou touche le ⋯ en haut à gauche — pour Lire, Reprendre, ajouter aux favoris, télécharger ou oublier une reprise, sans ouvrir la fiche.',
+      accent: kAccentPrimary,
     );
   }
 }

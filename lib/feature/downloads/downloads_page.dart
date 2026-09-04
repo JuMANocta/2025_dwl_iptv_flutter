@@ -39,7 +39,9 @@ class _FilterChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            // §touchTarget — 7 dp de rembourrage vertical donnaient un chip de
+            // ~30 dp. Le texte n'a pas changé, la cible passe à 48.
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
             decoration: BoxDecoration(
               color: selected ? color.withAlpha(55) : color.withAlpha(20),
               border: Border.all(

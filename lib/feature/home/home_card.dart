@@ -506,6 +506,44 @@ class _HomeCardState extends State<_HomeCard> {
                       right: 6,
                       child: MeasuredQualityBadge(versions: widget.versions),
                     ),
+                    // §menuHint — Le menu d'appui long est le raccourci
+                    // principal de l'app : Lire, Reprendre, Oublier la
+                    // reprise, Télécharger et Favoris n'existent QUE là. Rien
+                    // ne l'annonçait — ni « ⋯ », ni coin corné, ni un mot dans
+                    // l'accueil guidé (§audit0903 n° 17).
+                    //
+                    // ⚠️ **Non focusable, volontairement** : un focusable
+                    // imbriqué dans une `FocusableCard` n'est candidat dans
+                    // AUCUNE direction depuis dpad 3.0 (§dpadChildFocus) — il
+                    // serait donc décoratif à la télécommande. D'où l'affichage
+                    // au tactile seul, là où il est réellement utilisable ; sur
+                    // téléviseur, l'appui long sur OK reste la voie d'accès.
+                    if (!PlatformTv.isTv)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _onLongPress,
+                          child: const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Center(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: Color(0xB3000000),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.more_horiz,
+                                      size: 16, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     // §1e — Barre de progression "reprendre depuis…" :
                     // visible si l'utilisateur a regardé l'une des variantes du
                     // groupe sans aller jusqu'au bout (TV exclu — pas de durée).

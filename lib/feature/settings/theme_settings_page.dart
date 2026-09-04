@@ -657,10 +657,13 @@ class _TvStepperRow extends StatelessWidget {
     final ratio = ((value - min) / (max - min)).clamp(0.0, 1.0);
     return Row(
       children: [
+        // §boundFocus — Voir `optimization_settings_page.dart` : un bouton
+        // desactive a la borne SORT de la traversee alors qu'il a le focus.
+        // `_decrement` ne fait deja rien au minimum (clamp + test d'egalite).
         IconButton(
           icon: const Icon(Icons.remove_circle_outline),
-          onPressed: value > min ? _decrement : null,
-          color: color,
+          onPressed: _decrement,
+          color: value > min ? color : color.withAlpha(70),
           tooltip: 'Diminuer',
         ),
         Expanded(
@@ -686,8 +689,8 @@ class _TvStepperRow extends StatelessWidget {
         ),
         IconButton(
           icon: const Icon(Icons.add_circle_outline),
-          onPressed: value < max ? _increment : null,
-          color: color,
+          onPressed: _increment,
+          color: value < max ? color : color.withAlpha(70),
           tooltip: 'Augmenter',
         ),
       ],

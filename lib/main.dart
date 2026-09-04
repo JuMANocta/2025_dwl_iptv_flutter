@@ -48,6 +48,7 @@ import 'feature/update/update_dialog.dart';
 import 'feature/player/video_fit.dart';
 import 'feature/player/video_stats.dart';
 import 'core/utils/platform_tv.dart';
+import 'core/utils/tv_text_scaler.dart';
 import 'core/utils/host_gate.dart';
 import 'package:dpad/dpad.dart';
 
@@ -273,10 +274,14 @@ class MyApp extends StatelessWidget {
         Widget wrapped = child ?? const SizedBox.shrink();
 
         if (PlatformTv.isTv) {
+          // §tvSmallText — L'échelle système reste neutre (le zoom uniforme a
+          // été essayé deux fois et abandonné, cf. commentaire ci-dessus), mais
+          // les 144 tailles en dur entre 9 et 12 px de l'app ne sont plus
+          // laissées telles quelles : elles seules montent, et jamais au-delà
+          // de 14 px. Voir `tv_text_scaler.dart`.
           final mq = MediaQuery.of(context);
-          final scaled = mq.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.0);
           wrapped = MediaQuery(
-            data: mq.copyWith(textScaler: scaled),
+            data: mq.copyWith(textScaler: const TvSmallTextScaler()),
             child: wrapped,
           );
         }

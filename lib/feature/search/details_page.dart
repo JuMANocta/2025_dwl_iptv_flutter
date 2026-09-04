@@ -10,6 +10,7 @@ import '../settings/tmdb_key_page.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/services/stream_account_service.dart';
 import '../../data/services/watch_progress_service.dart';
+import '../../data/services/load_failure.dart';
 import '../../data/services/xtream_api_service.dart';
 import '../../data/models/quality_scale.dart';
 import '../../data/services/measured_quality_service.dart';
@@ -25,6 +26,7 @@ import '../../widgets/tv/focusable_chip.dart';
 import '../../widgets/aether_image.dart';
 import '../../widgets/playlist_search_sheet.dart';
 import '../../widgets/tv/focusable_card.dart';
+import '../../widgets/tv/section_beacon.dart';
 import 'actor_details_page.dart';
 import 'm3u_filter.dart';
 
@@ -120,6 +122,15 @@ class _DetailsPageState extends State<DetailsPage> {
   /// rien. Évite l'ancien double-affichage (fiche en mode FILM avec les
   /// versions provider, puis bascule en mode série).
   bool _episodesLoading = false;
+
+  /// §episodeTruth — Motif du DERNIER échec de chargement des épisodes, ou
+  /// `null` si le fetch a réussi (même s'il n'a rien rendu).
+  ///
+  /// ⚠️ Sans ce champ, « Aucun épisode disponible pour cette série » disait
+  /// aussi bien « la série n'a pas d'épisode » que « ton réseau est mort » :
+  /// `fetchEpisodes` rendait `const []` dans les deux cas, et rien n'invitait
+  /// à réessayer.
+  String? _episodesError;
   /// §seriesMultiList — Stubs série (1 par compte) à fetcher via la JSON API,
   /// pour que chaque épisode porte les versions de TOUTES les listes qui ont
   /// la série (et pas juste le compte d'origine de la vignette).
@@ -263,16 +274,37 @@ class _DetailsPageState extends State<DetailsPage> {
   Future<void> _fetchAllEpisodes() async {
     final futures = _apiSeriesStubs.map((stub) async {
       final sid = _extractSeriesIdFromUrl(stub.url);
-      if (sid == null) return const <M3uEntry>[];
+      if (sid == null) {
+        return (
+          episodes: null,
+          error: 'identifiant de série illisible',
+          kind: LoadFailureKind.badAccount,
+        ) as XtreamEpisodesResult;
+      }
       final acc = await StreamAccountService.getAccount(stub.accountId);
-      if (acc == null) return const <M3uEntry>[];
+      if (acc == null) {
+        return (
+          episodes: null,
+          error: 'compte introuvable',
+          kind: LoadFailureKind.badAccount,
+        ) as XtreamEpisodesResult;
+      }
       return XtreamApiService.fetchEpisodes(acc, sid);
     }).toList();
 
-    final lists = await Future.wait(futures);
+    final results = await Future.wait(futures);
     if (!mounted) return;
-    final apiEpisodes = lists.expand((e) => e).toList();
-    if (apiEpisodes.isEmpty) return _finishEpisodesLoading();
+    final apiEpisodes =
+        results.expand((r) => r.episodes ?? const <M3uEntry>[]).toList();
+
+    // §episodeTruth — Une liste vide ne veut plus dire la même chose selon
+    // qu'AUCUN stub n'a répondu ou que tous ont répondu « rien ». On ne
+    // signale une panne que si **aucun** compte n'a rendu de résultat
+    // exploitable : qu'une liste secondaire soit injoignable pendant qu'une
+    // autre rend les épisodes n'est pas une panne pour l'utilisateur.
+    if (apiEpisodes.isEmpty) {
+      return _finishEpisodesLoading(error: episodesFailureReason(results));
+    }
 
     // Merge épisodes M3U déjà groupés + nouveaux épisodes API → regroupe tout.
     final merged = <M3uEntry>[..._flattenSeasonEpisodes(), ...apiEpisodes];
@@ -330,12 +362,29 @@ class _DetailsPageState extends State<DetailsPage> {
   /// §seriesFlow — Termine l'état de chargement des épisodes (échec/série
   /// introuvable/aucun épisode). Le navigateur série bascule alors sur le
   /// message "aucun épisode disponible" au lieu d'un spinner infini.
-  void _finishEpisodesLoading() {
+  /// [error] non nul = le chargement a ÉCHOUÉ (§episodeTruth) : la fiche
+  /// affiche alors le motif et un bouton « Réessayer », pas « aucun épisode ».
+  void _finishEpisodesLoading({String? error}) {
     if (!mounted) {
       _episodesLoading = false;
+      _episodesError = error;
       return;
     }
-    setState(() => _episodesLoading = false);
+    setState(() {
+      _episodesLoading = false;
+      _episodesError = error;
+    });
+  }
+
+  /// §episodeTruth — Relance le fetch après un échec. Le cache mémoire ne
+  /// garde que les succès, donc il n'y a rien à invalider.
+  void _retryEpisodes() {
+    if (_episodesLoading || _apiSeriesStubs.isEmpty) return;
+    setState(() {
+      _episodesLoading = true;
+      _episodesError = null;
+    });
+    _fetchAllEpisodes();
   }
 
   /// §seriesFavCard — À l'ouverture d'une série (aucun épisode précis demandé via
@@ -975,7 +1024,16 @@ class _DetailsPageState extends State<DetailsPage> {
 
     return Scaffold(
       backgroundColor: cs.surface,
-      body: CustomScrollView(
+      // §navBlind — Deuxième page la plus longue : le bouton principal est au
+      // MILIEU d'un long défilement (synopsis, versions, actions, casting,
+      // infos). §detailsPlayFocus avait réglé l'ENTRÉE, pas le retour. La
+      // pastille nomme la section regardée, sous la barre épinglée.
+      body: SectionBeacon(
+        floating: true,
+        floatingTop: MediaQuery.of(context).padding.top + kToolbarHeight + 6,
+        // Sections courtes mais casting/saisons hauts : un tiers d'écran.
+        thresholdFraction: 0.33,
+        child: CustomScrollView(
         slivers: [
           // ── HEADER ────────────────────────────────────────────────────────
           SliverAppBar(
@@ -1124,11 +1182,12 @@ class _DetailsPageState extends State<DetailsPage> {
                   // aussi devant le navigateur de saisons, ce qui est cohérent :
                   // on choisit son épisode après avoir lu le pitch.
                   if (displayOverview?.isNotEmpty == true) ...[
-                    Text('Synopsis',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(color: cs.onSurfaceVariant)),
+                    SectionMark('Synopsis',
+                        child: Text('Synopsis',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(color: cs.onSurfaceVariant))),
                     const SizedBox(height: 8),
                     Text(
                       displayOverview!,
@@ -1190,11 +1249,12 @@ class _DetailsPageState extends State<DetailsPage> {
 
                   // CASTING — vignettes acteurs avec photo (carrousel horizontal)
                   if (hasTmdb && _tmdbData!.castMembers.isNotEmpty) ...[
-                    Text('Casting principal',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleSmall
-                            ?.copyWith(color: cs.onSurfaceVariant)),
+                    SectionMark('Casting principal',
+                        child: Text('Casting principal',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(color: cs.onSurfaceVariant))),
                     Divider(color: cs.outlineVariant),
                     SizedBox(
                       // §castPhotos — hauteur = photo portrait 2:3 (92×138) + nom
@@ -1225,11 +1285,12 @@ class _DetailsPageState extends State<DetailsPage> {
                   ]
                   // Fallback : anciens noms seuls si pas de casting enrichi.
                   else if (hasTmdb && _tmdbData!.cast.isNotEmpty) ...[
-                    Text('Casting principal',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleSmall
-                            ?.copyWith(color: cs.onSurfaceVariant)),
+                    SectionMark('Casting principal',
+                        child: Text('Casting principal',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(color: cs.onSurfaceVariant))),
                     Divider(color: cs.outlineVariant),
                     Wrap(
                       spacing: 8,
@@ -1325,6 +1386,7 @@ class _DetailsPageState extends State<DetailsPage> {
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -1410,9 +1472,55 @@ class _DetailsPageState extends State<DetailsPage> {
               ],
             ),
           )
+        else if (!hasSeasons && _episodesError != null)
+          // §episodeTruth — Le fetch a ÉCHOUÉ : on dit pourquoi, et on offre
+          // de réessayer. Confondre ce cas avec « aucun épisode » laissait
+          // l'utilisateur devant une série vide sans rien à tenter.
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.cloud_off_outlined, size: 18, color: kWarning),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Épisodes non chargés — ${_episodesError!}.',
+                    style: TextStyle(
+                        fontSize: 13, color: cs.onSurfaceVariant),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FocusableChip(
+                  onTap: _retryEpisodes,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainer,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: kWarning.withAlpha(120)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.refresh, size: 16, color: kWarning),
+                        const SizedBox(width: 6),
+                        Text('Réessayer',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: kWarning,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
         else if (!hasSeasons)
-          // §seriesFlow — fetch terminé mais aucun épisode (série introuvable
-          // côté API, compte non-Xtream, réseau down). Plus de spinner infini.
+          // §seriesFlow — fetch terminé, réussi, et le panel n'a réellement
+          // aucun épisode pour cette série. Plus de spinner infini.
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Row(
@@ -2430,11 +2538,12 @@ class _DetailsPageState extends State<DetailsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Infos',
-            style: Theme.of(context)
-                .textTheme
-                .titleSmall
-                ?.copyWith(fontWeight: FontWeight.bold)),
+        SectionMark('Infos',
+            child: Text('Infos',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold))),
         Divider(color: cs.outlineVariant),
         const SizedBox(height: 4),
         for (final r in rows)

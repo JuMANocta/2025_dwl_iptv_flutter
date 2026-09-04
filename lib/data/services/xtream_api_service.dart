@@ -30,6 +30,64 @@ typedef XtreamListResult = ({
   LoadFailureKind? kind,
 });
 
+/// §episodeTruth — Résultat de `fetchEpisodes`.
+///
+/// **`episodes == null` ⇔ ÉCHEC**, exactement comme [XtreamListResult]. Avant,
+/// `fetchEpisodes` rendait `const []` pour « série sans épisode », « panel
+/// injoignable », « compte non extractible » et « réponse illisible » : la
+/// fiche affichait donc « Aucun épisode disponible pour cette série » alors que
+/// c'était le réseau qui était mort, et l'utilisateur n'avait rien à réessayer.
+typedef XtreamEpisodesResult = ({
+  /// Les épisodes, ou `null` si le fetch a échoué. Une liste **vide** est un
+  /// succès : la série existe et le panel n'a aucun épisode pour elle.
+  List<M3uEntry>? episodes,
+
+  /// Motif court, en français, sans identifiants.
+  String? error,
+
+  /// Nature de l'échec, pour l'affichage (§fleetState).
+  LoadFailureKind? kind,
+});
+
+/// §episodeTruth — Résultat de `getSeriesInfo`. Même contrat : `info == null`
+/// signifie échec, et [error] dit pourquoi.
+typedef XtreamSeriesInfoResult = ({
+  Map<String, dynamic>? info,
+  String? error,
+  LoadFailureKind? kind,
+});
+
+/// §episodeTruth — Le champ `episodes` d'un `get_series_info` est-il lisible ?
+///
+/// Rend `null` si oui, sinon le motif d'échec. Fonction **pure** : c'est elle
+/// qui décide qu'une réponse illisible n'est PAS « aucun épisode ».
+///
+/// Un panel sain rend une `Map` saison → épisodes, ou (plus rarement) une
+/// liste vide pour une série sans épisode. Tout le reste — `null`, une chaîne,
+/// un objet d'erreur — est une réponse qu'on ne sait pas lire.
+String? episodesFieldError(Object? episodes) {
+  if (episodes is Map) return null;
+  if (episodes is List && episodes.isEmpty) return null;
+  return 'le serveur n\'a pas renvoyé de liste d\'épisodes';
+}
+
+/// §episodeTruth — Verdict d'un fetch d'épisodes réparti sur PLUSIEURS comptes.
+///
+/// Rend `null` quand il n'y a **pas** de panne à signaler, sinon le motif à
+/// afficher. Règle : dès qu'un seul compte a répondu correctement — même avec
+/// zéro épisode — il n'y a pas de panne du point de vue de l'utilisateur ;
+/// qu'une liste secondaire soit injoignable pendant qu'une autre répond ne
+/// doit pas transformer la fiche en écran d'erreur.
+String? episodesFailureReason(List<XtreamEpisodesResult> results) {
+  if (results.isEmpty) return null;
+  if (results.any((r) => r.episodes != null)) return null;
+  for (final r in results) {
+    final e = r.error;
+    if (e != null && e.isNotEmpty) return e;
+  }
+  return 'le serveur n\'a pas répondu';
+}
+
 /// §catalogTruth — Classe le corps d'une réponse d'action « liste ».
 ///
 /// Fonction **pure** (aucun réseau) : c'est elle qui porte la distinction
@@ -375,8 +433,12 @@ class XtreamApiService {
   /// `DetailsPage` (mêmes champs que des entrées issues du parser M3U).
   /// Utilisé en LAZY-LOAD : on n'appelle pas cette API au boot (trop coûteux
   /// pour 19 000+ séries) ; on l'appelle uniquement quand l'utilisateur ouvre
-  /// une fiche série. Retourne `[]` si série introuvable ou erreur.
-  static Future<List<M3uEntry>> fetchEpisodes(
+  /// une fiche série.
+  ///
+  /// §episodeTruth — `episodes == null` signifie **échec** (et [error] dit
+  /// lequel) ; une liste vide signifie « le panel n'a pas d'épisode pour cette
+  /// série ». Les deux s'écrivaient `const []` avant.
+  static Future<XtreamEpisodesResult> fetchEpisodes(
     StreamAccount account,
     int seriesId,
   ) async {
@@ -388,13 +450,22 @@ class XtreamApiService {
       // Hit : on remet l'entrée en tête (LRU) en la ré-insérant
       _episodesCache.remove(key);
       _episodesCache[key] = cached;
-      return cached.eps;
+      return (episodes: cached.eps, error: null, kind: null);
     }
 
-    final info = await getSeriesInfo(account, seriesId);
-    if (info == null) return const [];
+    final r = await getSeriesInfo(account, seriesId);
+    final info = r.info;
+    if (info == null) {
+      return (episodes: null, error: r.error, kind: r.kind);
+    }
     final creds = credentialsOf(account);
-    if (creds == null) return const [];
+    if (creds == null) {
+      return (
+        episodes: null,
+        error: 'identifiants Xtream inextractibles',
+        kind: LoadFailureKind.badAccount,
+      );
+    }
 
     final seriesName = ((info['info'] is Map
                 ? (info['info'] as Map)['name']
@@ -416,7 +487,20 @@ class XtreamApiService {
             : '')
         .toString();
     final episodes = info['episodes'];
-    if (episodes is! Map) return const [];
+    if (episodes is! Map) {
+      // §episodeTruth — Un panel sain rend `{}` (ou une liste vide) pour une
+      // série sans épisode : c'est un succès vide. Tout le reste est une
+      // réponse qu'on ne sait pas lire, donc un échec — pas « aucun épisode ».
+      final fieldError = episodesFieldError(episodes);
+      if (fieldError == null) {
+        return (episodes: const <M3uEntry>[], error: null, kind: null);
+      }
+      return (
+        episodes: null,
+        error: fieldError,
+        kind: LoadFailureKind.parse,
+      );
+    }
 
     // §epSynopsis — helper : première valeur non vide parmi des clés du bloc
     // `info` d'un épisode (les panels varient : plot / overview / description).
@@ -512,29 +596,54 @@ class XtreamApiService {
       }
       _episodesCache[key] = (at: DateTime.now(), eps: out);
     }
-    return out;
+    return (episodes: out, error: null, kind: null);
   }
 
   /// Détail complet d'une série (saisons + épisodes).
   /// Format Xtream : `{info: {…}, seasons: […], episodes: {"1": [{…}, …], "2": [...]}}`.
-  static Future<Map<String, dynamic>?> getSeriesInfo(
+  ///
+  /// §episodeTruth — Rend un résultat qui DIT pourquoi il a échoué : la fiche
+  /// série en a besoin pour distinguer « pas d'épisode » de « réseau mort ».
+  static Future<XtreamSeriesInfoResult> getSeriesInfo(
       StreamAccount account, int seriesId) async {
     final base = _baseUrl(account);
-    if (base == null) return null;
+    if (base == null) {
+      return (
+        info: null,
+        error: 'identifiants Xtream inextractibles',
+        kind: LoadFailureKind.badAccount,
+      );
+    }
     final url = '$base&action=get_series_info&series_id=$seriesId';
     // Chemin INTERACTIF (l'utilisateur vient d'ouvrir une fiche série) : on
     // n'attend pas indéfiniment derrière un rafraîchissement de catalogue.
+    //
+    // ⚠️ `timeout` (réception) était laissé au défaut de `_fetch`, soit DEUX
+    // MINUTES : le spinner « Chargement des épisodes… » pouvait donc tourner
+    // deux minutes avant de dire quoi que ce soit. 30 s est déjà très large
+    // pour un `get_series_info`, qui rend quelques kilo-octets.
     final r = await _fetch(account, url,
+        timeout: const Duration(seconds: 30),
         queueTimeout: const Duration(seconds: 90));
     if (r.error != null) {
       debugPrint('⚠️ XtreamApi.getSeriesInfo($seriesId) : ${r.error}');
-      return null;
+      return (
+        info: null,
+        error: r.error,
+        kind: LoadFailureKind.network,
+      );
     }
     final data = r.body;
-    if (data is Map<String, dynamic>) return data;
+    if (data is Map<String, dynamic>) {
+      return (info: data, error: null, kind: null);
+    }
     debugPrint('⚠️ XtreamApi.getSeriesInfo($seriesId) : réponse inattendue '
         '(HTTP ${r.status ?? '?'})');
-    return null;
+    return (
+      info: null,
+      error: 'réponse inattendue du serveur (HTTP ${r.status ?? '?'})',
+      kind: LoadFailureKind.parse,
+    );
   }
 
   // ── Implémentation interne ─────────────────────────────────────────────

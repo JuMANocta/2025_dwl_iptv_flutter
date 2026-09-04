@@ -45,6 +45,7 @@ import 'package:dpad/dpad.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
+import 'package:aetherStream/widgets/tv/section_beacon.dart';
 import 'package:aetherStream/main.dart' show appRouteObserver;
 
 // §lotD — Découpage du fichier (3400+ lignes) en `part` : même librairie, donc
@@ -922,7 +923,11 @@ class _AnimatedTabIndicator extends StatelessWidget {
   static const _labels = ['Séries', 'Films', 'Chaînes'];
   // §navHeight — Barre plus haute + police plus grande : meilleure cible
   // tactile et lisibilité (l'ancienne 26px/20px était petite à viser).
-  static const double _barHeight = 38;
+  //
+  // §touchTarget — 38 dp restait sous la borne Material de 48, alors que ces
+  // trois onglets sont la navigation la plus utilisée de l'app. Le libellé et
+  // le compteur n'ont pas bougé : c'est la hauteur de la barre qui change.
+  static const double _barHeight = 48;
 
   @override
   Widget build(BuildContext context) {
@@ -1859,7 +1864,25 @@ class _TypePageState extends State<_TypePage> {
     // ⚠️ Les carrousels horizontaux sont imbriqués dedans, et les notifications
     // de défilement REMONTENT l'arbre : c'est le filtre `depth == 0` de la
     // sonde qui empêche cette mesure-ci d'avaler les frames des rangées.
-    return JankScrollProbe(
+    // §navBlind — Repère de section. Sur l'accueil, les onglets
+    // Séries/Films/Chaînes DÉFILENT avec le contenu (§navUX, et il ne faut pas
+    // le défaire : ils sont dans le ListView pour que les gestes horizontaux
+    // ne changent plus d'onglet). Une fois la barre passée, plus rien ne dit
+    // sur quel onglet ni dans quelle catégorie on se trouve — c'est l'un des
+    // trois cas relevés à la recette. La pastille le dit, sans rien voler au
+    // hero : elle est SUPERPOSÉE et reste invisible tant qu'on est en tête.
+    return SectionBeacon(
+      floating: true,
+      floatingTop: widget.topInset + 6,
+      // ⚠️ Une rangée de l'accueil fait ~400 px : la section « courante » se
+      // lit au MILIEU de l'écran, pas au bord haut (constaté à l'AVD).
+      thresholdFraction: 0.45,
+      pageTitle: switch (widget.type) {
+        M3uContentType.series => 'Séries',
+        M3uContentType.movie => 'Films',
+        M3uContentType.tv => 'Chaînes',
+      },
+      child: JankScrollProbe(
       label: 'accueil vertical · ${widget.type.name}',
       child: ListView.builder(
       // §rowStorageKey — Case de sauvegarde PROPRE à cette liste.
@@ -1965,6 +1988,7 @@ class _TypePageState extends State<_TypePage> {
           icon: _TypePage.categoryIcon(cat),
         );
       },
+      ),
       ),
     );
   }
