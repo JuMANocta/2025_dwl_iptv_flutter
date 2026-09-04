@@ -38,6 +38,11 @@ class PlayerControls extends StatefulWidget {
   /// audio / sous-titres (géré par [PlayerPage] pour suspendre l'auto-hide).
   final VoidCallback? onShowTracks;
 
+  /// §pipPhone — Si non-null, affiche un bouton « Réduire en fenêtre »
+  /// (téléphone seulement — `PlayerPage` passe `null` sur TV, en verrou, en
+  /// erreur ou si le système ne sait pas faire de PiP).
+  final VoidCallback? onEnterPip;
+
   /// §playerOptionsTouch — Ouvre le panneau d'options du lecteur (format
   /// d'image, infos vidéo, pistes, vitesse…).
   ///
@@ -76,6 +81,7 @@ class PlayerControls extends StatefulWidget {
     this.onNextEpisode,
     this.onShowTracks,
     this.onShowOptions,
+    this.onEnterPip,
   });
 
   @override
@@ -335,6 +341,22 @@ class _PlayerControlsState extends State<PlayerControls> {
                     ],
                   ),
                 ),
+                // §pipPhone — Réduire en fenêtre. Placé ICI (barre du haut,
+                // comme ⚙) plutôt que dans le panneau d'options : c'est un
+                // geste de sortie, on ne va pas le chercher à deux niveaux.
+                if (widget.onEnterPip != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: _TapTarget(
+                      tooltip: 'Réduire en fenêtre',
+                      onTap: widget.onEnterPip!,
+                      child: const Icon(
+                        Icons.picture_in_picture_alt_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
                 // Badge contextuel (live / film / série).
                 if (widget.badgeType != PlayerBadgeType.none)
                   _ContentBadge(type: widget.badgeType),

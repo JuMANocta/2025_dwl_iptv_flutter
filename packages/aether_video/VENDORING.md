@@ -98,6 +98,36 @@ et **reposé à chaque chargement**, sinon l'amplification est perdue au 2e film
 ⚠️ Encapsulé : sur un appareil sans cet effet, le volume plafonne à 100 % au
 lieu de faire échouer la lecture.
 
+**Patch 9 — `mediaInfo` par chargement (§nowPlaying, 2026-09-04).** Amont,
+les métadonnées « Now Playing » (titre, sous-titre, image) ne se posaient que
+par le champ `final` du constructeur de `NativeVideoPlayerController` :
+figées pour la vie du contrôleur. Or l'app en réutilise **un seul** pour
+enchaîner les épisodes (§episodeMeta) — la notification aurait porté le titre
+du premier film pour toujours. Le natif lisait pourtant déjà `mediaInfo` à
+chaque `load` (`handleLoad` → `updateMediaInfo`) : seul le côté Dart
+l'empêchait de changer. `load()` et `loadUrl()` acceptent un `mediaInfo`
+optionnel, replié sur le champ du constructeur. ⚠️ **C'est ce paramètre — et
+lui seul — qui active la MediaSession, la notification `MediaStyle` et le
+service de premier plan `mediaPlayback`** du paquet : `null` = rien ne
+démarre, ce qui est le comportement voulu sur téléviseur.
+
+**Patch 10 — jeton de session sans réflexion (§nowPlaying, 2026-09-04).**
+`buildNotification()` convertissait le jeton Media3 par **réflexion**
+(`getSessionCompatToken()`) puis `as? android.support.v4…MediaSessionCompat.Token`.
+Depuis Media3 1.4 la méthode rend un `androidx.media3.session.legacy…Token` :
+le cast rendait `null` **sans exception**, le repli « notification sans jeton »
+était pris en silence, et la notification n'avait **aucun bouton** ni aucune
+commande depuis l'écran verrouillé. ⚠️ Constaté à l'AVD, pas déduit :
+`dumpsys notification` sans extra `android.mediaSession`, `dumpsys
+media_session` → « Media button session is null », `input keyevent 127` sans
+effet sur la lecture. Remplacé par la voie officielle
+`MediaStyleNotificationHelper.MediaStyle(session)` (media3-session), qui prend
+la `MediaSession` Media3 directement ; `androidx.media` n'est plus utilisé ici.
+
+Patchs 5 à 8, appliqués pendant §engineVendor et marqués dans le code :
+5 `NO_VIEW` n'est pas une panne (fermeture), 6 précision de `seek`,
+7 `stopNow()` avant `dispose`, 8 langue audio préférée (§trackLangPref).
+
 ## 🛡️ Réserve §engineFeatures — NE PAS « nettoyer »
 
 Un audit du 2026-09-01 a inventorié ce qui, dans ce paquet, n'est pas encore

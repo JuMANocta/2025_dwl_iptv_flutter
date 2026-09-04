@@ -199,6 +199,9 @@ class _HomeCardState extends State<_HomeCard> {
                     sourceType: VideoSourceType.network,
                     badgeType: badge,
                     startPosition: from,
+                    // §nowPlaying — la même image que la vignette.
+                    posterUrl: _tmdbPoster ??
+                        (_logoCandidates.isEmpty ? null : _logoCandidates.first),
                   )));
                 }
 

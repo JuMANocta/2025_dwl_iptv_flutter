@@ -6,6 +6,7 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'data/services/download_manager_service.dart';
+import 'data/services/transfer_notification_bridge.dart';
 import 'data/services/favorites_service.dart';
 import 'data/services/stream_account_service.dart';
 import 'data/services/storage_janitor.dart';
@@ -180,6 +181,11 @@ Future<void> _initServices() async {
     InferredCategoryService.init(), // §inferredCat
     TmdbPosterCache.init(), // §tmdbUrlPersist
   ]);
+  // §dlNotif — APRÈS `DownloadManagerService().init()` : le pont seed sa
+  // ligne de base sur `tasksNotifier.value`, qui doit déjà porter la
+  // réconciliation du boot (§dlWatchdog bascule les tâches interrompues en
+  // `failed`) pour ne pas les annoncer comme « viennent d'échouer ».
+  TransferNotificationBridge.attach();
 }
 
 /// Vérifie silencieusement si une mise à jour est disponible.

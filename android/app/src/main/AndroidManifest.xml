@@ -28,6 +28,17 @@
     <!-- Téléchargements longs / foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <!-- §dlNotif — Android 14+ (API 34) exige de déclarer le TYPE de service de
+         premier plan. `dataSync` : le service ne fait que garder le processus
+         vivant et afficher une progression, il ne diffuse ni ne lit de média. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- §nowPlaying — Android 13+ : sans elle, la notification de lecture
+         (écran verrouillé, casque) n'est jamais affichée. Demandée à l'exécution
+         à la première lecture, jamais au démarrage. Réutilisée par §dlNotif
+         (demandée alors au premier téléchargement). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Installation d'APK (mise à jour in-app) — Android 8+ -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
@@ -49,6 +60,13 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="false">
 
+        <!-- §pipPhone — `configChanges` couvre déjà screenSize|smallestScreenSize
+             |screenLayout : c'est ce qui évite que l'activité soit RECRÉÉE (donc
+             le lecteur remis à zéro) à l'entrée en PiP. ⚠️ `resizeableActivity`
+             n'est volontairement PAS déclaré : sa valeur par défaut est déjà
+             `true` pour targetSdk >= 24, et l'app porte aussi le lanceur TV
+             (LEANBACK_LAUNCHER) — le fixer explicitement changerait le
+             comportement multi-fenêtre sur des box qui n'en ont pas besoin. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -56,7 +74,8 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+            android:supportsPictureInPicture="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <!-- Launcher smartphone/tablette -->
@@ -65,6 +84,14 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- §dlNotif — Service de premier plan qui garde le téléchargement en
+             vie et affiche sa progression. `exported="false"` : jamais appelé
+             par une autre app. -->
+        <service
+            android:name=".AetherDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- FileProvider pour partager l'APK de mise à jour (Android 7+) -->
         <provider

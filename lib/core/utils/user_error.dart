@@ -34,8 +34,18 @@ const int _maxLength = 180;
 String _describe(Object error) {
   if (error is DioException) return _describeDio(error);
   if (error is HttpException) {
-    // Déjà en français dans l'app (playlist_service, playlist_reload_service)
-    // — on garde le message, le filet redact s'applique quand même.
+    // ⚠️ Constaté sur appareil réel (§userError, 2026-09-04) : `HttpException`
+    // n'est pas QUE le type que notre propre code utilise pour porter un
+    // message déjà en français (`playlist_service`, `playlist_reload_service`)
+    // — c'est aussi ce que `dart:io`/l'adaptateur IO de Dio lancent eux-mêmes
+    // pour un accident de socket en cours de lecture de flux (ex. reset de
+    // connexion en pleine réponse). Un « Connection reset by peer » brut
+    // traversait donc tel quel, en anglais. On le détecte par motif — un
+    // message métier de l'app ne contient jamais ce vocabulaire réseau bas
+    // niveau — plutôt que de faire confiance à la classe seule.
+    if (_looksLikeRawSocketMessage(error.message)) {
+      return 'Connexion impossible : réseau coupé ou serveur injoignable.';
+    }
     return _stripPrefix(error.message);
   }
   if (error is SocketException) {
@@ -113,6 +123,21 @@ String _stripPrefix(String s) {
     m = prefix.firstMatch(out);
   }
   return out.isEmpty ? 'Une erreur inattendue est survenue.' : out;
+}
+
+/// Motifs typiques d'une erreur socket **native** (anglais, jamais écrite par
+/// l'app) qui a fini enveloppée dans une `HttpException` par la couche IO —
+/// cf. commentaire d'appel.
+bool _looksLikeRawSocketMessage(String message) {
+  final String lower = message.toLowerCase();
+  return lower.contains('connection reset') ||
+      lower.contains('connection refused') ||
+      lower.contains('connection closed') ||
+      lower.contains('broken pipe') ||
+      lower.contains('errno') ||
+      lower.contains('os error') ||
+      lower.contains('network is unreachable') ||
+      lower.contains('no route to host');
 }
 
 String _cap(String s) {

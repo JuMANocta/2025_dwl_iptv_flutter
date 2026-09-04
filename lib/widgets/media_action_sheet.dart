@@ -341,6 +341,7 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                         badgeType: PlayerBadgeType.replay,
                         replayStart: replayProgram.start,
                         replayDuration: replayProgram.end.difference(replayProgram.start),
+                        posterUrl: entry.logoUrl, // §nowPlaying
                       )),
                     );
                   }
@@ -429,6 +430,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
       qualityTag: v.title.qualityOrDefault,
       sourceType: VideoSourceType.network,
       badgeType: PlayerBadgeType.live,
+      posterUrl: v.logoUrl, // §nowPlaying
     )));
   }
 
@@ -492,6 +494,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                             badgeType: PlayerBadgeType.replay,
                             replayStart: replayProgram.start,
                             replayDuration: replayProgram.end.difference(replayProgram.start),
+                            posterUrl: entryForReplay.logoUrl, // §nowPlaying
                           )),
                         );
                       } else {
@@ -545,6 +548,7 @@ void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPositio
         ? PlayerBadgeType.series
         : PlayerBadgeType.movie,
     startPosition: startPosition,
+    posterUrl: entry.logoUrl, // §nowPlaying
   )));
 }
 

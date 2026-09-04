@@ -1487,6 +1487,15 @@ class NativeVideoPlayerController {
   /// reproduire ce comportement casserait des flux qui marchent aujourd'hui.
   /// Reste **par flux et opt-in**, jamais global : même discipline que
   /// `NetworkUtils.buildBaseDio(allowInvalidCertificate:)` côté app.
+  /// §engineVendor patch 9 — [mediaInfo] par CHARGEMENT.
+  ///
+  /// Amont, les métadonnées « Now Playing » venaient uniquement du champ
+  /// `final` du constructeur : figées pour la vie du contrôleur. Or l'app en
+  /// réutilise UN SEUL pour enchaîner les épisodes (§episodeMeta) — la
+  /// notification aurait donc porté le titre du premier film pour toujours.
+  /// Le natif, lui, lit déjà `mediaInfo` à chaque `load` (`handleLoad` →
+  /// `updateMediaInfo`) : seul le côté Dart l'empêchait de changer. Repli sur
+  /// le champ du constructeur quand l'argument est omis.
   Future<void> load({
     required String url,
     Map<String, String>? headers,
@@ -1495,6 +1504,7 @@ class NativeVideoPlayerController {
     List<NativeVideoPlayerSidecarSubtitle>? sidecarSubtitles,
     Duration? startAt,
     bool force = false,
+    NativeVideoPlayerMediaInfo? mediaInfo,
   }) async {
     if (!force && _state.activityState.isLoaded) {
       return;
@@ -1531,7 +1541,8 @@ class NativeVideoPlayerController {
         url: url,
         autoPlay: autoPlay,
         headers: headers,
-        mediaInfo: mediaInfo?.toMap(),
+        // §engineVendor patch 9 — l'argument du load prime sur le champ.
+        mediaInfo: (mediaInfo ?? this.mediaInfo)?.toMap(),
         drmConfig: drmConfig,
         // Android attaches URL sources natively (MediaItem.SubtitleConfiguration)
         // so captions can also render in PiP/native fullscreen; iOS and
@@ -1626,6 +1637,7 @@ class NativeVideoPlayerController {
     Map<String, dynamic>? drmConfig,
     Duration? startAt,
     bool force = false,
+    NativeVideoPlayerMediaInfo? mediaInfo, // §engineVendor patch 9
   }) async {
     return load(
       url: url,
@@ -1634,6 +1646,7 @@ class NativeVideoPlayerController {
       startAt: startAt,
       allowInvalidCertificate: allowInvalidCertificate,
       force: force,
+      mediaInfo: mediaInfo,
     );
   }
 

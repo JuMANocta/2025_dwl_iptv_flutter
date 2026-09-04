@@ -2003,6 +2003,9 @@ class _DetailsPageState extends State<DetailsPage> {
             : PlayerBadgeType.movie,
         startPosition: from,
         seasonNumber: _selectedEntry.title.seasonNumber,
+        // §nowPlaying — affiche TMDB pour l'écran verrouillé, logo en repli.
+        posterUrl: TmdbService.getPosterUrl(_tmdbData?.posterPath) ??
+            _selectedEntry.logoUrl,
         // §episodeMeta — Le player ne pousse plus de nouvelle route pour changer
         // d'épisode : il demande le contenu suivant et bascule en place.
         onRequestNext: hasNext ? _prepareNextEpisode : null,
@@ -2062,6 +2065,9 @@ class _DetailsPageState extends State<DetailsPage> {
       sourceType: VideoSourceType.network,
       badgeType: PlayerBadgeType.series,
       seasonNumber: season,
+      // §nowPlaying — l'épisode suivant garde une image dans la notification.
+      posterUrl: TmdbService.getPosterUrl(_tmdbData?.posterPath) ??
+          _selectedEntry.logoUrl,
     );
   }
 

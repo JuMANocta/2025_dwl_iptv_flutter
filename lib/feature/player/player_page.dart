@@ -30,6 +30,9 @@ import 'player_action_handlers.dart';
 import 'package:dpad/dpad.dart';
 import '../../core/navigation/focus_route_memory.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../core/utils/notification_permission.dart';
+import '../../core/utils/platform_pip.dart';
+import 'pip_policy.dart';
 
 enum VideoSourceType {
   network, // live / VOD réseau (et timeshift simple)
@@ -108,11 +111,16 @@ class PlayerPage extends StatefulWidget {
   /// on n'enregistre alors rien plutôt que d'attribuer au hasard.
   final String accountId;
 
+  /// §nowPlaying — Image de la notification de lecture (affiche TMDB ou logo
+  /// de la liste). Optionnel : sans elle, la notification est texte seul.
+  final String? posterUrl;
+
   const PlayerPage({
     super.key,
     required this.path,
     required this.title,
     this.accountId = '',
+    this.posterUrl,
     this.qualityTag,
     this.episodeTag,
     this.seriesName,
@@ -143,6 +151,7 @@ class PlayerPage extends StatefulWidget {
         progressKey: progressKey,
         seasonNumber: seasonNumber,
         accountId: accountId,
+        posterUrl: posterUrl,
       );
 
   @override
@@ -242,6 +251,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// `true` → tous les gestes (sauf tap pour révéler le cadenas) sont ignorés.
   bool _isLocked = false;
 
+  // ── §pipPhone — Picture-in-Picture ────────────────────────────────────────
+  /// Le SYSTÈME sait-il faire du PiP sur cet appareil ? Résolu une fois en
+  /// [initState] (propriété de l'appareil, pas de l'état de lecture).
+  bool _pipSupported = false;
+
+  /// `true` tant que la fenêtre PiP est affichée — masque les contrôles
+  /// (rien n'y est cliquable) et neutralise les gestes.
+  bool _inPip = false;
+
+  /// Dernière taille vidéo mesurée (§qualityTruth la publie déjà) : sert de
+  /// ratio à la fenêtre PiP. `null` tant que rien n'est décodé → repli 16:9.
+  AetherVideoSize? _videoSize;
+
+  StreamSubscription<void>? _pipDismissSub;
+
   /// §videoFit — Format d'image courant. Initialisé sur le dernier choix de
   /// l'utilisateur (mémorisé d'une vidéo à l'autre) plutôt que remis à
   /// « Original » à chaque lecture.
@@ -328,6 +352,51 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     );
     RemoteControlService.instance.registerPlayer(_remoteHandlers);
     _releaseImageCache();
+
+    // §pipPhone — Propriété de l'APPAREIL, résolue une fois. `mounted` :
+    // l'utilisateur peut avoir quitté la page avant que le canal ne réponde.
+    PlatformPip.isSupported().then((v) {
+      if (!mounted) return;
+      _pipSupported = v;
+      _syncAutoPip();
+    });
+    PlatformPip.active.addListener(_onPipActiveChanged);
+    _pipDismissSub = PlatformPip.dismissed.listen((_) {
+      // La fenêtre PiP a été FERMÉE (croix) : mettre en pause plutôt que de
+      // laisser un son sans image derrière une activité qui se termine.
+      if (mounted) _ctrl.pause();
+    });
+  }
+
+  /// §pipPhone — `PlatformPip.active` a changé : masque/révèle les contrôles.
+  void _onPipActiveChanged() {
+    if (!mounted) return;
+    setState(() => _inPip = PlatformPip.active.value);
+  }
+
+  /// §pipPhone — Réarme l'autorisation d'auto-PiP à chaque changement
+  /// d'éligibilité (verrou §1i, erreur, disponibilité système). Appelé plutôt
+  /// qu'évalué au `build()` : un appel de canal par frame serait du gâchis.
+  void _syncAutoPip() {
+    if (!mounted) return;
+    final bool eligible = canOfferPip(
+      isTv: PlatformTv.isTv,
+      supported: _pipSupported,
+      hasError: _hasError,
+      locked: _isLocked,
+    );
+    final ratio = pipAspectFor(_videoSize?.w, _videoSize?.h);
+    PlatformPip.setAutoEnter(
+      enabled: eligible,
+      width: ratio.width,
+      height: ratio.height,
+    );
+  }
+
+  /// §pipPhone — Bouton manuel de la barre du lecteur.
+  Future<void> _enterPip() async {
+    final ratio = pipAspectFor(_videoSize?.w, _videoSize?.h);
+    await PlatformPip.enter(width: ratio.width, height: ratio.height);
   }
 
   /// §playerMem — Rend au décodeur vidéo la RAM immobilisée par les vignettes.
@@ -398,6 +467,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _videoParamsSub = _ctrl.videoParamsStream.listen((params) {
       final h = params.h;
       final w = params.w;
+      if (h != null && w != null && h > 0 && w > 0) {
+        // §pipPhone — le ratio de la fenêtre PiP suit la vidéo RÉELLEMENT
+        // décodée, pas la qualité annoncée (repli 16:9 sinon, cf. pip_policy).
+        _videoSize = params;
+        _syncAutoPip();
+      }
       if (h == null || w == null || h <= 0 || w <= 0) return;
       final key = _media.resumeKey;
       if (key == _measuredKey) return;
@@ -664,12 +739,26 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       // film se relance »). Pas pour live/replay.
       final audioLang = _skipProgress ? null : TrackPreferencesService.audio;
       final subLang = _skipProgress ? null : TrackPreferencesService.subtitle;
+      // §nowPlaying — Notification de lecture + écran verrouillé, TÉLÉPHONE
+      // uniquement. Sur téléviseur, `null` : le service de premier plan que la
+      // session démarre ferait survivre la lecture à la sortie du lecteur, et
+      // la notification n'y a aucun sens. La permission Android 13+ est
+      // demandée ici, à la première lecture — jamais au démarrage de l'app.
+      final AetherNowPlaying? nowPlaying =
+          PlatformTv.isTv ? null : nowPlayingFor(_media);
+      if (nowPlaying != null) await ensureNotificationPermission();
       if (_media.sourceType == VideoSourceType.file) {
         await _ctrl.openFile(_currentPath,
-            start: start, audioLang: audioLang, subLang: subLang);
+            start: start,
+            audioLang: audioLang,
+            subLang: subLang,
+            nowPlaying: nowPlaying);
       } else {
         await _ctrl.open(_currentPath,
-            start: start, audioLang: audioLang, subLang: subLang);
+            start: start,
+            audioLang: audioLang,
+            subLang: subLang,
+            nowPlaying: nowPlaying);
       }
     } catch (e) {
       _handleError(e.toString());
@@ -949,6 +1038,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           // d'ouverture (l. _openMedia) : on n'affiche jamais ce texte brut.
           _errorMessage = describeError(error);
         });
+        _syncAutoPip(); // §pipPhone — écran d'erreur : plus de PiP proposé
       }
     }
   }
@@ -1042,6 +1132,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _retryCount = 0;
       _currentPath = _media.path;
     });
+    _syncAutoPip(); // §pipPhone — l'erreur est levée, le PiP redevient possible
     _recoveryLabel.value = null; // §recoverLabel — nouveau départ, compteur à zéro
     _openMedia();
   }
@@ -1075,6 +1166,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _pendingRetryTimer?.cancel();
     _seekAccumTimer?.cancel();
     _seekOverlayTimer?.cancel();
+    // §pipPhone — désarme l'auto-PiP AVANT de fermer : sans ça, un geste
+    // Accueil juste après la fermeture pourrait réarmer une fenêtre PiP sur
+    // une page qui n'existe plus.
+    PlatformPip.active.removeListener(_onPipActiveChanged);
+    _pipDismissSub?.cancel();
+    unawaited(PlatformPip.setAutoEnter(enabled: false));
     RemoteControlService.instance.clearPlayer(_remoteHandlers);
     _saveProgress(); // dernière sauvegarde à la sortie du player
     _recordPlaybackHealth();
@@ -1204,7 +1301,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               onBrightnessChange: _handleBrightnessChange,
               readVolume: () => _volume,
               locked: _isLocked,
-              disabled: isTv,
+              // §pipPhone — rien n'est cliquable dans la fenêtre PiP.
+              disabled: isTv || _inPip,
             ),
 
             // 3. Overlay contrôles.
@@ -1215,7 +1313,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               episodeTag: _media.episodeTag,
               seriesName: _media.seriesName,
               synopsis: _media.synopsis,
-              visible: _controlsVisible,
+              // §pipPhone — les contrôles n'ont aucun sens dans la fenêtre
+              // flottante (aucune entrée n'y arrive : boutons système seuls).
+              visible: _controlsVisible && !_inPip,
               badgeType: _media.badgeType,
               // §dpadBack — Même chemin que la touche Retour physique (debounce
               // partagé) : un `pop()` direct doublonnait avec elle.
@@ -1223,7 +1323,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               onInteraction: _showControls,
               speed: _speed,
               onSpeedChanged: _setSpeed,
-              onLockChanged: (locked) => setState(() => _isLocked = locked),
+              onLockChanged: (locked) {
+                setState(() => _isLocked = locked);
+                _syncAutoPip(); // §pipPhone — pas de PiP à l'insu, sous verrou
+              },
               onNextEpisode:
                   widget.onRequestNext == null ? null : _requestNextEpisode,
               onShowTracks: _showTrackSelector,
@@ -1231,6 +1334,16 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               // focusables : le panneau s'ouvre déjà par ↑ / appui long, un
               // icône de plus n'y serait qu'un ornement inatteignable.
               onShowOptions: isTv ? null : _showPlayerOptionsPanel,
+              // §pipPhone — `null` masque le bouton : TV, verrou, erreur, ou
+              // appareil sans le PiP. Même garde que l'auto-armement.
+              onEnterPip: canOfferPip(
+                isTv: isTv,
+                supported: _pipSupported,
+                hasError: _hasError,
+                locked: _isLocked,
+              )
+                  ? _enterPip
+                  : null,
             ),
 
             // §autoNextEp — Encart de fin (décompte / fin de saison / fin de
