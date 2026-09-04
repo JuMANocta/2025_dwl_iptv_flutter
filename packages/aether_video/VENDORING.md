@@ -137,7 +137,12 @@ les options de cast etc. qui pourront servir »). Ne prendre AUCUN de ces blocs
 pour du code mort :
 
 - **Cast/Chromecast** : `lib/cast.dart` + `src/services/cast/` (~980 l. Dart,
-  + dépendance `multicast_dns`) ;
+  + dépendance `multicast_dns`) — ✅ **branché le 2026-09-04 (§castSend)** via
+  `lib/data/services/cast_service.dart`, importé par le point d'entrée séparé
+  `package:better_native_video_player/cast.dart` (pas le barrel). **Aucun
+  patch** du paquet n'a été nécessaire ; ⚠️ le récepteur ne pousse son statut
+  que sur changement d'état, l'app l'interroge (`requestStatus()`) chaque
+  seconde ;
 - **Notifications / MediaSession / écran verrouillé** :
   `VideoPlayerNotificationHandler.kt` + `VideoPlayerMediaSessionService.kt`
   (~607 l. Kotlin, deps `media3-session` + `androidx.media`) ;
@@ -175,3 +180,19 @@ ne coûte aucune capacité ; retirer du code en coûte.
 - Aucun autre écart à ce jour — l'étape 1 du plan est une copie **à
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).
+
+## patch 13 — le service de lecture doit se déclarer AVANT de se retirer (2026-09-05)
+
+`VideoPlayerMediaSessionService.onStartCommand` sortait par `stopSelf()` quand
+il n'avait pas de notification à afficher, avec le commentaire « bail cleanly ».
+
+⚠️ **`stopSelf()` ne satisfait PAS le contrat de `startForegroundService()`.**
+Android exige `startForeground()` dans les ~5 s, sinon il **tue le processus**.
+Constaté sur Galaxy S25 (Android 16) le 2026-09-05 : quitter le lecteur puis en
+relancer un depuis la fiche produisait
+`ForegroundServiceDidNotStartInTimeException` — plantage complet de l'app,
+exactement 5 s après le démarrage du service.
+
+Le service se déclare désormais TOUJOURS, avec une notification de repli
+minimale si besoin, et ne se retire qu'ensuite. Couvre aussi la course où
+`stop()` arrive avant `onStartCommand`.

@@ -103,3 +103,19 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // §castRelay — Conversion du son POUR LE CAST : le récepteur générique de
+    // Google ne décode ni AC3 ni DTS (constaté sur Philips Android TV le
+    // 2026-09-04 : image sans son). Media3 Transformer réencode la seule piste
+    // audio en AAC et RECOPIE la vidéo, puis le fichier est servi au
+    // téléviseur par le serveur HTTP local de l'app.
+    //
+    // ⚠️ Le moteur vendoré (`packages/aether_video`) apporte déjà media3 1.5.0
+    // (exoplayer, hls, session…) : rester sur la MÊME version, sinon Gradle
+    // résout deux jeux d'artefacts et le lecteur casse.
+    implementation("androidx.media3:media3-transformer:1.5.0")
+    implementation("androidx.media3:media3-muxer:1.5.0")
+    implementation("androidx.media3:media3-effect:1.5.0")
+    implementation("androidx.media3:media3-common:1.5.0")
+}

@@ -32,6 +32,26 @@ class MainActivity : FlutterActivity() {
     // configureFlutterEngine) puisse emettre vers Dart.
     private var transferChannel: MethodChannel? = null
 
+    // §castSend — Meme modele que transferChannel : les boutons Pause/Arreter
+    // de la notification de diffusion arrivent par BroadcastReceiver.
+    private var castChannel: MethodChannel? = null
+
+    // §castRelay — Créé à la première demande : la conversion est un cas rare
+    // et coûteux, rien ne doit exister tant qu'elle n'est pas acceptée.
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private var castRelay: AetherCastRelay? = null
+
+    private val castActionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = when (intent?.action) {
+                AetherCastService.ACTION_TOGGLE -> "toggle"
+                AetherCastService.ACTION_STOP -> "stop"
+                else -> return
+            }
+            castChannel?.invokeMethod("onCastAction", mapOf("action" to action))
+        }
+    }
+
     // §dlNotif — Le bouton "Annuler" d'une notification de telechargement
     // passe par un Intent (PendingIntent.getBroadcast), pas par un appel Dart
     // direct : la notification doit pouvoir agir meme si MainActivity n'a
@@ -87,6 +107,27 @@ class MainActivity : FlutterActivity() {
         // Canal de détection plateforme TV (§3c-1).
         // Retourne true si on est sur Android TV (UiModeManager) OU sur Fire TV
         // (feature flag Amazon spécifique).
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/device"
+        ).setMethodCallHandler { call, result ->
+            // §castBattery — État de la batterie, pour avertir AVANT qu'une
+            // diffusion (le téléphone porte le film) ne meure avec elle.
+            if (call.method == "battery") {
+                try {
+                    val bm = getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
+                    val percent = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                    val status = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_STATUS)
+                    val charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                        status == android.os.BatteryManager.BATTERY_STATUS_FULL
+                    result.success(mapOf("percent" to percent, "charging" to charging))
+                } catch (e: Exception) {
+                    result.error("BATTERY_ERROR", e.message, null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "aetherstream/tv_detection"
@@ -198,6 +239,86 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // §castRelay — Conversion du son pour le Cast. Le canal ne fait
+        // qu'exposer `AetherCastRelay` ; la DÉCISION de convertir (et le
+        // consentement) vit côté Dart (`cast_relay_policy.dart`).
+        val relayChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/cast_relay"
+        )
+        relayChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> {
+                    val url = call.argument<String>("url")
+                    if (url == null) {
+                        result.error("NO_URL", "URL requise", null)
+                        return@setMethodCallHandler
+                    }
+                    // Rang de la piste audio à convertir (ordre du fichier) ;
+                    // -1 = laisser Media3 choisir.
+                    val audioIndex = call.argument<Int>("audioIndex") ?: -1
+                    // §castResume — position de départ de la CONVERSION (ms).
+                    val startMs = (call.argument<Number>("startMs") ?: 0).toLong()
+                    // ⚠️ `applicationContext`, PAS `this` : la conversion dure des
+                    // minutes et retiendrait l'Activity entière en mémoire.
+                    val relay = castRelay
+                        ?: AetherCastRelay(applicationContext).also { castRelay = it }
+                    relay.start(url, audioIndex, startMs, object : AetherCastRelay.Callbacks {
+                        override fun onProgress(percent: Int) {
+                            relayChannel.invokeMethod(
+                                "onRelayProgress", mapOf("percent" to percent)
+                            )
+                        }
+
+                        override fun onCompleted(outputPath: String) {
+                            relayChannel.invokeMethod(
+                                "onRelayDone", mapOf("path" to outputPath)
+                            )
+                        }
+
+                        override fun onFailed(message: String, userFacing: Boolean) {
+                            relayChannel.invokeMethod(
+                                "onRelayFailed",
+                                mapOf("message" to message, "userFacing" to userFacing)
+                            )
+                        }
+                    })
+                    result.success(relay.outputPath())
+                }
+                "stop" -> {
+                    castRelay?.clean()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // §castSend — Notification « Diffusion sur … », portée par
+        // `AetherCastService` (foreground `mediaPlayback`) : garde la session
+        // Cast (socket Dart) vivante quand l'app est en arrière-plan.
+        castChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/cast_notif"
+        )
+        castChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "show" -> {
+                    val title = call.argument<String>("title") ?: "AetherStream"
+                    val text = call.argument<String>("text") ?: "Diffusion en cours"
+                    val playing = call.argument<Boolean>("playing") ?: true
+                    val image = call.argument<String>("image")
+                    val lowBattery = call.argument<Boolean>("lowBattery") ?: false
+                    AetherCastService.start(this, title, text, playing, image, lowBattery)
+                    result.success(null)
+                }
+                "hide" -> {
+                    AetherCastService.stop(this)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun buildAutoPipParams(): PictureInPictureParams {
@@ -253,20 +374,42 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         val filter = IntentFilter(AetherDownloadService.ACTION_CANCEL)
+        // §castSend — Meme cycle de vie que le recepteur d'annulation, pour la
+        // meme raison : les boutons servent quand l'app est en arriere-plan.
+        val castFilter = IntentFilter().apply {
+            addAction(AetherCastService.ACTION_TOGGLE)
+            addAction(AetherCastService.ACTION_STOP)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(cancelDownloadReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(castActionReceiver, castFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(cancelDownloadReceiver, filter)
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(castActionReceiver, castFilter)
         }
     }
 
     override fun onDestroy() {
+        // ⚠️ **Sans ceci, une conversion survit à l'activité.** Le service de
+        // premier plan garde le processus vivant alors qu'Android peut
+        // détruire l'Activity : le `Transformer` continuait d'écrire (~1,3 Go
+        // par minute), gardait décodeur et encodeur, et parlait à un canal
+        // mort. Le `MainActivity` suivant en créait un NOUVEAU : l'ancien
+        // devenait injoignable, donc inarrêtable.
+        castRelay?.clean()
+        castRelay = null
         try {
             unregisterReceiver(cancelDownloadReceiver)
         } catch (e: IllegalArgumentException) {
             // Jamais enregistré (onCreate n'a pas eu le temps de s'exécuter) :
             // rien à faire.
+        }
+        try {
+            unregisterReceiver(castActionReceiver)
+        } catch (e: IllegalArgumentException) {
+            // Idem.
         }
         super.onDestroy()
     }

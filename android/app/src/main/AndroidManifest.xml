@@ -33,6 +33,12 @@
          vivant et afficher une progression, il ne diffuse ni ne lit de média. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!-- §castSend — Service de premier plan `mediaPlayback` qui garde la
+         session Chromecast (socket tenu par Dart) vivante en arrière-plan.
+         Déjà déclarée par le manifeste du paquet vendoré (fusionné) ; répétée
+         ici pour que la dépendance soit lisible sans ouvrir le paquet. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
     <!-- §nowPlaying — Android 13+ : sans elle, la notification de lecture
          (écran verrouillé, casque) n'est jamais affichée. Demandée à l'exécution
          à la première lecture, jamais au démarrage. Réutilisée par §dlNotif
@@ -92,6 +98,14 @@
             android:name=".AetherDownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- §castSend — Service de premier plan de la diffusion Chromecast :
+             notification « Diffusion sur … » + Pause / Arrêter, et surtout le
+             processus (donc la session Cast) gardé vivant en arrière-plan. -->
+        <service
+            android:name=".AetherCastService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- FileProvider pour partager l'APK de mise à jour (Android 7+) -->
         <provider

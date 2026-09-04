@@ -23,6 +23,33 @@ import '../diagnostics/log_buffer.dart' show sanitizeForLog;
 ///
 /// Le mapping `DioExceptionType` reprend celui de `playlist_service.dart`,
 /// qui était le meilleur de l'app mais enfermé dans un `catch` privé.
+/// §userErrorOwn — Exception dont le message **EST déjà** la phrase à montrer.
+///
+/// **Pourquoi ce type existe** (constaté sur appareil réel le 2026-09-04) :
+/// `BackupService` levait une `FormatException` portant « Mot de passe
+/// incorrect ou fichier altéré. » — un message juste, en français… que
+/// [describeError] écrasait par « Réponse illisible du serveur (format
+/// inattendu). », parce qu'il traduit la CLASSE. L'utilisateur lisait donc un
+/// message parlant d'un serveur alors qu'il avait simplement tapé un mauvais
+/// mot de passe.
+///
+/// Même piège que §userErrorGaps, dans l'autre sens : là, une classe portait
+/// un message brut qu'on croyait métier ; ici, une classe portait un message
+/// métier qu'on croyait brut. La leçon est la même — **la classe ne dit pas la
+/// provenance du message**. D'où ce type, dont la classe, elle, l'affirme.
+///
+/// ⚠️ N'y mettre QUE des phrases écrites pour être lues : jamais une valeur
+/// venue du réseau, jamais une URL (l'invariant §tourFix s'applique quand
+/// même, [describeError] repasse tout par `sanitizeForLog`).
+class UserFacingException implements Exception {
+  const UserFacingException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 String describeError(Object? error) {
   if (error == null) return 'Une erreur inattendue est survenue.';
   final String raw = _describe(error);
@@ -32,6 +59,12 @@ String describeError(Object? error) {
 const int _maxLength = 180;
 
 String _describe(Object error) {
+  // §userErrorOwn — EN PREMIER : le message a été écrit pour être lu, aucune
+  // traduction ne peut l'améliorer. (Avant, `BackupService` levait une
+  // `FormatException` « Mot de passe incorrect » qui ressortait en « Réponse
+  // illisible du serveur » — un message parlant d'un serveur pour un mot de
+  // passe mal tapé.)
+  if (error is UserFacingException) return error.message;
   if (error is DioException) return _describeDio(error);
   if (error is HttpException) {
     // ⚠️ Constaté sur appareil réel (§userError, 2026-09-04) : `HttpException`

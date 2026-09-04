@@ -251,6 +251,10 @@ class Media3Engine implements AetherPlaybackEngine {
                 id: '${e.index}',
                 title: e.displayName,
                 language: e.language,
+                // §castAudio — §engineVendor patch 11 : le codec de la piste,
+                // pour décider ce qu'un récepteur Chromecast saura décoder.
+                codec: e.codec,
+                channels: e.channelCount,
               ))
           .toList();
       _subtitles = t

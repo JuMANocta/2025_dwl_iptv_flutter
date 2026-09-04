@@ -33,6 +33,12 @@ import '../../core/utils/platform_tv.dart';
 import '../../core/utils/notification_permission.dart';
 import '../../core/utils/platform_pip.dart';
 import 'pip_policy.dart';
+import 'cast_policy.dart';
+import 'cast_relay_policy.dart';
+import '../../data/services/cast_service.dart';
+import '../../data/services/cast_relay_service.dart';
+import 'widgets/cast_sheet.dart';
+import 'widgets/cast_overlay.dart';
 
 enum VideoSourceType {
   network, // live / VOD réseau (et timeshift simple)
@@ -60,12 +66,16 @@ class PlayerPage extends StatefulWidget {
 
   final String path;
   final String title;
+
   /// §watchContext a — Qualité du flux (4K/FHD/HD/SD) → badge sous le titre.
   final String? qualityTag;
+
   /// §watchContext b — Numéro saison/épisode (« S01 E04 ») → badge sous le titre.
   final String? episodeTag;
+
   /// §watchContext — Nom de la série (breadcrumb au-dessus du titre, séries).
   final String? seriesName;
+
   /// §watchContext — Synopsis (épisode ou film, si TMDB/provider dispo) affiché
   /// dans l'overlay sous les badges.
   final String? synopsis;
@@ -266,6 +276,22 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   StreamSubscription<void>? _pipDismissSub;
 
+  // ── §castSend — Diffusion Chromecast ──────────────────────────────────────
+  /// §castRelay — Conversion en cours, s'il y en a une. Sert à montrer un
+  /// écran de préparation AVANT que le récepteur ait accepté quoi que ce soit.
+  CastRelayState? _relay;
+
+  /// L'appareil visé par la conversion en cours, pour le nommer à l'écran.
+  CastDevice? _relayTarget;
+
+  /// Copie locale de `CastService.state` (état GLOBAL : la diffusion survit à
+  /// la fermeture de cette page, c'est le but). Non nul ⇒ le téléphone est la
+  /// télécommande : contrôles et gestes locaux masqués, panneau à la place.
+  CastState? _cast;
+
+  /// Messages du récepteur (fin, flux refusé, connexion perdue) → snackbar.
+  StreamSubscription<String>? _castMsgSub;
+
   /// §videoFit — Format d'image courant. Initialisé sur le dernier choix de
   /// l'utilisateur (mémorisé d'une vidéo à l'autre) plutôt que remis à
   /// « Original » à chaque lecture.
@@ -366,6 +392,18 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       // laisser un son sans image derrière une activité qui se termine.
       if (mounted) _ctrl.pause();
     });
+
+    // §castSend — Le lecteur ne fait que LIRE l'état de diffusion : une
+    // diffusion lancée avant d'ouvrir cette page (autre contenu, ou retour
+    // dans le lecteur) s'affiche immédiatement comme telle.
+    _cast = CastService.state.value;
+    CastService.state.addListener(_onCastStateChanged);
+    CastRelayService.state.addListener(_onRelayStateChanged);
+    _castMsgSub = CastService.messages.listen((m) {
+      if (mounted) {
+        AppSnackBar.show(context, m, duration: const Duration(seconds: 4));
+      }
+    });
   }
 
   /// §pipPhone — `PlatformPip.active` a changé : masque/révèle les contrôles.
@@ -384,6 +422,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       supported: _pipSupported,
       hasError: _hasError,
       locked: _isLocked,
+      castActive: _cast != null,
     );
     final ratio = pipAspectFor(_videoSize?.w, _videoSize?.h);
     PlatformPip.setAutoEnter(
@@ -391,6 +430,269 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       width: ratio.width,
       height: ratio.height,
     );
+  }
+
+  // ── §castSend — Diffusion Chromecast ──────────────────────────────────────
+
+  /// Vrai si ce que le téléviseur lit est LE contenu de cette page (et pas
+  /// un autre, lancé avant). Compare l'adresse envoyée au récepteur, donc
+  /// déjà réécrite par `castUrlFor` (`.ts` → `.m3u8` pour le direct).
+  /// L'adresse envoyée au récepteur pour un relais est celle du serveur
+  /// local (`/relay.mp4`), pas celle du média — d'où un second critère :
+  /// le chemin source dont ce relais est issu, mémorisé au lancement.
+  String? _castMediaPath;
+
+  bool get _castsThisMedia =>
+      _cast != null &&
+      (_cast!.url == castUrlFor(_media.path) || _castMediaPath == _media.path);
+
+  /// §castRelay — La conversion a bougé : l'écran de préparation en vit.
+  void _onRelayStateChanged() {
+    if (!mounted) return;
+    setState(() => _relay = CastRelayService.state.value);
+  }
+
+  /// `CastService.state` a changé : reflète l'état global dans la page.
+  void _onCastStateChanged() {
+    if (!mounted) return;
+    setState(() => _cast = CastService.state.value);
+    _syncAutoPip(); // §pipPhone — pas de fenêtre flottante pendant une diffusion
+  }
+
+  /// Bouton « Diffuser » de la barre du haut : feuille de choix d'appareil.
+  Future<void> _showCastSheet() async {
+    _hideTimer?.cancel();
+    await showCastSheet(
+      context,
+      checkStream: _checkCastable,
+      onCast: _startCast,
+      connected: _cast?.device,
+      onStopCast: _cast == null ? null : _stopCast,
+      // §castRelay — proposé UNIQUEMENT si aucune piste n'est lisible par le
+      // récepteur, et jamais lancé sans que l'utilisateur ait lu ce que ça
+      // coûte (feuille de consentement).
+      relayPlan: _relayPlan,
+      onRelay: _startCastWithRelay,
+    );
+    if (mounted) _startHideTimer();
+  }
+
+  /// Contrôle d'éligibilité AVANT de proposer la diffusion : le récepteur va
+  /// chercher l'URL lui-même, sans le profil IPTV de l'app — on le vérifie
+  /// depuis le téléphone, dans les mêmes conditions (`cast_policy.dart`).
+  Future<CastEligibility> _checkCastable() async {
+    final bool isFile = _media.sourceType == VideoSourceType.file;
+    final String url = castUrlFor(_media.path);
+    final CastProbe? probe = isFile ? null : await CastService.probe(url);
+    final verdict =
+        castEligibility(isLocalFile: isFile, url: url, probe: probe);
+    if (!verdict.castable) return verdict;
+    // Réserve sur le SON : le lecteur local connaît TOUTES les pistes du
+    // fichier et leur codec (§engineVendor patch 11) — le récepteur, lui, ne
+    // décodera ni AC3 ni DTS. Constaté sur appareil : image sans son. On le
+    // dit avant d'envoyer, en nommant les pistes ; l'utilisateur tranche.
+    final List<CastAudioTrack> tracks = _ctrl.audioTracks
+        .where((t) => !t.isSpecial)
+        .map((t) => (label: t.label, codec: t.codec, channels: t.channels))
+        .toList();
+    if (tracks.isNotEmpty) {
+      debugPrint('🔊 §castAudio — pistes du fichier (${tracks.length}) : '
+          '${tracks.map((t) => '${t.label}/${t.codec ?? '?'}'
+              '${t.channels == null ? '' : '/${t.channels}ch'}').join(' | ')}');
+      return verdict.withWarning(castAudioWarningForTracks(tracks));
+    }
+    // Repli : aucune piste énumérée (flux live, moteur pas encore prêt) → on
+    // ne connaît que le codec en cours de décodage.
+    String? audioCodec;
+    try {
+      audioCodec = (await _ctrl.readStats()).audioCodec;
+    } catch (_) {
+      audioCodec = null;
+    }
+    return verdict.withWarning(castAudioWarning(audioCodec));
+  }
+
+  /// §castRelay — Les pistes audio du fichier, telles que le lecteur LOCAL
+  /// les voit (§engineVendor patch 11).
+  List<CastAudioTrack> _audioTracksForCast() => _ctrl.audioTracks
+      .where((t) => !t.isSpecial)
+      .map((t) => (label: t.label, codec: t.codec, channels: t.channels))
+      .toList();
+
+  /// §castRelay — Peut-on proposer de convertir le son ? Décision pure.
+  CastRelayPlan _relayPlan() => castRelayPlan(
+        isLocalFile: _media.sourceType == VideoSourceType.file,
+        isLive: _media.badgeType == PlayerBadgeType.live,
+        url: _media.path,
+        tracks: _audioTracksForCast(),
+      );
+
+  /// §castResume — Relance la conversion là où le téléviseur en est.
+  ///
+  /// Recours quand le son paraît décalé : l'app ne sait PAS le détecter (le
+  /// fichier est irréprochable dans les deux cas — mesuré le 2026-09-05, le
+  /// décalage était dans le contenu, pas dans les horodatages). C'est donc
+  /// l'oreille qui juge, et ce bouton qui agit, sans ressortir du lecteur.
+  Future<void> _restartRelay() async {
+    final CastRelayState? relay = _relay;
+    final CastState? cast = _cast;
+    if (relay == null || cast == null) return;
+    final CastDevice device = cast.device;
+    final Duration at = relay.offset + cast.position;
+    debugPrint('🎞️ §castResume — relance demandée à ${at.inSeconds} s');
+    await CastService.stop();
+    await CastRelayService.stop();
+    if (!mounted) return;
+    // La position du lecteur local sert de point de départ à la conversion :
+    // on l'y replace avant de relancer.
+    await _ctrl.seek(at);
+    if (!mounted) return;
+    await _startCastWithRelay(device);
+  }
+
+  /// §castRelay — Rang, dans l'ordre du fichier, de la piste audio que le
+  /// lecteur joue en ce moment : c'est ELLE que le téléphone convertira — pas
+  /// celle que Media3 jugerait « la meilleure » (il prend le plus haut débit,
+  /// donc l'Atmos anglais contre deux pistes françaises, constaté). `-1` si on
+  /// ne sait pas.
+  int _relayAudioIndex() {
+    final cur = _ctrl.currentAudioTrack;
+    if (cur == null || cur.isSpecial) return -1;
+    final real = _ctrl.audioTracks.where((t) => !t.isSpecial).toList();
+    return real.indexWhere((t) => t.id == cur.id);
+  }
+
+  /// §castRelay — L'utilisateur a accepté : le téléphone convertit le son et
+  /// sert le résultat au téléviseur.
+  ///
+  /// §castResume — **La conversion part de la position COURANTE**, pas du
+  /// début. Convertir depuis zéro obligeait à attendre d'avoir converti tout
+  /// ce qui précède (≈ 22 min pour un film vu à 45 min, mesuré le
+  /// 2026-09-05) avant de pouvoir reprendre. Le flux servi repart à zéro :
+  /// c'est `CastRelayState.offset` qui rend leur sens aux positions.
+  Future<void> _startCastWithRelay(CastDevice device) async {
+    await _ctrl.pause();
+    // L'écran de préparation (`CastPreparingOverlay`) prend le relais
+    // dès que `CastRelayService.state` existe : pas de snackbar par-dessus.
+    _castMediaPath = _media.path;
+    setState(() => _relayTarget = device);
+    try {
+      final String relayUrl = await CastRelayService.start(
+        _media.path,
+        audioIndex: _relayAudioIndex(),
+        startAt: _skipProgress ? Duration.zero : _ctrl.position,
+      );
+      await CastService.start(
+        device: device,
+        url: relayUrl,
+        // HLS : le récepteur passe par son lecteur adaptatif, le seul qui
+        // sache lire un programme en cours d'écriture (durée qui grandit,
+        // avance possible dans la partie déjà convertie).
+        contentType: castContentType(relayUrl),
+        // Flux progressif qui grandit : « direct » pour le récepteur, film
+        // pour nous (`live: false` garde le badge et la position normale).
+        streamType: 'LIVE',
+        live: false,
+        title: _media.title,
+        subtitle: nowPlayingFor(_media).subtitle,
+        imageUrl: _media.posterUrl,
+        // ⚠️ **PAS de clé de reprise pour un relais.** Le service écrirait la
+        // progression à partir de la durée annoncée par le RÉCEPTEUR — or ce
+        // flux converti n'a pas la durée du film. Le rapport position/durée
+        // frôlerait 1 en permanence et la règle des 95 % EFFACERAIT la
+        // reprise du film pendant qu'on le regarde ; pire, une fin de
+        // conversion le marquerait « vu en entier ». Le lecteur, lui, sauve
+        // avec la bonne durée tant qu'il est ouvert.
+        progressKey: null,
+      );
+    } on CastRelayCancelled {
+      // Annulé par l'utilisateur (ou diffusion close) : `_cancelRelay` a
+      // déjà tout remis en place, rien à dire de plus.
+      return;
+    } catch (e) {
+      await CastRelayService.stop();
+      if (!mounted) return;
+      setState(() => _relayTarget = null);
+      AppSnackBar.show(
+        context,
+        e is CastRelayException
+            ? e.message
+            : (e is CastException ? e.message : describeError(e)),
+        duration: const Duration(seconds: 5),
+      );
+      _ctrl.play();
+    }
+  }
+
+  /// §castRelay — L'utilisateur renonce pendant la conversion : on arrête
+  /// tout et on lui rend son film là où il l'avait laissé.
+  Future<void> _cancelRelay() async {
+    _castMediaPath = null;
+    await CastRelayService.stop();
+    if (!mounted) return;
+    setState(() => _relayTarget = null);
+    _ctrl.play();
+  }
+
+  /// Envoie le contenu courant à [device], depuis la position locale.
+  Future<void> _startCast(CastDevice device) async {
+    _castMediaPath = _media.path;
+    final String url = castUrlFor(_media.path);
+    final Duration pos = _skipProgress ? Duration.zero : _ctrl.position;
+    final bool live = _media.badgeType == PlayerBadgeType.live;
+    await _ctrl.pause();
+    try {
+      await CastService.start(
+        device: device,
+        url: url,
+        contentType: castContentType(url),
+        live: live,
+        title: _media.title,
+        // Le panneau affiche déjà « EN DIRECT » pour une chaîne : ne pas le
+        // répéter en sous-titre.
+        subtitle: live ? null : nowPlayingFor(_media).subtitle,
+        imageUrl: _media.posterUrl,
+        // §1e — La reprise suit le TÉLÉVISEUR : clé d'origine (pas l'URL
+        // réécrite), sauvée par le service toutes les 10 s, lecteur ouvert
+        // ou non.
+        progressKey: _skipProgress ? null : _media.resumeKey,
+        startAt: pos,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      AppSnackBar.show(
+        context,
+        e is CastException ? e.message : describeError(e),
+        duration: const Duration(seconds: 4),
+      );
+      _ctrl.play();
+    }
+  }
+
+  /// « Reprendre sur le téléphone » : arrête la diffusion et repart
+  /// localement là où le téléviseur en était.
+  Future<void> _stopCast() async {
+    final CastState? s = _cast;
+    // §castResume — Le flux d'un relais repart à zéro : sans le décalage de
+    // conversion, « Reprendre sur le téléphone » relancerait le film au début
+    // alors que la télé en était à 50 minutes.
+    //
+    // ⚠️ **Cette position se calcule AVANT d'effacer `_castMediaPath`** : cet
+    // effacement rend `_castsThisMedia` faux, donc la position nulle, donc
+    // aucun transfert. C'est précisément ce qui s'est produit le 2026-09-05.
+    final Duration? pos = (s != null && !s.live && _castsThisMedia)
+        ? (_relay != null ? _relay!.offset + s.position : s.position)
+        : null;
+    // Sinon `_castsThisMedia` resterait vrai pour un média qui n'est plus
+    // diffusé, et la position du téléviseur irait sous la mauvaise clé.
+    _castMediaPath = null;
+    await CastService.stop();
+    if (!mounted) return;
+    if (pos != null && pos > Duration.zero && !_skipProgress) {
+      await _ctrl.seek(pos);
+    }
+    await _ctrl.play();
+    _showControls();
   }
 
   /// §pipPhone — Bouton manuel de la barre du lecteur.
@@ -441,12 +743,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         // §liveRecover corrige. Même raisonnement pour `_retryCount` : trois
         // incidents distincts ne sont pas un incident qui s'aggrave.
         if (_inPlaceRecoveries != 0 || _retryCount != 0) {
-          debugPrint('✅ §liveRecover — lecture rétablie, compteurs remis à zéro '
+          debugPrint(
+              '✅ §liveRecover — lecture rétablie, compteurs remis à zéro '
               '(reprises=$_inPlaceRecoveries, réouvertures=$_retryCount)');
         }
         _inPlaceRecoveries = 0;
         _retryCount = 0;
-        _recoveryLabel.value = null; // §recoverLabel — ça joue, plus rien à dire
+        _recoveryLabel.value =
+            null; // §recoverLabel — ça joue, plus rien à dire
       } else {
         _releaseWakelock();
       }
@@ -544,8 +848,20 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   void _saveProgress() {
     if (_skipProgress) return;
-    final pos = _ctrl.position;
-    final dur = _ctrl.duration;
+    // §castSend — Pendant une diffusion de CE contenu, la position vraie est
+    // celle du téléviseur, pas celle du lecteur local mis en pause.
+    final bool viaCast = _castsThisMedia;
+    // §castResume — Le flux d'un relais repart à zéro : sans le décalage,
+    // un film repris à 45 min s'enregistrerait comme vu depuis le début.
+    final Duration castPos = _relay != null
+        ? _relay!.offset + _cast!.position
+        : (viaCast ? _cast!.position : Duration.zero);
+    final pos = viaCast ? castPos : _ctrl.position;
+    // La durée d'un flux converti n'est pas celle du film : on garde la
+    // durée LOCALE, seule fiable, sinon la règle des 95 % se déclenche à tort.
+    final dur = (viaCast && _relay == null)
+        ? (_cast!.duration ?? _ctrl.duration)
+        : _ctrl.duration;
     if (dur <= Duration.zero) return;
     // §episodeMeta — clé du contenu COURANT, pas celle du widget : après une
     // bascule d'épisode, écrire sur l'ancienne clé fausserait les reprises.
@@ -760,6 +1076,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             subLang: subLang,
             nowPlaying: nowPlaying);
       }
+      // §castSend — Une diffusion est en cours (lancée avant d'ouvrir cette
+      // page) : le téléviseur a l'image, le lecteur local ne joue pas
+      // par-dessus. Le panneau propose d'envoyer CE contenu à son tour.
+      if (CastService.isActive && mounted) await _ctrl.pause();
     } catch (e) {
       _handleError(e.toString());
     }
@@ -911,7 +1231,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       return true;
     }
 
-    if (_audioGaveUp) return false; // déjà muet et ça échoue encore → vrai échec
+    // Déjà muet et ça échoue encore → vrai échec.
+    if (_audioGaveUp) return false;
     _audioGaveUp = true;
     debugPrint('🔇 §audioFallback — aucune piste audio décodable, '
         'lecture sans son');
@@ -1095,6 +1416,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   // §3c-5 — Helpers consommés par TvPlayerShortcuts pour la nav télécommande.
   void _togglePlayPause() {
+    // §castSend — Touches média / OK pendant une diffusion : c'est le
+    // téléviseur qu'on commande, pas le lecteur local (en pause).
+    if (_cast != null) {
+      CastService.toggle();
+      return;
+    }
     _ctrl.playOrPause();
     _showControls();
   }
@@ -1103,6 +1430,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// télécommande). Basculer serait faux : PAUSE sur une vidéo déjà en pause la
   /// relancerait.
   void _setPlaying(bool play) {
+    if (_cast != null) {
+      if (play) {
+        CastService.play();
+      } else {
+        CastService.pause();
+      }
+      return;
+    }
     if (play) {
       _ctrl.play();
     } else {
@@ -1133,7 +1468,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _currentPath = _media.path;
     });
     _syncAutoPip(); // §pipPhone — l'erreur est levée, le PiP redevient possible
-    _recoveryLabel.value = null; // §recoverLabel — nouveau départ, compteur à zéro
+    _recoveryLabel.value =
+        null; // §recoverLabel — nouveau départ, compteur à zéro
     _openMedia();
   }
 
@@ -1171,6 +1507,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // une page qui n'existe plus.
     PlatformPip.active.removeListener(_onPipActiveChanged);
     _pipDismissSub?.cancel();
+    // §castSend — On se DÉSABONNE, on n'arrête PAS la diffusion : quitter le
+    // lecteur pendant qu'on diffuse est précisément l'usage (la notification
+    // garde Pause / Arrêter).
+    CastService.state.removeListener(_onCastStateChanged);
+    CastRelayService.state.removeListener(_onRelayStateChanged);
+    _castMsgSub?.cancel();
     unawaited(PlatformPip.setAutoEnter(enabled: false));
     RemoteControlService.instance.clearPlayer(_remoteHandlers);
     _saveProgress(); // dernière sauvegarde à la sortie du player
@@ -1302,7 +1644,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               readVolume: () => _volume,
               locked: _isLocked,
               // §pipPhone — rien n'est cliquable dans la fenêtre PiP.
-              disabled: isTv || _inPip,
+              // §castSend — ni pendant une diffusion (le panneau prend tout).
+              disabled: isTv || _inPip || _cast != null,
             ),
 
             // 3. Overlay contrôles.
@@ -1315,7 +1658,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               synopsis: _media.synopsis,
               // §pipPhone — les contrôles n'ont aucun sens dans la fenêtre
               // flottante (aucune entrée n'y arrive : boutons système seuls).
-              visible: _controlsVisible && !_inPip,
+              // §castSend — ni pendant une diffusion : le panneau les remplace.
+              visible: _controlsVisible && !_inPip && _cast == null,
               badgeType: _media.badgeType,
               // §dpadBack — Même chemin que la touche Retour physique (debounce
               // partagé) : un `pop()` direct doublonnait avec elle.
@@ -1334,6 +1678,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               // focusables : le panneau s'ouvre déjà par ↑ / appui long, un
               // icône de plus n'y serait qu'un ornement inatteignable.
               onShowOptions: isTv ? null : _showPlayerOptionsPanel,
+              // §castSend — Téléphone uniquement : sur TV, on EST le
+              // téléviseur. Le verrou ne le masque pas (diffuser n'est pas
+              // un geste accidentel : il ouvre une feuille de choix).
+              onCast: isTv ? null : _showCastSheet,
+              castActive: _cast != null,
               // §pipPhone — `null` masque le bouton : TV, verrou, erreur, ou
               // appareil sans le PiP. Même garde que l'auto-armement.
               onEnterPip: canOfferPip(
@@ -1341,10 +1690,50 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                 supported: _pipSupported,
                 hasError: _hasError,
                 locked: _isLocked,
+                castActive: _cast != null,
               )
                   ? _enterPip
                   : null,
             ),
+
+            // §castRelay — Entre l'accord et la lecture sur la télé : la
+            // conversion peut durer, l'écran doit le dire au lieu de rester
+            // sur le film en pause.
+            if (_cast == null && _relay != null)
+              CastPreparingOverlay(
+                deviceName: _relayTarget?.displayName ?? 'le téléviseur',
+                title: _media.title,
+                onCancel: _cancelRelay,
+              ),
+
+            // §castSend — Pendant une diffusion, le téléphone est la
+            // télécommande : panneau à la place des contrôles et des gestes.
+            if (_cast != null)
+              CastOverlay(
+                state: _cast!,
+                onToggle: CastService.toggle,
+                onStop: _stopCast,
+                onSeekBy: CastService.seekBy,
+                onBack: AppBack.popFromUi,
+                castThisTitle: _castsThisMedia ? null : _media.title,
+                onCastThis:
+                    _castsThisMedia ? null : () => _startCast(_cast!.device),
+                // §castAudio — Sous « Infos vidéo » : ce que le récepteur dit
+                // avoir trouvé comme pistes. Les stats LOCALES n'ont rien à
+                // dire pendant une diffusion, celle-ci si.
+                isRelay: _relay != null,
+                onRestartRelay: _relay == null ? null : _restartRelay,
+                diagnostics: _statsEnabled
+                    ? castReceiverTracksSummary([
+                        for (final t in _cast!.status.mediaTracks)
+                          (
+                            type: t.type,
+                            language: t.language,
+                            codec: t.contentType,
+                          ),
+                      ])
+                    : null,
+              ),
 
             // §autoNextEp — Encart de fin (décompte / fin de saison / fin de
             // série). Masqué en mode lock, comme le reste des overlays.
@@ -1378,7 +1767,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             if (_statsEnabled)
               VideoStatsOverlay(
                 player: _ctrl,
-                hidden: _isLocked,
+                // §castSend — les stats du lecteur LOCAL (en pause) n'ont
+                // rien à dire sur ce que le téléviseur décode : masquées.
+                hidden: _isLocked || _cast != null,
                 // §qualityTruth — la qualité que la LISTE annonce, à confronter
                 // à ce qui est réellement décodé.
                 announcedQuality: _media.qualityTag,

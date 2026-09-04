@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
+import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/web_console_service.dart';
 import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
@@ -27,11 +28,33 @@ import 'package:aetherStream/widgets/tv/focusable_card.dart';
 class OnboardingService {
   static const String _prefsKey = 'onboarding_done_v1';
 
-  /// `true` si l'onboarding n'a jamais été complété.
+  /// `true` si l'onboarding n'a jamais été complété **et** qu'il a encore un
+  /// objet — c'est-à-dire tant qu'aucun compte n'existe.
+  ///
+  /// ⚠️ **Un compte configuré rend l'accueil de bienvenue caduc.** Cas réel
+  /// (2026-09-04) : une restauration `.aether` lancée DEPUIS l'onboarding crée
+  /// les comptes, mais ne pose le drapeau qu'après la confirmation finale. Si
+  /// l'utilisateur ferme l'app entre les deux, « Bienvenue » repasse devant une
+  /// application pourtant configurée, listes en cours de chargement derrière.
+  /// On répare l'état au lieu de reposer la question.
   static Future<bool> shouldShow() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return !(prefs.getBool(_prefsKey) ?? false);
+      if (prefs.getBool(_prefsKey) ?? false) return false;
+      // ⚠️ `catch` SÉPARÉ : un incident passager du coffre-fort ne doit pas
+      // faire sauter l'onboarding d'une installation neuve (l'utilisateur
+      // atterrirait sur « Aucun compte configuré » sans explication). En cas
+      // de doute sur les comptes, on montre l'onboarding.
+      try {
+        final accounts = await StreamAccountService.listAccounts();
+        if (accounts.isNotEmpty) {
+          await markDone();
+          return false;
+        }
+      } catch (e) {
+        debugPrint('⚠️ OnboardingService : comptes illisibles — $e');
+      }
+      return true;
     } catch (_) {
       return false;
     }
@@ -90,10 +113,21 @@ class _OnboardingPageState extends State<OnboardingPage> {
   int get _slideCount => _isTv ? 2 : 4;
 
   Future<void> _finish() async {
-    if (_finishing) return;
+    if (_finishing) {
+      debugPrint(
+          '🚦 §restoreTrace — onboarding _finish IGNORÉ (déjà en cours)');
+      return;
+    }
     _finishing = true;
+    debugPrint('🚦 §restoreTrace — onboarding _finish → markDone');
     await OnboardingService.markDone();
-    if (!mounted) return;
+    if (!mounted) {
+      // ⚠️ Le drapeau est posé, mais `onFinish` n'est JAMAIS appelé : le
+      // parent ne saura pas que l'onboarding est terminé.
+      debugPrint('🚦 §restoreTrace — onboarding démonté : onFinish NON appelé');
+      return;
+    }
+    debugPrint('🚦 §restoreTrace — onboarding → onFinish()');
     widget.onFinish();
   }
 
@@ -233,22 +267,22 @@ class _OnboardingPageState extends State<OnboardingPage> {
                     borderRadius: BorderRadius.circular(12),
                     onTap: _next,
                     child: FilledButton(
-                    onPressed: _next,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: kAccentPrimary,
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      onPressed: _next,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: kAccentPrimary,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        textStyle: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.bold),
                       ),
-                      textStyle: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.bold),
-                    ),
-                    // §webConsoleOnly — Le bouton reste visible sur le slide
-                    // console : l'utilisateur peut entrer sans configurer (il
-                    // retrouvera la console dans les Paramètres) au lieu d'être
-                    // coincé à attendre un scan, comme c'était le cas avec le
-                    // pairing en auto-advance seul.
-                    child: Text(isLast ? 'Commencer' : 'Suivant'),
+                      // §webConsoleOnly — Le bouton reste visible sur le slide
+                      // console : l'utilisateur peut entrer sans configurer (il
+                      // retrouvera la console dans les Paramètres) au lieu d'être
+                      // coincé à attendre un scan, comme c'était le cas avec le
+                      // pairing en auto-advance seul.
+                      child: Text(isLast ? 'Commencer' : 'Suivant'),
                     ),
                   ),
                 ),

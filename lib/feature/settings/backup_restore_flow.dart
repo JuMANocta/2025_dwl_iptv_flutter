@@ -45,7 +45,14 @@ Future<bool> runBackupImportFlow(BuildContext context) async {
   // 5. Application effective.
   try {
     await BackupService.applyBackup(content);
+    // §restoreTrace — Journalisé : c'est ici que se joue « pourquoi l'app
+    // repart-elle sur l'onboarding après une restauration ». Si le contexte
+    // n'est plus monté, le dialogue de succès est sauté SANS que rien ne le
+    // dise, et l'appelant enchaîne aussitôt sur sa propre navigation.
+    debugPrint('🚦 §restoreTrace — backup appliqué · '
+        'contexte monté = ${context.mounted}');
     if (context.mounted) await _showImportSuccessDialog(context, content);
+    debugPrint('🚦 §restoreTrace — flux de restauration terminé (true)');
     return true;
   } catch (e) {
     if (context.mounted) messenger.showSnackBar(SnackBar(content: Text('❌ Échec : ${describeError(e)}')));
@@ -110,11 +117,15 @@ Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {
   return showAppDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
+      // ⚠️ `Expanded` obligatoire : sans lui le titre déborde (« RIGHT
+      // OVERFLOWED BY 12 PIXELS » constaté sur Galaxy S25, 2026-09-04) — le
+      // `Row` d'un titre d'`AlertDialog` est contraint par la largeur du
+      // dialogue, et un `Text` non flexible ne se coupe pas.
       title: Row(
         children: [
           Icon(Icons.warning_amber, color: kWarning, size: 22),
           const SizedBox(width: 8),
-          const Text('Confirmer la restauration'),
+          const Expanded(child: Text('Confirmer la restauration')),
         ],
       ),
       content: Column(
@@ -185,7 +196,8 @@ Future<void> _showImportSuccessDialog(
         children: [
           Icon(Icons.check_circle, color: kAccentPrimary, size: 22),
           const SizedBox(width: 8),
-          const Text('Restauration réussie'),
+          // Même garde que le dialogue de confirmation ci-dessus.
+          const Expanded(child: Text('Restauration réussie')),
         ],
       ),
       content: Text(

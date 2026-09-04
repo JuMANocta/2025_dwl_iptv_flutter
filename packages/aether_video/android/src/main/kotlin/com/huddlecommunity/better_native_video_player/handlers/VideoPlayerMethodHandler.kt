@@ -994,14 +994,25 @@ class VideoPlayerMethodHandler(
                         } catch (e: Exception) {
                             languageCode
                         }
-                    tracks.add(
-                        mapOf(
-                            "index" to tracks.size,
-                            "language" to languageCode,
-                            "displayName" to displayName,
-                            "isSelected" to group.isTrackSelected(trackIndex)
-                        )
+                    // §engineVendor patch 11 (§castAudio) — Le CODEC de chaque
+                    // piste, que l'amont ne remontait pas : sans lui, l'app ne
+                    // peut pas dire AVANT une diffusion Chromecast quelle piste
+                    // le recepteur saura decoder (AC3/DTS non, AAC oui). Le
+                    // format est deja en main ici, c'est une lecture de champ.
+                    val trackMap = mutableMapOf<String, Any>(
+                        "index" to tracks.size,
+                        "language" to languageCode,
+                        "displayName" to displayName,
+                        "isSelected" to group.isTrackSelected(trackIndex)
                     )
+                    format.sampleMimeType?.let { trackMap["codec"] = it }
+                    if (format.channelCount != Format.NO_VALUE) {
+                        trackMap["channelCount"] = format.channelCount
+                    }
+                    if (format.bitrate != Format.NO_VALUE) {
+                        trackMap["bitrate"] = format.bitrate
+                    }
+                    tracks.add(trackMap)
                 }
             }
             NpLog.d(TAG, "🔊 Total audio tracks found: ${tracks.size}")

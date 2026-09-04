@@ -43,6 +43,12 @@ class PlayerControls extends StatefulWidget {
   /// erreur ou si le système ne sait pas faire de PiP).
   final VoidCallback? onEnterPip;
 
+  /// §castSend — Si non-null, affiche le bouton « Diffuser » (téléphone
+  /// seulement : sur TV, on EST le téléviseur). [castActive] change l'icône
+  /// pour dire qu'une diffusion est en cours.
+  final VoidCallback? onCast;
+  final bool castActive;
+
   /// §playerOptionsTouch — Ouvre le panneau d'options du lecteur (format
   /// d'image, infos vidéo, pistes, vitesse…).
   ///
@@ -82,6 +88,8 @@ class PlayerControls extends StatefulWidget {
     this.onShowTracks,
     this.onShowOptions,
     this.onEnterPip,
+    this.onCast,
+    this.castActive = false,
   });
 
   @override
@@ -341,6 +349,26 @@ class _PlayerControlsState extends State<PlayerControls> {
                     ],
                   ),
                 ),
+                // §castSend — Diffuser sur un Chromecast. Même logique de
+                // placement que le PiP : envoyer l'image ailleurs est un geste
+                // de sortie, il vit dans la barre du haut.
+                if (widget.onCast != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: _TapTarget(
+                      tooltip: widget.castActive
+                          ? 'Diffusion en cours'
+                          : 'Diffuser sur un Chromecast',
+                      onTap: widget.onCast!,
+                      child: Icon(
+                        widget.castActive
+                            ? Icons.cast_connected_rounded
+                            : Icons.cast_rounded,
+                        color: widget.castActive ? kAccentPrimary : Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
                 // §pipPhone — Réduire en fenêtre. Placé ICI (barre du haut,
                 // comme ⚙) plutôt que dans le panneau d'options : c'est un
                 // geste de sortie, on ne va pas le chercher à deux niveaux.

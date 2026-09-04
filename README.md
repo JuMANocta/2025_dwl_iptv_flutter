@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.17.6+134-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.18.0+135-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -44,6 +44,7 @@
 - Overlay buffering central avec délai anti-clignotement
 - Badge contextuel : 🔴 DIRECT / 🟡 REPLAY / 🔵 FILM / 🟣 SÉRIE
 - Barre de progression replay (mode timeshift)
+- **Cast Chromecast** (téléphone) : bouton dans la barre du lecteur → liste des récepteurs du réseau (Chromecast, Google TV, Android TV, Nest) → **vérification du flux avant l'envoi** (le récepteur va chercher l'adresse lui-même : un flux qui exige le profil IPTV, un certificat auto-signé ou sans CORS est refusé avec le motif) → le téléphone devient la télécommande (pause, ±30 s, « Reprendre sur le téléphone »), notification Pause / Arrêter, et **la reprise suit le téléviseur** même lecteur fermé. Une réserve est annoncée quand le son est en AC3/DTS (beaucoup de téléviseurs le lisent sans le décoder)
 
 ### 📋 Playlist & Comptes
 - **Multi-comptes** : plusieurs fournisseurs IPTV simultanément, aggregation automatique en recherche
@@ -232,6 +233,7 @@ lib/
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Cast Chromecast** (§castSend, 2026-09-04) — Depuis le lecteur, un bouton envoie le film ou la chaîne sur un Chromecast, une Google TV ou un téléviseur Android TV du réseau, et le téléphone devient la télécommande (pause, ±30 s, retour de la lecture sur le téléphone) avec une notification Pause / Arrêter qui survit à la fermeture du lecteur. Le récepteur va chercher le flux lui-même, sans l'identité que l'application présente aux fournisseurs : l'application vérifie donc le flux **avant** de l'envoyer et explique un refus en clair au lieu d'un écran noir sur le téléviseur. Vérifié sur un téléviseur Philips : image parfaite, mais pas de son sur un film en Dolby Digital — une limite du récepteur, désormais annoncée avant l'envoi. La position de lecture suit le téléviseur : reprendre plus tard, sur le téléphone, repart là où la télé s'était arrêtée
 - [x] **Recette sur téléphone réel de la notification de lecture, du mode fenêtre et de la notification de téléchargement** (§userErrorGaps + §isolateLeak, 2026-09-04) — Les trois fonctions ci-dessous, jusque-là vérifiées sur émulateur, ont été rejouées sur un téléphone physique (casque Bluetooth compris pour les boutons de lecture) : tout fonctionne. La recette a débusqué deux défauts qu'aucun émulateur n'avait montrés. Une coupure réseau chez un fournisseur affichait un message d'erreur système brut, en anglais — l'application faisait confiance à un type d'erreur qui, dans ce cas précis, ne venait pas d'elle. Et le rafraîchissement d'un abonnement secondaire échouait de façon aléatoire au démarrage (il se rattrapait tout seul quelques secondes plus tard, sans que ça se voie) : une donnée interne à l'écran de lecture s'invitait par erreur dans le traitement fait en arrière-plan. Les deux sont corrigés
 - [x] **Suivre un téléchargement sans rouvrir l'app** (§dlNotif, 2026-09-04) — Un gros fichier téléchargé affiche désormais sa progression dans les notifications système, avec un bouton pour l'annuler à distance — et surtout, il **continue vraiment** quand l'app passe en arrière-plan. Avant ce lot, rien ne le garantissait : le transfert vivait entièrement dans la mémoire de l'application, et le système pouvait le couper net dès qu'il avait besoin de cette mémoire pour autre chose, sans qu'on le sache avant de rouvrir l'app et de trouver un fichier à moitié téléchargé. Une recette a d'ailleurs révélé, en cours de route, un cas où la notification restait affichée après l'annulation d'un transfert — corrigé avant livraison
 - [x] **Regarder en faisant autre chose** (§pipPhone, 2026-09-04) — Sur téléphone, un bouton dans la barre du lecteur réduit la vidéo dans une fenêtre flottante par-dessus n'importe quelle autre application, au bon format d'image, et la reprend en plein écran d'un tap. Rien n'est passé par le composant du marché qui offre déjà cette capacité : ses conditions d'activation supposaient un chrome entièrement différent de celui, cousu main pour la télécommande, que porte cette application — les deux n'étaient pas conciliables sans tout reconstruire. Sur téléviseur, où l'idée n'a pas de sens, rien ne change
@@ -357,9 +359,7 @@ lib/
 - [x] **Pistes audio + sous-titres (embarqués)** — sélecteur in-player (bouton CC) + préférence de langue mémorisée
 - [ ] **Sous-titres externes** — fichier/URL `.srt` + recherche en ligne auto par TMDB
 - [ ] **File d'attente DL + WiFi-only** — sémaphore, reprise auto au retour réseau
-- [ ] **Notifications téléchargement** — progression, fin, erreurs (foreground service)
 - [ ] **Background audio** — décision produit : continuer l'audio en arrière-plan via foreground service
-- [ ] **Cast Chromecast** — diffusion vers récepteurs Cast réseau local
 - [ ] **PIN / contrôle parental** — verrouillage app + masquage contenus adultes
 - [ ] **Empty states + Pull-to-refresh** — UX unifiée sur toutes les pages
 - [ ] **Mode hors-ligne** — bascule auto sur fichiers locaux si pas de réseau

@@ -3,6 +3,27 @@ import '../../models/cast_device.dart';
 /// Web/WASM stubs: CASTV2 needs dart:io sockets. The API mirrors the io
 /// implementation so shared code compiles; everything network-touching
 /// throws [UnsupportedError].
+/// §engineVendor patch 12 (§castAudio) — mirrors the io implementation.
+class CastMediaTrack {
+  const CastMediaTrack({
+    required this.trackId,
+    required this.type,
+    this.subtype,
+    this.language,
+    this.name,
+    this.contentType,
+  });
+
+  final int trackId;
+  final String type;
+  final String? subtype;
+  final String? language;
+  final String? name;
+  final String? contentType;
+
+  bool get isAudio => type.toUpperCase() == 'AUDIO';
+}
+
 class CastSessionStatus {
   const CastSessionStatus({
     this.playerState = 'IDLE',
@@ -11,6 +32,7 @@ class CastSessionStatus {
     this.volumeLevel = 1.0,
     this.muted = false,
     this.activeTrackIds = const <int>[],
+    this.mediaTracks = const <CastMediaTrack>[],
     this.idleReason,
   });
 
@@ -20,6 +42,7 @@ class CastSessionStatus {
   final double volumeLevel;
   final bool muted;
   final List<int> activeTrackIds;
+  final List<CastMediaTrack> mediaTracks;
   final String? idleReason;
 
   bool get isPlaying => playerState == 'PLAYING';

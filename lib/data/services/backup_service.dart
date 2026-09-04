@@ -10,6 +10,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/settings/perf_config.dart';
+import 'hidden_regions_service.dart';
+import '../../core/utils/user_error.dart' show UserFacingException;
 import '../../core/settings/performance_settings_service.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
@@ -40,6 +42,13 @@ import 'watch_progress_service.dart';
 /// **Stockage** : `/storage/emulated/0/Download/AetherStream/backup_*.aether`
 /// via `media_store_plus`. Survit à l'uninstall, visible dans le file manager.
 
+/// §langRegion — Lit une liste de chaînes sans jamais lever : tout ce qui
+/// n'est pas une liste rend `null`, et les éléments non-textuels sont écartés.
+List<String>? _readStringList(Object? raw) {
+  if (raw is! List) return null;
+  return raw.whereType<String>().toList(growable: false);
+}
+
 class BackupContent {
   final String appVersion;
   final DateTime exportedAt;
@@ -47,8 +56,16 @@ class BackupContent {
   final String? activeAccountId;
   final String? tmdbKey;
   final Map<String, dynamic>? theme;
+
   /// §perfSettings — réglages d'optimisation (null sur les vieux backups).
   final Map<String, dynamic>? perf;
+
+  /// §langRegion — Langues / régions masquées. ⚠️ **`null` et liste vide ne
+  /// veulent pas dire la même chose et se traitent pourtant pareil** :
+  /// absent d'un vieux fichier comme explicitement vide, on ne coche rien.
+  /// Une sauvegarde antérieure à ce champ ne doit JAMAIS faire échouer une
+  /// restauration ni inventer un masquage.
+  final List<String>? hiddenRegions;
   final List<String> favorites;
   final Map<String, Map<String, dynamic>> watchProgress;
 
@@ -60,6 +77,7 @@ class BackupContent {
     required this.tmdbKey,
     required this.theme,
     this.perf,
+    this.hiddenRegions,
     required this.favorites,
     required this.watchProgress,
   });
@@ -72,20 +90,26 @@ class BackupContent {
         'tmdbKey': tmdbKey,
         'theme': theme,
         'perf': perf,
+        'hiddenRegions': hiddenRegions,
         'favorites': favorites,
         'watchProgress': watchProgress,
       };
 
   factory BackupContent.fromJson(Map<String, dynamic> j) => BackupContent(
         appVersion: j['appVersion'] as String? ?? '?',
-        exportedAt:
-            DateTime.tryParse(j['exportedAt'] as String? ?? '') ?? DateTime.now(),
+        exportedAt: DateTime.tryParse(j['exportedAt'] as String? ?? '') ??
+            DateTime.now(),
         accounts:
             (j['accounts'] as List?)?.cast<Map<String, dynamic>>() ?? const [],
         activeAccountId: j['activeAccountId'] as String?,
         tmdbKey: j['tmdbKey'] as String?,
         theme: j['theme'] as Map<String, dynamic>?,
         perf: j['perf'] as Map<String, dynamic>?,
+        // ⚠️ Tolérant pour de vrai : un `as List?` LÈVE sur une chaîne. On
+        // teste le type au lieu de le supposer — champ absent, nul ou
+        // inattendu donne `null`, donc « rien de coché », jamais une
+        // restauration qui échoue pour un champ accessoire.
+        hiddenRegions: _readStringList(j['hiddenRegions']),
         favorites: (j['favorites'] as List?)?.cast<String>() ?? const [],
         watchProgress: ((j['watchProgress'] as Map?)
                 ?.cast<String, Map<String, dynamic>>()) ??
@@ -101,9 +125,13 @@ class BackupContent {
     if ((tmdbKey ?? '').isNotEmpty) parts.add('clé TMDB');
     if (theme != null) parts.add('thème');
     if (perf != null) parts.add('optimisation');
+    final int regions = hiddenRegions?.length ?? 0;
+    if (regions > 0) {
+      parts.add('$regions langue${regions > 1 ? 's' : ''} masquée'
+          '${regions > 1 ? 's' : ''}');
+    }
     if (favorites.isNotEmpty) {
-      parts.add(
-          '${favorites.length} favori${favorites.length > 1 ? 's' : ''}');
+      parts.add('${favorites.length} favori${favorites.length > 1 ? 's' : ''}');
     }
     if (watchProgress.isNotEmpty) {
       parts.add(
@@ -259,9 +287,22 @@ class BackupService {
     // 3b. §perfSettings — Réglages d'optimisation (absents des vieux backups).
     if (content.perf != null) {
       try {
-        await PerformanceSettingsService.save(PerfConfig.fromJson(content.perf!));
+        await PerformanceSettingsService.save(
+            PerfConfig.fromJson(content.perf!));
       } catch (e) {
         debugPrint('⚠️ Réglages optimisation ignorés (parse fail) — $e');
+      }
+    }
+
+    // 3c. §langRegion — Langues / régions masquées. Absent d'un vieux
+    // fichier : on ne touche à rien (l'utilisateur garde son réglage local)
+    // plutôt que d'imposer un masquage vide venu de nulle part.
+    final List<String>? regions = content.hiddenRegions;
+    if (regions != null) {
+      try {
+        await HiddenRegionsService.setHidden(regions.toSet());
+      } catch (e) {
+        debugPrint('⚠️ Langues/régions ignorées (restauration) — $e');
       }
     }
 
@@ -310,6 +351,7 @@ class BackupService {
       tmdbKey: tmdbKey,
       theme: theme.toJson(),
       perf: PerformanceSettingsService.config.value.toJson(),
+      hiddenRegions: HiddenRegionsService.hidden.toList(growable: false),
       favorites: favorites,
       watchProgress: wpMap,
     );
@@ -325,8 +367,7 @@ class BackupService {
 
   // ── Crypto ────────────────────────────────────────────────────────────────
 
-  static Future<Uint8List> _encrypt(
-      List<int> plain, String password) async {
+  static Future<Uint8List> _encrypt(List<int> plain, String password) async {
     final salt = _randomBytes(_saltLen);
     final key = await _deriveKey(password, salt);
     final nonce = _randomBytes(_nonceLen);
@@ -342,20 +383,27 @@ class BackupService {
     return out.toBytes();
   }
 
-  static Future<List<int>> _decrypt(
-      Uint8List bytes, String password) async {
+  static Future<List<int>> _decrypt(Uint8List bytes, String password) async {
+    // §userErrorOwn — [UserFacingException] et non `FormatException` : ces
+    // messages sont écrits pour l'utilisateur, et `describeError` traduisait
+    // toute `FormatException` par « Réponse illisible du serveur (format
+    // inattendu) » — une phrase qui parle d'un SERVEUR alors qu'il s'agit
+    // d'un fichier local et, le plus souvent, d'un mot de passe mal tapé.
     if (bytes.length < _headerLen + _macLen) {
-      throw const FormatException('Fichier trop court ou corrompu.');
+      throw const UserFacingException(
+          'Fichier de sauvegarde trop court ou corrompu.');
     }
     for (int i = 0; i < _magic.length; i++) {
       if (bytes[i] != _magic[i]) {
-        throw const FormatException(
+        throw const UserFacingException(
             'Ce n\'est pas un fichier .aether valide.');
       }
     }
     final version = bytes[4];
     if (version != _formatVersion) {
-      throw FormatException('Version de format inconnue : $version.');
+      throw UserFacingException(
+          'Sauvegarde créée par une version plus récente de l\'app '
+          '(format $version).');
     }
     final salt = bytes.sublist(5, 5 + _saltLen);
     final nonce = bytes.sublist(5 + _saltLen, 5 + _saltLen + _nonceLen);
@@ -371,13 +419,14 @@ class BackupService {
         secretKey: key,
       );
     } on SecretBoxAuthenticationError {
-      throw const FormatException(
-          'Mot de passe incorrect ou fichier altéré.');
+      // Le cas de LOIN le plus fréquent : le MAC GCM ne valide pas parce que
+      // le mot de passe est faux. Le dire en premier, et sans jargon.
+      throw const UserFacingException(
+          'Mot de passe incorrect, ou fichier de sauvegarde altéré.');
     }
   }
 
-  static Future<SecretKey> _deriveKey(
-      String password, List<int> salt) async {
+  static Future<SecretKey> _deriveKey(String password, List<int> salt) async {
     final pbkdf2 = Pbkdf2(
       macAlgorithm: Hmac.sha256(),
       iterations: _pbkdf2Iterations,

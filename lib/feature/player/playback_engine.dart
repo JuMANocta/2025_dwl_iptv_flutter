@@ -230,11 +230,24 @@ class AetherTrack {
   /// vraie piste dans le sélecteur.
   final bool isSpecial;
 
+  /// §castAudio — Codec de la piste (`audio/ac3`, `audio/mp4a-latm`…), tel que
+  /// le moteur le décode. `null` si la plateforme ne le dit pas.
+  ///
+  /// **Pourquoi ici** : c'est la seule information qui permet de savoir, AVANT
+  /// d'envoyer un flux à un Chromecast, si son récepteur saura en décoder le
+  /// son — il n'a ni les décodeurs du téléphone ni ceux du téléviseur.
+  final String? codec;
+
+  /// Nombre de canaux (2 = stéréo, 6 = 5.1). `null` si inconnu.
+  final int? channels;
+
   const AetherTrack({
     required this.id,
     this.title,
     this.language,
     this.isSpecial = false,
+    this.codec,
+    this.channels,
   });
 
   /// Libellé affichable, avec repli en cascade — une piste sans titre ni langue

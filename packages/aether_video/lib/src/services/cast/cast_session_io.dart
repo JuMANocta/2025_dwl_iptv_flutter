@@ -10,6 +10,52 @@ import 'cast_protocol.dart';
 /// State pushed by the receiver (also when changed from the TV remote or
 /// another sender) — listen to [CastSession.statusStream] to keep app UI
 /// in sync.
+/// §engineVendor patch 12 (§castAudio) — A media track as declared by the
+/// RECEIVER in its MEDIA_STATUS, which is the only way to know whether it
+/// parsed alternate audio tracks out of the container and would accept
+/// switching between them (`setActiveTracks`). Upstream dropped this part of
+/// the payload, so an app could ask for a track without ever knowing which
+/// ones exist on the other end.
+@immutable
+class CastMediaTrack {
+  const CastMediaTrack({
+    required this.trackId,
+    required this.type,
+    this.subtype,
+    this.language,
+    this.name,
+    this.contentType,
+  });
+
+  factory CastMediaTrack.fromJson(Map<String, dynamic> json) => CastMediaTrack(
+    trackId: (json['trackId'] as num?)?.toInt() ?? -1,
+    type: json['type'] as String? ?? 'UNKNOWN',
+    subtype: json['subtype'] as String?,
+    language: json['language'] as String?,
+    name: json['name'] as String?,
+    contentType: json['trackContentType'] as String?,
+  );
+
+  /// Receiver-side id, to be passed to [CastSession.setActiveTracks].
+  final int trackId;
+
+  /// AUDIO / VIDEO / TEXT.
+  final String type;
+  final String? subtype;
+  final String? language;
+  final String? name;
+
+  /// MIME type the receiver reports for the track (`audio/mp4a-latm`…).
+  final String? contentType;
+
+  bool get isAudio => type.toUpperCase() == 'AUDIO';
+
+  @override
+  String toString() =>
+      'CastMediaTrack(#$trackId $type${subtype == null ? '' : '/$subtype'} '
+      '${language ?? '?'} ${name ?? ''} ${contentType ?? ''})';
+}
+
 @immutable
 class CastSessionStatus {
   const CastSessionStatus({
@@ -19,6 +65,7 @@ class CastSessionStatus {
     this.volumeLevel = 1.0,
     this.muted = false,
     this.activeTrackIds = const <int>[],
+    this.mediaTracks = const <CastMediaTrack>[],
     this.idleReason,
   });
 
@@ -34,6 +81,11 @@ class CastSessionStatus {
   /// Currently active media tracks (e.g. enabled caption track ids).
   final List<int> activeTrackIds;
 
+  /// §engineVendor patch 12 — Tracks the RECEIVER says the media has. Empty
+  /// when it reported none (progressive containers often expose nothing),
+  /// which means alternate-audio switching is not available for that item.
+  final List<CastMediaTrack> mediaTracks;
+
   /// FINISHED / CANCELLED / ERROR when [playerState] is IDLE.
   final String? idleReason;
 
@@ -46,6 +98,7 @@ class CastSessionStatus {
     double? volumeLevel,
     bool? muted,
     List<int>? activeTrackIds,
+    List<CastMediaTrack>? mediaTracks,
     String? idleReason,
   }) => CastSessionStatus(
     playerState: playerState ?? this.playerState,
@@ -54,6 +107,7 @@ class CastSessionStatus {
     volumeLevel: volumeLevel ?? this.volumeLevel,
     muted: muted ?? this.muted,
     activeTrackIds: activeTrackIds ?? this.activeTrackIds,
+    mediaTracks: mediaTracks ?? this.mediaTracks,
     idleReason: idleReason,
   );
 
@@ -256,6 +310,17 @@ class CastSession {
     _mediaSessionId = (s['mediaSessionId'] as num?)?.toInt() ?? _mediaSessionId;
     final media = s['media'] as Map<String, dynamic>?;
     final durationSeconds = (media?['duration'] as num?)?.toDouble();
+    // §engineVendor patch 12 — `media` (donc `tracks`) n'est envoyé que sur
+    // certains statuts : absent ⇒ inchangé, jamais « plus de pistes ».
+    final rawTracks = media?['tracks'] as List?;
+    final List<CastMediaTrack>? tracks = rawTracks
+        ?.whereType<Map>()
+        .map(
+          (m) => CastMediaTrack.fromJson(
+            m.map((k, v) => MapEntry(k.toString(), v)),
+          ),
+        )
+        .toList(growable: false);
     final playerState = s['playerState'] as String? ?? _lastStatus.playerState;
     final idleReason = s['idleReason'] as String?;
     // Receivers omit currentTime from some status pushes (e.g. track edits);
@@ -277,6 +342,7 @@ class CastSession {
                 .map((n) => n.toInt())
                 .toList() ??
             _lastStatus.activeTrackIds,
+        mediaTracks: tracks ?? _lastStatus.mediaTracks,
         idleReason: idleReason,
       ),
     );

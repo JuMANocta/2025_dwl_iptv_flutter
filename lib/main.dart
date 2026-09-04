@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'data/services/download_manager_service.dart';
 import 'data/services/transfer_notification_bridge.dart';
+import 'data/services/cast_notification_bridge.dart';
 import 'data/services/favorites_service.dart';
 import 'data/services/stream_account_service.dart';
 import 'data/services/storage_janitor.dart';
@@ -186,6 +187,9 @@ Future<void> _initServices() async {
   // réconciliation du boot (§dlWatchdog bascule les tâches interrompues en
   // `failed`) pour ne pas les annoncer comme « viennent d'échouer ».
   TransferNotificationBridge.attach();
+  // §castSend — même modèle : lit `CastService.state`, porte la notification
+  // « Diffusion sur … » et ses boutons Pause / Arrêter.
+  CastNotificationBridge.attach();
 }
 
 /// Vérifie silencieusement si une mise à jour est disponible.
@@ -373,17 +377,30 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   @override
   void initState() {
     super.initState();
+    // §restoreTrace — Le démarrage a été observé DEUX fois après une
+    // restauration (33 s puis 0,4 s), et l'onboarding revenait. Sans trace,
+    // impossible de dire qui relance quoi : `_initializeApp` n'a que trois
+    // appelants, mais l'un d'eux peut être une RECRÉATION de cet État.
+    debugPrint('🚦 §restoreTrace — LaunchDecider.initState (hash $hashCode)');
     _checkOnboarding();
     _initFuture = _initializeApp();
+  }
+
+  @override
+  void dispose() {
+    debugPrint('🚦 §restoreTrace — LaunchDecider.dispose (hash $hashCode)');
+    super.dispose();
   }
 
   /// §1i — Vérifie si l'onboarding doit être affiché (1re ouverture seulement).
   Future<void> _checkOnboarding() async {
     final show = await OnboardingService.shouldShow();
+    debugPrint('🚦 §restoreTrace — shouldShow = $show (monté = $mounted)');
     if (mounted) setState(() => _showOnboarding = show);
   }
 
   void _finishOnboarding() {
+    debugPrint('🚦 §restoreTrace — finishOnboarding → ré-initialisation');
     setState(() {
       _showOnboarding = false;
       // §restore — Une restauration `.aether` a pu créer des comptes pendant
@@ -748,6 +765,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
   /// Permet de relancer la validation, typiquement après une action de l'utilisateur.
   void _retryInitialization() {
+    debugPrint('🚦 §restoreTrace — retryInitialization → ré-initialisation');
     setState(() {
       _initFuture = _initializeApp();
     });

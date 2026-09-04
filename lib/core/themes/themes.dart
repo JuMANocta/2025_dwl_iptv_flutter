@@ -82,9 +82,26 @@ OutlinedButtonThemeData _outlinedFocusTheme(Color ring) =>
 /// explicite). Même intensité que [_focusOverlay] à l'état `focused`.
 Color _listTileFocusColor(Color ring) => ring.withAlpha(72);
 
+/// §themeReboot — ⚠️ **Ne JAMAIS rendre `null` ici.**
+///
+/// Constaté sur appareil réel le 2026-09-04 : changer une couleur de thème
+/// faisait apparaître un écran rouge « Null check operator used on a null
+/// value » et **remontait tout le sous-arbre de l'app** — donc relançait le
+/// démarrage complet. Après une restauration `.aether` (qui écrit le thème),
+/// l'app repartait sur « Bienvenue » et retéléchargeait les catalogues.
+///
+/// La cause est dans Flutter, mais c'est nous qui l'armons :
+/// `ChipThemeData._lerpSides` (`chip_theme.dart`) résout les deux bordures
+/// avec un ensemble d'états **VIDE** — donc jamais `focused` — puis fait
+/// `b!` si la première est nulle. Deux `null` ⇒ exception, à chaque
+/// interpolation entre l'ancien et le nouveau thème.
+///
+/// `BorderSide.none` est visuellement identique à l'absence de bordure, et
+/// non nul : l'interpolation redevient possible.
 ChipThemeData _chipFocusTheme(Color ring) => ChipThemeData(
-      side: WidgetStateBorderSide.resolveWith((s) =>
-          s.contains(WidgetState.focused) ? BorderSide(color: ring, width: 2.6) : null),
+      side: WidgetStateBorderSide.resolveWith((s) => s.contains(WidgetState.focused)
+          ? BorderSide(color: ring, width: 2.6)
+          : BorderSide.none),
     );
 
 // Thème Clair AetherStream
