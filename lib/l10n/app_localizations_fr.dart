@@ -410,4 +410,223 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get navSettings => 'Paramètres';
+
+  @override
+  String get settingsSectionPhone => 'Piloter depuis le téléphone';
+
+  @override
+  String get settingsWebConsole => 'Console web';
+
+  @override
+  String get settingsWebConsoleSub =>
+      'Comptes, sauvegarde, thème, EPG, TMDB + télécommande (QR)';
+
+  @override
+  String get settingsSectionSources => 'Sources & comptes';
+
+  @override
+  String get settingsAccounts => 'Comptes IPTV';
+
+  @override
+  String get settingsAccountsSub => 'Providers, stats playlist & recharger';
+
+  @override
+  String get settingsTmdbKey => 'Clé API TMDB';
+
+  @override
+  String get settingsTmdbKeySub => 'Affiches, synopsis, casting (optionnel)';
+
+  @override
+  String get settingsXmltv => 'Guide des chaînes';
+
+  @override
+  String get settingsXmltvSub => 'EPG XMLTV — TNT France';
+
+  @override
+  String get settingsSectionDisplay => 'Affichage';
+
+  @override
+  String get settingsRegions => 'Langues / régions';
+
+  @override
+  String get settingsRegionsSub =>
+      'Masquer le contenu étranger (réduit la mémoire)';
+
+  @override
+  String get settingsTheme => 'Personnalisation';
+
+  @override
+  String get settingsThemeSub => 'Thème, couleurs, effets cyberpunk';
+
+  @override
+  String get settingsOptimization => 'Optimisation';
+
+  @override
+  String get settingsOptimizationSub =>
+      'Profils performance, hero, vignettes, mémoire';
+
+  @override
+  String get settingsSectionBackup => 'Sauvegarde & application';
+
+  @override
+  String get settingsBackup => 'Sauvegarde / Restauration';
+
+  @override
+  String get settingsBackupSub =>
+      'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)';
+
+  @override
+  String get settingsAbout => 'À propos';
+
+  @override
+  String get settingsAboutSub => 'Version + vérification des mises à jour';
+
+  @override
+  String get settingsResetUsage => 'Réinitialiser les données d\'usage';
+
+  @override
+  String get settingsResetUsageSub =>
+      'Vide favoris, reprises & historique (garde comptes & thème)';
+
+  @override
+  String get settingsResetTitle => 'Réinitialiser les données ?';
+
+  @override
+  String get settingsResetBody =>
+      'Vide les favoris, les reprises de lecture (films & séries), l\'historique de recherche et la dernière chaîne regardée.\n\nConserve les comptes IPTV, la clé TMDB, le thème et les filtres langues/régions.\n\nCette action est irréversible.';
+
+  @override
+  String get settingsResetConfirm => 'Réinitialiser';
+
+  @override
+  String get commonCancel => 'Annuler';
+
+  @override
+  String get errNetworkUnreachable =>
+      'Connexion impossible : réseau coupé ou serveur injoignable.';
+
+  @override
+  String get errTimeout => 'Le serveur a mis trop de temps à répondre.';
+
+  @override
+  String get errTimeoutHint =>
+      'Le serveur a mis trop de temps à répondre. Vérifie ta connexion ou l\'adresse du serveur.';
+
+  @override
+  String get errTls =>
+      'Connexion sécurisée refusée par le serveur (certificat).';
+
+  @override
+  String get errBadFormat => 'Réponse illisible du serveur (format inattendu).';
+
+  @override
+  String get errFileSystem =>
+      'Impossible de lire ou d\'écrire le fichier sur l\'appareil.';
+
+  @override
+  String get errInternal => 'Une erreur interne est survenue.';
+
+  @override
+  String get errBadResponse =>
+      'Réponse invalide du serveur. Vérifie l\'adresse.';
+
+  @override
+  String errForbidden(int code) {
+    return 'Accès refusé par le serveur (HTTP $code). Vérifie les identifiants du compte.';
+  }
+
+  @override
+  String get errNotFound => 'Adresse introuvable sur le serveur (HTTP 404).';
+
+  @override
+  String errServer(int code) {
+    return 'Le serveur est en erreur (HTTP $code). Réessaie plus tard.';
+  }
+
+  @override
+  String errHttp(int code) {
+    return 'Le serveur a répondu avec une erreur (HTTP $code).';
+  }
+
+  @override
+  String get errConnection =>
+      'Erreur de connexion : vérifie que tu es en ligne et que le serveur est accessible.';
+
+  @override
+  String get errCancelled => 'Opération annulée.';
+
+  @override
+  String get errNetworkUnknown => 'Erreur réseau inconnue.';
+
+  @override
+  String rowBecauseYouWatched(String title) {
+    return 'Parce que tu as regardé « $title »';
+  }
+
+  @override
+  String get rowTopRated => 'Les mieux notés';
+
+  @override
+  String get tmdbRowsBecauseTitle => 'Rangée « Parce que tu as regardé »';
+
+  @override
+  String get tmdbRowsBecauseSub =>
+      'Les recommandations TMDB de ta dernière lecture, parmi tes listes (1 appel par jour)';
+
+  @override
+  String get tmdbRowsTopRatedTitle => 'Rangée « Les mieux notés »';
+
+  @override
+  String get tmdbRowsTopRatedSub =>
+      'Le classement TMDB, filtré sur ce que tes listes proposent (1 appel par jour)';
+
+  @override
+  String get perfMinItemsTitle => 'Rangées : minimum de titres';
+
+  @override
+  String get perfMinItemsSub =>
+      'En dessous, la rangée est repliée dans « Autres » — New et Favoris jamais. 1 = ne jamais replier.';
+
+  @override
+  String get dlOnDeviceTitle => 'Sur l\'appareil';
+
+  @override
+  String dlOnDeviceSub(int count, String size) {
+    return '$count fichier(s) · $size — dans Movies/AetherStream, absents de la liste';
+  }
+
+  @override
+  String get dlScanTooltip => 'Chercher les fichiers présents sur l\'appareil';
+
+  @override
+  String dlScanFound(int count, String size) {
+    return '$count fichier(s) sur l\'appareil hors liste ($size)';
+  }
+
+  @override
+  String get dlScanNothing => 'Rien de nouveau sur l\'appareil';
+
+  @override
+  String get dlScanDenied =>
+      'Sans l\'accès aux vidéos, le dossier ne peut pas être lu';
+
+  @override
+  String get dlOrphanDeleteTitle => 'Supprimer ce fichier ?';
+
+  @override
+  String dlOrphanDeleteBody(String name, String size) {
+    return '« $name » ($size) sera effacé de l\'appareil. Irréversible.';
+  }
+
+  @override
+  String get dlOrphanDeleted => 'Fichier supprimé';
+
+  @override
+  String get dlOrphanDeleteFailed => 'Android a refusé la suppression';
+
+  @override
+  String get dlOrphanPlay => 'Lire';
+
+  @override
+  String get commonDelete => 'Supprimer';
 }

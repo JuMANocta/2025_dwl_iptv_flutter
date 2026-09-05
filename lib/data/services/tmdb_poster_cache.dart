@@ -1,3 +1,4 @@
+import 'visual_language_service.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -46,8 +47,14 @@ class TmdbPosterCache {
   static const _persistDelay = Duration(seconds: 5);
   static bool _dirty = false;
 
+  /// ⚠️ §posterLang — **La langue fait partie de la clé.** Ce cache est
+  /// persisté (§tmdbUrlPersist) : sans elle, changer « Langue des visuels »
+  /// aurait continué de servir indéfiniment les affiches résolues dans
+  /// l'ancienne langue, y compris après redémarrage — exactement le piège du
+  /// suffixe `_v2` déjà payé sur ce cache.
   static String _key(String query, bool isTv, String? year) =>
-      '${query.toLowerCase().trim()}|$isTv|${year ?? ''}';
+      '${query.toLowerCase().trim()}|$isTv|${year ?? ''}'
+      '|${VisualLanguageService.resolvedTag}';
 
   /// §tmdbUrlPersist — Recharge le cache depuis le disque. À awaiter au boot.
   ///
@@ -112,6 +119,23 @@ class TmdbPosterCache {
 
   @visibleForTesting
   static int get count => _cache.length;
+
+  /// §tmdbCacheUi — Ce que la page TMDB affiche pour rendre ce cache LISIBLE.
+  ///
+  /// Le second chiffre est le plus important : ce sont les titres que TMDB ne
+  /// connaît pas. Ils sont mémorisés **exprès** — 68 % du cache à la mesure de
+  /// §tmdbUrlPersist — pour ne pas relancer la même recherche infructueuse à
+  /// chaque lancement. Sans cette explication, un utilisateur qui voit
+  /// « 4 000 mémorisées, 2 700 introuvables » croit à une panne.
+  static int get resolvedCount => _cache.length;
+
+  /// Nombre d'entrées NÉGATIVES (titre inconnu de TMDB).
+  static int get unknownCount =>
+      _cache.values.where((v) => v == null).length;
+
+  /// Recherches réellement parties sur le réseau depuis le lancement.
+  /// C'est la mesure qui prouve que la persistance sert à quelque chose.
+  static int get networkResolutions => _networkResolutions;
 
   /// Lecture synchrone : URL d'affiche si déjà résolue, sinon null.
   static String? cached(String query, bool isTv, String? year) =>

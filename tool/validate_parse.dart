@@ -313,6 +313,14 @@ void main() {
   }
   if (degenerate.isEmpty) print('  aucun (attendu)');
   print('  TOTAL: $totalDegenerate');
+
+  // §catMeter — La mesure des CATÉGORIES vit dans
+  // `test/category_audit_test.dart` : `contentCategoryMatch` est dans
+  // `m3u_filter.dart`, qui dépend de `package:flutter/foundation` (ValueNotifier
+  // de TmdbGroupAliasService) — impossible à charger depuis `dart run`.
+  print('');
+  print('== Catégories ==');
+  print('  → flutter test test/category_audit_test.dart --plain-name audit');
 }
 
 /// §orphanBracket — Vrai si les crochets/parenthèses ne s'équilibrent pas.

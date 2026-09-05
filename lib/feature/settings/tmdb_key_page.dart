@@ -2,12 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
+import 'package:aetherStream/core/settings/performance_settings_service.dart';
+import 'package:aetherStream/data/services/visual_language_service.dart';
+import 'package:aetherStream/feature/settings/visual_language_page.dart';
+import 'package:aetherStream/data/services/inferred_category_service.dart';
+import 'package:aetherStream/data/services/tmdb_poster_cache.dart';
 import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Sous-page Settings (§1g) : gestion de la clé API TMDB.
 ///
@@ -265,6 +271,16 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> with TvInitialFocus {
                         ),
                       ),
                     ],
+                    // §posterLang — Les réglages TMDB vivent AVEC la clé
+                    // TMDB (demande utilisateur du 2026-09-05). Ils étaient
+                    // répartis entre Paramètres et Optimisation : deux endroits
+                    // pour un même sujet, aucun des deux évident.
+                    // Affichés seulement si une clé existe — sans clé, ils ne
+                    // peuvent rien faire.
+                    if (_hasSavedKey) ...[
+                      const SizedBox(height: 32),
+                      _TmdbOptionsBlock(onChanged: () => setState(() {})),
+                    ],
                     const SizedBox(height: 32),
                     _InfoBlock(onOpenTmdb: _openTmdbSignup),
                   ],
@@ -458,6 +474,384 @@ class _InfoBlock extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// §posterLang — Les réglages qui décident **comment** TMDB est utilisé.
+///
+/// Ils vivent ici, avec la clé, parce que c'est le seul endroit où l'on pense
+/// à TMDB. Auparavant la langue était dans Paramètres → Affichage et la
+/// préférence d'affiche dans Optimisation : personne ne les aurait rapprochés.
+class _TmdbOptionsBlock extends StatefulWidget {
+  const _TmdbOptionsBlock({required this.onChanged});
+
+  final VoidCallback onChanged;
+
+  @override
+  State<_TmdbOptionsBlock> createState() => _TmdbOptionsBlockState();
+}
+
+class _TmdbOptionsBlockState extends State<_TmdbOptionsBlock> {
+  Future<void> _openVisualLanguage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const VisualLanguagePage()),
+    );
+    if (mounted) setState(() {});
+  }
+
+  void _togglePostersFirst(bool v) {
+    PerformanceSettingsService.save(
+      PerformanceSettingsService.config.value.copyWith(tmdbPostersFirst: v),
+    );
+    setState(() {});
+    widget.onChanged();
+  }
+
+  // §tmdbRows — Les deux rangées éditoriales de l'accueil.
+  void _toggleRowBecause(bool v) {
+    PerformanceSettingsService.save(
+      PerformanceSettingsService.config.value.copyWith(tmdbRowBecause: v),
+    );
+    setState(() {});
+    widget.onChanged();
+  }
+
+  void _toggleRowTopRated(bool v) {
+    PerformanceSettingsService.save(
+      PerformanceSettingsService.config.value.copyWith(tmdbRowTopRated: v),
+    );
+    setState(() {});
+    widget.onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = context.l10n;
+    final perf = PerformanceSettingsService.config.value;
+    final bool postersFirst = perf.tmdbPostersFirst;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.tune_rounded, size: 18, color: kAccentSecondary),
+            const SizedBox(width: 8),
+            Text(
+              'Utilisation de TMDB',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // ── Langue des visuels ────────────────────────────────────────────
+        FocusableCard(
+          decorateOnly: true,
+          scaleOnFocus: false,
+          onTap: _openVisualLanguage,
+          borderRadius: BorderRadius.circular(12),
+          child: ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            leading: Icon(Icons.translate_rounded, color: kAccentSecondary),
+            title: const Text('Langue des visuels'),
+            subtitle: Text(
+              '${VisualLanguageService.labelOf(VisualLanguageService.value)} '
+              '— affiches, résumés et casting',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _openVisualLanguage,
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // ── Jaquettes TMDB d'abord ────────────────────────────────────────
+        FocusableCard(
+          decorateOnly: true,
+          scaleOnFocus: false,
+          onTap: () => _togglePostersFirst(!postersFirst),
+          borderRadius: BorderRadius.circular(12),
+          child: SwitchListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            secondary:
+                Icon(Icons.image_search_rounded, color: kAccentSecondary),
+            title: const Text("Jaquettes TMDB d'abord"),
+            subtitle: Text(
+              postersFirst
+                  ? "L'affiche TMDB passe avant celle de vos listes"
+                  : "Vos listes fournissent l'affiche ; TMDB ne sert qu'en "
+                      'secours',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+            value: postersFirst,
+            onChanged: _togglePostersFirst,
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // ── §tmdbRows — « Parce que tu as regardé » ──────────────────────
+        FocusableCard(
+          decorateOnly: true,
+          scaleOnFocus: false,
+          onTap: () => _toggleRowBecause(!perf.tmdbRowBecause),
+          borderRadius: BorderRadius.circular(12),
+          child: SwitchListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            secondary: Icon(Icons.recommend_outlined, color: kAccentSecondary),
+            title: Text(l10n.tmdbRowsBecauseTitle),
+            subtitle: Text(
+              l10n.tmdbRowsBecauseSub,
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+            value: perf.tmdbRowBecause,
+            onChanged: _toggleRowBecause,
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // ── §tmdbRows — « Les mieux notés » ───────────────────────────────
+        FocusableCard(
+          decorateOnly: true,
+          scaleOnFocus: false,
+          onTap: () => _toggleRowTopRated(!perf.tmdbRowTopRated),
+          borderRadius: BorderRadius.circular(12),
+          child: SwitchListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            secondary: Icon(Icons.workspace_premium_outlined,
+                color: kAccentSecondary),
+            title: Text(l10n.tmdbRowsTopRatedTitle),
+            subtitle: Text(
+              l10n.tmdbRowsTopRatedSub,
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+            value: perf.tmdbRowTopRated,
+            onChanged: _toggleRowTopRated,
+          ),
+        ),
+        const SizedBox(height: 20),
+        const _TmdbMaintenanceBlock(),
+      ],
+    );
+  }
+}
+
+/// §tmdbCacheUi (2026-09-05) — Rendre VISIBLE ce que l'app a mémorisé de TMDB,
+/// et donner de quoi repartir de zéro.
+///
+/// **Pourquoi ça manquait.** Deux caches persistés travaillent en silence :
+/// les affiches résolues (§tmdbUrlPersist) et les catégories devinées pour les
+/// listes qui n'en fournissent aucune (§inferredCat). Aucun écran ne les
+/// montrait, et **rien ne permettait de les vider** — il fallait changer le
+/// suffixe de version dans le code. Une affiche mal appariée ou une catégorie
+/// mal devinée restait donc là pour toujours.
+class _TmdbMaintenanceBlock extends StatefulWidget {
+  const _TmdbMaintenanceBlock();
+
+  @override
+  State<_TmdbMaintenanceBlock> createState() => _TmdbMaintenanceBlockState();
+}
+
+class _TmdbMaintenanceBlockState extends State<_TmdbMaintenanceBlock> {
+  bool _busy = false;
+
+  /// Vide les affiches mémorisées. Non destructif : elles se résolvent à
+  /// nouveau à l'affichage. On agit donc directement, avec un compte rendu —
+  /// même parti que « Vider le cache images » dans Optimisation.
+  Future<void> _clearPosters() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final int had = TmdbPosterCache.resolvedCount;
+    setState(() => _busy = true);
+    await TmdbPosterCache.clear();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    messenger.showSnackBar(SnackBar(
+      content: Text(had == 0
+          ? 'Aucune affiche mémorisée'
+          : '🧹 $had affiche(s) oubliée(s) — elles seront recherchées à '
+              'nouveau au prochain affichage'),
+    ));
+  }
+
+  /// Oublie les catégories devinées par TMDB (§inferredCat).
+  ///
+  /// ⚠️ Ne touche PAS aux catégories venues des listes elles-mêmes
+  /// (`group-title`) : seulement celles que l'app a déduites pour les listes
+  /// qui n'en fournissent aucune — le format « Ultimate », où 100 % des
+  /// entrées arrivent sans groupe.
+  Future<void> _relearnCategories() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final int had = InferredCategoryService.count;
+    setState(() => _busy = true);
+    await InferredCategoryService.clear();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    messenger.showSnackBar(SnackBar(
+      content: Text(had == 0
+          ? 'Aucune catégorie déduite à oublier'
+          : '🧹 $had catégorie(s) oubliée(s) — elles seront réapprises en '
+              "parcourant l'accueil"),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final int posters = TmdbPosterCache.resolvedCount;
+    final int unknown = TmdbPosterCache.unknownCount;
+    final int network = TmdbPosterCache.networkResolutions;
+    final int cats = InferredCategoryService.count;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.storage_rounded, size: 18, color: kAccentSecondary),
+            const SizedBox(width: 8),
+            Text(
+              'Mémoire TMDB',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // ── Affiches mémorisées ───────────────────────────────────────────
+        _MaintenanceTile(
+          icon: Icons.photo_library_outlined,
+          title: 'Affiches mémorisées',
+          detail: posters == 0
+              ? "Rien de mémorisé pour l'instant"
+              : '$posters titre(s) résolu(s), dont $unknown inconnu(s) de TMDB'
+                  '${network > 0 ? ' · $network recherche(s) réseau depuis le lancement' : ''}',
+          actionLabel: 'Vider',
+          onAction: _busy || posters == 0 ? null : _clearPosters,
+        ),
+        const SizedBox(height: 8),
+
+        // ── Catégories déduites ───────────────────────────────────────────
+        _MaintenanceTile(
+          icon: Icons.category_outlined,
+          title: 'Catégories déduites',
+          detail: cats == 0
+              ? 'Aucune — vos listes fournissent leurs propres catégories'
+              : '$cats titre(s) rangé(s) grâce à TMDB, faute de catégorie '
+                  'dans la liste',
+          actionLabel: 'Réapprendre',
+          onAction: _busy || cats == 0 ? null : _relearnCategories,
+        ),
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline, size: 16, color: cs.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Les titres introuvables sont mémorisés exprès : sans ça, '
+                "l'application relancerait la même recherche vaine à chaque "
+                "lancement. Un titre n'est cherché qu'une seule fois.",
+                style: TextStyle(
+                    color: cs.onSurfaceVariant, fontSize: 12, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Une ligne d'entretien : ce que contient un cache, et le bouton qui le vide.
+/// Le bouton est DÉSACTIVÉ quand il n'y a rien à faire — plutôt qu'actif et
+/// sans effet, ce qui laisserait croire à une panne.
+class _MaintenanceTile extends StatelessWidget {
+  const _MaintenanceTile({
+    required this.icon,
+    required this.title,
+    required this.detail,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String detail;
+  final String actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final bool enabled = onAction != null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withAlpha(60),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withAlpha(90)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: cs.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(
+                        color: cs.onSurface, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(detail,
+                    style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 12,
+                        height: 1.3)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // ⚠️ §boundFocus — un bouton `onPressed: null` sort de la traversée
+          // D-pad. Ici c'est sans piège : la tuile n'est pas une borne de page,
+          // il reste des focusables avant et après.
+          if (enabled)
+            FocusableCard(
+              decorateOnly: true,
+              scaleOnFocus: false,
+              onTap: onAction!,
+              borderRadius: BorderRadius.circular(8),
+              child: TextButton(
+                onPressed: onAction,
+                style: TextButton.styleFrom(
+                  foregroundColor: kAccentSecondary,
+                  minimumSize: const Size(0, 48), // §touchTarget
+                ),
+                child: Text(actionLabel),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(actionLabel,
+                  style: TextStyle(color: cs.outline, fontSize: 14)),
+            ),
         ],
       ),
     );

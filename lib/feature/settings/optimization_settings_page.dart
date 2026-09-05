@@ -13,6 +13,7 @@ import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 import 'package:aetherStream/widgets/tv/section_beacon.dart';
 
 /// §perfSettings — Page « Optimisation » (Fire Stick / terminaux faibles).
@@ -248,6 +249,24 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                 child: Text(
                   'Vignettes affichées par rangée avant la tuile « Voir tout » '
                   '(les Favoris ne sont jamais tronqués).',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ),
+              // §rowFold — Seuil de repli des micro-rangées. Réglage de
+              // confort (exclu de l'égalité des profils), mesuré sur TV : une
+              // rangée d'une carte coûte un écran entier de télécommande.
+              _buildStepper(
+                label: context.l10n.perfMinItemsTitle,
+                value: _config.rowFoldMin,
+                min: PerfConfig.minRowFoldMin,
+                max: PerfConfig.maxRowFoldMin,
+                step: 1,
+                onChanged: (v) => _apply(_config.copyWith(rowFoldMin: v)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Text(
+                  context.l10n.perfMinItemsSub,
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
@@ -505,8 +524,11 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           // c'est un réglage de CONFORT volontairement hors des profils de
           // performance (cf. §autoNextEp dans perf_config.dart) ; appliquer
           // preset.config tel quel l'écrasait silencieusement.
-          void applyPreset() => _apply(
-              preset.config.copyWith(autoNextEpisode: _config.autoNextEpisode));
+          void applyPreset() => _apply(preset.config.copyWith(
+                autoNextEpisode: _config.autoNextEpisode,
+                // §posterLang — même raison : hors profils, donc préservé.
+                tmdbPostersFirst: _config.tmdbPostersFirst,
+              ));
           return FocusableChip(
             onTap: applyPreset,
             borderRadius: BorderRadius.circular(10),

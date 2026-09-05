@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
+import 'l10n/l10n_ext.dart';
 import 'data/services/download_manager_service.dart';
 import 'data/services/transfer_notification_bridge.dart';
 import 'data/services/cast_notification_bridge.dart';
@@ -17,6 +18,7 @@ import 'data/services/parsed_playlist_service.dart';
 import 'data/services/playlist_fleet_service.dart';
 import 'data/services/load_failure.dart';
 import 'data/services/watch_progress_service.dart';
+import 'data/services/device_library_service.dart';
 import 'data/services/search_history_service.dart';
 import 'data/services/last_watched_channel_service.dart';
 import 'data/services/hidden_regions_service.dart';
@@ -46,6 +48,7 @@ import 'data/services/xmltv_service.dart';
 import 'data/services/measured_quality_service.dart';
 import 'data/services/inferred_category_service.dart';
 import 'data/services/tmdb_poster_cache.dart';
+import 'data/services/visual_language_service.dart';
 import 'feature/update/update_dialog.dart';
 import 'feature/player/video_fit.dart';
 import 'feature/player/video_stats.dart';
@@ -169,6 +172,7 @@ Future<void> _initServices() async {
     DownloadManagerService().init(),
     FavoritesService.init(),
     WatchProgressService.init(),
+    DeviceLibraryService.init(), // §dlOrphans — orphelins du dernier balayage
     SearchHistoryService.init(),
     LastWatchedChannelService.init(),
     // §stallCount — Historique de blocages par compte (quel abonnement rame).
@@ -181,6 +185,7 @@ Future<void> _initServices() async {
     MeasuredQualityService.init(), // §qualityTruth
     InferredCategoryService.init(), // §inferredCat
     TmdbPosterCache.init(), // §tmdbUrlPersist
+    VisualLanguageService.init(), // §posterLang
   ]);
   // §dlNotif — APRÈS `DownloadManagerService().init()` : le pont seed sa
   // ligne de base sur `tasksNotifier.value`, qui doit déjà porter la
@@ -280,6 +285,12 @@ class MyApp extends StatelessWidget {
       builder: (context, child) {
         bool isDebug = false;
         assert(isDebug = true); // Astuce pour n'être `true` qu'en mode debug.
+
+        // §l10nAll — Ici, et seulement ici, on a un `BuildContext` sous
+        // `Localizations` traversé à chaque frame : c'est le point où les
+        // couches SANS contexte (services, `describeError`) reçoivent de quoi
+        // parler la langue de l'utilisateur. Voir `l10n/l10n_ext.dart`.
+        L10n.bind(AppLocalizations.of(context)!);
 
         Widget wrapped = child ?? const SizedBox.shrink();
 

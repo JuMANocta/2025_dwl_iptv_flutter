@@ -719,7 +719,7 @@ class _DetailsPageState extends State<DetailsPage> {
       langs.addAll(e.title.languages);
     }
     final badges = <Widget>[
-      for (final l in const ['MULTI', 'VF', 'VOSTFR'])
+      for (final l in const ['MULTI', 'VF', 'VOSTFR', 'LEG'])
         if (langs.contains(l)) _badge(l, _langColor(l)),
     ];
     if (badges.isEmpty) return const SizedBox.shrink();
@@ -766,6 +766,9 @@ class _DetailsPageState extends State<DetailsPage> {
         return kLangVOSTFR;
       case 'VF':
         return kLangVF;
+      // §legLang — portugais sous-titré
+      case 'LEG':
+        return kLangLeg;
       default:
         return kAccentSecondary;
     }
@@ -1024,16 +1027,22 @@ class _DetailsPageState extends State<DetailsPage> {
 
     return Scaffold(
       backgroundColor: cs.surface,
-      // §navBlind — Deuxième page la plus longue : le bouton principal est au
-      // MILIEU d'un long défilement (synopsis, versions, actions, casting,
-      // infos). §detailsPlayFocus avait réglé l'ENTRÉE, pas le retour. La
-      // pastille nomme la section regardée, sous la barre épinglée.
-      body: SectionBeacon(
-        floating: true,
-        floatingTop: MediaQuery.of(context).padding.top + kToolbarHeight + 6,
-        // Sections courtes mais casting/saisons hauts : un tiers d'écran.
-        thresholdFraction: 0.33,
-        child: CustomScrollView(
+      // §beaconScope (2026-09-05) — **La pastille flottante de §navBlind a été
+      // RETIRÉE d'ici.** Signalement utilisateur : « il y a des badges ajoutés
+      // dans les fiches comme SYNOPSIS, ils sont en surplus ».
+      //
+      // Le repère répond à « où suis-je dans une page longue » quand
+      // l'auto-scroll D-pad gare le focus près du bord bas — un vrai problème
+      // sur l'ACCUEIL, où il reste. Sur cette fiche il n'annonçait que trois
+      // sections (Synopsis, Casting principal, Infos) sur une page courte :
+      // il coûtait un bandeau permanent par-dessus l'affiche pour une
+      // information que le défilement donne déjà.
+      //
+      // ⚠️ Les `SectionMark` ci-dessous sont CONSERVÉS : `SectionMark` passe
+      // par `SectionBeaconScope.maybeOf` (null-safe) — sans portée, il rend
+      // simplement son enfant et n'inscrit rien. Remettre le repère = remettre
+      // cette enveloppe, rien d'autre.
+      body: CustomScrollView(
         slivers: [
           // ── HEADER ────────────────────────────────────────────────────────
           SliverAppBar(
@@ -1386,7 +1395,6 @@ class _DetailsPageState extends State<DetailsPage> {
           ),
         ],
       ),
-      ),
     );
   }
 
@@ -1401,28 +1409,22 @@ class _DetailsPageState extends State<DetailsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── §seasonsUI — En-tête de section "SAISONS" + total ────────────────
+        // ── §seasonsUI — En-tête de section "Saisons" + total ────────────────
+        // §beaconScope (2026-09-05) — Ce titre était le SEUL de la fiche à être
+        // stylé comme un badge (majuscules, lettres espacées, couleur d'accent,
+        // barre verticale dégradée) alors que « Synopsis », « Casting
+        // principal » et « Infos » sont de simples titres. Aligné sur eux : une
+        // page ne doit pas avoir deux grammaires de titre.
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: Row(
             children: [
-              Container(
-                width: 4,
-                height: 18,
-                decoration: BoxDecoration(
-                  gradient: kAetherGradient,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 10),
               Text(
-                'SAISONS',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.5,
-                  color: kAccentPrimary,
-                ),
+                'Saisons',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(color: cs.onSurfaceVariant),
               ),
               if (hasSeasons) ...[
                 const SizedBox(width: 10),

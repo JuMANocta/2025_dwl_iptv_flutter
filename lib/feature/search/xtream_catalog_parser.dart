@@ -183,12 +183,14 @@ class XtreamCatalogParser {
   // `contentCategoryLabel(groupTitle)`) : certains providers encodent la région
   // dans la CATÉGORIE (ex. « Films Italiens ») et pas dans le titre → sans ce
   // 2e test, la rangée région réapparaissait. Court-circuit si rien n'est masqué.
+  // §legLang — prédicat PARTAGÉ avec le parseur M3U et le téléchargement.
+  // ⚠️ `cat` est ici la CATÉGORIE DÉJÀ RÉSOLUE (`_cat`), pas un group-title
+  // brut : on la teste donc directement au lieu de la recalculer.
   final filterOn = args.hidden.isNotEmpty;
   bool isHidden(String name, String? cat) {
     if (!filterOn) return false;
-    final r = entryRegionLabel(name);
-    if (r != null && args.hidden.contains(r)) return true;
-    return cat != null && args.hidden.contains(cat);
+    if (cat != null && args.hidden.contains(cat)) return true;
+    return isRegionHidden(name: name, hidden: args.hidden);
   }
 
   // §bootPercent — La progression RÉELLE commence ici : le décodage est fini,

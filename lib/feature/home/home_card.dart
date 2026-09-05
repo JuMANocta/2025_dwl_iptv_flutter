@@ -50,7 +50,13 @@ class _HomeCardState extends State<_HomeCard> {
     // chargement qui n'arrivera jamais : on résout tout de suite. Sinon on
     // laisse `AetherImage` essayer les adresses, et son `onAllFailed` nous
     // rappellera si toutes échouent.
-    if (_logoCandidates.isEmpty) _resolveTmdbPosterIfNeeded();
+    // §posterLang — Option « Jaquettes TMDB d'abord » (défaut OFF) : dans ce
+    // mode on ne peut PAS attendre l'échec des adresses du fournisseur, il faut
+    // résoudre dès le départ pour que l'affiche TMDB passe devant.
+    if (_logoCandidates.isEmpty ||
+        PerformanceSettingsService.config.value.tmdbPostersFirst) {
+      _resolveTmdbPosterIfNeeded();
+    }
   }
 
   @override
@@ -357,9 +363,16 @@ class _HomeCardState extends State<_HomeCard> {
     // §Ultimate — fallback affiche TMDB quand le M3U ne fournit aucun tvg-logo.
     // §logoFallback — Toutes les adresses du groupe, puis l'affiche TMDB une
     // fois résolue. `AetherImage` descend la liste à chaque échec.
+    // §posterLang — L'ordre des candidats EST la politique d'affiche.
+    // Par défaut le fournisseur passe devant (§23, « plus grosse liste ») et
+    // TMDB ne sert qu'en repli ; l'option inverse les deux pour qui préfère des
+    // affiches homogènes, dans la langue choisie.
+    final bool tmdbFirst =
+        PerformanceSettingsService.config.value.tmdbPostersFirst;
     final logoCandidates = <String>[
+      if (tmdbFirst && _tmdbPoster != null) _tmdbPoster!,
       ..._logoCandidates,
-      if (_tmdbPoster != null) _tmdbPoster!,
+      if (!tmdbFirst && _tmdbPoster != null) _tmdbPoster!,
     ];
     final logoUrl = logoCandidates.isEmpty ? null : logoCandidates.first;
 

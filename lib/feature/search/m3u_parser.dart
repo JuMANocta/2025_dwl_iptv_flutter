@@ -207,13 +207,13 @@ class M3uParser {
         // région détectée par le préfixe `|XX|` du TITRE OU par la CATÉGORIE
         // (`contentCategoryLabel(groupTitle)` ; certains providers encodent la
         // région dans le group-title). Court-circuit si rien n'est masqué.
-        final hiddenEntry = hidden.isNotEmpty &&
-            () {
-              final r = entryRegionLabel(title ?? '');
-              if (r != null && hidden.contains(r)) return true;
-              final cat = contentCategoryLabel(groupTitle);
-              return cat != null && hidden.contains(cat);
-            }();
+        // §legLang — prédicat PARTAGÉ (`isRegionHidden`) : les trois points
+        // d'application avaient chacun leur copie, et elles divergeaient.
+        final hiddenEntry = isRegionHidden(
+          name: title ?? '',
+          groupTitle: groupTitle,
+          hidden: hidden,
+        );
         if (title != null && title.isNotEmpty && !hiddenEntry) {
           _addEntry(
             rawTitle: title,

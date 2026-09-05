@@ -33,6 +33,8 @@ List<Widget> languageChips(TitleMetadata meta) {
     if (lang == 'MULTI')  chips.add(tagChip('MULTI',  kLangMulti));
     if (lang == 'VOSTFR') chips.add(tagChip('VOSTFR', kLangVOSTFR));
     if (lang == 'VF')     chips.add(tagChip('VF',     kLangVF));
+    // §legLang — Le portugais sous-titré est une langue comme les autres.
+    if (lang == 'LEG')    chips.add(tagChip('LEG',    kLangLeg));
   }
   return chips;
 }
@@ -91,6 +93,7 @@ List<Widget> uniqueChipsForVersions(List<M3uEntry> versions) {
         'MULTI'  => tagChip('MULTI',  kLangMulti),
         'VOSTFR' => tagChip('VOSTFR', kLangVOSTFR),
         'VF'     => tagChip('VF',     kLangVF),
+        'LEG'    => tagChip('LEG',    kLangLeg),
         _        => null,
       },
   ].whereType<Widget>().toList();

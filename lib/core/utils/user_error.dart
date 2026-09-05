@@ -1,3 +1,5 @@
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -77,30 +79,38 @@ String _describe(Object error) {
     // message métier de l'app ne contient jamais ce vocabulaire réseau bas
     // niveau — plutôt que de faire confiance à la classe seule.
     if (_looksLikeRawSocketMessage(error.message)) {
-      return 'Connexion impossible : réseau coupé ou serveur injoignable.';
+      return _t.errNetworkUnreachable;
     }
     return _stripPrefix(error.message);
   }
   if (error is SocketException) {
-    return 'Connexion impossible : réseau coupé ou serveur injoignable.';
+    return _t.errNetworkUnreachable;
   }
   if (error is TimeoutException) {
-    return 'Le serveur a mis trop de temps à répondre.';
+    return _t.errTimeout;
   }
   if (error is HandshakeException || error is TlsException) {
-    return 'Connexion sécurisée refusée par le serveur (certificat).';
+    return _t.errTls;
   }
   if (error is FormatException) {
-    return 'Réponse illisible du serveur (format inattendu).';
+    return _t.errBadFormat;
   }
   if (error is FileSystemException) {
-    return 'Impossible de lire ou d\'écrire le fichier sur l\'appareil.';
+    return _t.errFileSystem;
   }
   if (error is ArgumentError || error is StateError) {
-    return 'Une erreur interne est survenue.';
+    return _t.errInternal;
   }
   return _stripPrefix(error.toString());
 }
+
+/// §l10nAll — Les textes, hors widget.
+///
+/// ⚠️ **C'est un getter, pas un champ.** `L10n.current` est lié à la première
+/// frame : le mémoriser figerait le repli français pour toute la session.
+/// ⚠️ Ne JAMAIS le lire dans une fermeture passée à `Isolate.run`
+/// (§isolateLeak) — un isolate n'a pas ce binding.
+AppLocalizations get _t => L10n.current;
 
 String _describeDio(DioException e) {
   switch (e.type) {
@@ -108,36 +118,33 @@ String _describeDio(DioException e) {
     case DioExceptionType.sendTimeout:
     case DioExceptionType.receiveTimeout:
     case DioExceptionType.transformTimeout:
-      return 'Le serveur a mis trop de temps à répondre. '
-          'Vérifie ta connexion ou l\'adresse du serveur.';
+      return _t.errTimeoutHint;
     case DioExceptionType.badResponse:
       final int? code = e.response?.statusCode;
       if (code == null) {
-        return 'Réponse invalide du serveur. Vérifie l\'adresse.';
+        return _t.errBadResponse;
       }
       if (code == 401 || code == 403) {
-        return 'Accès refusé par le serveur (HTTP $code). '
-            'Vérifie les identifiants du compte.';
+        return _t.errForbidden(code);
       }
       if (code == 404) {
-        return 'Adresse introuvable sur le serveur (HTTP 404).';
+        return _t.errNotFound;
       }
       if (code >= 500) {
-        return 'Le serveur est en erreur (HTTP $code). Réessaie plus tard.';
+        return _t.errServer(code);
       }
-      return 'Le serveur a répondu avec une erreur (HTTP $code).';
+      return _t.errHttp(code);
     case DioExceptionType.connectionError:
-      return 'Erreur de connexion : vérifie que tu es en ligne '
-          'et que le serveur est accessible.';
+      return _t.errConnection;
     case DioExceptionType.badCertificate:
-      return 'Connexion sécurisée refusée par le serveur (certificat).';
+      return _t.errTls;
     case DioExceptionType.cancel:
-      return 'Opération annulée.';
+      return _t.errCancelled;
     case DioExceptionType.unknown:
       // ⚠️ C'est LE type dont le `toString()` embarque l'URL de requête.
       final Object? cause = e.error;
       if (cause != null && cause is! DioException) return _describe(cause);
-      return 'Erreur réseau inconnue.';
+      return _t.errNetworkUnknown;
   }
 }
 

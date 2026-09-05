@@ -51,6 +51,44 @@ class PerfConfig {
   /// franchissement de saison (qui demande toujours une confirmation).
   final bool autoNextEpisode;
 
+  /// §posterLang — Préférer l'affiche TMDB à celle de la liste IPTV.
+  ///
+  /// Par défaut **`false`**, et ce n'est pas de la prudence de principe : la
+  /// règle actuelle (l'image vient du fournisseur le plus riche, TMDB seulement
+  /// si toutes ont échoué) ne coûte **aucun** appel réseau suppplémentaire.
+  /// Activer ce drapeau demande une résolution TMDB par titre affiché au
+  /// premier passage — absorbée ensuite par `TmdbPosterCache` (persisté) et le
+  /// cache disque des images, mais bien réelle la première fois.
+  ///
+  /// ⚠️ **Exclu de l'égalité**, comme [autoNextEpisode] : c'est un choix de
+  /// goût (« je veux des affiches homogènes »), pas un levier de fluidité — le
+  /// basculer ne doit pas faire passer la page en « Personnalisé ».
+  final bool tmdbPostersFirst;
+
+  /// §tmdbRows (2026-09-05) — Rangée « Parce que tu as regardé X » sur
+  /// l'accueil : les recommandations TMDB du dernier titre lu (ou du premier
+  /// favori), croisées avec les listes. Un appel `/recommendations` par type
+  /// et par jour, plus une recherche si le titre n'a pas d'identifiant TMDB.
+  /// ⚠️ Exclu de l'égalité, comme [tmdbPostersFirst].
+  final bool tmdbRowBecause;
+
+  /// §tmdbRows — Rangée « Les mieux notés » (`/top_rated` croisé avec les
+  /// listes). Un appel par type et par jour. ⚠️ Exclu de l'égalité.
+  final bool tmdbRowTopRated;
+
+  /// §rowFold (2026-09-05) — En dessous de ce nombre de titres, une rangée
+  /// de genre est REPLIÉE dans « Autres » au lieu d'occuper une rangée à elle
+  /// seule. Mesuré sur le téléviseur avec un vrai catalogue : après §catWords,
+  /// onze rangées Films avaient encore 9 titres ou moins (Oscar 1, 3D 2,
+  /// Juridique 2, Survie 3…) — et sur TV, une rangée coûte un écran entier de
+  /// télécommande, quel que soit son contenu.
+  ///
+  /// `1` = jamais replier. Exemptées quoi qu'il arrive : Favoris, New (elle
+  /// annonce ce qui vient d'arriver, consigne utilisateur), France (TV) et
+  /// les rangées TMDB (qui ont leur propre seuil).
+  /// ⚠️ Exclu de l'égalité : un choix de lecture, pas un levier de fluidité.
+  final int rowFoldMin;
+
   /// §playerBuffer — Secondes de vidéo que le lecteur cherche à garder d'avance.
   ///
   /// Media3 n'a **aucun** équivalent des réglages mpv perdus avec libmpv
@@ -119,6 +157,10 @@ class PerfConfig {
   static const int minBufferSeconds = 10;
   static const int maxBufferSeconds = 90;
 
+  /// §rowFold — Bornes du seuil de repli (1 = jamais replier).
+  static const int minRowFoldMin = 1;
+  static const int maxRowFoldMin = 10;
+
   /// §unloadGuard — `0` est une valeur SIGNIFIANTE (« jamais »), pas un
   /// plancher accidentel : le clamp part donc bien de zéro. Au-delà de 2 h, le
   /// réglage ne se distingue plus de « jamais ».
@@ -139,6 +181,10 @@ class PerfConfig {
     required this.imageCacheMb,
     this.bufferSeconds = 30,
     this.autoNextEpisode = true,
+    this.tmdbPostersFirst = false,
+    this.tmdbRowBecause = true,
+    this.tmdbRowTopRated = true,
+    this.rowFoldMin = 5,
     this.keepAllListsInMemory = true,
     this.idleUnloadMinutes = 0,
     this.hostMaxConcurrent = 1,
@@ -250,6 +296,10 @@ class PerfConfig {
         'icm': imageCacheMb,
         'bfs': bufferSeconds,
         'ane': autoNextEpisode,
+        'tpf': tmdbPostersFirst,
+        'trb': tmdbRowBecause,
+        'trt': tmdbRowTopRated,
+        'mnr': rowFoldMin,
         'kal': keepAllListsInMemory,
         'ium': idleUnloadMinutes,
         'hmc': hostMaxConcurrent,
@@ -269,6 +319,11 @@ class PerfConfig {
         bufferSeconds: (j['bfs'] as int? ?? defaults.bufferSeconds)
             .clamp(minBufferSeconds, maxBufferSeconds),
         autoNextEpisode: j['ane'] as bool? ?? defaults.autoNextEpisode,
+        tmdbPostersFirst: j['tpf'] as bool? ?? defaults.tmdbPostersFirst,
+        tmdbRowBecause: j['trb'] as bool? ?? defaults.tmdbRowBecause,
+        tmdbRowTopRated: j['trt'] as bool? ?? defaults.tmdbRowTopRated,
+        rowFoldMin: (j['mnr'] as int? ?? defaults.rowFoldMin)
+            .clamp(minRowFoldMin, maxRowFoldMin),
         // §unloadGuard — Absentes des backups `.aether` antérieurs : elles
         // retombent sur le défaut « on garde tout », qui est le comportement
         // le moins surprenant pour quelqu'un qui restaure une sauvegarde.
@@ -288,6 +343,10 @@ class PerfConfig {
     int? imageCacheMb,
     int? bufferSeconds,
     bool? autoNextEpisode,
+    bool? tmdbPostersFirst,
+    bool? tmdbRowBecause,
+    bool? tmdbRowTopRated,
+    int? rowFoldMin,
     bool? keepAllListsInMemory,
     int? idleUnloadMinutes,
     int? hostMaxConcurrent,
@@ -300,6 +359,10 @@ class PerfConfig {
         imageCacheMb: imageCacheMb ?? this.imageCacheMb,
         bufferSeconds: bufferSeconds ?? this.bufferSeconds,
         autoNextEpisode: autoNextEpisode ?? this.autoNextEpisode,
+        tmdbPostersFirst: tmdbPostersFirst ?? this.tmdbPostersFirst,
+        tmdbRowBecause: tmdbRowBecause ?? this.tmdbRowBecause,
+        tmdbRowTopRated: tmdbRowTopRated ?? this.tmdbRowTopRated,
+        rowFoldMin: rowFoldMin ?? this.rowFoldMin,
         keepAllListsInMemory:
             keepAllListsInMemory ?? this.keepAllListsInMemory,
         idleUnloadMinutes: idleUnloadMinutes ?? this.idleUnloadMinutes,
@@ -323,7 +386,8 @@ class PerfConfig {
       other.keepAllListsInMemory == keepAllListsInMemory &&
       other.idleUnloadMinutes == idleUnloadMinutes &&
       other.hostMaxConcurrent == hostMaxConcurrent;
-  // NB : `autoNextEpisode` est volontairement EXCLU de l'égalité — c'est un
+  // NB : `autoNextEpisode`, `tmdbPostersFirst`, `tmdbRowBecause` et
+  // `tmdbRowTopRated` sont volontairement EXCLUS de l'égalité — c'est un
   // réglage de confort, pas un paramètre de profil. L'inclure ferait basculer
   // la page en « Personnalisé » dès qu'on touche l'interrupteur.
 

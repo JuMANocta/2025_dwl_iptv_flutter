@@ -405,4 +405,220 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get navSettings => 'Settings';
+
+  @override
+  String get settingsSectionPhone => 'Control from your phone';
+
+  @override
+  String get settingsWebConsole => 'Web console';
+
+  @override
+  String get settingsWebConsoleSub =>
+      'Accounts, backup, theme, EPG, TMDB + remote (QR)';
+
+  @override
+  String get settingsSectionSources => 'Sources & accounts';
+
+  @override
+  String get settingsAccounts => 'IPTV accounts';
+
+  @override
+  String get settingsAccountsSub => 'Providers, playlist stats & reload';
+
+  @override
+  String get settingsTmdbKey => 'TMDB API key';
+
+  @override
+  String get settingsTmdbKeySub => 'Posters, overviews, cast (optional)';
+
+  @override
+  String get settingsXmltv => 'Channel guide';
+
+  @override
+  String get settingsXmltvSub => 'XMLTV EPG — French DTT';
+
+  @override
+  String get settingsSectionDisplay => 'Display';
+
+  @override
+  String get settingsRegions => 'Languages / regions';
+
+  @override
+  String get settingsRegionsSub => 'Hide foreign content (saves memory)';
+
+  @override
+  String get settingsTheme => 'Appearance';
+
+  @override
+  String get settingsThemeSub => 'Theme, colours, cyberpunk effects';
+
+  @override
+  String get settingsOptimization => 'Performance';
+
+  @override
+  String get settingsOptimizationSub =>
+      'Performance profiles, hero, thumbnails, memory';
+
+  @override
+  String get settingsSectionBackup => 'Backup & app';
+
+  @override
+  String get settingsBackup => 'Backup / Restore';
+
+  @override
+  String get settingsBackupSub =>
+      'Export/import accounts, TMDB, theme, favourites (encrypted .aether)';
+
+  @override
+  String get settingsAbout => 'About';
+
+  @override
+  String get settingsAboutSub => 'Version + update check';
+
+  @override
+  String get settingsResetUsage => 'Reset usage data';
+
+  @override
+  String get settingsResetUsageSub =>
+      'Clears favourites, resume points & history (keeps accounts & theme)';
+
+  @override
+  String get settingsResetTitle => 'Reset usage data?';
+
+  @override
+  String get settingsResetBody =>
+      'Clears favourites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.';
+
+  @override
+  String get settingsResetConfirm => 'Reset';
+
+  @override
+  String get commonCancel => 'Cancel';
+
+  @override
+  String get errNetworkUnreachable =>
+      'Cannot connect: no network, or the server is unreachable.';
+
+  @override
+  String get errTimeout => 'The server took too long to answer.';
+
+  @override
+  String get errTimeoutHint =>
+      'The server took too long to answer. Check your connection or the server address.';
+
+  @override
+  String get errTls => 'Secure connection refused by the server (certificate).';
+
+  @override
+  String get errBadFormat =>
+      'Unreadable answer from the server (unexpected format).';
+
+  @override
+  String get errFileSystem => 'Cannot read or write the file on this device.';
+
+  @override
+  String get errInternal => 'Something went wrong inside the app.';
+
+  @override
+  String get errBadResponse =>
+      'Invalid answer from the server. Check the address.';
+
+  @override
+  String errForbidden(int code) {
+    return 'Access denied by the server (HTTP $code). Check the account credentials.';
+  }
+
+  @override
+  String get errNotFound => 'Address not found on the server (HTTP 404).';
+
+  @override
+  String errServer(int code) {
+    return 'The server is failing (HTTP $code). Try again later.';
+  }
+
+  @override
+  String errHttp(int code) {
+    return 'The server answered with an error (HTTP $code).';
+  }
+
+  @override
+  String get errConnection =>
+      'Connection error: check that you are online and that the server is reachable.';
+
+  @override
+  String get errCancelled => 'Operation cancelled.';
+
+  @override
+  String get errNetworkUnknown => 'Unknown network error.';
+
+  @override
+  String rowBecauseYouWatched(String title) {
+    return 'Because you watched “$title”';
+  }
+
+  @override
+  String get rowTopRated => 'Top rated';
+
+  @override
+  String get tmdbRowsBecauseTitle => '“Because you watched” row';
+
+  @override
+  String get tmdbRowsBecauseSub =>
+      'TMDB recommendations from your last watched title, within your lists (1 call a day)';
+
+  @override
+  String get tmdbRowsTopRatedTitle => '“Top rated” row';
+
+  @override
+  String get tmdbRowsTopRatedSub =>
+      'The TMDB ranking, filtered on what your lists offer (1 call a day)';
+
+  @override
+  String get perfMinItemsTitle => 'Rows: minimum titles';
+
+  @override
+  String get perfMinItemsSub =>
+      'Below this, the row folds into “Others” — never New or Favourites. 1 = never fold.';
+
+  @override
+  String get dlOnDeviceTitle => 'On this device';
+
+  @override
+  String dlOnDeviceSub(int count, String size) {
+    return '$count file(s) · $size — in Movies/AetherStream, missing from the list';
+  }
+
+  @override
+  String get dlScanTooltip => 'Look for files on this device';
+
+  @override
+  String dlScanFound(int count, String size) {
+    return '$count file(s) on device, missing from the list ($size)';
+  }
+
+  @override
+  String get dlScanNothing => 'Nothing new on this device';
+
+  @override
+  String get dlScanDenied => 'Without video access, the folder cannot be read';
+
+  @override
+  String get dlOrphanDeleteTitle => 'Delete this file?';
+
+  @override
+  String dlOrphanDeleteBody(String name, String size) {
+    return '“$name” ($size) will be erased from this device. This cannot be undone.';
+  }
+
+  @override
+  String get dlOrphanDeleted => 'File deleted';
+
+  @override
+  String get dlOrphanDeleteFailed => 'Android refused the deletion';
+
+  @override
+  String get dlOrphanPlay => 'Play';
+
+  @override
+  String get commonDelete => 'Delete';
 }

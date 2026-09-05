@@ -799,6 +799,384 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Settings'**
   String get navSettings;
+
+  /// Settings section header
+  ///
+  /// In en, this message translates to:
+  /// **'Control from your phone'**
+  String get settingsSectionPhone;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Web console'**
+  String get settingsWebConsole;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Accounts, backup, theme, EPG, TMDB + remote (QR)'**
+  String get settingsWebConsoleSub;
+
+  /// Settings section header
+  ///
+  /// In en, this message translates to:
+  /// **'Sources & accounts'**
+  String get settingsSectionSources;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'IPTV accounts'**
+  String get settingsAccounts;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Providers, playlist stats & reload'**
+  String get settingsAccountsSub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB API key'**
+  String get settingsTmdbKey;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Posters, overviews, cast (optional)'**
+  String get settingsTmdbKeySub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Channel guide'**
+  String get settingsXmltv;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'XMLTV EPG — French DTT'**
+  String get settingsXmltvSub;
+
+  /// Settings section header
+  ///
+  /// In en, this message translates to:
+  /// **'Display'**
+  String get settingsSectionDisplay;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Languages / regions'**
+  String get settingsRegions;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Hide foreign content (saves memory)'**
+  String get settingsRegionsSub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsTheme;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Theme, colours, cyberpunk effects'**
+  String get settingsThemeSub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Performance'**
+  String get settingsOptimization;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Performance profiles, hero, thumbnails, memory'**
+  String get settingsOptimizationSub;
+
+  /// Settings section header
+  ///
+  /// In en, this message translates to:
+  /// **'Backup & app'**
+  String get settingsSectionBackup;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Backup / Restore'**
+  String get settingsBackup;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Export/import accounts, TMDB, theme, favourites (encrypted .aether)'**
+  String get settingsBackupSub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get settingsAbout;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Version + update check'**
+  String get settingsAboutSub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Reset usage data'**
+  String get settingsResetUsage;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Clears favourites, resume points & history (keeps accounts & theme)'**
+  String get settingsResetUsageSub;
+
+  /// Reset confirmation dialog title
+  ///
+  /// In en, this message translates to:
+  /// **'Reset usage data?'**
+  String get settingsResetTitle;
+
+  /// Reset confirmation dialog body
+  ///
+  /// In en, this message translates to:
+  /// **'Clears favourites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.'**
+  String get settingsResetBody;
+
+  /// Reset confirmation button
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get settingsResetConfirm;
+
+  /// Generic cancel button
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get commonCancel;
+
+  /// Network error shown to the user
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot connect: no network, or the server is unreachable.'**
+  String get errNetworkUnreachable;
+
+  /// Timeout error
+  ///
+  /// In en, this message translates to:
+  /// **'The server took too long to answer.'**
+  String get errTimeout;
+
+  /// Timeout error with hint
+  ///
+  /// In en, this message translates to:
+  /// **'The server took too long to answer. Check your connection or the server address.'**
+  String get errTimeoutHint;
+
+  /// TLS error
+  ///
+  /// In en, this message translates to:
+  /// **'Secure connection refused by the server (certificate).'**
+  String get errTls;
+
+  /// Malformed response error
+  ///
+  /// In en, this message translates to:
+  /// **'Unreadable answer from the server (unexpected format).'**
+  String get errBadFormat;
+
+  /// File system error
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot read or write the file on this device.'**
+  String get errFileSystem;
+
+  /// Internal error
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong inside the app.'**
+  String get errInternal;
+
+  /// Invalid response error
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid answer from the server. Check the address.'**
+  String get errBadResponse;
+
+  /// 401/403 error
+  ///
+  /// In en, this message translates to:
+  /// **'Access denied by the server (HTTP {code}). Check the account credentials.'**
+  String errForbidden(int code);
+
+  /// 404 error
+  ///
+  /// In en, this message translates to:
+  /// **'Address not found on the server (HTTP 404).'**
+  String get errNotFound;
+
+  /// 5xx error
+  ///
+  /// In en, this message translates to:
+  /// **'The server is failing (HTTP {code}). Try again later.'**
+  String errServer(int code);
+
+  /// Generic HTTP error
+  ///
+  /// In en, this message translates to:
+  /// **'The server answered with an error (HTTP {code}).'**
+  String errHttp(int code);
+
+  /// Connection error
+  ///
+  /// In en, this message translates to:
+  /// **'Connection error: check that you are online and that the server is reachable.'**
+  String get errConnection;
+
+  /// Cancelled operation
+  ///
+  /// In en, this message translates to:
+  /// **'Operation cancelled.'**
+  String get errCancelled;
+
+  /// Unknown network error
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown network error.'**
+  String get errNetworkUnknown;
+
+  /// Home row: TMDB recommendations seeded by the last watched title
+  ///
+  /// In en, this message translates to:
+  /// **'Because you watched “{title}”'**
+  String rowBecauseYouWatched(String title);
+
+  /// Home row: TMDB top rated titles available in the lists
+  ///
+  /// In en, this message translates to:
+  /// **'Top rated'**
+  String get rowTopRated;
+
+  /// TMDB option title
+  ///
+  /// In en, this message translates to:
+  /// **'“Because you watched” row'**
+  String get tmdbRowsBecauseTitle;
+
+  /// TMDB option subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB recommendations from your last watched title, within your lists (1 call a day)'**
+  String get tmdbRowsBecauseSub;
+
+  /// TMDB option title
+  ///
+  /// In en, this message translates to:
+  /// **'“Top rated” row'**
+  String get tmdbRowsTopRatedTitle;
+
+  /// TMDB option subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'The TMDB ranking, filtered on what your lists offer (1 call a day)'**
+  String get tmdbRowsTopRatedSub;
+
+  /// Optimisation setting title
+  ///
+  /// In en, this message translates to:
+  /// **'Rows: minimum titles'**
+  String get perfMinItemsTitle;
+
+  /// Optimisation setting subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Below this, the row folds into “Others” — never New or Favourites. 1 = never fold.'**
+  String get perfMinItemsSub;
+
+  /// Downloads: section of files found on device but absent from the list
+  ///
+  /// In en, this message translates to:
+  /// **'On this device'**
+  String get dlOnDeviceTitle;
+
+  /// Downloads: section subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'{count} file(s) · {size} — in Movies/AetherStream, missing from the list'**
+  String dlOnDeviceSub(int count, String size);
+
+  /// Downloads: scan button tooltip
+  ///
+  /// In en, this message translates to:
+  /// **'Look for files on this device'**
+  String get dlScanTooltip;
+
+  /// Downloads: scan result
+  ///
+  /// In en, this message translates to:
+  /// **'{count} file(s) on device, missing from the list ({size})'**
+  String dlScanFound(int count, String size);
+
+  /// Downloads: scan found nothing
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing new on this device'**
+  String get dlScanNothing;
+
+  /// Downloads: permission denied
+  ///
+  /// In en, this message translates to:
+  /// **'Without video access, the folder cannot be read'**
+  String get dlScanDenied;
+
+  /// Delete confirmation title
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this file?'**
+  String get dlOrphanDeleteTitle;
+
+  /// Delete confirmation body
+  ///
+  /// In en, this message translates to:
+  /// **'“{name}” ({size}) will be erased from this device. This cannot be undone.'**
+  String dlOrphanDeleteBody(String name, String size);
+
+  /// Delete done
+  ///
+  /// In en, this message translates to:
+  /// **'File deleted'**
+  String get dlOrphanDeleted;
+
+  /// Delete refused
+  ///
+  /// In en, this message translates to:
+  /// **'Android refused the deletion'**
+  String get dlOrphanDeleteFailed;
+
+  /// Play action
+  ///
+  /// In en, this message translates to:
+  /// **'Play'**
+  String get dlOrphanPlay;
+
+  /// Generic delete button
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get commonDelete;
 }
 
 class _AppLocalizationsDelegate

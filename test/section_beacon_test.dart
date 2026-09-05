@@ -196,4 +196,31 @@ void _focusDrivenTests() {
     await tester.pump();
     expect(find.text('PAGE  ·  SECONDE'), findsOneWidget);
   });
+
+  // §beaconScope (2026-09-05) — La pastille a été retirée de la fiche
+  // film/série (« des badges en surplus », signalement utilisateur) alors que
+  // ses `SectionMark` y RESTENT. Ce test verrouille le contrat qui rend ce
+  // retrait sûr : hors de toute portée, un `SectionMark` doit rendre son
+  // contenu sans rien inscrire et sans lever.
+  testWidgets('§beaconScope — un SectionMark SANS repère rend son enfant',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: Column(
+          children: [
+            SectionMark('Synopsis', child: Text('le résumé du film')),
+            SectionMark('Infos'),
+          ],
+        ),
+      ),
+    ));
+
+    // L'enfant fourni est rendu tel quel…
+    expect(find.text('le résumé du film'), findsOneWidget);
+    // …et sans enfant, le libellé de repli s'affiche quand même.
+    expect(find.text('INFOS'), findsOneWidget);
+    // Aucune pastille : il n'y a pas de repère au-dessus.
+    expect(find.textContaining('·'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }

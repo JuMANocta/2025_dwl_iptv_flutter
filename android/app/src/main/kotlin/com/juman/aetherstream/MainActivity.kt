@@ -8,6 +8,11 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.app.Activity
+import android.app.RecoverableSecurityException
+import android.content.ContentUris
+import android.net.Uri
+import android.provider.MediaStore
 import android.os.Build
 import android.util.Rational
 import androidx.core.content.FileProvider
@@ -40,6 +45,13 @@ class MainActivity : FlutterActivity() {
     // et coûteux, rien ne doit exister tant qu'elle n'est pas acceptée.
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private var castRelay: AetherCastRelay? = null
+
+    // §dlOrphans — Supprimer une vidéo du dossier public que l'app ne possède
+    // plus (réinstallation, fichier déposé par l'utilisateur) : Android exige
+    // l'accord de l'utilisateur via un IntentSender, dont le résultat revient
+    // dans onActivityResult. On garde le `Result` Dart en attente.
+    private var pendingDeleteResult: MethodChannel.Result? = null
+    private val reqDeleteMedia = 0x4D45
 
     private val castActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -154,6 +166,36 @@ class MainActivity : FlutterActivity() {
         // du lecteur. `setAutoEnter` : arme/desarme le PiP au geste Accueil —
         // rappele a CHAQUE changement d'eligibilite (verrou, erreur, TV),
         // jamais une seule fois au demarrage.
+        // §dlOrphans — Inventaire et suppression dans /Movies/AetherStream/.
+        // Par MediaStore et non par `File.listFiles()` : sur Android 10+ le
+        // dossier public n'est pas lisible par chemin pour les fichiers d'une
+        // autre origine (une réinstallation change l'origine), alors que
+        // MediaStore les indexe tous.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/media"
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "listVideos" -> {
+                    val rel = call.argument<String>("relativePath") ?: "Movies/AetherStream/"
+                    try {
+                        result.success(listVideos(rel))
+                    } catch (e: Exception) {
+                        result.error("list", e.message, null)
+                    }
+                }
+                "deleteVideo" -> {
+                    val uriStr = call.argument<String>("uri")
+                    if (uriStr == null) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    deleteVideo(Uri.parse(uriStr), result)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         pipChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "aetherstream/pip"
@@ -388,6 +430,88 @@ class MainActivity : FlutterActivity() {
             registerReceiver(cancelDownloadReceiver, filter)
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(castActionReceiver, castFilter)
+        }
+    }
+
+    // §dlOrphans — Les vidéos indexées sous `relativePath` (Movies/AetherStream/).
+    // ⚠️ RELATIVE_PATH n'existe qu'à partir d'Android 10 ; avant, on filtre
+    // sur le chemin absolu (DATA).
+    private fun listVideos(relativePath: String): List<Map<String, Any?>> {
+        val out = mutableListOf<Map<String, Any?>>()
+        val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        val projection = arrayOf(
+            MediaStore.Video.Media._ID,
+            MediaStore.Video.Media.DISPLAY_NAME,
+            MediaStore.Video.Media.SIZE,
+            MediaStore.Video.Media.DATE_MODIFIED,
+            MediaStore.Video.Media.DATA
+        )
+        val (selection, args) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            "${MediaStore.Video.Media.RELATIVE_PATH} LIKE ?" to arrayOf("$relativePath%")
+        } else {
+            "${MediaStore.Video.Media.DATA} LIKE ?" to arrayOf("%/$relativePath%")
+        }
+        contentResolver.query(
+            collection, projection, selection, args,
+            "${MediaStore.Video.Media.DATE_MODIFIED} DESC"
+        )?.use { c ->
+            val iId = c.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+            val iName = c.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+            val iSize = c.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
+            val iDate = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
+            val iData = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
+            while (c.moveToNext()) {
+                val id = c.getLong(iId)
+                out.add(
+                    mapOf(
+                        "uri" to ContentUris.withAppendedId(collection, id).toString(),
+                        "name" to (c.getString(iName) ?: ""),
+                        "size" to c.getLong(iSize),
+                        "modified" to c.getLong(iDate) * 1000L,
+                        "path" to (c.getString(iData) ?: "")
+                    )
+                )
+            }
+        }
+        return out
+    }
+
+    // §dlOrphans — Suppression. Un fichier que l'app possède part directement ;
+    // sinon Android répond par une SecurityException et il faut demander
+    // l'accord de l'utilisateur (dialogue système), résultat dans
+    // onActivityResult. Jamais une exception côté Dart : `false` suffit.
+    private fun deleteVideo(uri: Uri, result: MethodChannel.Result) {
+        try {
+            val n = contentResolver.delete(uri, null, null)
+            result.success(n > 0)
+        } catch (e: SecurityException) {
+            val sender = when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+                    MediaStore.createDeleteRequest(contentResolver, listOf(uri)).intentSender
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e is RecoverableSecurityException ->
+                    e.userAction.actionIntent.intentSender
+                else -> null
+            }
+            if (sender == null) {
+                result.success(false)
+                return
+            }
+            pendingDeleteResult?.success(false) // une demande précédente traînait
+            pendingDeleteResult = result
+            try {
+                startIntentSenderForResult(sender, reqDeleteMedia, null, 0, 0, 0)
+            } catch (ex: Exception) {
+                pendingDeleteResult = null
+                result.success(false)
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == reqDeleteMedia) {
+            pendingDeleteResult?.success(resultCode == Activity.RESULT_OK)
+            pendingDeleteResult = null
         }
     }
 

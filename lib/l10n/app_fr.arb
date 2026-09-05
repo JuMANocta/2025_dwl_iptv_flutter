@@ -1,120 +1,416 @@
 {
-    "@@locale": "fr",
-    "downloadManagerTitle": "Gestion des Téléchargements",
-    "noDownloads": "Aucun téléchargement",
-    "downloadDialogTitle": "Démarrer le téléchargement",
-    "downloadDialogFileNameLabel": "Nom du fichier",
-    "downloadDialogFileSizeLabel": "Taille du fichier",
-    "downloadDialogFileTypeLabel": "Type de fichier",
-    "downloadDialogUnknownSize": "Inconnue",
-    "cancel": "Annuler",
-    "download": "Télécharger",
-    "denied": "Permission refusée. Le téléchargement ne peut pas commencer.",
-    "terminalTitle": "//:FLUX_DOWNLOAD_INTERFACE",
-    "terminalResumeMessage": "🔄 Reprise du téléchargement :\n🎞️ {fileName}",
-    "terminalStartMessage": "ℹ️ Lancement du téléchargement :\n🎞️ {fileName}",
-    "terminalFileSizeMessage": "📦 Taille du fichier : {fileSize}",
-    "terminalFinalizingMessage": "\n⚙️ Finalisation...\nDéplacement du fichier vers le stockage interne. Veuillez patienter.",
-    "terminalSuccessMessage": "\n🟢 SUCCÈS : Téléchargement terminé !",
-    "terminalFatalErrorMessage": "\n☣️ FATAL : Une erreur est survenue",
-    "terminalSpeedMessage": "Vitesse",
-    "terminalRetryCountMessage": "Relances",
-    "terminalEtaMessage": "Temps restant",
-    "terminalCancelMessage": "\nℹ️ ABANDON : Téléchargement annulé par l'utilisateur",
-    "terminalCloseButton": "[ FERMER ]",
-    "terminalAbortingButton": "[ PAUSE... ]",
-    "terminalAbortButton": "[ PAUSE ]",
-    "searchPageDownloadsTooltip": "Voir les téléchargements",
-    "searchPageReloadTooltip": "Recharger la playlist",
-    "searchPageAccountsTooltip": "Comptes et Paramètres",
-    "searchPageLoadingError": "Impossible de charger la playlist",
-    "searchPageRetryButton": "Réessayer",
-    "searchPageProcessingError": "Erreur de traitement de la playlist :",
-    "searchFieldHint": "Rechercher...",
-    "searchFilterFilms": "Films",
-    "searchFilterSeries": "Séries",
-    "searchFilterTv": "TV",
-    "searchNoResults": "Aucun résultat trouvé.",
-    "searchNoContent": "Aucun contenu à afficher.",
-    "actionSheetChooseVersion": "Choisir une version pour :",
-    "chipSeasons": "{count,plural, =1{1 Saison} other{{count} Saisons}}",
-    "chipEpisodes": "{count,plural, =1{1 Ép.} other{{count} Ép.}}",
-    "season": "Saison",
-    "episode": "Épisode",
-    "favoriteAdd": "Ajouter aux favoris",
-    "favoriteRemove": "Retirer des favoris",
-    "actionSheetPlay": "Lire",
-    "actionSheetPlaySubtitle": "Lance la lecture (mise en cache automatique).",
-    "actionSheetDownload": "Télécharger en arrière-plan",
-    "actionSheetDownloadSubtitle": "Pour regarder plus tard sans connexion.",
-    "deleteDialogTitle": "Supprimer le fichier ?",
-    "deleteDialogSizeLabel": "Taille",
-    "deleteDialogWarning": "Cette action est irréversible et le fichier sera définitivement effacé.",
-    "deleteDialogConfirmButton": "Supprimer",
-    "deleteTooltip": "Supprimer définitivement",
-    "taskStatusDownloading": "Téléchargement en cours...",
-    "taskStatusRemaining": " • {remainingSize} restant",
-    "taskStatusCompleted": "Terminé • {size} • {date}",
-    "taskStatusFailed": "Échec {progressInfo} • Appuyer pour relancer",
-    "taskStatusCanceled": "Annulé {progressInfo} • Appuyer pour relancer",
-    "taskStatusPending": "En attente • {date}",
-    "taskStatusUnknownError": "Erreur inconnue",
-    "playlistCardSubtitleNone": "Aucune playlist téléchargée dans ce contexte.",
-    "playlistCardSubtitleLastFile": "Dernier fichier : {path}",
-    "playlistDownloadButton": "Télécharger / Mettre à jour",
-    "playlistDeleteButton": "Supprimer",
-    "playlistManagementTip": "Astuce : vous pouvez aussi recharger la playlist depuis la roue crantée ou via l'icône de rafraîchissement sur l'écran de recherche.",
-    "accountsTitle": "Gestion des Comptes",
-    "deleteAccountDialogTitle": "Supprimer le compte ?",
-    "deleteAccountDialogContent": "Cette action est définitive.",
-    "deleteAccountConfirm": "Supprimer",
-    "playlistInfoChecking": "Vérification de la playlist...",
-    "playlistInfoUnavailable": "Aucune playlist disponible ou erreur de chargement.",
-    "playlistInfoTryReload": "Tenter un rechargement",
-    "playlistInfoLocalFile": "Fichier playlist local",
-    "playlistInfoSize": "Taille",
-    "playlistInfoLastUpdate": "Maj",
-    "playlistInfoEntries": "Entrées",
-    "playlistInfoReloadButton": "Recharger",
-    "playlistInfoDeleteButton": "Supprimer",
-    "accountsListEmpty": "Ajouter un compte",
-    "accountModeComplete": "Mode: URL complète — {host}",
-    "accountModeSeparate": "Mode: Séparé — {username}@{host}",
-    "accountActionEdit": "Modifier",
-    "accountActionDelete": "Supprimer",
-    "accountsFab": "Nouveau",
-    "editAccountTitleAdd": "Ajouter un compte",
-    "editAccountTitleEdit": "Modifier le compte",
-    "editAccountNameLabel": "Nom du compte (ex: Salon, Vacances...)",
-    "editAccountNameHint": "Mon Compte IPTV",
-    "editAccountNameRequired": "Requis",
-    "editAccountModeUrl": "URL Complète",
-    "editAccountModeCredentials": "Identifiants",
-    "editAccountFullUrlLabel": "URL .m3u complète",
-    "editAccountFullUrlInvalid": "URL invalide",
-    "editAccountServerUrlLabel": "URL du serveur (ex: http://host:port)",
-    "editAccountUsernameLabel": "Nom d'utilisateur",
-    "editAccountPasswordLabel": "Mot de passe",
-    "editAccountPlaylistTypeLabel": "Type de playlist",
-    "editAccountPlaylistTypeM3u": "M3U (Standard)",
-    "editAccountPlaylistTypeSimple": "Simple (Lien unique)",
-    "editAccountCookiesLabel": "Cookies (optionnel)",
-    "editAccountCookiesHint": "ex: PHPSESSID=xxxxxx;",
-    "editAccountSaveButton": "Enregistrer",
-    "playerGenericError": "Impossible de lire ce média.",
-    "playerLoading": "Initialisation du lecteur...",
-    "playerLoadingError": "Erreur de chargement: {error}",
-    "settingsTitle": "Paramètres",
-    "aboutTitle": "À propos",
-    "backupTitle": "Sauvegarde",
-    "optimizationTitle": "Optimisation",
-    "regionFilterTitle": "Langues / régions",
-    "themeSettingsTitle": "Personnalisation",
-    "tmdbKeyTitle": "Clé API TMDB",
-    "xmltvTitle": "Guide des chaînes",
-    "webConsoleTitle": "Console web",
-    "navHome": "Accueil",
-    "navSearch": "Recherche",
-    "navDownloads": "Téléchargements",
-    "navSettings": "Paramètres"
+  "@@locale": "fr",
+  "downloadManagerTitle": "Gestion des Téléchargements",
+  "noDownloads": "Aucun téléchargement",
+  "downloadDialogTitle": "Démarrer le téléchargement",
+  "downloadDialogFileNameLabel": "Nom du fichier",
+  "downloadDialogFileSizeLabel": "Taille du fichier",
+  "downloadDialogFileTypeLabel": "Type de fichier",
+  "downloadDialogUnknownSize": "Inconnue",
+  "cancel": "Annuler",
+  "download": "Télécharger",
+  "denied": "Permission refusée. Le téléchargement ne peut pas commencer.",
+  "terminalTitle": "//:FLUX_DOWNLOAD_INTERFACE",
+  "terminalResumeMessage": "🔄 Reprise du téléchargement :\n🎞️ {fileName}",
+  "terminalStartMessage": "ℹ️ Lancement du téléchargement :\n🎞️ {fileName}",
+  "terminalFileSizeMessage": "📦 Taille du fichier : {fileSize}",
+  "terminalFinalizingMessage": "\n⚙️ Finalisation...\nDéplacement du fichier vers le stockage interne. Veuillez patienter.",
+  "terminalSuccessMessage": "\n🟢 SUCCÈS : Téléchargement terminé !",
+  "terminalFatalErrorMessage": "\n☣️ FATAL : Une erreur est survenue",
+  "terminalSpeedMessage": "Vitesse",
+  "terminalRetryCountMessage": "Relances",
+  "terminalEtaMessage": "Temps restant",
+  "terminalCancelMessage": "\nℹ️ ABANDON : Téléchargement annulé par l'utilisateur",
+  "terminalCloseButton": "[ FERMER ]",
+  "terminalAbortingButton": "[ PAUSE... ]",
+  "terminalAbortButton": "[ PAUSE ]",
+  "searchPageDownloadsTooltip": "Voir les téléchargements",
+  "searchPageReloadTooltip": "Recharger la playlist",
+  "searchPageAccountsTooltip": "Comptes et Paramètres",
+  "searchPageLoadingError": "Impossible de charger la playlist",
+  "searchPageRetryButton": "Réessayer",
+  "searchPageProcessingError": "Erreur de traitement de la playlist :",
+  "searchFieldHint": "Rechercher...",
+  "searchFilterFilms": "Films",
+  "searchFilterSeries": "Séries",
+  "searchFilterTv": "TV",
+  "searchNoResults": "Aucun résultat trouvé.",
+  "searchNoContent": "Aucun contenu à afficher.",
+  "actionSheetChooseVersion": "Choisir une version pour :",
+  "chipSeasons": "{count,plural, =1{1 Saison} other{{count} Saisons}}",
+  "chipEpisodes": "{count,plural, =1{1 Ép.} other{{count} Ép.}}",
+  "season": "Saison",
+  "episode": "Épisode",
+  "favoriteAdd": "Ajouter aux favoris",
+  "favoriteRemove": "Retirer des favoris",
+  "actionSheetPlay": "Lire",
+  "actionSheetPlaySubtitle": "Lance la lecture (mise en cache automatique).",
+  "actionSheetDownload": "Télécharger en arrière-plan",
+  "actionSheetDownloadSubtitle": "Pour regarder plus tard sans connexion.",
+  "deleteDialogTitle": "Supprimer le fichier ?",
+  "deleteDialogSizeLabel": "Taille",
+  "deleteDialogWarning": "Cette action est irréversible et le fichier sera définitivement effacé.",
+  "deleteDialogConfirmButton": "Supprimer",
+  "deleteTooltip": "Supprimer définitivement",
+  "taskStatusDownloading": "Téléchargement en cours...",
+  "taskStatusRemaining": " • {remainingSize} restant",
+  "taskStatusCompleted": "Terminé • {size} • {date}",
+  "taskStatusFailed": "Échec {progressInfo} • Appuyer pour relancer",
+  "taskStatusCanceled": "Annulé {progressInfo} • Appuyer pour relancer",
+  "taskStatusPending": "En attente • {date}",
+  "taskStatusUnknownError": "Erreur inconnue",
+  "playlistCardSubtitleNone": "Aucune playlist téléchargée dans ce contexte.",
+  "playlistCardSubtitleLastFile": "Dernier fichier : {path}",
+  "playlistDownloadButton": "Télécharger / Mettre à jour",
+  "playlistDeleteButton": "Supprimer",
+  "playlistManagementTip": "Astuce : vous pouvez aussi recharger la playlist depuis la roue crantée ou via l'icône de rafraîchissement sur l'écran de recherche.",
+  "accountsTitle": "Gestion des Comptes",
+  "deleteAccountDialogTitle": "Supprimer le compte ?",
+  "deleteAccountDialogContent": "Cette action est définitive.",
+  "deleteAccountConfirm": "Supprimer",
+  "playlistInfoChecking": "Vérification de la playlist...",
+  "playlistInfoUnavailable": "Aucune playlist disponible ou erreur de chargement.",
+  "playlistInfoTryReload": "Tenter un rechargement",
+  "playlistInfoLocalFile": "Fichier playlist local",
+  "playlistInfoSize": "Taille",
+  "playlistInfoLastUpdate": "Maj",
+  "playlistInfoEntries": "Entrées",
+  "playlistInfoReloadButton": "Recharger",
+  "playlistInfoDeleteButton": "Supprimer",
+  "accountsListEmpty": "Ajouter un compte",
+  "accountModeComplete": "Mode: URL complète — {host}",
+  "accountModeSeparate": "Mode: Séparé — {username}@{host}",
+  "accountActionEdit": "Modifier",
+  "accountActionDelete": "Supprimer",
+  "accountsFab": "Nouveau",
+  "editAccountTitleAdd": "Ajouter un compte",
+  "editAccountTitleEdit": "Modifier le compte",
+  "editAccountNameLabel": "Nom du compte (ex: Salon, Vacances...)",
+  "editAccountNameHint": "Mon Compte IPTV",
+  "editAccountNameRequired": "Requis",
+  "editAccountModeUrl": "URL Complète",
+  "editAccountModeCredentials": "Identifiants",
+  "editAccountFullUrlLabel": "URL .m3u complète",
+  "editAccountFullUrlInvalid": "URL invalide",
+  "editAccountServerUrlLabel": "URL du serveur (ex: http://host:port)",
+  "editAccountUsernameLabel": "Nom d'utilisateur",
+  "editAccountPasswordLabel": "Mot de passe",
+  "editAccountPlaylistTypeLabel": "Type de playlist",
+  "editAccountPlaylistTypeM3u": "M3U (Standard)",
+  "editAccountPlaylistTypeSimple": "Simple (Lien unique)",
+  "editAccountCookiesLabel": "Cookies (optionnel)",
+  "editAccountCookiesHint": "ex: PHPSESSID=xxxxxx;",
+  "editAccountSaveButton": "Enregistrer",
+  "playerGenericError": "Impossible de lire ce média.",
+  "playerLoading": "Initialisation du lecteur...",
+  "playerLoadingError": "Erreur de chargement: {error}",
+  "settingsTitle": "Paramètres",
+  "aboutTitle": "À propos",
+  "backupTitle": "Sauvegarde",
+  "optimizationTitle": "Optimisation",
+  "regionFilterTitle": "Langues / régions",
+  "themeSettingsTitle": "Personnalisation",
+  "tmdbKeyTitle": "Clé API TMDB",
+  "xmltvTitle": "Guide des chaînes",
+  "webConsoleTitle": "Console web",
+  "navHome": "Accueil",
+  "navSearch": "Recherche",
+  "navDownloads": "Téléchargements",
+  "navSettings": "Paramètres",
+  "settingsSectionPhone": "Piloter depuis le téléphone",
+  "@settingsSectionPhone": {
+    "description": "Settings section header"
+  },
+  "settingsWebConsole": "Console web",
+  "@settingsWebConsole": {
+    "description": "Settings tile title"
+  },
+  "settingsWebConsoleSub": "Comptes, sauvegarde, thème, EPG, TMDB + télécommande (QR)",
+  "@settingsWebConsoleSub": {
+    "description": "Settings tile subtitle"
+  },
+  "settingsSectionSources": "Sources & comptes",
+  "@settingsSectionSources": {
+    "description": "Settings section header"
+  },
+  "settingsAccounts": "Comptes IPTV",
+  "@settingsAccounts": {
+    "description": "Settings tile title"
+  },
+  "settingsAccountsSub": "Providers, stats playlist & recharger",
+  "@settingsAccountsSub": {
+    "description": "Settings tile subtitle"
+  },
+  "settingsTmdbKey": "Clé API TMDB",
+  "@settingsTmdbKey": {
+    "description": "Settings tile title"
+  },
+  "settingsTmdbKeySub": "Affiches, synopsis, casting (optionnel)",
+  "@settingsTmdbKeySub": {
+    "description": "Settings tile subtitle"
+  },
+  "settingsXmltv": "Guide des chaînes",
+  "@settingsXmltv": {
+    "description": "Settings tile title"
+  },
+  "settingsXmltvSub": "EPG XMLTV — TNT France",
+  "@settingsXmltvSub": {
+    "description": "Settings tile subtitle"
+  },
+  "settingsSectionDisplay": "Affichage",
+  "@settingsSectionDisplay": {
+    "description": "Settings section header"
+  },
+  "settingsRegions": "Langues / régions",
+  "@settingsRegions": {
+    "description": "Settings tile title"
+  },
+  "settingsRegionsSub": "Masquer le contenu étranger (réduit la mémoire)",
+  "@settingsRegionsSub": {
+    "description": "Settings tile subtitle"
+  },
+  "settingsTheme": "Personnalisation",
+  "@settingsTheme": {
+    "description": "Settings tile title"
+  },
+  "settingsThemeSub": "Thème, couleurs, effets cyberpunk",
+  "@settingsThemeSub": {
+    "description": "Settings tile subtitle"
+  },
+  "settingsOptimization": "Optimisation",
+  "@settingsOptimization": {
+    "description": "Settings tile title"
+  },
+  "settingsOptimizationSub": "Profils performance, hero, vignettes, mémoire",
+  "@settingsOptimizationSub": {
+    "description": "Settings tile subtitle"
+  },
+  "settingsSectionBackup": "Sauvegarde & application",
+  "@settingsSectionBackup": {
+    "description": "Settings section header"
+  },
+  "settingsBackup": "Sauvegarde / Restauration",
+  "@settingsBackup": {
+    "description": "Settings tile title"
+  },
+  "settingsBackupSub": "Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)",
+  "@settingsBackupSub": {
+    "description": "Settings tile subtitle"
+  },
+  "settingsAbout": "À propos",
+  "@settingsAbout": {
+    "description": "Settings tile title"
+  },
+  "settingsAboutSub": "Version + vérification des mises à jour",
+  "@settingsAboutSub": {
+    "description": "Settings tile subtitle"
+  },
+  "settingsResetUsage": "Réinitialiser les données d'usage",
+  "@settingsResetUsage": {
+    "description": "Settings tile title"
+  },
+  "settingsResetUsageSub": "Vide favoris, reprises & historique (garde comptes & thème)",
+  "@settingsResetUsageSub": {
+    "description": "Settings tile subtitle"
+  },
+  "settingsResetTitle": "Réinitialiser les données ?",
+  "@settingsResetTitle": {
+    "description": "Reset confirmation dialog title"
+  },
+  "settingsResetBody": "Vide les favoris, les reprises de lecture (films & séries), l'historique de recherche et la dernière chaîne regardée.\n\nConserve les comptes IPTV, la clé TMDB, le thème et les filtres langues/régions.\n\nCette action est irréversible.",
+  "@settingsResetBody": {
+    "description": "Reset confirmation dialog body"
+  },
+  "settingsResetConfirm": "Réinitialiser",
+  "@settingsResetConfirm": {
+    "description": "Reset confirmation button"
+  },
+  "commonCancel": "Annuler",
+  "@commonCancel": {
+    "description": "Generic cancel button"
+  },
+  "errNetworkUnreachable": "Connexion impossible : réseau coupé ou serveur injoignable.",
+  "@errNetworkUnreachable": {
+    "description": "Network error shown to the user"
+  },
+  "errTimeout": "Le serveur a mis trop de temps à répondre.",
+  "@errTimeout": {
+    "description": "Timeout error"
+  },
+  "errTimeoutHint": "Le serveur a mis trop de temps à répondre. Vérifie ta connexion ou l'adresse du serveur.",
+  "@errTimeoutHint": {
+    "description": "Timeout error with hint"
+  },
+  "errTls": "Connexion sécurisée refusée par le serveur (certificat).",
+  "@errTls": {
+    "description": "TLS error"
+  },
+  "errBadFormat": "Réponse illisible du serveur (format inattendu).",
+  "@errBadFormat": {
+    "description": "Malformed response error"
+  },
+  "errFileSystem": "Impossible de lire ou d'écrire le fichier sur l'appareil.",
+  "@errFileSystem": {
+    "description": "File system error"
+  },
+  "errInternal": "Une erreur interne est survenue.",
+  "@errInternal": {
+    "description": "Internal error"
+  },
+  "errBadResponse": "Réponse invalide du serveur. Vérifie l'adresse.",
+  "@errBadResponse": {
+    "description": "Invalid response error"
+  },
+  "errForbidden": "Accès refusé par le serveur (HTTP {code}). Vérifie les identifiants du compte.",
+  "@errForbidden": {
+    "description": "401/403 error",
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "errNotFound": "Adresse introuvable sur le serveur (HTTP 404).",
+  "@errNotFound": {
+    "description": "404 error"
+  },
+  "errServer": "Le serveur est en erreur (HTTP {code}). Réessaie plus tard.",
+  "@errServer": {
+    "description": "5xx error",
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "errHttp": "Le serveur a répondu avec une erreur (HTTP {code}).",
+  "@errHttp": {
+    "description": "Generic HTTP error",
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "errConnection": "Erreur de connexion : vérifie que tu es en ligne et que le serveur est accessible.",
+  "@errConnection": {
+    "description": "Connection error"
+  },
+  "errCancelled": "Opération annulée.",
+  "@errCancelled": {
+    "description": "Cancelled operation"
+  },
+  "errNetworkUnknown": "Erreur réseau inconnue.",
+  "@errNetworkUnknown": {
+    "description": "Unknown network error"
+  },
+  "rowBecauseYouWatched": "Parce que tu as regardé « {title} »",
+  "@rowBecauseYouWatched": {
+    "description": "Home row: TMDB recommendations seeded by the last watched title",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "rowTopRated": "Les mieux notés",
+  "@rowTopRated": {
+    "description": "Home row: TMDB top rated titles available in the lists"
+  },
+  "tmdbRowsBecauseTitle": "Rangée « Parce que tu as regardé »",
+  "@tmdbRowsBecauseTitle": {
+    "description": "TMDB option title"
+  },
+  "tmdbRowsBecauseSub": "Les recommandations TMDB de ta dernière lecture, parmi tes listes (1 appel par jour)",
+  "@tmdbRowsBecauseSub": {
+    "description": "TMDB option subtitle"
+  },
+  "tmdbRowsTopRatedTitle": "Rangée « Les mieux notés »",
+  "@tmdbRowsTopRatedTitle": {
+    "description": "TMDB option title"
+  },
+  "tmdbRowsTopRatedSub": "Le classement TMDB, filtré sur ce que tes listes proposent (1 appel par jour)",
+  "@tmdbRowsTopRatedSub": {
+    "description": "TMDB option subtitle"
+  },
+  "perfMinItemsTitle": "Rangées : minimum de titres",
+  "@perfMinItemsTitle": {
+    "description": "Optimisation setting title"
+  },
+  "perfMinItemsSub": "En dessous, la rangée est repliée dans « Autres » — New et Favoris jamais. 1 = ne jamais replier.",
+  "@perfMinItemsSub": {
+    "description": "Optimisation setting subtitle"
+  },
+  "dlOnDeviceTitle": "Sur l'appareil",
+  "@dlOnDeviceTitle": {
+    "description": "Downloads: section of files found on device but absent from the list"
+  },
+  "dlOnDeviceSub": "{count} fichier(s) · {size} — dans Movies/AetherStream, absents de la liste",
+  "@dlOnDeviceSub": {
+    "description": "Downloads: section subtitle",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "dlScanTooltip": "Chercher les fichiers présents sur l'appareil",
+  "@dlScanTooltip": {
+    "description": "Downloads: scan button tooltip"
+  },
+  "dlScanFound": "{count} fichier(s) sur l'appareil hors liste ({size})",
+  "@dlScanFound": {
+    "description": "Downloads: scan result",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "dlScanNothing": "Rien de nouveau sur l'appareil",
+  "@dlScanNothing": {
+    "description": "Downloads: scan found nothing"
+  },
+  "dlScanDenied": "Sans l'accès aux vidéos, le dossier ne peut pas être lu",
+  "@dlScanDenied": {
+    "description": "Downloads: permission denied"
+  },
+  "dlOrphanDeleteTitle": "Supprimer ce fichier ?",
+  "@dlOrphanDeleteTitle": {
+    "description": "Delete confirmation title"
+  },
+  "dlOrphanDeleteBody": "« {name} » ({size}) sera effacé de l'appareil. Irréversible.",
+  "@dlOrphanDeleteBody": {
+    "description": "Delete confirmation body",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "dlOrphanDeleted": "Fichier supprimé",
+  "@dlOrphanDeleted": {
+    "description": "Delete done"
+  },
+  "dlOrphanDeleteFailed": "Android a refusé la suppression",
+  "@dlOrphanDeleteFailed": {
+    "description": "Delete refused"
+  },
+  "dlOrphanPlay": "Lire",
+  "@dlOrphanPlay": {
+    "description": "Play action"
+  },
+  "commonDelete": "Supprimer",
+  "@commonDelete": {
+    "description": "Generic delete button"
+  }
 }

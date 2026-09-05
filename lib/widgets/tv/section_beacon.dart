@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../../core/themes/colors.dart';
@@ -21,6 +22,11 @@ import '../../core/utils/platform_tv.dart';
 /// trois mètres qui pilote à l'aveugle. Au doigt, on voit le pouce et la page
 /// ne bouge que quand on la pousse. Le bandeau ne s'affiche donc que si
 /// [PlatformTv.isTv] — ou si [forceVisible] le demande (tests).
+///
+/// ⚠️ **§beaconDev (2026-09-05) : et seulement en debug.** À l'usage, la
+/// pastille s'est révélée plus gênante qu'utile — voir le commentaire de
+/// `_visible`. En release il ne reste rien : ni pastille, ni bandeau, ni
+/// écoute du défilement.
 ///
 /// **Usage** :
 /// ```dart
@@ -110,7 +116,23 @@ class _SectionBeaconState extends State<SectionBeacon> {
     super.dispose();
   }
 
-  bool get _visible => widget.forceVisible ?? PlatformTv.isTv;
+  /// §beaconDev (2026-09-05) — **plus rien en release.**
+  ///
+  /// Le repère répondait à une vraie question (« où suis-je dans une page
+  /// longue ? ») mais la réponse coûtait plus qu'elle ne rapportait à
+  /// l'usage : une pastille en majuscules superposée en permanence au coin de
+  /// l'accueil, sur le seul écran vraiment immersif de l'app. Verdict à la
+  /// recette du 2026-09-05.
+  ///
+  /// Il reste allumé en debug/profil : c'est là qu'il sert vraiment, pour
+  /// suivre à la trace où le focus D-pad se gare quand on instrumente une
+  /// page. `forceVisible` continue de primer — les tests, eux, doivent voir
+  /// le repère.
+  ///
+  /// ⚠️ Un simple `kReleaseMode` ne suffirait pas : le profil est le mode où
+  /// l'on mesure la fluidité (§jankMeter), et une pastille qui se repeint à
+  /// chaque défilement y fausserait la mesure autant qu'en release.
+  bool get _visible => widget.forceVisible ?? (kDebugMode && PlatformTv.isTv);
 
   void _onFocusChanged() {
     if (!_visible || !mounted) return;

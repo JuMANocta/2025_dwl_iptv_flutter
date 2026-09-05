@@ -28,11 +28,11 @@ const Map<int, String> kTmdbGenreLabels = {
   80: 'Crime',
   99: 'Documentaire',
   18: 'Drame',
-  10751: 'Enfants',
+  10751: 'Jeunesse', // §catFix — vocabulaire aligné sur contentCategoryLabel
   14: 'Fantastique',
   36: 'Histoire',
   27: 'Horreur',
-  10402: 'Musique',
+  10402: 'Musical', // §catFix — idem ('Musique' faisait une 2e rangée)
   9648: 'Thriller', // Mystère → rangé avec Thriller (l'app n'a pas « Mystère »)
   10749: 'Romance',
   878: 'Sci-Fi',
@@ -43,7 +43,7 @@ const Map<int, String> kTmdbGenreLabels = {
 
   // ── Séries ───────────────────────────────────────────────────────────────
   10759: 'Action', // Action & Adventure
-  10762: 'Enfants',
+  10762: 'Jeunesse',
   10763: 'Documentaire', // News → le plus proche dans le vocabulaire de l'app
   10764: 'Téléréalité',
   10765: 'Sci-Fi', // Sci-Fi & Fantasy
@@ -69,10 +69,10 @@ String? tmdbGenreLabel(List<int> genreIds) {
     'Documentaire',
     'Horreur',
     'Western',
-    'Musique',
+    'Musical',
     'Guerre',
     'Histoire',
-    'Enfants',
+    'Jeunesse',
     'Téléréalité',
     'Talk-show',
     'Téléfilm',

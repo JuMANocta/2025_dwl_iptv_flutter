@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/settings/perf_config.dart';
 import 'hidden_regions_service.dart';
+import 'visual_language_service.dart';
 import '../../core/utils/user_error.dart' show UserFacingException;
 import '../../core/settings/performance_settings_service.dart';
 import '../../core/themes/app_theme_config.dart';
@@ -66,6 +67,11 @@ class BackupContent {
   /// Une sauvegarde antérieure à ce champ ne doit JAMAIS faire échouer une
   /// restauration ni inventer un masquage.
   final List<String>? hiddenRegions;
+
+  /// §posterLang — Langue des visuels TMDB (`auto|fr|en|original`).
+  /// Même règle que [hiddenRegions] : `null` sur une sauvegarde antérieure à
+  /// ce champ → on ne touche PAS au réglage local de la cible.
+  final String? visualLanguage;
   final List<String> favorites;
   final Map<String, Map<String, dynamic>> watchProgress;
 
@@ -78,6 +84,7 @@ class BackupContent {
     required this.theme,
     this.perf,
     this.hiddenRegions,
+    this.visualLanguage,
     required this.favorites,
     required this.watchProgress,
   });
@@ -91,6 +98,7 @@ class BackupContent {
         'theme': theme,
         'perf': perf,
         'hiddenRegions': hiddenRegions,
+        'visualLanguage': visualLanguage,
         'favorites': favorites,
         'watchProgress': watchProgress,
       };
@@ -110,6 +118,7 @@ class BackupContent {
         // inattendu donne `null`, donc « rien de coché », jamais une
         // restauration qui échoue pour un champ accessoire.
         hiddenRegions: _readStringList(j['hiddenRegions']),
+        visualLanguage: j['visualLanguage'] as String?,
         favorites: (j['favorites'] as List?)?.cast<String>() ?? const [],
         watchProgress: ((j['watchProgress'] as Map?)
                 ?.cast<String, Map<String, dynamic>>()) ??
@@ -306,6 +315,19 @@ class BackupService {
       }
     }
 
+    // 3d. §posterLang — Langue des visuels. Même règle que ci-dessus : `null`
+    // (sauvegarde antérieure au champ) ou code inconnu → on ne touche pas au
+    // réglage local, plutôt que d'imposer un défaut venu de nulle part.
+    final VisualLanguage? visual =
+        VisualLanguageService.fromCode(content.visualLanguage);
+    if (visual != null) {
+      try {
+        await VisualLanguageService.set(visual);
+      } catch (e) {
+        debugPrint('⚠️ Langue des visuels ignorée (restauration) — $e');
+      }
+    }
+
     // 4. Favoris
     await FavoritesService.replaceAll(content.favorites);
 
@@ -352,6 +374,7 @@ class BackupService {
       theme: theme.toJson(),
       perf: PerformanceSettingsService.config.value.toJson(),
       hiddenRegions: HiddenRegionsService.hidden.toList(growable: false),
+      visualLanguage: VisualLanguageService.value.name,
       favorites: favorites,
       watchProgress: wpMap,
     );

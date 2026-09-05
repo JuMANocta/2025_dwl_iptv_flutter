@@ -27,7 +27,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// ⚠️ Persisté : sans ça le rangement repartirait de zéro à chaque lancement,
 /// ce qui le rendrait inutile. Même famille que §tmdbUrlPersist (roadmap).
 abstract final class InferredCategoryService {
-  static const _key = 'inferred_category_v1';
+  // §catFix (2026-09-05) — `_v2` : le vocabulaire a changé ('Enfants' →
+  // 'Jeunesse', 'Musique' → 'Musical', fusion Classiques→Cultes). Les clés de
+  // groupe, elles, n'ont pas bougé : sans ce bump, les libellés déjà persistés
+  // survivraient au bump de `schemaVersion` et l'accueil afficherait les DEUX
+  // vocabulaires côte à côte — exactement le défaut qu'on corrige.
+  static const _key = 'inferred_category_v2';
 
   /// Plafond d'entrées. Au-delà, on cesse d'en ajouter plutôt que d'évincer :
   /// une catégorie déjà connue vaut mieux qu'une nouvelle, et l'éviction ferait
@@ -117,6 +122,9 @@ abstract final class InferredCategoryService {
     } catch (_) {}
   }
 
-  @visibleForTesting
+  /// Nombre de titres rangés grâce à TMDB, faute de catégorie dans la liste.
+  ///
+  /// §tmdbCacheUi — N'est plus réservé aux tests : la page de la clé TMDB
+  /// l'affiche pour rendre ce cache lisible, à côté du bouton qui le vide.
   static int get count => _cache.length;
 }
