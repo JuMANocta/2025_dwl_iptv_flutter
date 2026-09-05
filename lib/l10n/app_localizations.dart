@@ -761,7 +761,7 @@ abstract class AppLocalizations {
   /// No description provided for @tmdbKeyTitle.
   ///
   /// In en, this message translates to:
-  /// **'TMDB API key'**
+  /// **'TMDB posters & info'**
   String get tmdbKeyTitle;
 
   /// No description provided for @xmltvTitle.
@@ -839,13 +839,13 @@ abstract class AppLocalizations {
   /// Settings tile title
   ///
   /// In en, this message translates to:
-  /// **'TMDB API key'**
+  /// **'TMDB posters & info'**
   String get settingsTmdbKey;
 
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'Posters, overviews, cast (optional)'**
+  /// **'Posters, overviews, cast — optional'**
   String get settingsTmdbKeySub;
 
   /// Settings tile title
@@ -1355,13 +1355,13 @@ abstract class AppLocalizations {
   /// Posters-first switch subtitle, on
   ///
   /// In en, this message translates to:
-  /// **'In the carousel and favourites, the TMDB poster replaces the list\'s'**
+  /// **'Carousel and favourites use the TMDB poster.'**
   String get tmdbPostersFirstOn;
 
   /// Posters-first switch subtitle, off
   ///
   /// In en, this message translates to:
-  /// **'Posters come from your lists; TMDB fills in the missing ones'**
+  /// **'Carousel and favourites keep your lists\' poster.'**
   String get tmdbPostersFirstOff;
 
   /// Maintenance section title
@@ -1429,6 +1429,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sorting cleared. It will rebuild as you browse the home.'**
   String get tmdbMemorySortingCleared;
+
+  /// Title of the confirmation dialog before reloading every list
+  ///
+  /// In en, this message translates to:
+  /// **'Reload all lists?'**
+  String get reloadAllTitle;
+
+  /// Body of the reload-all confirmation, nothing is recent
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The list will be downloaded again from its server. This can take several minutes.} other{All {count} lists will be downloaded again from their servers. This can take several minutes.}}'**
+  String reloadAllBody(int count);
+
+  /// Body of the reload-all confirmation, naming the lists downloaded recently
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The list will be downloaded again from its server.}other{All {count} lists will be downloaded again from their servers.}}\n\nAlready up to date (less than 24 h): {names}.\n\nThis can take several minutes.'**
+  String reloadAllBodyRecent(int count, String names);
+
+  /// Confirm button of the reload-all dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Reload all'**
+  String get reloadAllConfirm;
+
+  /// Title of the progress dialog while every list is reloaded
+  ///
+  /// In en, this message translates to:
+  /// **'Reloading'**
+  String get reloadAllProgressTitle;
+
+  /// First line of the progress dialog, before the first list starts
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing…'**
+  String get reloadAllPreparing;
+
+  /// Progress line naming the list being reloaded
+  ///
+  /// In en, this message translates to:
+  /// **'List {index}/{total} — {label}'**
+  String reloadAllStep(int index, int total, String label);
+
+  /// Tooltip of the reload button in the home app bar
+  ///
+  /// In en, this message translates to:
+  /// **'Reload all lists'**
+  String get reloadAllTooltip;
+
+  /// Snackbar when the reload button is pressed without any account
+  ///
+  /// In en, this message translates to:
+  /// **'No list to reload'**
+  String get reloadAllNoAccounts;
 }
 
 class _AppLocalizationsDelegate

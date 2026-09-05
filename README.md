@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.18.5+138-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.18.6+139-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -157,7 +157,7 @@ Pour bénéficier des affiches, synopsis et informations TMDB :
 
 1. Crée un compte sur [themoviedb.org](https://www.themoviedb.org)
 2. Génère un **Bearer Token (API Read Access Token v4)**
-3. Renseigne-le dans **Paramètres → Clé API TMDB**
+3. Renseigne-le dans **Paramètres → Affiches et infos TMDB** (la clé est en bas de la page)
 
 > Sans clé TMDB, l'application fonctionne normalement mais sans enrichissement visuel.
 
@@ -165,11 +165,11 @@ Pour bénéficier des affiches, synopsis et informations TMDB :
 
 Toutes les options sont regroupées dans **⚙️ Paramètres** (icône en haut à droite de l'accueil) :
 - **Comptes IPTV** : gestion des providers + compte actif
-- **Clé API TMDB** : token Bearer + lien direct vers la page d'inscription
+- **Affiches et infos TMDB** : langue des visuels, rangées TMDB, données mémorisées, et la clé (avec le lien d'inscription)
 - **Guide des chaînes** : statut + refresh du cache XMLTV
 - **Personnalisation** : thèmes + 5 presets (Matrix, Blade Runner, Tron, Minimaliste, Classic)
 - **Statistiques playlist** : nombre de films/séries/chaînes du compte actif
-- **Recharger la playlist** : force le retéléchargement
+- **↻ (accueil)** : recharge **toutes** les listes, une par une, avec un bilan
 - **À propos** : version + check des mises à jour manuel
 
 ---
@@ -233,6 +233,7 @@ lib/
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Le bouton « recharger » recharge toutes les listes** (§reloadScope, 2026-09-05) — Le ↻ de l'accueil ne rafraîchissait que la liste principale, sans le dire : les autres restaient telles quelles, et une liste qui avait disparu de la mémoire — analyse interrompue, cache invalidé par une mise à jour — n'avait **aucun moyen de revenir** depuis l'accueil. Elle s'effaçait alors des fiches : sur un film disponible sur trois abonnements, les pastilles de qualité n'en proposaient plus qu'un. Le bouton enchaîne désormais toutes les listes, une par une, avec une seule question, une progression nommée et un bilan qui **nomme** les listes en échec. Deux défauts de fond ont été trouvés en cherchant : la fiche décidait « ai-je plusieurs abonnements ? » d'après ce qui se trouvait en mémoire à cet instant, si bien que deux versions de même qualité venues de deux listes **fusionnaient en une seule** dès qu'il n'en restait qu'une chargée ; et le rechargement d'une liste la faisait disparaître de l'écran pendant toute sa ré-analyse, alors même que le mécanisme prévu pour l'échanger d'un bloc existait. Enfin, une ré-analyse dispose maintenant du temps qu'elle prend réellement : la limite appliquée était calibrée pour une simple relecture de cache, et condamnait les grosses listes après chaque mise à jour
 - [x] **Adapter le son pour le téléviseur, et poser le téléphone** (§castRelay + §castResume + §castAwake, 2026-09-04 → 05) — Quand le téléviseur ne lit pas le son d'un film (Dolby Digital, DTS), l'application propose de l'adapter : le téléphone convertit la bande-son à la volée, recopie l'image telle quelle et sert le résultat à la télé, à partir de la position en cours. Avant de commencer, elle dit ce que ça coûte (la batterie — brancher est conseillé) et que l'écran peut s'éteindre : la diffusion continue en arrière-plan. Vérifié sur téléviseur Philips : lecture stable, son synchrone, et la diffusion continue téléphone posé, écran éteint
 - [x] **Cast Chromecast** (§castSend, 2026-09-04) — Depuis le lecteur, un bouton envoie le film ou la chaîne sur un Chromecast, une Google TV ou un téléviseur Android TV du réseau, et le téléphone devient la télécommande (pause, ±30 s, retour de la lecture sur le téléphone) avec une notification Pause / Arrêter qui survit à la fermeture du lecteur. Le récepteur va chercher le flux lui-même, sans l'identité que l'application présente aux fournisseurs : l'application vérifie donc le flux **avant** de l'envoyer et explique un refus en clair au lieu d'un écran noir sur le téléviseur. Vérifié sur un téléviseur Philips : image parfaite, mais pas de son sur un film en Dolby Digital — une limite du récepteur, désormais annoncée avant l'envoi. La position de lecture suit le téléviseur : reprendre plus tard, sur le téléphone, repart là où la télé s'était arrêtée
 - [x] **Recette sur téléphone réel de la notification de lecture, du mode fenêtre et de la notification de téléchargement** (§userErrorGaps + §isolateLeak, 2026-09-04) — Les trois fonctions ci-dessous, jusque-là vérifiées sur émulateur, ont été rejouées sur un téléphone physique (casque Bluetooth compris pour les boutons de lecture) : tout fonctionne. La recette a débusqué deux défauts qu'aucun émulateur n'avait montrés. Une coupure réseau chez un fournisseur affichait un message d'erreur système brut, en anglais — l'application faisait confiance à un type d'erreur qui, dans ce cas précis, ne venait pas d'elle. Et le rafraîchissement d'un abonnement secondaire échouait de façon aléatoire au démarrage (il se rattrapait tout seul quelques secondes plus tard, sans que ça se voie) : une donnée interne à l'écran de lecture s'invitait par erreur dans le traitement fait en arrière-plan. Les deux sont corrigés

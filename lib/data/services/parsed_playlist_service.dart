@@ -44,6 +44,41 @@ enum AccountLoadState {
 class ParsedPlaylistService {
   // ── Mémoire — persiste toute la session app ───────────────────────────────
   static final Map<String, ParsedPlaylist> _memory = {};
+
+  /// §reloadScope — Listes dont la SOURCE a été renouvelée mais dont la copie
+  /// en mémoire date encore de l'ancienne.
+  ///
+  /// **Ce que ça remplace.** [markStale] retirait la liste de la mémoire. Le
+  /// but était bon (forcer la ré-analyse) mais l'effet de bord ne l'était pas :
+  /// pendant tout le re-parse — plusieurs dizaines de secondes sur un gros
+  /// catalogue — la liste ACTIVE disparaissait de l'accueil, de la recherche et
+  /// des fiches, alors que [reloadFromDisk] est justement écrit pour faire un
+  /// échange atomique « sans laisser d'état vide ». Avec deux listes, ça se
+  /// voyait comme « je n'ai plus qu'une liste » à chaque rechargement.
+  ///
+  /// Le drapeau dit la même chose sans rien casser : la copie reste
+  /// AFFICHABLE, mais tout ce qui décide « faut-il (ré)analyser ? » la traite
+  /// comme absente ([loadActive], [loadSecondary], [preloadOthersFromDisk],
+  /// `PlaylistFleetService._factsFor`, `main._hydrateInBoot`).
+  static final Set<String> _stale = <String>{};
+
+  /// Vrai si la copie en mémoire de ce compte est périmée (cf. [_stale]).
+  static bool isStale(String accountId) => _stale.contains(accountId);
+
+  /// §reloadScope — Nombre de listes CONFIGURÉES, publié par ceux qui les
+  /// listent déjà (boot, réconciliateur, page Comptes).
+  ///
+  /// ⚠️ Ne jamais déduire ça de [_memory] : c'est exactement le défaut corrigé.
+  /// `isMultiAccount` répondait « une seule liste » dès qu'il n'en restait
+  /// qu'une EN MÉMOIRE, et la fiche se mettait alors à fusionner les versions
+  /// de même libellé et à masquer le nom des listes — pendant un rechargement,
+  /// un déchargement, ou tant qu'une liste n'était pas revenue.
+  static int _configuredAccounts = 0;
+
+  static void reportConfiguredAccounts(int count) {
+    if (count == _configuredAccounts || count < 0) return;
+    _configuredAccounts = count;
+  }
   /// accountId → label affiché (ex: "Provider FR") — pour les badges multi-comptes.
   static final Map<String, String> _accountNames = {};
   /// Bumpe à chaque fois qu'une playlist est ajoutée/retirée de [_memory].
@@ -111,6 +146,11 @@ class ParsedPlaylistService {
     String? detail,
   }) {
     final AccountLoadState? previous = loadStates.value[accountId];
+
+    // §reloadScope — Une liste déclarée « chargée » n'est plus périmée. Le
+    // drapeau se lève ICI parce que tous les chemins de chargement passent par
+    // cet appel : aucun ne peut l'oublier.
+    if (state == AccountLoadState.loaded) _stale.remove(accountId);
 
     // Le registre des raisons ne vit que pour les états « pas en mémoire ».
     final LoadFailureKind? resolved = switch (state) {
@@ -194,8 +234,8 @@ class ParsedPlaylistService {
     void Function(double)? onProgress,
     void Function(String)? onDetail,
   }) async {
-    // 1. Déjà en mémoire
-    if (_memory.containsKey(accountId)) {
+    // 1. Déjà en mémoire — et pas périmée (§reloadScope).
+    if (_memory.containsKey(accountId) && !isStale(accountId)) {
       _accountNames[accountId] = accountName;
       setLoadState(accountId, AccountLoadState.loaded);
       onProgress?.call(1.0);
@@ -266,7 +306,7 @@ class ParsedPlaylistService {
   /// N'effectue aucun téléchargement réseau — ignore les comptes sans cache disque.
   static Future<void> preloadOthersFromDisk(List<StreamAccount> accounts) async {
     for (final acc in accounts) {
-      if (_memory.containsKey(acc.id)) continue;
+      if (_memory.containsKey(acc.id) && !isStale(acc.id)) continue;
       // §23 — Résolution du fichier source (même convention que
       // PlaylistService.pathForAccountId, dupliquée ici pour éviter un import
       // circulaire) : catalogue .json prioritaire, sinon .m3u legacy.
@@ -330,7 +370,7 @@ class ParsedPlaylistService {
     void Function(double)? onProgress,
     void Function(String)? onDetail,
   }) async {
-    if (_memory.containsKey(accountId)) {
+    if (_memory.containsKey(accountId) && !isStale(accountId)) {
       _accountNames[accountId] = accountName;
       setLoadState(accountId, AccountLoadState.loaded);
       return;
@@ -629,8 +669,14 @@ class ParsedPlaylistService {
     return null;
   }
 
-  /// Vrai si plusieurs comptes sont chargés en mémoire → afficher les badges provider.
-  static bool get isMultiAccount => _memory.length > 1;
+  /// Vrai si l'utilisateur a plusieurs listes → afficher les badges provider.
+  ///
+  /// §reloadScope — « Plusieurs listes » est une propriété de la CONFIGURATION,
+  /// pas de l'état de la mémoire à l'instant du build (cf.
+  /// [reportConfiguredAccounts]). Le repli sur [_memory] couvre le cas où
+  /// personne n'a encore publié le compte.
+  static bool get isMultiAccount =>
+      _configuredAccounts > 1 || _memory.length > 1;
 
   /// Nom affiché d'un compte (pour les badges [Provider A] dans les action sheets).
   static String? accountName(String accountId) => _accountNames[accountId];
@@ -732,14 +778,31 @@ class ParsedPlaylistService {
   /// destructrice. Au pire on relit un cache périmé pendant quelques
   /// millisecondes avant qu'il ne soit refusé ; au mieux, il sert de filet
   /// quand l'analyse du nouveau catalogue échoue.
+  /// §reloadScope — **La copie en mémoire n'est plus JETÉE ici.** Elle l'était,
+  /// et c'est ce qui faisait disparaître la liste active de l'accueil, de la
+  /// recherche et des fiches pendant tout le re-parse qui suit (des dizaines de
+  /// secondes sur un gros catalogue) — alors que [reloadFromDisk] est écrit
+  /// pour l'échanger d'un bloc, sans état vide. Sur un appareil à deux listes,
+  /// ça se lisait comme « je n'ai plus qu'une liste » à chaque rechargement.
+  ///
+  /// On pose donc un drapeau : la copie reste AFFICHABLE, mais tout ce qui
+  /// décide « faut-il (ré)analyser ? » la considère absente (cf. [_stale]).
   static void markStale(String accountId) {
-    final bool had = _memory.remove(accountId) != null;
-    setLoadState(accountId, AccountLoadState.notLoaded,
-        kind: LoadFailureKind.never,
-        detail: 'source renouvelée, ré-analyse à faire');
-    if (had) version.value++;
-    debugPrint('♻️ §cacheKeep : mémoire périmée, cache disque CONSERVÉ — '
-        '$accountId');
+    final bool inMemory = _memory.containsKey(accountId);
+    if (!inMemory) {
+      // Rien à afficher : l'état « pas chargée » reste la vérité, avec sa
+      // raison.
+      setLoadState(accountId, AccountLoadState.notLoaded,
+          kind: LoadFailureKind.never,
+          detail: 'source renouvelée, analyse à faire');
+    }
+    // ⚠️ APRÈS le `setLoadState` : déclarer une liste « chargée » lève le
+    // drapeau (cf. [setLoadState]), le poser avant reviendrait à l'effacer.
+    _stale.add(accountId);
+    // ⚠️ Le message tient sur UNE ligne : le cliquet §l10nAll ne sait
+    // reconnaître un diagnostic que sur la ligne qui porte `debugPrint(`.
+    final String suite = inMemory ? ' (elle reste affichable)' : '';
+    debugPrint('♻️ §reloadScope : $accountId — copie mémoire périmée$suite, cache disque CONSERVÉ');
   }
 
   /// Oublie **tout** d'un compte : mémoire ET cache disque.
@@ -754,6 +817,7 @@ class ParsedPlaylistService {
   /// perdu dès que l'analyse échoue.
   static void forget(String accountId) {
     _memory.remove(accountId);
+    _stale.remove(accountId);
     invalidateCountsCache(accountId);
     setLoadState(accountId, AccountLoadState.notLoaded,
         kind: LoadFailureKind.cacheGone, detail: 'cache effacé volontairement');
@@ -776,6 +840,7 @@ class ParsedPlaylistService {
   /// Vide entièrement la mémoire (ex: déconnexion globale).
   static void clear() {
     _memory.clear();
+    _stale.clear();
     _accountNames.clear();
     _lastAccess.clear();
     _diskCounts.clear();
@@ -794,6 +859,7 @@ class ParsedPlaylistService {
   static void unloadSecondary(String accountId) {
     if (!_memory.containsKey(accountId)) return;
     _memory.remove(accountId);
+    _stale.remove(accountId);
     _lastAccess.remove(accountId);
     // §fleetState — `unloadedIdle` : la liste est SUR DISQUE, elle revient en
     // ~50 ms. Afficher « NON CHARGÉ » ici faisait passer un fonctionnement

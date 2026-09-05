@@ -43,6 +43,24 @@ abstract final class PlaylistFleetService {
   /// l'utilisateur de toutes ses autres listes.
   static const Duration defaultPerAccount = Duration(seconds: 25);
 
+  /// §reloadScope — Plafond quand il faut **RÉ-ANALYSER** le catalogue, et non
+  /// juste relire le cache.
+  ///
+  /// ⚠️ Le défaut corrigé : les deux cas partageaient les 25 s ci-dessus. Or
+  /// 25 s est calibré pour une lecture de cache (~50 ms à quelques secondes),
+  /// pas pour une analyse complète — mesurée à **46 s** sur l'appareil pour une
+  /// liste de 114 767 entrées (§bootHydrate). Conséquence : après toute
+  /// invalidation de cache — un changement de `schemaVersion` en tête, c'est-à-
+  /// dire CHAQUE mise à jour qui touche au parsing — les grosses listes étaient
+  /// déclarées « en échec » à 25 s, donc absentes de l'accueil, de la recherche
+  /// et des fiches, sans qu'aucun bouton de l'application ne puisse les
+  /// ramener (le ↻ ne s'occupait que de la liste principale).
+  ///
+  /// Trois minutes laissent la place à un appareil trois fois plus lent que
+  /// celui de la mesure, tout en gardant une borne : un parseur qui part en
+  /// boucle ne retient pas la flotte pour toujours.
+  static const Duration defaultReparse = Duration(minutes: 3);
+
   /// Passe de réconciliation.
   ///
   /// [reason] apparaît dans le journal (`boot`, `accueil`, `comptes`,
@@ -56,6 +74,7 @@ abstract final class PlaylistFleetService {
     required String reason,
     Duration? budget,
     Duration perAccount = defaultPerAccount,
+    Duration reparse = defaultReparse,
     bool allowNetwork = true,
     bool allowReparse = true,
     void Function(double)? onProgress,
@@ -70,6 +89,7 @@ abstract final class PlaylistFleetService {
       reason: reason,
       budget: budget,
       perAccount: perAccount,
+      reparse: reparse,
       allowNetwork: allowNetwork,
       allowReparse: allowReparse,
       onProgress: onProgress,
@@ -83,6 +103,7 @@ abstract final class PlaylistFleetService {
     required String reason,
     required Duration? budget,
     required Duration perAccount,
+    required Duration reparse,
     required bool allowNetwork,
     required bool allowReparse,
     void Function(double)? onProgress,
@@ -90,6 +111,11 @@ abstract final class PlaylistFleetService {
   }) async {
     final List<StreamAccount> accounts =
         await StreamAccountService.listAccounts();
+    // §reloadScope — « L'utilisateur a-t-il plusieurs listes ? » se répond avec
+    // la CONFIGURATION, jamais avec le contenu de la mémoire (cf.
+    // `ParsedPlaylistService.isMultiAccount`). Cette passe est le point de
+    // passage le plus régulier qui connaisse la réponse.
+    ParsedPlaylistService.reportConfiguredAccounts(accounts.length);
     if (accounts.isEmpty) {
       return const FleetReport(total: 0);
     }
@@ -146,7 +172,9 @@ abstract final class PlaylistFleetService {
               acc.id,
               acc.label,
               facts.sourcePath!,
-            ).timeout(perAccount);
+              // §reloadScope — Relire un cache et ré-analyser un catalogue ne
+              // se mesurent pas à la même échelle (cf. [defaultReparse]).
+            ).timeout(step == FleetStep.reparse ? reparse : perAccount);
             if (step == FleetStep.loadCache) {
               fromCache++;
             } else {
@@ -176,7 +204,9 @@ abstract final class PlaylistFleetService {
               acc.id,
               acc.label,
               res.path!,
-            ).timeout(perAccount);
+              // §reloadScope — Un catalogue qui vient d'être téléchargé est
+              // TOUJOURS à analyser en entier : c'est le budget de ré-analyse.
+            ).timeout(reparse);
           case FleetStep.fail:
             final LoadFailureKind kind = allowNetwork
                 ? LoadFailureKind.noSource
@@ -252,9 +282,11 @@ abstract final class PlaylistFleetService {
   /// Les faits observables pour un compte, au moment de la décision.
   static Future<_AccountFacts> _factsFor(StreamAccount acc) async {
     final int inMem = ParsedPlaylistService.entriesCountOf(acc.id);
-    final bool inMemory =
-        ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded ||
-            inMem > 0;
+    // §reloadScope — Une copie marquée périmée est affichable mais plus à jour :
+    // pour DÉCIDER du travail à faire, elle ne compte pas comme présente.
+    final bool inMemory = !ParsedPlaylistService.isStale(acc.id) &&
+        (ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded ||
+            inMem > 0);
 
     // §23 — Même convention que `PlaylistService.pathForAccountId` : catalogue
     // JSON prioritaire, sinon M3U legacy.

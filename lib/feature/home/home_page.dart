@@ -32,7 +32,7 @@ import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/confirm_or_undo.dart';
-import 'package:aetherStream/widgets/confirm_reload_dialog.dart';
+import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/measured_quality_badge.dart';
@@ -488,50 +488,44 @@ class _HomePageState extends State<HomePage> with RouteAware {
     );
   }
 
-  /// §refreshHome — Re-télécharge la liste du compte actif (pipeline §xtreamApi :
-  /// JSON API puis fallback get.php) et la re-parse. Tient l'utilisateur au
-  /// courant via snackbars succès/erreur.
+  /// §reloadScope — Recharge **toutes** les listes, pas seulement la
+  /// principale.
   ///
-  /// §reloadKeep — Passe par `PlaylistReloadService.reloadAccount`, le MÊME
-  /// chemin que « Recharger » d'une carte : plus de `deleteForAccountId` à la
-  /// main avant le téléchargement, donc un échec réseau laisse l'ancienne liste
-  /// en place au lieu de vider l'accueil. Même confirmation si la liste a moins
-  /// de 24 h, même anti-double-tap ([_refreshing]).
-  Future<void> _refreshActivePlaylist() async {
+  /// **Ce que ça corrige.** Ce bouton ne rafraîchissait que le compte actif, et
+  /// rien à l'écran ne le disait : les autres listes restaient telles quelles,
+  /// et une liste absente de la mémoire — parce qu'une analyse avait échoué,
+  /// parce qu'un cache avait été invalidé par une mise à jour — n'avait AUCUN
+  /// moyen de revenir depuis l'accueil. Elle disparaissait alors des fiches
+  /// (« je n'ai plus qu'une liste dans les qualités »), sans message.
+  ///
+  /// Le geste est celui de « Tout recharger » de la page Comptes, au mot près :
+  /// une seule confirmation qui nomme les listes déjà à jour, une progression
+  /// liste par liste, un bilan qui NOMME les échecs (`showReloadAllFlow`).
+  Future<void> _reloadAllPlaylists() async {
     if (_refreshing) return;
-    final account = await StreamAccountService.getAccount(_activeAccountId);
-    if (!mounted) return;
-    if (account == null) {
-      AppSnackBar.show(context, 'Aucun compte actif à recharger');
-      return;
-    }
-
-    final Duration? age = await PlaylistReloadService.cacheAge(account.id);
-    if (!mounted) return;
-    if (PlaylistReloadService.shouldConfirm(age)) {
-      final bool? ok = await showConfirmReloadDialog(
-        context,
-        accountLabel: account.label,
-        age: age!,
-      );
-      if (ok != true || !mounted) return;
-    }
-
-    setState(() => _refreshing = true);
     final messenger = ScaffoldMessenger.of(context);
-    AppSnackBar.show(context, 'Rafraîchissement de la playlist…',
-        duration: const Duration(seconds: 4));
+    setState(() => _refreshing = true);
     try {
-      // Le compte actif = le compte principal → chemin `downloadCurrentM3U()`
-      // (messages d'erreur précis). `reloadFromDisk` swap la mémoire en une
-      // frame et bumpe `ParsedPlaylistService.version` → la home rebuild seule.
-      await PlaylistReloadService.reloadAccount(account, isPriority: true);
+      final List<StreamAccount> accounts =
+          await StreamAccountService.listAccounts();
       if (!mounted) return;
+      if (accounts.isEmpty) {
+        AppSnackBar.show(context, context.l10n.reloadAllNoAccounts);
+        return;
+      }
+      final ReloadBatchResult? result = await showReloadAllFlow(
+        context,
+        accounts: accounts,
+        // Le compte actif garde le chemin de téléchargement « prioritaire »,
+        // qui produit les messages d'erreur précis.
+        priorityAccountId: _activeAccountId,
+      );
+      if (result == null || !mounted) return; // annulé
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          content: Text('✅ Playlist rafraîchie'),
-          duration: Duration(seconds: 2),
+        ..showSnackBar(SnackBar(
+          content: Text(result.summary),
+          duration: Duration(seconds: result.allOk ? 3 : 6),
         ));
     } catch (e) {
       if (!mounted) return;
@@ -582,7 +576,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
                 // a quitté le bandeau pour venir ici : même information, zéro
                 // hauteur prise à l'accueil.
                 const SecondaryAccountsCounter(),
-                // §refreshHome — Rafraîchissement du compte actif sans passer
+                // §reloadScope — Rafraîchissement de TOUTES les listes sans passer
                 // par Paramètres → Comptes IPTV.
                 IconButton(
                   icon: _refreshing
@@ -592,9 +586,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.refresh),
-                  tooltip: 'Recharger la playlist',
+                  tooltip: context.l10n.reloadAllTooltip,
                   // §reloadKeep — désactivé pendant le rechargement (anti-double-tap).
-                  onPressed: _refreshing ? null : _refreshActivePlaylist,
+                  onPressed: _refreshing ? null : _reloadAllPlaylists,
                 ),
                 if (!PlatformTv.isTv)
                   IconButton(

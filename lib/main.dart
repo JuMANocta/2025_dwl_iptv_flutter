@@ -436,6 +436,10 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
     BootStatus.set('// vérification du compte…');
     final accounts = await StreamAccountService.listAccounts();
+    // §reloadScope — Publié AVANT tout affichage : la fiche d'un film demande
+    // « y a-t-il plusieurs listes ? » dès le premier build, et la réponse ne
+    // doit pas dépendre de ce qui est déjà rentré en mémoire.
+    ParsedPlaylistService.reportConfiguredAccounts(accounts.length);
     if (accounts.isEmpty) return null;
 
     // §acctPurge — Ménage des fichiers sans propriétaire, en tâche de fond.
@@ -632,8 +636,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // sauterait pour toujours.
     final List<StreamAccount> pending = <StreamAccount>[];
     for (final acc in others) {
+      // §reloadScope — Une copie marquée périmée est encore affichable, mais
+      // elle n'est pas « prête » : sans ce test, le boot sauterait la
+      // ré-analyse d'une liste dont la source vient d'être renouvelée.
       final bool loaded =
-          ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded;
+          ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded &&
+              !ParsedPlaylistService.isStale(acc.id);
       if (!loaded || await PlaylistService.hasPendingWork(acc)) {
         pending.add(acc);
       }

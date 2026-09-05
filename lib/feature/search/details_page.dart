@@ -29,6 +29,7 @@ import '../../widgets/tv/focusable_card.dart';
 import '../../widgets/tv/section_beacon.dart';
 import 'actor_details_page.dart';
 import 'm3u_filter.dart';
+import 'version_dedup.dart';
 
 Color _qualityColor(String? quality) {
   return switch (quality) {
@@ -2266,18 +2267,11 @@ class _DetailsPageState extends State<DetailsPage> {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  static List<M3uEntry> _deduplicateVersions(List<M3uEntry> versions) {
-    final seen    = <String>{};
-    final result  = <M3uEntry>[];
-    final isMulti = ParsedPlaylistService.isMultiAccount;
-    for (int i = 0; i < versions.length; i++) {
-      final v         = versions[i];
-      final qualLabel = _buildQualityLabel(v, i);
-      final key = isMulti ? '$qualLabel|${v.accountId}' : qualLabel;
-      if (seen.add(key)) result.add(v);
-    }
-    return result;
-  }
+  /// §reloadScope — La liste d'origine fait TOUJOURS partie de la clé (cf.
+  /// `dedupeVersions`) : elle en sortait dès qu'une seule liste était chargée
+  /// en mémoire, et des versions disparaissaient de la fiche.
+  static List<M3uEntry> _deduplicateVersions(List<M3uEntry> versions) =>
+      dedupeVersions(versions, _buildQualityLabel);
 
   String _qualityLabel(M3uEntry v, int index) {
     final base = _buildQualityLabel(v, index);

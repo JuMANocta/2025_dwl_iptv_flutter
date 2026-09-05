@@ -386,7 +386,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themeSettingsTitle => 'Appearance';
 
   @override
-  String get tmdbKeyTitle => 'TMDB API key';
+  String get tmdbKeyTitle => 'TMDB posters & info';
 
   @override
   String get xmltvTitle => 'Channel guide';
@@ -426,10 +426,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAccountsSub => 'Providers, playlist stats & reload';
 
   @override
-  String get settingsTmdbKey => 'TMDB API key';
+  String get settingsTmdbKey => 'TMDB posters & info';
 
   @override
-  String get settingsTmdbKeySub => 'Posters, overviews, cast (optional)';
+  String get settingsTmdbKeySub => 'Posters, overviews, cast — optional';
 
   @override
   String get settingsXmltv => 'Channel guide';
@@ -716,11 +716,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tmdbPostersFirstOn =>
-      'In the carousel and favourites, the TMDB poster replaces the list\'s';
+      'Carousel and favourites use the TMDB poster.';
 
   @override
   String get tmdbPostersFirstOff =>
-      'Posters come from your lists; TMDB fills in the missing ones';
+      'Carousel and favourites keep your lists\' poster.';
 
   @override
   String get tmdbMemoryTitle => 'Stored data';
@@ -773,4 +773,51 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get tmdbMemorySortingCleared =>
       'Sorting cleared. It will rebuild as you browse the home.';
+
+  @override
+  String get reloadAllTitle => 'Reload all lists?';
+
+  @override
+  String reloadAllBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'All $count lists will be downloaded again from their servers. This can take several minutes.',
+      one:
+          'The list will be downloaded again from its server. This can take several minutes.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String reloadAllBodyRecent(int count, String names) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'All $count lists will be downloaded again from their servers.',
+      one: 'The list will be downloaded again from its server.',
+    );
+    return '$_temp0\n\nAlready up to date (less than 24 h): $names.\n\nThis can take several minutes.';
+  }
+
+  @override
+  String get reloadAllConfirm => 'Reload all';
+
+  @override
+  String get reloadAllProgressTitle => 'Reloading';
+
+  @override
+  String get reloadAllPreparing => 'Preparing…';
+
+  @override
+  String reloadAllStep(int index, int total, String label) {
+    return 'List $index/$total — $label';
+  }
+
+  @override
+  String get reloadAllTooltip => 'Reload all lists';
+
+  @override
+  String get reloadAllNoAccounts => 'No list to reload';
 }

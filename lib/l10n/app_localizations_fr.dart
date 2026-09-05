@@ -391,7 +391,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get themeSettingsTitle => 'Personnalisation';
 
   @override
-  String get tmdbKeyTitle => 'Clé API TMDB';
+  String get tmdbKeyTitle => 'Affiches et infos TMDB';
 
   @override
   String get xmltvTitle => 'Guide des chaînes';
@@ -431,10 +431,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get settingsAccountsSub => 'Providers, stats playlist & recharger';
 
   @override
-  String get settingsTmdbKey => 'Clé API TMDB';
+  String get settingsTmdbKey => 'Affiches et infos TMDB';
 
   @override
-  String get settingsTmdbKeySub => 'Affiches, synopsis, casting (optionnel)';
+  String get settingsTmdbKeySub => 'Affiches, résumés, casting — optionnel';
 
   @override
   String get settingsXmltv => 'Guide des chaînes';
@@ -726,11 +726,11 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get tmdbPostersFirstOn =>
-      'Sur le carrousel et dans les favoris, l\'affiche TMDB remplace celle de la liste';
+      'Le carrousel et les favoris prennent l\'affiche TMDB.';
 
   @override
   String get tmdbPostersFirstOff =>
-      'Les affiches viennent de tes listes ; TMDB complète celles qui manquent';
+      'Le carrousel et les favoris gardent l\'affiche de tes listes.';
 
   @override
   String get tmdbMemoryTitle => 'Données mémorisées';
@@ -784,4 +784,52 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get tmdbMemorySortingCleared =>
       'Rangement oublié. Il se refera en parcourant l\'accueil.';
+
+  @override
+  String get reloadAllTitle => 'Tout recharger ?';
+
+  @override
+  String reloadAllBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Les $count listes vont être retéléchargées depuis leurs serveurs. Cela peut prendre plusieurs minutes.',
+      one:
+          'La liste va être retéléchargée depuis son serveur. Cela peut prendre plusieurs minutes.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String reloadAllBodyRecent(int count, String names) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Les $count listes vont être retéléchargées depuis leurs serveurs.',
+      one: 'La liste va être retéléchargée depuis son serveur.',
+    );
+    return '$_temp0\n\nDéjà à jour (moins de 24 h) : $names.\n\nCela peut prendre plusieurs minutes.';
+  }
+
+  @override
+  String get reloadAllConfirm => 'Tout recharger';
+
+  @override
+  String get reloadAllProgressTitle => 'Rechargement en cours';
+
+  @override
+  String get reloadAllPreparing => 'Préparation…';
+
+  @override
+  String reloadAllStep(int index, int total, String label) {
+    return 'Liste $index/$total — $label';
+  }
+
+  @override
+  String get reloadAllTooltip => 'Recharger toutes les listes';
+
+  @override
+  String get reloadAllNoAccounts => 'Aucune liste à recharger';
 }

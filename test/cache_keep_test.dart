@@ -205,7 +205,7 @@ void main() {
       expect(relu!.entries.length, 9);
     });
 
-    test('markStale vide la mémoire mais CONSERVE le fichier', () async {
+    test('markStale marque périmé et CONSERVE le fichier', () async {
       final src = _source('compte1');
       await ParsedPlaylistService.saveToDiskForTest('compte1', _playlist());
       final cache = await _cacheFile('compte1');
@@ -215,7 +215,10 @@ void main() {
       expect(cache.existsSync(), isTrue,
           reason: 'un téléchargeur produit un fichier, il ne décide pas du '
               'cycle de vie du cache analysé');
-      expect(ParsedPlaylistService.entriesCountOf('compte1'), 0);
+      // §reloadScope — Elle ne VIDE plus la mémoire : la copie reste
+      // affichable pendant le re-parse qui suit. Ce qui compte ici, c'est que
+      // la péremption soit SIGNALÉE (cf. `test/reload_scope_test.dart`).
+      expect(ParsedPlaylistService.isStale('compte1'), isTrue);
       final relu = await ParsedPlaylistService.loadFromDiskForTest(
           'compte1', src.path);
       expect(relu, isNotNull);

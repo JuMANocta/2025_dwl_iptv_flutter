@@ -4,7 +4,7 @@
 # Ce fichier ne doit JAMAIS remonter : chaque tranche de
 # traduction l'abaisse. Un total qui augmente = une régression.
 #
-# TOTAL : 575 lignes dans 81 fichiers.
+# TOTAL : 568 lignes dans 81 fichiers.
 
 lib/core/diagnostics/jank_meter.dart 2
 lib/core/diagnostics/log_buffer.dart 6
@@ -36,7 +36,7 @@ lib/data/services/visual_language_service.dart 3
 lib/data/services/web_console_service.dart 2
 lib/data/services/xtream_api_service.dart 9
 lib/data/services/xtream_catalog_service.dart 10
-lib/feature/accounts/accounts_page.dart 38
+lib/feature/accounts/accounts_page.dart 34
 lib/feature/accounts/expiration_alert_dialog.dart 6
 lib/feature/boot/boot_screen.dart 8
 lib/feature/downloads/downloads_page.dart 5
@@ -44,7 +44,7 @@ lib/feature/downloads/logic/download_initiator.dart 3
 lib/feature/downloads/widgets/download_task_tile.dart 6
 lib/feature/home/home_card.dart 5
 lib/feature/home/home_category.dart 1
-lib/feature/home/home_page.dart 17
+lib/feature/home/home_page.dart 14
 lib/feature/home/home_search.dart 13
 lib/feature/onboarding/onboarding_page.dart 10
 lib/feature/player/cast_policy.dart 21

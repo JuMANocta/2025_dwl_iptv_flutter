@@ -110,7 +110,7 @@
   "optimizationTitle": "Optimization",
   "regionFilterTitle": "Languages / regions",
   "themeSettingsTitle": "Appearance",
-  "tmdbKeyTitle": "TMDB API key",
+  "tmdbKeyTitle": "TMDB posters & info",
   "xmltvTitle": "Channel guide",
   "webConsoleTitle": "Web console",
   "navHome": "Home",
@@ -141,11 +141,11 @@
   "@settingsAccountsSub": {
     "description": "Settings tile subtitle"
   },
-  "settingsTmdbKey": "TMDB API key",
+  "settingsTmdbKey": "TMDB posters & info",
   "@settingsTmdbKey": {
     "description": "Settings tile title"
   },
-  "settingsTmdbKeySub": "Posters, overviews, cast (optional)",
+  "settingsTmdbKeySub": "Posters, overviews, cast — optional",
   "@settingsTmdbKeySub": {
     "description": "Settings tile subtitle"
   },
@@ -534,11 +534,11 @@
   "@tmdbPostersFirstTitle": {
     "description": "Posters-first switch title"
   },
-  "tmdbPostersFirstOn": "In the carousel and favourites, the TMDB poster replaces the list's",
+  "tmdbPostersFirstOn": "Carousel and favourites use the TMDB poster.",
   "@tmdbPostersFirstOn": {
     "description": "Posters-first switch subtitle, on"
   },
-  "tmdbPostersFirstOff": "Posters come from your lists; TMDB fills in the missing ones",
+  "tmdbPostersFirstOff": "Carousel and favourites keep your lists' poster.",
   "@tmdbPostersFirstOff": {
     "description": "Posters-first switch subtitle, off"
   },
@@ -595,5 +595,65 @@
   "tmdbMemorySortingCleared": "Sorting cleared. It will rebuild as you browse the home.",
   "@tmdbMemorySortingCleared": {
     "description": "Snackbar after clearing inferred categories"
+  },
+  "reloadAllTitle": "Reload all lists?",
+  "@reloadAllTitle": {
+    "description": "Title of the confirmation dialog before reloading every list"
+  },
+  "reloadAllBody": "{count, plural, =1{The list will be downloaded again from its server. This can take several minutes.} other{All {count} lists will be downloaded again from their servers. This can take several minutes.}}",
+  "@reloadAllBody": {
+    "description": "Body of the reload-all confirmation, nothing is recent",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reloadAllBodyRecent": "{count, plural, =1{The list will be downloaded again from its server.}other{All {count} lists will be downloaded again from their servers.}}\n\nAlready up to date (less than 24 h): {names}.\n\nThis can take several minutes.",
+  "@reloadAllBodyRecent": {
+    "description": "Body of the reload-all confirmation, naming the lists downloaded recently",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "reloadAllConfirm": "Reload all",
+  "@reloadAllConfirm": {
+    "description": "Confirm button of the reload-all dialog"
+  },
+  "reloadAllProgressTitle": "Reloading",
+  "@reloadAllProgressTitle": {
+    "description": "Title of the progress dialog while every list is reloaded"
+  },
+  "reloadAllPreparing": "Preparing…",
+  "@reloadAllPreparing": {
+    "description": "First line of the progress dialog, before the first list starts"
+  },
+  "reloadAllStep": "List {index}/{total} — {label}",
+  "@reloadAllStep": {
+    "description": "Progress line naming the list being reloaded",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "reloadAllTooltip": "Reload all lists",
+  "@reloadAllTooltip": {
+    "description": "Tooltip of the reload button in the home app bar"
+  },
+  "reloadAllNoAccounts": "No list to reload",
+  "@reloadAllNoAccounts": {
+    "description": "Snackbar when the reload button is pressed without any account"
   }
 }

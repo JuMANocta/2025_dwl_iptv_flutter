@@ -2,7 +2,7 @@ name: aetherStream
 description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
-version: 1.18.5+138
+version: 1.18.6+139
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
