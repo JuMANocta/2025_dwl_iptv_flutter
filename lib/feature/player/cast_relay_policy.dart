@@ -119,6 +119,10 @@ String? castRelayBlockerMessage(CastRelayBlocker blocker) {
 typedef CastRelayConsent = ({
   String what,
   List<String> costs,
+
+  /// §castAwake — Ce que l'utilisateur peut faire de son téléphone pendant
+  /// la diffusion (éteindre l'écran), maintenant que le service la tient.
+  String awake,
   List<String> limits,
   String confirmLabel,
   String cancelLabel,
@@ -130,19 +134,36 @@ typedef CastRelayConsent = ({
 const int kCastLowBatteryPercent = 15;
 
 /// La note batterie du consentement : un fait utile plutôt qu'une peur.
+///
+/// **Brancher est toujours conseillé** (demande utilisateur, 2026-09-05) :
+/// la conversion fait tourner décodeur et encodeur pendant tout le film, et
+/// un téléphone branché n'entre jamais en mode Sommeil. Deux registres, à ne
+/// pas confondre : le **conseil** (« si tu peux ») tant que la batterie
+/// tient, l'**alerte** (« la diffusion en dépend ») sous le seuil.
 String castRelayBatteryNote({int? percent, bool? charging}) {
   if (charging == true) {
     return 'Le téléphone est branché, parfait pour un film.';
   }
   if (percent == null) {
-    return "Garde l'appli ouverte, ça consomme un peu de batterie.";
+    return 'Branche le téléphone si tu peux : la conversion consomme beaucoup '
+        'de batterie.';
   }
   if (percent < kCastLowBatteryPercent) {
     return 'Batterie à $percent % — branche le téléphone, la diffusion en '
         'dépend.';
   }
-  return "Batterie à $percent %. Garde l'appli ouverte.";
+  return 'Batterie à $percent %. Branche le téléphone si tu peux, la '
+      'conversion consomme beaucoup.';
 }
+
+/// §castAwake — L'écran peut s'éteindre : le service de premier plan tient un
+/// verrou CPU pendant toute la diffusion (`AetherCastService`). Avant lui, la
+/// note disait « garde l'appli ouverte » — et l'écran qui s'éteignait tuait
+/// la diffusion (constaté le 2026-09-05). Le dire, c'est aussi permettre à
+/// l'utilisateur de poser son téléphone au lieu de le tenir allumé deux
+/// heures.
+const String kCastRelayAwakeNote =
+    "Tu peux éteindre l'écran : la diffusion continue en arrière-plan.";
 
 /// §castBattery — L'ALERTE pendant la diffusion : `null` tant que tout va
 /// bien ; un texte (à afficher en rouge, écran ET notification) sous
@@ -173,6 +194,7 @@ CastRelayConsent castRelayConsent({
     what: 'Ce téléviseur ne lit pas le son de ce film. Le téléphone peut '
         "l'adapter pendant la diffusion pour $device.",
     costs: [castRelayBatteryNote(percent: batteryPercent, charging: charging)],
+    awake: kCastRelayAwakeNote,
     // §castResume — La conversion part désormais de la position courante :
     // il n'y a plus de « toujours depuis le début » à annoncer.
     limits: const [],

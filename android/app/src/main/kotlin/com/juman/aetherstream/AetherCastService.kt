@@ -10,8 +10,10 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import java.net.HttpURLConnection
 import java.net.URL
@@ -35,6 +37,21 @@ import java.net.URL
  * ⚠️ **`onTaskRemoved`** : balayer l'app hors des Récents détruit le moteur
  * Flutter et la session avec — le téléviseur continue seul, la notification
  * doit disparaître plutôt que d'annoncer une commande qui n'existe plus.
+ *
+ * **§castAwake — un service de premier plan ne garde PAS le CPU éveillé.** Il
+ * garde le processus : Android ne le tue pas pour récupérer la mémoire. Mais
+ * écran éteint, sans verrou, le noyau suspend le téléphone dès que plus rien
+ * ne le retient — et avec lui la conversion Media3, le serveur local qui sert
+ * le film au téléviseur, et le battement de cœur (5 s) de la session Cast.
+ * Constaté le 2026-09-05 : l'écran s'éteint, la diffusion meurt. C'est
+ * exactement ce contre quoi ExoPlayer tient `WAKE_MODE_NETWORK` pendant une
+ * lecture audio en arrière-plan ; ici la lecture est sur la télé, mais le
+ * téléphone est le tuyau. D'où un `PARTIAL_WAKE_LOCK` + un `WifiLock`, pris
+ * quand le service démarre et rendus quand il meurt — la durée de vie du
+ * service EST celle de la diffusion (`CastNotificationBridge` le suit).
+ * Un service de premier plan est justement ce qui rend ces verrous honorés
+ * pendant le mode Sommeil (Doze) : ils sont ignorés pour tout processus
+ * moins prioritaire.
  */
 class AetherCastService : Service() {
 
@@ -96,6 +113,20 @@ class AetherCastService : Service() {
     /// téléphone porte la diffusion, s'il s'éteint tout s'arrête.
     private var lowBattery: Boolean = false
 
+    /// §castAwake — Verrou CPU : sans lui, écran éteint, le téléphone se
+    /// suspend et la diffusion avec. Non compté par référence : un seul
+    /// `acquire` quel que soit le nombre de mises à jour de la notification,
+    /// un seul `release` à la mort du service.
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    /// §castAwake — Verrou WiFi. ⚠️ Depuis Android 14, `HIGH_PERF` vaut
+    /// `LOW_LATENCY`, qui n'agit qu'app au premier plan et écran allumé : il
+    /// ne garantit donc rien écran éteint sur un appareil récent. On le tient
+    /// quand même — c'est gratuit, et il aide sur les versions antérieures,
+    /// où la radio pouvait ralentir écran éteint. Le verrou qui compte
+    /// vraiment est celui du CPU.
+    private var wifiLock: WifiManager.WifiLock? = null
+
     override fun onCreate() {
         super.onCreate()
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -128,8 +159,66 @@ class AetherCastService : Service() {
             // pas se produire ; s'il arrive, la diffusion continue sans
             // notification, comme §dlNotif.
             stopSelf()
+            return START_NOT_STICKY
         }
+        // §castAwake — APRÈS `startForeground` : c'est le statut de premier
+        // plan qui rend le verrou honoré en mode Sommeil. Idempotent : chaque
+        // mise à jour de la notification repasse ici.
+        acquireLocks()
         return START_NOT_STICKY
+    }
+
+    // ── §castAwake ────────────────────────────────────────────────────────
+
+    private fun acquireLocks() {
+        try {
+            if (wakeLock == null) {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                wakeLock = pm.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "AetherStream:cast"
+                ).apply { setReferenceCounted(false) }
+            }
+            // ⚠️ Sans délai : une diffusion dure un film entier, et le verrou
+            // est rendu par `onDestroy`, dont l'appel est garanti par
+            // `stopService` (le pont Dart) comme par `onTaskRemoved`.
+            wakeLock?.takeIf { !it.isHeld }?.acquire()
+        } catch (e: Exception) {
+            // Sans permission ou sans PowerManager : la diffusion tourne quand
+            // même, écran allumé. Jamais une exception jusqu'à Dart.
+            wakeLock = null
+        }
+        try {
+            if (wifiLock == null) {
+                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                @Suppress("DEPRECATION")
+                val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                } else {
+                    WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                }
+                wifiLock = wm.createWifiLock(mode, "AetherStream:cast")
+                    .apply { setReferenceCounted(false) }
+            }
+            wifiLock?.takeIf { !it.isHeld }?.acquire()
+        } catch (e: Exception) {
+            wifiLock = null
+        }
+    }
+
+    private fun releaseLocks() {
+        try {
+            wakeLock?.takeIf { it.isHeld }?.release()
+        } catch (e: Exception) {
+            // Déjà rendu : rien à faire.
+        }
+        wakeLock = null
+        try {
+            wifiLock?.takeIf { it.isHeld }?.release()
+        } catch (e: Exception) {
+            // Idem.
+        }
+        wifiLock = null
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
@@ -145,6 +234,9 @@ class AetherCastService : Service() {
 
     override fun onDestroy() {
         destroyed = true
+        // §castAwake — Le verrou meurt avec le service : diffusion arrêtée,
+        // le téléphone a le droit de dormir.
+        releaseLocks()
         // Filet : si un thread d'affiche a reposé la notification juste
         // avant, elle n'appartient plus à personne — on l'enlève.
         notificationManager.cancel(ONGOING_NOTIFICATION_ID)

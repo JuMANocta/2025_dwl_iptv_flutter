@@ -161,15 +161,23 @@ void main() {
       expect(castBatteryWarning(percent: 9, charging: true), isNull);
     });
 
-    test('inconnue : phrase générique, pas d\'alerte', () {
-      expect(castRelayBatteryNote(), contains('un peu'));
+    // Demande utilisateur (2026-09-05) : « avertir le client que charger
+    // c'est mieux » — le conseil est TOUJOURS là hors charge. Ce qui change
+    // sous le seuil, c'est le registre : conseil (« si tu peux ») ou alerte
+    // (« la diffusion en dépend »).
+    test('inconnue : conseil de brancher, pas d\'alerte', () {
+      final String n = castRelayBatteryNote();
+      expect(n, contains('Branche le téléphone'));
+      expect(n, contains('si tu peux'));
+      expect(n, isNot(contains('dépend')));
       expect(castBatteryWarning(), isNull);
     });
 
-    test('au seuil (15 %) : le chiffre, sans alarme', () {
+    test('au seuil (15 %) : le chiffre + le conseil, sans alarme', () {
       final String n = castRelayBatteryNote(percent: 15, charging: false);
       expect(n, contains('15 %'));
-      expect(n, isNot(contains('branche')));
+      expect(n, contains('si tu peux'));
+      expect(n, isNot(contains('dépend')));
       expect(castBatteryWarning(percent: 15, charging: false), isNull);
     });
 
@@ -177,6 +185,8 @@ void main() {
       final String n = castRelayBatteryNote(percent: 14, charging: false);
       expect(n, contains('14 %'));
       expect(n, contains('branche'));
+      expect(n, contains('dépend'));
+      expect(n, isNot(contains('si tu peux')));
       final String? w = castBatteryWarning(percent: 14, charging: false);
       expect(w, isNotNull);
       expect(w, contains('14 %'));
@@ -185,6 +195,18 @@ void main() {
     test('le consentement porte la note batterie réelle', () {
       final c = castRelayConsent(deviceName: 'télé', batteryPercent: 42);
       expect(c.costs.single, contains('42 %'));
+    });
+
+    // §castAwake — la note « garde l'appli ouverte » a disparu : le service
+    // tient un verrou CPU, l'écran peut s'éteindre. Le consentement doit le
+    // dire, et ne plus jamais demander de garder l'écran allumé.
+    test('§castAwake — le consentement dit que l\'écran peut s\'éteindre', () {
+      final c = castRelayConsent(deviceName: 'télé', batteryPercent: 42);
+      expect(c.awake, contains('éteindre l\'écran'));
+      expect(c.awake, contains('continue'));
+      for (final String line in [c.what, ...c.costs, c.awake]) {
+        expect(line, isNot(contains('appli ouverte')));
+      }
     });
   });
 

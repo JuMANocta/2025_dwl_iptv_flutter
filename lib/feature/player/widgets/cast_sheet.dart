@@ -187,6 +187,12 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
         color: lowBattery ? kError : kWarning,
         text: c.costs.first,
       ),
+      // §castAwake — L'écran peut s'éteindre : c'est nouveau, et c'est ce
+      // qui permet de poser le téléphone. Ton neutre, pas une alerte.
+      _StatusLine(
+        icon: Icons.screen_lock_portrait_rounded,
+        text: c.awake,
+      ),
       const SizedBox(height: 8),
       OptionSheetRow(
         icon: Icons.play_circle_fill_rounded,

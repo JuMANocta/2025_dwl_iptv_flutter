@@ -39,6 +39,14 @@
          ici pour que la dépendance soit lisible sans ouvrir le paquet. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
+    <!-- §castAwake — Le service de premier plan garde le PROCESSUS vivant, mais
+         pas le CPU : écran éteint, sans verrou, Android suspend le téléphone et
+         tout ce qu'il porte (conversion Media3, serveur local, battement de
+         cœur de la session Cast) s'arrête — constaté le 2026-09-05. Le verrou
+         est tenu par `AetherCastService` (créé/libéré avec lui), jamais depuis
+         l'Activity. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- §nowPlaying — Android 13+ : sans elle, la notification de lecture
          (écran verrouillé, casque) n'est jamais affichée. Demandée à l'exécution
          à la première lecture, jamais au démarrage. Réutilisée par §dlNotif
