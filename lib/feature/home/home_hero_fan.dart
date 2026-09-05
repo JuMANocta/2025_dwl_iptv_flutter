@@ -364,6 +364,11 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     final opacity = _opacityFor(absDelta);
 
     return Transform(
+      // §posterScope — Clé OBLIGATOIRE : la pile est retriée par profondeur à
+      // chaque rotation, et la carte porte désormais un état (son affiche
+      // TMDB). Sans clé, Flutter apparie par index et l'affiche d'une carte
+      // irait s'afficher sur une autre.
+      key: ValueKey('hero_$i'),
       transform: Matrix4.identity()
         ..translateByDouble(offsetX, offsetY, 0, 1)
         ..rotateZ(rotation)
@@ -393,6 +398,8 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
                 depth: absDelta,
                 onTap: () => _onCardTap(context, i),
                 width: w,
+                tmdbFirst:
+                    PerformanceSettingsService.config.value.tmdbPostersFirst,
               ),
             ),
           ),
@@ -426,7 +433,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   }
 }
 
-class _HeroFanCard extends StatelessWidget {
+class _HeroFanCard extends StatefulWidget {
   final List<M3uEntry> versions;
   final M3uContentType type;
   final bool isActive;
@@ -440,6 +447,10 @@ class _HeroFanCard extends StatelessWidget {
   /// (elle était figée à 320 px quelle que soit la taille réelle de la carte).
   final double width;
 
+  /// §posterScope — Option « Affiches TMDB en priorité » : le carrousel est
+  /// l'un des deux seuls endroits où elle s'applique (avec la rangée Favoris).
+  final bool tmdbFirst;
+
   const _HeroFanCard({
     required this.versions,
     required this.type,
@@ -447,10 +458,77 @@ class _HeroFanCard extends StatelessWidget {
     required this.depth,
     required this.onTap,
     required this.width,
+    this.tmdbFirst = false,
   });
 
   @override
+  State<_HeroFanCard> createState() => _HeroFanCardState();
+}
+
+/// §posterScope — La carte du hero devient STATEFUL pour porter son affiche
+/// TMDB, exactement comme `_HomeCardState` : résolue tout de suite si l'option
+/// est active ou si les listes n'ont aucune adresse, sinon seulement quand
+/// toutes les adresses des listes ont échoué (§logoFallback, que le hero
+/// n'avait pas jusqu'ici). ⚠️ Les cartes empilées sont RÉORDONNÉES à chaque
+/// rotation : `_buildFannedCard` leur donne une clé, sinon l'état d'une carte
+/// se retrouverait sur une autre.
+class _HeroFanCardState extends State<_HeroFanCard> {
+  String? _tmdbPoster;
+
+  List<String> get _logoCandidates =>
+      ParsedPlaylistService.logoCandidates(widget.versions);
+
+  @override
+  void initState() {
+    super.initState();
+    if (_logoCandidates.isEmpty || widget.tmdbFirst) _resolveTmdbPoster();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HeroFanCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.versions.first.url != widget.versions.first.url) {
+      _tmdbPoster = null;
+      if (_logoCandidates.isEmpty || widget.tmdbFirst) _resolveTmdbPoster();
+    } else if (widget.tmdbFirst && !oldWidget.tmdbFirst) {
+      _resolveTmdbPoster();
+    }
+  }
+
+  /// Cache persisté d'abord (synchrone, aucun `setState`), réseau sinon,
+  /// jamais pour une chaîne. Idempotent : `TmdbPosterCache` dédoublonne.
+  void _resolveTmdbPoster() {
+    if (_tmdbPoster != null) return;
+    if (widget.type == M3uContentType.tv) return;
+    final entry = widget.versions.first;
+    final query = entry.displayName;
+    if (query.trim().isEmpty) return;
+    final isTv = widget.type == M3uContentType.series;
+    final year = entry.title.year;
+    if (TmdbPosterCache.isResolved(query, isTv, year)) {
+      _tmdbPoster = TmdbPosterCache.cached(query, isTv, year);
+      return;
+    }
+    TmdbPosterCache.resolve(
+      query: query,
+      isTv: isTv,
+      year: year,
+      groupTitle: entry.groupTitle,
+      categoryKey: contentGroupKey(entry),
+    ).then((url) {
+      if (!mounted || url == null) return;
+      setState(() => _tmdbPoster = url);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final versions = widget.versions;
+    final type = widget.type;
+    final isActive = widget.isActive;
+    final depth = widget.depth;
+    final onTap = widget.onTap;
+    final width = widget.width;
     final entry = versions.first;
     final progress = WatchProgressService.getProgressForAny(
       versions.map((e) => e.url),
@@ -459,7 +537,13 @@ class _HeroFanCard extends StatelessWidget {
     // §23 — politique image « plus grosse liste ».
     // §logoFallback — toutes les adresses du groupe, pas seulement la
     // « meilleure » : une adresse morte ne doit plus vider la carte.
-    final logoCandidates = ParsedPlaylistService.logoCandidates(versions);
+    // §posterScope — L'affiche TMDB passe devant si l'option le demande,
+    // derrière sinon (même règle que `_HomeCard`).
+    final logoCandidates = <String>[
+      if (widget.tmdbFirst && _tmdbPoster != null) _tmdbPoster!,
+      ..._logoCandidates,
+      if (!widget.tmdbFirst && _tmdbPoster != null) _tmdbPoster!,
+    ];
     final logoUrl = logoCandidates.isEmpty ? null : logoCandidates.first;
 
     final fallbackIcon = switch (type) {
@@ -553,6 +637,9 @@ class _HeroFanCard extends StatelessWidget {
                   : AetherImage(
                       url: logoUrl,
                       alternates: logoCandidates.skip(1).toList(),
+                      // §posterScope — Toutes les adresses des listes ont
+                      // échoué : on demande l'affiche à TMDB (§logoFallback).
+                      onAllFailed: _resolveTmdbPoster,
                       fit: BoxFit.cover,
                       cacheWidth: decodeWidthFor(context, width, max: 640),
                       fallback: (_) => _fallback(fallbackIcon),

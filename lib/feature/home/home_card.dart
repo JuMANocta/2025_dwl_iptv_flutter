@@ -14,12 +14,20 @@ class _HomeCard extends StatefulWidget {
   /// d'entrée dpad de la rangée → ↓ depuis une rangée du dessus se cale à gauche.
   final bool isEntry;
 
+  /// §posterScope — `true` = l'affiche TMDB passe DEVANT celle des listes
+  /// (option « Affiches TMDB en priorité »). Décidé par le PARENT, jamais lu
+  /// dans les réglages : l'option ne vaut que pour le carrousel et la rangée
+  /// Favoris. Sur toutes les vignettes, elle déclenchait ~450 recherches TMDB
+  /// à l'ouverture de l'accueil et le faisait saccader pendant 15 s.
+  final bool tmdbFirst;
+
   const _HomeCard(
       {super.key,
       required this.versions,
       required this.type,
       this.width,
-      this.isEntry = false});
+      this.isEntry = false,
+      this.tmdbFirst = false});
 
   @override
   State<_HomeCard> createState() => _HomeCardState();
@@ -50,11 +58,11 @@ class _HomeCardState extends State<_HomeCard> {
     // chargement qui n'arrivera jamais : on résout tout de suite. Sinon on
     // laisse `AetherImage` essayer les adresses, et son `onAllFailed` nous
     // rappellera si toutes échouent.
-    // §posterLang — Option « Jaquettes TMDB d'abord » (défaut OFF) : dans ce
-    // mode on ne peut PAS attendre l'échec des adresses du fournisseur, il faut
-    // résoudre dès le départ pour que l'affiche TMDB passe devant.
-    if (_logoCandidates.isEmpty ||
-        PerformanceSettingsService.config.value.tmdbPostersFirst) {
+    // §posterLang — Option « Affiches TMDB en priorité » (défaut OFF) : dans
+    // ce mode on ne peut PAS attendre l'échec des adresses du fournisseur, il
+    // faut résoudre dès le départ pour que l'affiche TMDB passe devant.
+    // §posterScope — C'est le PARENT qui décide (`widget.tmdbFirst`).
+    if (_logoCandidates.isEmpty || widget.tmdbFirst) {
       _resolveTmdbPosterIfNeeded();
     }
   }
@@ -66,7 +74,13 @@ class _HomeCardState extends State<_HomeCard> {
     // versions → on relance la résolution si le groupe a changé.
     if (oldWidget.versions.first.url != widget.versions.first.url) {
       _tmdbPoster = null;
-      if (_logoCandidates.isEmpty) _resolveTmdbPosterIfNeeded();
+      if (_logoCandidates.isEmpty || widget.tmdbFirst) {
+        _resolveTmdbPosterIfNeeded();
+      }
+    } else if (widget.tmdbFirst && !oldWidget.tmdbFirst) {
+      // §posterScope — L'option vient d'être activée : la carte existe déjà,
+      // elle va chercher son affiche TMDB maintenant.
+      _resolveTmdbPosterIfNeeded();
     }
   }
 
@@ -367,8 +381,8 @@ class _HomeCardState extends State<_HomeCard> {
     // Par défaut le fournisseur passe devant (§23, « plus grosse liste ») et
     // TMDB ne sert qu'en repli ; l'option inverse les deux pour qui préfère des
     // affiches homogènes, dans la langue choisie.
-    final bool tmdbFirst =
-        PerformanceSettingsService.config.value.tmdbPostersFirst;
+    // §posterScope — Portée décidée par le parent (carrousel + Favoris).
+    final bool tmdbFirst = widget.tmdbFirst;
     final logoCandidates = <String>[
       if (tmdbFirst && _tmdbPoster != null) _tmdbPoster!,
       ..._logoCandidates,

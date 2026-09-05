@@ -16,6 +16,10 @@ class _CategoryRow extends StatelessWidget {
   final M3uContentType type;
   final IconData icon;
 
+  /// §posterScope — Vrai pour la seule rangée Favoris quand l'option
+  /// « Affiches TMDB en priorité » est active (cf. `_HomeCard.tmdbFirst`).
+  final bool tmdbFirst;
+
   const _CategoryRow({
     super.key,
     required this.category,
@@ -25,6 +29,7 @@ class _CategoryRow extends StatelessWidget {
     required this.hasMore,
     required this.type,
     required this.icon,
+    this.tmdbFirst = false,
   });
 
   @override
@@ -282,6 +287,7 @@ class _CategoryRow extends StatelessWidget {
                           // §dpadRowEntry — 1re carte = point d'entrée de la
                           // rangée (↓ se cale à gauche, pas à droite).
                           isEntry: g == 0,
+                          tmdbFirst: tmdbFirst,
                         );
                       },
                       ),

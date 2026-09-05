@@ -321,7 +321,7 @@
   "@tmdbRowsBecauseTitle": {
     "description": "TMDB option title"
   },
-  "tmdbRowsBecauseSub": "Les recommandations TMDB de ta dernière lecture, parmi tes listes (1 appel par jour)",
+  "tmdbRowsBecauseSub": "Des titres proches de ta dernière lecture, choisis parmi tes listes",
   "@tmdbRowsBecauseSub": {
     "description": "TMDB option subtitle"
   },
@@ -329,7 +329,7 @@
   "@tmdbRowsTopRatedTitle": {
     "description": "TMDB option title"
   },
-  "tmdbRowsTopRatedSub": "Le classement TMDB, filtré sur ce que tes listes proposent (1 appel par jour)",
+  "tmdbRowsTopRatedSub": "Les titres les mieux notés que proposent tes listes",
   "@tmdbRowsTopRatedSub": {
     "description": "TMDB option subtitle"
   },
@@ -412,5 +412,188 @@
   "commonDelete": "Supprimer",
   "@commonDelete": {
     "description": "Generic delete button"
+  },
+  "tmdbStatusOn": "TMDB connecté : affiches, résumés et casting",
+  "@tmdbStatusOn": {
+    "description": "Status banner, key present"
+  },
+  "tmdbStatusOff": "Sans clé TMDB : pas d'affiches ni de résumés en plus. L'application fonctionne quand même.",
+  "@tmdbStatusOff": {
+    "description": "Status banner, no key"
+  },
+  "tmdbPairReplace": "Remplacer depuis mon téléphone",
+  "@tmdbPairReplace": {
+    "description": "TV pairing card title, key present"
+  },
+  "tmdbPairSetup": "Configurer depuis mon téléphone",
+  "@tmdbPairSetup": {
+    "description": "TV pairing card title, no key"
+  },
+  "tmdbPairSub": "Scanne le QR code et colle la clé depuis le téléphone",
+  "@tmdbPairSub": {
+    "description": "TV pairing card subtitle"
+  },
+  "tmdbKeySection": "Clé TMDB",
+  "@tmdbKeySection": {
+    "description": "Key field section title"
+  },
+  "tmdbKeySectionManual": "Saisie à la télécommande",
+  "@tmdbKeySectionManual": {
+    "description": "Key field section title on TV, manual entry"
+  },
+  "tmdbKeyHint": "Colle ta clé ici…",
+  "@tmdbKeyHint": {
+    "description": "Key field hint"
+  },
+  "tmdbKeyShow": "Afficher",
+  "@tmdbKeyShow": {
+    "description": "Reveal key tooltip"
+  },
+  "tmdbKeyHide": "Masquer",
+  "@tmdbKeyHide": {
+    "description": "Hide key tooltip"
+  },
+  "tmdbKeySave": "Enregistrer",
+  "@tmdbKeySave": {
+    "description": "Save key button"
+  },
+  "tmdbKeyRemove": "Retirer la clé",
+  "@tmdbKeyRemove": {
+    "description": "Delete key button"
+  },
+  "tmdbKeyManualEntry": "Saisir à la télécommande",
+  "@tmdbKeyManualEntry": {
+    "description": "TV: reveal the manual field"
+  },
+  "tmdbKeyConnected": "TMDB connecté",
+  "@tmdbKeyConnected": {
+    "description": "Snackbar after a valid key"
+  },
+  "tmdbKeyRemoved": "Clé TMDB retirée",
+  "@tmdbKeyRemoved": {
+    "description": "Snackbar after deleting the key"
+  },
+  "tmdbKeyRejected": "TMDB refuse cette clé. Vérifie que tu as copié le jeton d'accès en lecture (API Read Access Token).",
+  "@tmdbKeyRejected": {
+    "description": "Snackbar when TMDB answers 401"
+  },
+  "tmdbKeyUnverified": "Clé enregistrée. Impossible de la vérifier pour l'instant (pas de réseau).",
+  "@tmdbKeyUnverified": {
+    "description": "Snackbar when the probe could not run"
+  },
+  "tmdbKeyChecking": "Vérification…",
+  "@tmdbKeyChecking": {
+    "description": "Save button label while probing"
+  },
+  "tmdbHowTitle": "Obtenir une clé (gratuit)",
+  "@tmdbHowTitle": {
+    "description": "How-to block title"
+  },
+  "tmdbHowStep1": "Crée un compte sur themoviedb.org",
+  "@tmdbHowStep1": {
+    "description": "How-to step 1"
+  },
+  "tmdbHowStep2": "Ouvre Paramètres, puis API",
+  "@tmdbHowStep2": {
+    "description": "How-to step 2"
+  },
+  "tmdbHowStep3": "Copie le jeton d'accès en lecture (API Read Access Token)",
+  "@tmdbHowStep3": {
+    "description": "How-to step 3"
+  },
+  "tmdbHowStep4": "Colle-le ci-dessous",
+  "@tmdbHowStep4": {
+    "description": "How-to step 4"
+  },
+  "tmdbSignup": "Créer un compte TMDB",
+  "@tmdbSignup": {
+    "description": "Signup button"
+  },
+  "tmdbLogin": "J'ai déjà un compte",
+  "@tmdbLogin": {
+    "description": "Login link"
+  },
+  "tmdbOptionsTitle": "Options",
+  "@tmdbOptionsTitle": {
+    "description": "Options section title"
+  },
+  "tmdbVisualLangTitle": "Langue des visuels",
+  "@tmdbVisualLangTitle": {
+    "description": "Visual language tile title"
+  },
+  "tmdbVisualLangSub": "{lang} : affiches, résumés et casting",
+  "@tmdbVisualLangSub": {
+    "description": "Visual language tile subtitle",
+    "placeholders": {
+      "lang": {
+        "type": "String"
+      }
+    }
+  },
+  "tmdbPostersFirstTitle": "Affiches TMDB en priorité",
+  "@tmdbPostersFirstTitle": {
+    "description": "Posters-first switch title"
+  },
+  "tmdbPostersFirstOn": "Sur le carrousel et dans les favoris, l'affiche TMDB remplace celle de la liste",
+  "@tmdbPostersFirstOn": {
+    "description": "Posters-first switch subtitle, on"
+  },
+  "tmdbPostersFirstOff": "Les affiches viennent de tes listes ; TMDB complète celles qui manquent",
+  "@tmdbPostersFirstOff": {
+    "description": "Posters-first switch subtitle, off"
+  },
+  "tmdbMemoryTitle": "Données mémorisées",
+  "@tmdbMemoryTitle": {
+    "description": "Maintenance section title"
+  },
+  "tmdbMemoryPosters": "Affiches",
+  "@tmdbMemoryPosters": {
+    "description": "Poster cache tile title"
+  },
+  "tmdbMemoryPostersNone": "Aucune affiche mémorisée pour l'instant",
+  "@tmdbMemoryPostersNone": {
+    "description": "Poster cache empty"
+  },
+  "tmdbMemoryPostersCount": "{count, plural, =1{1 affiche mémorisée} other{{count} affiches mémorisées}}",
+  "@tmdbMemoryPostersCount": {
+    "description": "Poster cache count",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tmdbMemoryClear": "Vider",
+  "@tmdbMemoryClear": {
+    "description": "Clear cache button"
+  },
+  "tmdbMemoryPostersCleared": "Affiches oubliées. Elles se rechargeront au fil de la navigation.",
+  "@tmdbMemoryPostersCleared": {
+    "description": "Snackbar after clearing posters"
+  },
+  "tmdbMemorySorting": "Rangement automatique",
+  "@tmdbMemorySorting": {
+    "description": "Inferred categories tile title"
+  },
+  "tmdbMemorySortingNone": "Rien à réapprendre : tes listes rangent déjà leurs titres",
+  "@tmdbMemorySortingNone": {
+    "description": "Inferred categories empty"
+  },
+  "tmdbMemorySortingCount": "{count, plural, =1{1 titre rangé grâce à TMDB} other{{count} titres rangés grâce à TMDB}}",
+  "@tmdbMemorySortingCount": {
+    "description": "Inferred categories count",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tmdbMemoryRelearn": "Réapprendre",
+  "@tmdbMemoryRelearn": {
+    "description": "Relearn button"
+  },
+  "tmdbMemorySortingCleared": "Rangement oublié. Il se refera en parcourant l'accueil.",
+  "@tmdbMemorySortingCleared": {
+    "description": "Snackbar after clearing inferred categories"
   }
 }

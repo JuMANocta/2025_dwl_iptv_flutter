@@ -1079,7 +1079,7 @@ abstract class AppLocalizations {
   /// TMDB option subtitle
   ///
   /// In en, this message translates to:
-  /// **'TMDB recommendations from your last watched title, within your lists (1 call a day)'**
+  /// **'Titles close to what you last watched, picked from your lists'**
   String get tmdbRowsBecauseSub;
 
   /// TMDB option title
@@ -1091,7 +1091,7 @@ abstract class AppLocalizations {
   /// TMDB option subtitle
   ///
   /// In en, this message translates to:
-  /// **'The TMDB ranking, filtered on what your lists offer (1 call a day)'**
+  /// **'The best-rated titles your lists offer'**
   String get tmdbRowsTopRatedSub;
 
   /// Optimisation setting title
@@ -1177,6 +1177,258 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete'**
   String get commonDelete;
+
+  /// Status banner, key present
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB connected: posters, overviews and cast'**
+  String get tmdbStatusOn;
+
+  /// Status banner, no key
+  ///
+  /// In en, this message translates to:
+  /// **'No TMDB key: no extra posters or overviews. The app still works.'**
+  String get tmdbStatusOff;
+
+  /// TV pairing card title, key present
+  ///
+  /// In en, this message translates to:
+  /// **'Replace from my phone'**
+  String get tmdbPairReplace;
+
+  /// TV pairing card title, no key
+  ///
+  /// In en, this message translates to:
+  /// **'Set up from my phone'**
+  String get tmdbPairSetup;
+
+  /// TV pairing card subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Scan the QR code and paste the key from your phone'**
+  String get tmdbPairSub;
+
+  /// Key field section title
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB key'**
+  String get tmdbKeySection;
+
+  /// Key field section title on TV, manual entry
+  ///
+  /// In en, this message translates to:
+  /// **'Typing with the remote'**
+  String get tmdbKeySectionManual;
+
+  /// Key field hint
+  ///
+  /// In en, this message translates to:
+  /// **'Paste your key here…'**
+  String get tmdbKeyHint;
+
+  /// Reveal key tooltip
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get tmdbKeyShow;
+
+  /// Hide key tooltip
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get tmdbKeyHide;
+
+  /// Save key button
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get tmdbKeySave;
+
+  /// Delete key button
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the key'**
+  String get tmdbKeyRemove;
+
+  /// TV: reveal the manual field
+  ///
+  /// In en, this message translates to:
+  /// **'Type it with the remote'**
+  String get tmdbKeyManualEntry;
+
+  /// Snackbar after a valid key
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB connected'**
+  String get tmdbKeyConnected;
+
+  /// Snackbar after deleting the key
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB key removed'**
+  String get tmdbKeyRemoved;
+
+  /// Snackbar when TMDB answers 401
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB rejected this key. Make sure you copied the API Read Access Token.'**
+  String get tmdbKeyRejected;
+
+  /// Snackbar when the probe could not run
+  ///
+  /// In en, this message translates to:
+  /// **'Key saved. It could not be checked right now (no network).'**
+  String get tmdbKeyUnverified;
+
+  /// Save button label while probing
+  ///
+  /// In en, this message translates to:
+  /// **'Checking…'**
+  String get tmdbKeyChecking;
+
+  /// How-to block title
+  ///
+  /// In en, this message translates to:
+  /// **'Get a key (free)'**
+  String get tmdbHowTitle;
+
+  /// How-to step 1
+  ///
+  /// In en, this message translates to:
+  /// **'Create an account on themoviedb.org'**
+  String get tmdbHowStep1;
+
+  /// How-to step 2
+  ///
+  /// In en, this message translates to:
+  /// **'Open Settings, then API'**
+  String get tmdbHowStep2;
+
+  /// How-to step 3
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the API Read Access Token'**
+  String get tmdbHowStep3;
+
+  /// How-to step 4
+  ///
+  /// In en, this message translates to:
+  /// **'Paste it below'**
+  String get tmdbHowStep4;
+
+  /// Signup button
+  ///
+  /// In en, this message translates to:
+  /// **'Create a TMDB account'**
+  String get tmdbSignup;
+
+  /// Login link
+  ///
+  /// In en, this message translates to:
+  /// **'I already have an account'**
+  String get tmdbLogin;
+
+  /// Options section title
+  ///
+  /// In en, this message translates to:
+  /// **'Options'**
+  String get tmdbOptionsTitle;
+
+  /// Visual language tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Language of visuals'**
+  String get tmdbVisualLangTitle;
+
+  /// Visual language tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'{lang}: posters, overviews and cast'**
+  String tmdbVisualLangSub(String lang);
+
+  /// Posters-first switch title
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB posters first'**
+  String get tmdbPostersFirstTitle;
+
+  /// Posters-first switch subtitle, on
+  ///
+  /// In en, this message translates to:
+  /// **'In the carousel and favourites, the TMDB poster replaces the list\'s'**
+  String get tmdbPostersFirstOn;
+
+  /// Posters-first switch subtitle, off
+  ///
+  /// In en, this message translates to:
+  /// **'Posters come from your lists; TMDB fills in the missing ones'**
+  String get tmdbPostersFirstOff;
+
+  /// Maintenance section title
+  ///
+  /// In en, this message translates to:
+  /// **'Stored data'**
+  String get tmdbMemoryTitle;
+
+  /// Poster cache tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Posters'**
+  String get tmdbMemoryPosters;
+
+  /// Poster cache empty
+  ///
+  /// In en, this message translates to:
+  /// **'No poster stored yet'**
+  String get tmdbMemoryPostersNone;
+
+  /// Poster cache count
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 poster stored} other{{count} posters stored}}'**
+  String tmdbMemoryPostersCount(int count);
+
+  /// Clear cache button
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get tmdbMemoryClear;
+
+  /// Snackbar after clearing posters
+  ///
+  /// In en, this message translates to:
+  /// **'Posters cleared. They will reload as you browse.'**
+  String get tmdbMemoryPostersCleared;
+
+  /// Inferred categories tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic sorting'**
+  String get tmdbMemorySorting;
+
+  /// Inferred categories empty
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to relearn: your lists already sort their titles'**
+  String get tmdbMemorySortingNone;
+
+  /// Inferred categories count
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 title sorted thanks to TMDB} other{{count} titles sorted thanks to TMDB}}'**
+  String tmdbMemorySortingCount(int count);
+
+  /// Relearn button
+  ///
+  /// In en, this message translates to:
+  /// **'Relearn'**
+  String get tmdbMemoryRelearn;
+
+  /// Snackbar after clearing inferred categories
+  ///
+  /// In en, this message translates to:
+  /// **'Sorting cleared. It will rebuild as you browse the home.'**
+  String get tmdbMemorySortingCleared;
 }
 
 class _AppLocalizationsDelegate

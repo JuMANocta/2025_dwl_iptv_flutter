@@ -564,14 +564,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tmdbRowsBecauseSub =>
-      'TMDB recommendations from your last watched title, within your lists (1 call a day)';
+      'Titles close to what you last watched, picked from your lists';
 
   @override
   String get tmdbRowsTopRatedTitle => '“Top rated” row';
 
   @override
-  String get tmdbRowsTopRatedSub =>
-      'The TMDB ranking, filtered on what your lists offer (1 call a day)';
+  String get tmdbRowsTopRatedSub => 'The best-rated titles your lists offer';
 
   @override
   String get perfMinItemsTitle => 'Rows: minimum titles';
@@ -621,4 +620,157 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commonDelete => 'Delete';
+
+  @override
+  String get tmdbStatusOn => 'TMDB connected: posters, overviews and cast';
+
+  @override
+  String get tmdbStatusOff =>
+      'No TMDB key: no extra posters or overviews. The app still works.';
+
+  @override
+  String get tmdbPairReplace => 'Replace from my phone';
+
+  @override
+  String get tmdbPairSetup => 'Set up from my phone';
+
+  @override
+  String get tmdbPairSub =>
+      'Scan the QR code and paste the key from your phone';
+
+  @override
+  String get tmdbKeySection => 'TMDB key';
+
+  @override
+  String get tmdbKeySectionManual => 'Typing with the remote';
+
+  @override
+  String get tmdbKeyHint => 'Paste your key here…';
+
+  @override
+  String get tmdbKeyShow => 'Show';
+
+  @override
+  String get tmdbKeyHide => 'Hide';
+
+  @override
+  String get tmdbKeySave => 'Save';
+
+  @override
+  String get tmdbKeyRemove => 'Remove the key';
+
+  @override
+  String get tmdbKeyManualEntry => 'Type it with the remote';
+
+  @override
+  String get tmdbKeyConnected => 'TMDB connected';
+
+  @override
+  String get tmdbKeyRemoved => 'TMDB key removed';
+
+  @override
+  String get tmdbKeyRejected =>
+      'TMDB rejected this key. Make sure you copied the API Read Access Token.';
+
+  @override
+  String get tmdbKeyUnverified =>
+      'Key saved. It could not be checked right now (no network).';
+
+  @override
+  String get tmdbKeyChecking => 'Checking…';
+
+  @override
+  String get tmdbHowTitle => 'Get a key (free)';
+
+  @override
+  String get tmdbHowStep1 => 'Create an account on themoviedb.org';
+
+  @override
+  String get tmdbHowStep2 => 'Open Settings, then API';
+
+  @override
+  String get tmdbHowStep3 => 'Copy the API Read Access Token';
+
+  @override
+  String get tmdbHowStep4 => 'Paste it below';
+
+  @override
+  String get tmdbSignup => 'Create a TMDB account';
+
+  @override
+  String get tmdbLogin => 'I already have an account';
+
+  @override
+  String get tmdbOptionsTitle => 'Options';
+
+  @override
+  String get tmdbVisualLangTitle => 'Language of visuals';
+
+  @override
+  String tmdbVisualLangSub(String lang) {
+    return '$lang: posters, overviews and cast';
+  }
+
+  @override
+  String get tmdbPostersFirstTitle => 'TMDB posters first';
+
+  @override
+  String get tmdbPostersFirstOn =>
+      'In the carousel and favourites, the TMDB poster replaces the list\'s';
+
+  @override
+  String get tmdbPostersFirstOff =>
+      'Posters come from your lists; TMDB fills in the missing ones';
+
+  @override
+  String get tmdbMemoryTitle => 'Stored data';
+
+  @override
+  String get tmdbMemoryPosters => 'Posters';
+
+  @override
+  String get tmdbMemoryPostersNone => 'No poster stored yet';
+
+  @override
+  String tmdbMemoryPostersCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count posters stored',
+      one: '1 poster stored',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tmdbMemoryClear => 'Clear';
+
+  @override
+  String get tmdbMemoryPostersCleared =>
+      'Posters cleared. They will reload as you browse.';
+
+  @override
+  String get tmdbMemorySorting => 'Automatic sorting';
+
+  @override
+  String get tmdbMemorySortingNone =>
+      'Nothing to relearn: your lists already sort their titles';
+
+  @override
+  String tmdbMemorySortingCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count titles sorted thanks to TMDB',
+      one: '1 title sorted thanks to TMDB',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tmdbMemoryRelearn => 'Relearn';
+
+  @override
+  String get tmdbMemorySortingCleared =>
+      'Sorting cleared. It will rebuild as you browse the home.';
 }

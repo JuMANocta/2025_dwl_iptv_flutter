@@ -2249,6 +2249,10 @@ class _TypePageState extends State<_TypePage> {
           hasMore: hasMore,
           type: widget.type,
           icon: _TypePage.categoryIcon(cat),
+          // §posterScope — L'option « Affiches TMDB en priorité » ne touche
+          // que le carrousel et cette rangée-ci (l'utilisateur les a choisis,
+          // ce sont les seules qu'il regarde vraiment).
+          tmdbFirst: isFav && perf.tmdbPostersFirst,
         );
       },
       ),

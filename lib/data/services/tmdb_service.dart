@@ -210,6 +210,39 @@ class TmdbService {
 
   Future<void> reinitialize() async => await _init();
 
+  /// §tmdbKeyCheck (2026-09-05) — Demande à TMDB si une clé est acceptée,
+  /// AVANT de l'enregistrer.
+  ///
+  /// Jusqu'ici, n'importe quelle chaîne collée donnait « TMDB connecté » : une
+  /// clé mal copiée laissait une app sans affiche ni résumé, sans le moindre
+  /// message. `/configuration` est l'appel le plus léger qui exige le jeton.
+  ///
+  /// Rend `true` (acceptée), `false` (refusée : 401), `null` (impossible de
+  /// savoir : pas de réseau, délai dépassé, erreur serveur). Sur `null` on
+  /// enregistre quand même — l'utilisateur est peut-être hors ligne, et la
+  /// clé se vérifiera au premier usage.
+  static Future<bool?> probeKey(String token) async {
+    try {
+      final r = await Dio(
+        BaseOptions(
+          baseUrl: 'https://api.themoviedb.org/3',
+          headers: {
+            'Authorization': 'Bearer $token',
+            'accept': 'application/json',
+          },
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+          validateStatus: (_) => true,
+        ),
+      ).get<dynamic>('/configuration');
+      if (r.statusCode == 200) return true;
+      if (r.statusCode == 401) return false;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<bool> _init() async {
     final String? storedToken = await TmdbApiService.getApiKey();
     if (storedToken == null || storedToken.isEmpty) {

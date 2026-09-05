@@ -56,9 +56,18 @@ class PerfConfig {
   /// Par défaut **`false`**, et ce n'est pas de la prudence de principe : la
   /// règle actuelle (l'image vient du fournisseur le plus riche, TMDB seulement
   /// si toutes ont échoué) ne coûte **aucun** appel réseau suppplémentaire.
-  /// Activer ce drapeau demande une résolution TMDB par titre affiché au
+  /// Activer ce drapeau demande une résolution TMDB par titre concerné au
   /// premier passage — absorbée ensuite par `TmdbPosterCache` (persisté) et le
   /// cache disque des images, mais bien réelle la première fois.
+  ///
+  /// §posterScope (2026-09-05) — **Portée : le carrousel et la rangée Favoris,
+  /// rien d'autre.** Appliquée à toutes les vignettes, l'option lançait ~450
+  /// recherches TMDB à l'ouverture de l'accueil (limite TMDB ≈ 40/s) et les
+  /// affiches arrivaient au compte-gouttes pendant 15 s, chacune avec son
+  /// `setState` : l'accueil saccadait. Les deux endroits retenus sont ceux que
+  /// l'utilisateur regarde vraiment, et ils tiennent en quelques dizaines de
+  /// titres. Lue par `_TypePage` (rangée Favoris) et `_HeroFanBannerState`,
+  /// JAMAIS par `_HomeCard` directement.
   ///
   /// ⚠️ **Exclu de l'égalité**, comme [autoNextEpisode] : c'est un choix de
   /// goût (« je veux des affiches homogènes »), pas un levier de fluidité — le

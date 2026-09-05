@@ -571,14 +571,14 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get tmdbRowsBecauseSub =>
-      'Les recommandations TMDB de ta dernière lecture, parmi tes listes (1 appel par jour)';
+      'Des titres proches de ta dernière lecture, choisis parmi tes listes';
 
   @override
   String get tmdbRowsTopRatedTitle => 'Rangée « Les mieux notés »';
 
   @override
   String get tmdbRowsTopRatedSub =>
-      'Le classement TMDB, filtré sur ce que tes listes proposent (1 appel par jour)';
+      'Les titres les mieux notés que proposent tes listes';
 
   @override
   String get perfMinItemsTitle => 'Rangées : minimum de titres';
@@ -629,4 +629,159 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get commonDelete => 'Supprimer';
+
+  @override
+  String get tmdbStatusOn => 'TMDB connecté : affiches, résumés et casting';
+
+  @override
+  String get tmdbStatusOff =>
+      'Sans clé TMDB : pas d\'affiches ni de résumés en plus. L\'application fonctionne quand même.';
+
+  @override
+  String get tmdbPairReplace => 'Remplacer depuis mon téléphone';
+
+  @override
+  String get tmdbPairSetup => 'Configurer depuis mon téléphone';
+
+  @override
+  String get tmdbPairSub =>
+      'Scanne le QR code et colle la clé depuis le téléphone';
+
+  @override
+  String get tmdbKeySection => 'Clé TMDB';
+
+  @override
+  String get tmdbKeySectionManual => 'Saisie à la télécommande';
+
+  @override
+  String get tmdbKeyHint => 'Colle ta clé ici…';
+
+  @override
+  String get tmdbKeyShow => 'Afficher';
+
+  @override
+  String get tmdbKeyHide => 'Masquer';
+
+  @override
+  String get tmdbKeySave => 'Enregistrer';
+
+  @override
+  String get tmdbKeyRemove => 'Retirer la clé';
+
+  @override
+  String get tmdbKeyManualEntry => 'Saisir à la télécommande';
+
+  @override
+  String get tmdbKeyConnected => 'TMDB connecté';
+
+  @override
+  String get tmdbKeyRemoved => 'Clé TMDB retirée';
+
+  @override
+  String get tmdbKeyRejected =>
+      'TMDB refuse cette clé. Vérifie que tu as copié le jeton d\'accès en lecture (API Read Access Token).';
+
+  @override
+  String get tmdbKeyUnverified =>
+      'Clé enregistrée. Impossible de la vérifier pour l\'instant (pas de réseau).';
+
+  @override
+  String get tmdbKeyChecking => 'Vérification…';
+
+  @override
+  String get tmdbHowTitle => 'Obtenir une clé (gratuit)';
+
+  @override
+  String get tmdbHowStep1 => 'Crée un compte sur themoviedb.org';
+
+  @override
+  String get tmdbHowStep2 => 'Ouvre Paramètres, puis API';
+
+  @override
+  String get tmdbHowStep3 =>
+      'Copie le jeton d\'accès en lecture (API Read Access Token)';
+
+  @override
+  String get tmdbHowStep4 => 'Colle-le ci-dessous';
+
+  @override
+  String get tmdbSignup => 'Créer un compte TMDB';
+
+  @override
+  String get tmdbLogin => 'J\'ai déjà un compte';
+
+  @override
+  String get tmdbOptionsTitle => 'Options';
+
+  @override
+  String get tmdbVisualLangTitle => 'Langue des visuels';
+
+  @override
+  String tmdbVisualLangSub(String lang) {
+    return '$lang : affiches, résumés et casting';
+  }
+
+  @override
+  String get tmdbPostersFirstTitle => 'Affiches TMDB en priorité';
+
+  @override
+  String get tmdbPostersFirstOn =>
+      'Sur le carrousel et dans les favoris, l\'affiche TMDB remplace celle de la liste';
+
+  @override
+  String get tmdbPostersFirstOff =>
+      'Les affiches viennent de tes listes ; TMDB complète celles qui manquent';
+
+  @override
+  String get tmdbMemoryTitle => 'Données mémorisées';
+
+  @override
+  String get tmdbMemoryPosters => 'Affiches';
+
+  @override
+  String get tmdbMemoryPostersNone =>
+      'Aucune affiche mémorisée pour l\'instant';
+
+  @override
+  String tmdbMemoryPostersCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count affiches mémorisées',
+      one: '1 affiche mémorisée',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tmdbMemoryClear => 'Vider';
+
+  @override
+  String get tmdbMemoryPostersCleared =>
+      'Affiches oubliées. Elles se rechargeront au fil de la navigation.';
+
+  @override
+  String get tmdbMemorySorting => 'Rangement automatique';
+
+  @override
+  String get tmdbMemorySortingNone =>
+      'Rien à réapprendre : tes listes rangent déjà leurs titres';
+
+  @override
+  String tmdbMemorySortingCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count titres rangés grâce à TMDB',
+      one: '1 titre rangé grâce à TMDB',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tmdbMemoryRelearn => 'Réapprendre';
+
+  @override
+  String get tmdbMemorySortingCleared =>
+      'Rangement oublié. Il se refera en parcourant l\'accueil.';
 }
