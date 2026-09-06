@@ -47,8 +47,6 @@ app.*.map.json
 
 .gitignore
 .metadata
-pubspec.lock
-analysis_options.yaml
 .flutter-plugins-depencies
 .flutter-plugins
 windows/

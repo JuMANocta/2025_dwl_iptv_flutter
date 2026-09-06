@@ -17,6 +17,7 @@ import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:aetherStream/core/utils/network_kind.dart';
 
 class DownloadTaskTile extends StatelessWidget {
   final DownloadTask task;
@@ -489,6 +490,20 @@ class DownloadTaskTile extends StatelessWidget {
         return Text(
           "${l10n.terminalFinalizingMessage.trim()}...",
           style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant));
+      case DownloadStatus.queued:
+        // §dlQueue / §dlWifi — dire POURQUOI ça attend : le réseau d'abord
+        // (rien ne partira, quel que soit l'abonnement), sinon la place.
+        return ValueListenableBuilder<DownloadHold?>(
+          valueListenable: DownloadManagerService().hold,
+          builder: (context, h, _) => Text(
+            switch (h) {
+              DownloadHold.wifi => l10n.taskStatusWaitWifi,
+              DownloadHold.offline => l10n.taskStatusWaitNetwork,
+              null => l10n.taskStatusQueuedWhy,
+            },
+            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
+        );
       default:
         return Text(
           l10n.taskStatusPending(formattedDate),

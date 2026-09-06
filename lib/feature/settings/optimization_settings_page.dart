@@ -276,6 +276,35 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               ),
               // §autoNextEp — Réglage de CONFORT, volontairement hors des
               // profils de performance (les 3 presets le laissent intact).
+              // §dlQueue (2026-09-06, lot 6) — Plafond global des transferts ;
+              // la limite par abonnement (un seul) n'est pas réglable, elle
+              // vient des panels eux-mêmes (§hostGate).
+              SectionMark(context.l10n.perfDownloadsSection),
+              _buildStepper(
+                label: context.l10n.perfParallelDownloadsTitle,
+                value: _config.maxParallelDownloads,
+                min: PerfConfig.minParallelDownloads,
+                max: PerfConfig.maxParallelDownloadsLimit,
+                step: 1,
+                onChanged: (v) =>
+                    _apply(_config.copyWith(maxParallelDownloads: v)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Text(
+                  context.l10n.perfParallelDownloadsSub,
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ),
+              // §dlWifi — « Wi-Fi seulement » = pas sur un réseau facturé.
+              _switchTile(
+                icon: Icons.wifi_rounded,
+                title: context.l10n.perfWifiOnlyTitle,
+                subtitle: context.l10n.perfWifiOnlySub,
+                value: _config.downloadsWifiOnly,
+                onChanged: (v) =>
+                    _apply(_config.copyWith(downloadsWifiOnly: v)),
+              ),
               const SectionMark('Lecture'),
               _switchTile(
                 icon: Icons.skip_next_rounded,

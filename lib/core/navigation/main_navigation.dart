@@ -17,6 +17,7 @@ import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/main.dart' show checkForUpdate;
 import '../../l10n/app_localizations.dart';
 import '../themes/colors.dart';
+import 'package:aetherStream/widgets/offline_banner.dart';
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
 ///
@@ -193,15 +194,24 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final isTv = PlatformTv.isTv;
-    final stack = IndexedStack(
-      index: _stackIndex,
+    // §offlineBoot — Le bandeau hors ligne coiffe le contenu (accueil en
+    // cache, rien ne se lit en flux) ; absent, il ne prend aucune place.
+    final stack = Column(
       children: [
-        HomePage(
-          initialData: widget.initialData,
-          searchMode: _searchMode,
-          onExitSearch: () => setState(() => _navIndex = 0),
+        const OfflineBanner(),
+        Expanded(
+          child: IndexedStack(
+            index: _stackIndex,
+            children: [
+              HomePage(
+                initialData: widget.initialData,
+                searchMode: _searchMode,
+                onExitSearch: () => setState(() => _navIndex = 0),
+              ),
+              const DownloadsPage(),
+            ],
+          ),
         ),
-        const DownloadsPage(),
       ],
     );
 

@@ -1012,4 +1012,51 @@ class AppLocalizationsEn extends AppLocalizations {
   String rowProviderTrending(String name) {
     return 'Trending on $name';
   }
+
+  @override
+  String get perfDownloadsSection => 'Downloads';
+
+  @override
+  String get perfParallelDownloadsTitle => 'Simultaneous transfers';
+
+  @override
+  String get perfParallelDownloadsSub =>
+      'One transfer at a time per subscription: providers accept a single connection, and the player keeps one. This number only applies across different subscriptions; the others wait their turn.';
+
+  @override
+  String get taskStatusQueuedWhy =>
+      'Waiting: one transfer at a time per subscription';
+
+  @override
+  String get perfWifiOnlyTitle => 'Download on Wi-Fi only';
+
+  @override
+  String get perfWifiOnlySub =>
+      'On mobile data (or a metered hotspot), transfers wait and resume on their own as soon as Wi-Fi or a wired connection is back.';
+
+  @override
+  String get taskStatusWaitWifi => 'Waiting for Wi-Fi (metered network)';
+
+  @override
+  String get taskStatusWaitNetwork => 'Waiting for network';
+
+  @override
+  String get offlineBannerTitle =>
+      'Offline — only downloaded files can be played';
+
+  @override
+  String get offlineBannerRetry => 'Retry';
+
+  @override
+  String get offlineBootMessage =>
+      'No network to load your lists. Your downloaded files are still here; the app will resume on its own as soon as the connection is back.';
+
+  @override
+  String capsDisplayModesNote(int w, int h) {
+    return 'The screen reports up to $w×$h. Android renders the UI smaller; video plays at native size.';
+  }
+
+  @override
+  String get capsDisplayUiNote =>
+      'What Android reports here describes the UI, not necessarily the panel: many 4K TVs render menus at 1080p and video at 2160p. Only the decoders decide about 4K.';
 }

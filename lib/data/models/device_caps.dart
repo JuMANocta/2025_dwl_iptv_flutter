@@ -60,20 +60,34 @@ class DecoderCaps {
       };
 }
 
-/// L'écran : le mode COURANT (ce qui est réellement affiché), pas le meilleur
-/// mode possible — une box branchée en 1080p sur un téléviseur 4K affiche du
-/// 1080p.
+/// L'écran : le mode COURANT (`width`/`height`) et le plus grand mode que
+/// l'écran ANNONCE (`maxModeWidth`/`maxModeHeight`).
+///
+/// ⚠️ **§caps4kDisplay (2026-09-06) — l'écran n'est pas une vérité.** Sur le
+/// téléviseur 4K de l'utilisateur, Android rendait 1920×1080 : la plupart des
+/// téléviseurs Android font tourner l'INTERFACE en 1080p et sortent la vidéo
+/// en 2160p natif par leur propre chemin. `Display.getMode()` décrit
+/// l'interface, pas la dalle — et `getSupportedModes()` peut faire de même.
+/// Conséquence : la 4K était refusée sur un écran 4K avec tous ses décodeurs.
+/// Ce qui est lu ici est INFORMATIF ; seul le décodeur décide (cf.
+/// `verdictFor`).
 class DisplayCaps {
   final int width;
   final int height;
   final double refreshHz;
   final List<String> hdr;
 
+  /// Le plus grand mode annoncé par l'écran (0 = inconnu).
+  final int maxModeWidth;
+  final int maxModeHeight;
+
   const DisplayCaps({
     required this.width,
     required this.height,
     required this.refreshHz,
     this.hdr = const [],
+    this.maxModeWidth = 0,
+    this.maxModeHeight = 0,
   });
 
   /// Le plus grand côté : un téléphone en portrait rend 1080×2340, un
@@ -81,20 +95,56 @@ class DisplayCaps {
   int get longSide => width > height ? width : height;
   int get shortSide => width > height ? height : width;
 
-  bool get is2160 => longSide >= 3840 || shortSide >= 2160;
+  /// Le mode courant OU un mode annoncé atteint 2160p. `false` ne prouve
+  /// RIEN (voir l'en-tête) : à n'utiliser que pour informer.
+  bool get is2160 =>
+      longSide >= 3840 ||
+      shortSide >= 2160 ||
+      maxModeWidth >= 3840 ||
+      maxModeHeight >= 2160;
+
+  /// L'écran annonce des modes plus grands que ce qu'il affiche pour
+  /// l'interface : typique d'un téléviseur 4K.
+  bool get announcesMoreThanShown =>
+      maxModeWidth > width || maxModeHeight > height;
 
   static DisplayCaps? fromMap(Map<dynamic, dynamic>? m) {
     if (m == null || m['width'] == null) return null;
+    int maxW = (m['maxModeWidth'] as num?)?.toInt() ?? 0;
+    int maxH = (m['maxModeHeight'] as num?)?.toInt() ?? 0;
+    // La sonde native envoie la liste des modes ; on n'en retient que le
+    // plus grand (persisté ensuite sous `maxModeWidth`/`maxModeHeight`).
+    final List? modes = m['modes'] as List?;
+    if (modes != null) {
+      for (final dynamic mode in modes) {
+        if (mode is Map) {
+          final int w = (mode['width'] as num?)?.toInt() ?? 0;
+          final int h = (mode['height'] as num?)?.toInt() ?? 0;
+          if (w * h > maxW * maxH) {
+            maxW = w;
+            maxH = h;
+          }
+        }
+      }
+    }
     return DisplayCaps(
       width: (m['width'] as num).toInt(),
       height: (m['height'] as num?)?.toInt() ?? 0,
       refreshHz: (m['refreshHz'] as num?)?.toDouble() ?? 0,
       hdr: ((m['hdr'] as List?) ?? const []).map((e) => e.toString()).toList(),
+      maxModeWidth: maxW,
+      maxModeHeight: maxH,
     );
   }
 
-  Map<String, dynamic> toMap() =>
-      {'width': width, 'height': height, 'refreshHz': refreshHz, 'hdr': hdr};
+  Map<String, dynamic> toMap() => {
+        'width': width,
+        'height': height,
+        'refreshHz': refreshHz,
+        'hdr': hdr,
+        'maxModeWidth': maxModeWidth,
+        'maxModeHeight': maxModeHeight,
+      };
 }
 
 class MemoryCaps {
@@ -223,19 +273,20 @@ class DeviceCaps {
   /// courant échoue vraiment. Une FHD s'affiche partout, quitte à être réduite.
   /// Et une définition inconnue ne se refuse jamais.
   ///
-  /// [requireDisplay] — exiger AUSSI un écran 2160p. Vrai sur TÉLÉVISEUR (« si
-  /// 4K pas dispo sur le téléviseur », mots de l'utilisateur : une box qui sort
-  /// du 1080p n'a rien à faire d'un flux 4K). ⚠️ Faux sur téléphone : aucun
-  /// téléphone n'affiche 2160p, et un Galaxy S25 lit la 4K sans peine (mesuré
-  /// 2072p) — le critère d'écran y refuserait TOUT.
-  PlayVerdict verdictFor(String? quality, {bool requireDisplay = true}) {
+  /// ⚠️ **§caps4kDisplay (2026-09-06) — l'écran ne refuse plus rien.** La
+  /// première version exigeait aussi un écran 2160p sur téléviseur : sur le
+  /// téléviseur 4K de l'utilisateur, Android annonçait 1920×1080 (l'interface,
+  /// pas la dalle) et la 4K était refusée avec tous ses décodeurs présents.
+  /// Le décodeur, lui, est une mesure vraie : c'est lui seul qui tranche.
+  /// `PlayVerdict.displayTooSmall` n'est plus jamais rendu (gardé pour les
+  /// appelants qui l'énumèrent).
+  PlayVerdict verdictFor(String? quality) {
     if (quality == null) return PlayVerdict.ok;
     final q = quality.toUpperCase();
     final bool wants2160 = q == '4K' || q == 'UHD' || q == '2160P';
     if (!wants2160) return PlayVerdict.ok;
     if (!isComplete) return PlayVerdict.unknown;
     if (!canDecode2160) return PlayVerdict.decoderTooSmall;
-    if (requireDisplay && !canDisplay2160) return PlayVerdict.displayTooSmall;
     return PlayVerdict.ok;
   }
 

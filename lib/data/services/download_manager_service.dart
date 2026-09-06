@@ -7,6 +7,9 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
 import 'download_stall_policy.dart';
+import '../../core/settings/performance_settings_service.dart';
+import '../../core/utils/network_kind.dart';
+import '../../feature/downloads/logic/download_scheduler.dart';
 import '../../core/utils/log_sanitizer.dart';
 import '../../core/utils/network.dart';
 
@@ -72,6 +75,13 @@ class DownloadManagerService {
     _prefs = await SharedPreferences.getInstance();
     _loadTasksFromDisk();
     _reconcileTasksOnStartup();
+    // §dlQueue — Les tâches restées « en attente » (jamais parties) repartent
+    // d'elles-mêmes, dans l'ordre, sous les mêmes limites.
+    // §dlWifi — Et un réglage qui change (Wi-Fi seulement, plafond) se
+    // relit tout de suite : sinon décocher « Wi-Fi seulement » laisserait
+    // la file retenue jusqu'au prochain sondage.
+    PerformanceSettingsService.config.addListener(pump);
+    pump();
   }
 
   void _loadTasksFromDisk() {
@@ -101,8 +111,10 @@ class DownloadManagerService {
       // il n'était pas traité ici, donc une finalisation interrompue (ou un
       // `saveFile` natif qui n'a jamais rendu la main) laissait la tâche figée
       // DÉFINITIVEMENT, y compris après relance de l'app.
+      // §dlQueue — `queued` n'est plus « bloquée » : c'est une tâche qui
+      // attend sa place et repartira (`pump()` après l'init). Seuls un
+      // transfert ou une finalisation interrompus passent en échec.
       if (task.status == DownloadStatus.downloading ||
-          task.status == DownloadStatus.queued ||
           task.status == DownloadStatus.finalizing) {
         hasChanged = true;
         // On considère la tâche comme échouée pour permettre à l'utilisateur de la relancer.
@@ -141,6 +153,97 @@ class DownloadManagerService {
   /// Transferts réellement en vol, pour pouvoir attendre leur fin (§dlErgo).
   final Map<String, Future<void>> _inFlight = {};
 
+  /// §dlQueue — Met la tâche EN ATTENTE et laisse la file décider quand elle
+  /// part : un transfert à la fois par abonnement, `maxParallelDownloads` en
+  /// tout. C'est le point d'entrée normal (nouvelle tâche, reprise d'un échec) ;
+  /// `startDownloadTask` reste le chemin DIRECT, pour une relance qui garde sa
+  /// place (§dlErgo) ou pour la file elle-même.
+  Future<void> enqueue(DownloadTask task) async {
+    if (_inFlight.containsKey(task.id)) return;
+    if (task.status != DownloadStatus.queued) {
+      await updateTask(task.id, status: DownloadStatus.queued);
+    }
+    pump();
+  }
+
+  /// §dlWifi — Pourquoi la file est retenue (`wifi` : réseau facturé et
+  /// réglage « Wi-Fi seulement » ; `offline` : aucun réseau), ou `null`. Lu
+  /// par la tuile et le moniteur pour dire POURQUOI ça attend.
+  final ValueNotifier<DownloadHold?> hold = ValueNotifier<DownloadHold?>(null);
+
+  /// §dlWifi — Tant que des tâches attendent le réseau, on re-regarde toutes
+  /// les 20 s ; dès qu'il revient, elles partent. Pas d'abonnement natif :
+  /// un sondage court, seulement quand il y a quelque chose à attendre.
+  Timer? _holdPoll;
+  static const Duration _holdPollEvery = Duration(seconds: 20);
+
+  bool _pumping = false;
+  bool _pumpAgain = false;
+
+  /// §dlQueue — Fait partir tout ce qui peut partir. Appelée après chaque mise
+  /// en attente, après chaque fin de transfert (succès, échec, annulation) et
+  /// par le sondage réseau. Sérialisée : deux appels qui se chevauchent ne
+  /// feraient partir une tâche qu'une fois (`_inFlight` est vérifié par
+  /// `startDownloadTask`), mais autant ne pas sonder le réseau deux fois.
+  Future<void> pump() async {
+    if (_pumping) {
+      _pumpAgain = true;
+      return;
+    }
+    _pumping = true;
+    try {
+      do {
+        _pumpAgain = false;
+        await _pumpOnce();
+      } while (_pumpAgain);
+    } finally {
+      _pumping = false;
+    }
+  }
+
+  Future<void> _pumpOnce() async {
+    final bool anyQueued =
+        tasksNotifier.value.any((t) => t.status == DownloadStatus.queued);
+    if (!anyQueued) {
+      _setHold(null);
+      return;
+    }
+    // §dlWifi — Le réseau n'est regardé que s'il y a quelque chose à faire
+    // partir : un appel natif de moins par fin de transfert.
+    final perf = PerformanceSettingsService.config.value;
+    final NetState net = await currentNetState();
+    final DownloadHold? h = downloadHoldFor(
+      wifiOnly: perf.downloadsWifiOnly,
+      kind: net.kind,
+      metered: net.metered,
+    );
+    _setHold(h);
+    if (h != null) {
+      debugPrint('📥 §dlWifi — file retenue (${h.name}) : réseau ${net.kind.name}'
+          '${net.metered ? ' facturé' : ''}');
+      return;
+    }
+    final picks = pickStartable(
+      tasks: tasksNotifier.value,
+      inFlightIds: _inFlight.keys.toSet(),
+      maxParallel: perf.maxParallelDownloads,
+    );
+    for (final DownloadTask t in picks) {
+      debugPrint('📥 §dlQueue — départ : ${t.displayName}');
+      startDownloadTask(t);
+    }
+  }
+
+  void _setHold(DownloadHold? h) {
+    if (hold.value != h) hold.value = h;
+    if (h == null) {
+      _holdPoll?.cancel();
+      _holdPoll = null;
+    } else {
+      _holdPoll ??= Timer.periodic(_holdPollEvery, (_) => pump());
+    }
+  }
+
   /// LANCE ET GÈRE UN TÉLÉCHARGEMENT AVEC REPRISE ROBUSTE (FLUX MANUEL)
   Future<void> startDownloadTask(DownloadTask task) {
     // 0. Sécurité anti-doublon
@@ -149,6 +252,9 @@ class DownloadManagerService {
     _inFlight[task.id] = run;
     run.whenComplete(() {
       if (identical(_inFlight[task.id], run)) _inFlight.remove(task.id);
+      // §dlQueue — une place se libère : au suivant. Après le retrait, sinon
+      // la tâche qui vient de finir compterait encore comme en vol.
+      pump();
     });
     return run;
   }
@@ -183,7 +289,16 @@ class DownloadManagerService {
     }
     // La tâche vient de passer en `canceled` : on repart d'un état propre.
     _cancelTokens.remove(task.id);
-    await startDownloadTask(bumped);
+    if (previous != null) {
+      // Un transfert qui TOURNAIT garde sa place : il repart tout de suite.
+      await startDownloadTask(bumped);
+      return;
+    }
+    // §dlQueue — Rien n'était en vol (échec, annulation) : la relance passe
+    // par la file, sinon « Appuyer pour relancer » ouvrait une seconde
+    // connexion sur le même abonnement (constaté : deux transferts VOD en
+    // parallèle malgré la règle).
+    await enqueue(bumped);
   }
 
   Future<void> _runDownload(DownloadTask task) async {
@@ -244,6 +359,14 @@ class DownloadManagerService {
 
       // 3. Écriture manuelle et sécurisée du flux dans le fichier
       // On ouvre le fichier en mode APPEND (ajout à la fin). C'est la clé pour éviter la corruption.
+      // §dlTmpDir (2026-09-06) — Le dossier du fichier partiel peut avoir
+      // DISPARU entre la création de la tâche et son départ : le cache
+      // externe (`Android/data/<pkg>/cache`) est vidé à une mise à jour de
+      // l'app, et Android peut le vider sous pression de stockage. Constaté
+      // sur l'émulateur : une tâche en attente relancée au démarrage
+      // (§dlQueue) échouait en `PathNotFoundException`. On recrée le dossier ;
+      // le transfert repart alors de zéro (l'offset lu plus haut est 0).
+      await tempFile.parent.create(recursive: true);
       final raf = await tempFile.open(mode: FileMode.append);
       int receivedThisSession = 0;
 

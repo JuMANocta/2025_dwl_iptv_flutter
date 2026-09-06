@@ -143,6 +143,30 @@ class MainActivity : FlutterActivity() {
                 } catch (e: Exception) {
                     result.error("CAPS_ERROR", e.message, null)
                 }
+            } else if (call.method == "network") {
+                // §dlWifi — Le réseau ACTIF selon Android : transport et
+                // « facturé » (NOT_METERED absent). C'est la vérité que ni un
+                // nom d'interface (l'émulateur appelle son réseau mobile
+                // `eth0`) ni un plugin de plus ne donnent mieux.
+                try {
+                    val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+                    val net = cm.activeNetwork
+                    val caps = if (net != null) cm.getNetworkCapabilities(net) else null
+                    if (caps == null) {
+                        result.success(mapOf("transport" to "none", "metered" to false))
+                    } else {
+                        val transport = when {
+                            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+                            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                            else -> "unknown"
+                        }
+                        val metered = !caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                        result.success(mapOf("transport" to transport, "metered" to metered))
+                    }
+                } catch (e: Exception) {
+                    result.error("NETWORK_ERROR", e.message, null)
+                }
             } else {
                 result.notImplemented()
             }

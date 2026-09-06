@@ -158,6 +158,23 @@ class PerfConfig {
   /// à la fois, quoi que raconte le panel.
   final int hostMaxConcurrent;
 
+  /// §dlQueue (2026-09-06, lot 6) — Téléchargements en vol AU PLUS, tous
+  /// abonnements confondus. La limite par abonnement, elle, n'est pas
+  /// réglable : **un** transfert à la fois par hôte (les panels comptent les
+  /// connexions par compte, cf. `download_scheduler.dart`). Ce plafond ne
+  /// joue donc qu'entre abonnements différents. ⚠️ Exclu de l'égalité, comme
+  /// les réglages de confort.
+  final int maxParallelDownloads;
+  static const int minParallelDownloads = 1;
+  static const int maxParallelDownloadsLimit = 4;
+
+  /// §dlWifi (2026-09-06, lot 6) — Téléchargements « Wi-Fi seulement » : sur
+  /// un réseau FACTURÉ (données mobiles, partage de connexion facturé), les
+  /// transferts en attente attendent ; ils partent d'eux-mêmes au retour d'un
+  /// réseau non facturé. Défaut OFF : ne jamais surprendre par une attente.
+  /// ⚠️ Exclu de l'égalité, comme les réglages de confort.
+  final bool downloadsWifiOnly;
+
   static const int minHeroCards = 5;
   static const int maxHeroCards = 15;
   static const int minItemsPerRow = 5;
@@ -205,6 +222,8 @@ class PerfConfig {
     this.keepAllListsInMemory = true,
     this.idleUnloadMinutes = 0,
     this.hostMaxConcurrent = 1,
+    this.maxParallelDownloads = 2,
+    this.downloadsWifiOnly = false,
   });
 
   /// §unloadGuard — Délai réellement appliqué par `MainNavigation`, ou `null`
@@ -324,6 +343,8 @@ class PerfConfig {
         'mnr': rowFoldMin,
         'kal': keepAllListsInMemory,
         'ium': idleUnloadMinutes,
+        'mpd': maxParallelDownloads,
+        'dwo': downloadsWifiOnly,
         'hmc': hostMaxConcurrent,
       };
 
@@ -356,6 +377,9 @@ class PerfConfig {
             .clamp(minIdleUnloadMinutes, maxIdleUnloadMinutes),
         hostMaxConcurrent: (j['hmc'] as int? ?? defaults.hostMaxConcurrent)
             .clamp(minHostMaxConcurrent, maxHostMaxConcurrent),
+        maxParallelDownloads: (j['mpd'] as int? ?? defaults.maxParallelDownloads)
+            .clamp(minParallelDownloads, maxParallelDownloadsLimit),
+        downloadsWifiOnly: j['dwo'] as bool? ?? defaults.downloadsWifiOnly,
       );
 
   PerfConfig copyWith({
@@ -374,6 +398,8 @@ class PerfConfig {
     bool? keepAllListsInMemory,
     int? idleUnloadMinutes,
     int? hostMaxConcurrent,
+    int? maxParallelDownloads,
+    bool? downloadsWifiOnly,
   }) =>
       PerfConfig(
         heroEnabled: heroEnabled ?? this.heroEnabled,
@@ -392,6 +418,9 @@ class PerfConfig {
             keepAllListsInMemory ?? this.keepAllListsInMemory,
         idleUnloadMinutes: idleUnloadMinutes ?? this.idleUnloadMinutes,
         hostMaxConcurrent: hostMaxConcurrent ?? this.hostMaxConcurrent,
+        maxParallelDownloads:
+            maxParallelDownloads ?? this.maxParallelDownloads,
+        downloadsWifiOnly: downloadsWifiOnly ?? this.downloadsWifiOnly,
       );
 
   // Égalité champ-à-champ → détection du preset actif dans la page.

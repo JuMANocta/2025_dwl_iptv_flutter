@@ -142,8 +142,8 @@ Future<void> verifierEtTelecharger({
       case DownloadStatus.canceled:
         debugPrint("🔄 Tâche existante trouvée (état: ${existingTask.status}). Reprise du téléchargement...");
 
-        // On demande simplement au manager de relancer CETTE tâche existante.
-        downloadManager.startDownloadTask(existingTask);
+        // §dlQueue — par la file : elle repart dès qu'une place est libre.
+        downloadManager.enqueue(existingTask);
 
         // On affiche le moniteur pour que l'utilisateur voie la reprise.
         final rootContext = navigatorKey.currentContext;
@@ -355,7 +355,8 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
 
   // 7. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN
   await downloadManager.addTask(newTask);
-  downloadManager.startDownloadTask(newTask);
+  // §dlQueue — la file décide du départ (un transfert par abonnement).
+  downloadManager.enqueue(newTask);
 
   // 8. AFFICHAGE DU DIALOGUE "MONITEUR"
   final rootContext = navigatorKey.currentContext;

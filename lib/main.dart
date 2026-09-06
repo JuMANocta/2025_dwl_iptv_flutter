@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'l10n/l10n_ext.dart';
 import 'data/services/download_manager_service.dart';
+import 'data/models/download_task.dart';
 import 'data/services/transfer_notification_bridge.dart';
 import 'data/services/cast_notification_bridge.dart';
 import 'data/services/favorites_service.dart';
@@ -34,6 +35,8 @@ import 'feature/settings/backup_restore_flow.dart';
 import 'feature/settings/perf_suggest_dialog.dart';
 import 'core/boot/boot_status.dart';
 import 'feature/boot/boot_screen.dart';
+import 'feature/boot/boot_offline_screen.dart';
+import 'data/services/network_status_service.dart';
 import 'core/diagnostics/log_buffer.dart';
 import 'core/diagnostics/jank_meter.dart';
 import 'feature/settings/web_console/web_console_page.dart';
@@ -397,13 +400,33 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     debugPrint('🚦 §restoreTrace — LaunchDecider.initState (hash $hashCode)');
     _checkOnboarding();
     _initFuture = _initializeApp();
+    // §offlineBoot — Sur l'écran hors ligne, le retour du réseau relance le
+    // démarrage tout seul : pas besoin de trouver un bouton.
+    NetworkStatusService.offline.addListener(_onNetworkChanged);
   }
 
   @override
   void dispose() {
     debugPrint('🚦 §restoreTrace — LaunchDecider.dispose (hash $hashCode)');
+    NetworkStatusService.offline.removeListener(_onNetworkChanged);
     super.dispose();
   }
+
+  bool _showingOffline = false;
+
+  void _onNetworkChanged() {
+    if (!NetworkStatusService.offline.value && _showingOffline && mounted) {
+      debugPrint('🔌 §offlineBoot — réseau de retour : relance du démarrage');
+      _retryInitialization();
+    }
+  }
+
+  /// §offlineBoot — Le démarrage a échoué SANS réseau et des fichiers
+  /// téléchargés existent : plutôt qu'un écran d'erreur, les fichiers.
+  bool get _offlineWithFiles =>
+      NetworkStatusService.offline.value &&
+      DownloadManagerService().tasksNotifier.value
+          .any((t) => t.status == DownloadStatus.completed);
 
   /// §1i — Vérifie si l'onboarding doit être affiché (1re ouverture seulement).
   Future<void> _checkOnboarding() async {
@@ -425,6 +448,9 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
   /// Valide la configuration initiale et retourne les données du compte actif (null = pas de compte).
   Future<({String path, String accountId, String accountName})?> _initializeApp() async {
+    // §offlineBoot — On regarde le réseau AVANT de tenter la playlist : si le
+    // chargement échoue, l'aiguillage saura si c'est faute de réseau.
+    unawaited(NetworkStatusService.refresh());
     // §bootStatus — L'écran de lancement reflète l'étape réelle : sur une
     // grosse playlist le boot dure plusieurs secondes, et un texte figé ne
     // permettait pas de distinguer « ça travaille » de « c'est bloqué ».
@@ -844,13 +870,19 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         final Widget screen;
         if (snapshot.connectionState == ConnectionState.waiting) {
           screen = const BootLoadingScreen();
+        } else if (snapshot.hasError && _offlineWithFiles) {
+          // §offlineBoot — hors ligne + des fichiers : on les montre.
+          _showingOffline = true;
+          screen = BootOfflineScreen(onRetry: _retryInitialization);
         } else if (snapshot.hasError) {
+          _showingOffline = false;
           screen = BootErrorScreen(
             error: snapshot.error!,
             onRetry: _retryInitialization,
             onOpenAccounts: _recheckAfterSettings,
           );
         } else if (snapshot.data != null) {
+          _showingOffline = false;
           screen = MainNavigation(initialData: snapshot.data!);
         } else {
           screen = BootNoAccountScreen(

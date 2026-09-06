@@ -1024,4 +1024,51 @@ class AppLocalizationsFr extends AppLocalizations {
   String rowProviderTrending(String name) {
     return 'Tendances $name';
   }
+
+  @override
+  String get perfDownloadsSection => 'Téléchargements';
+
+  @override
+  String get perfParallelDownloadsTitle => 'Transferts en même temps';
+
+  @override
+  String get perfParallelDownloadsSub =>
+      'Un seul transfert à la fois par abonnement : les fournisseurs n\'acceptent qu\'une connexion, et le lecteur en garde une. Ce nombre ne joue qu\'entre abonnements différents ; les autres attendent leur tour.';
+
+  @override
+  String get taskStatusQueuedWhy =>
+      'En attente : un transfert à la fois par abonnement';
+
+  @override
+  String get perfWifiOnlyTitle => 'Télécharger en Wi-Fi seulement';
+
+  @override
+  String get perfWifiOnlySub =>
+      'Sur les données mobiles (ou un partage de connexion facturé), les transferts attendent et repartent seuls dès qu\'un Wi-Fi ou une connexion filaire revient.';
+
+  @override
+  String get taskStatusWaitWifi => 'En attente du Wi-Fi (réseau facturé)';
+
+  @override
+  String get taskStatusWaitNetwork => 'En attente du réseau';
+
+  @override
+  String get offlineBannerTitle =>
+      'Hors ligne — seuls les fichiers téléchargés sont lisibles';
+
+  @override
+  String get offlineBannerRetry => 'Réessayer';
+
+  @override
+  String get offlineBootMessage =>
+      'Pas de réseau pour charger tes listes. Tes fichiers téléchargés restent là ; l\'application reprendra d\'elle-même dès que la connexion reviendra.';
+
+  @override
+  String capsDisplayModesNote(int w, int h) {
+    return 'L\'écran annonce jusqu\'à $w×$h. Android affiche l\'interface en plus petit ; la vidéo, elle, sort en natif.';
+  }
+
+  @override
+  String get capsDisplayUiNote =>
+      'Ce qu\'Android annonce ici décrit l\'interface, pas forcément la dalle : beaucoup de téléviseurs 4K affichent leurs menus en 1080p et la vidéo en 2160p. Seuls les décodeurs décident de la 4K.';
 }

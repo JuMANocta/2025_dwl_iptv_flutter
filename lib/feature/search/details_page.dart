@@ -710,6 +710,13 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     }
 
     if (_isEpisode) {
+      // §seriesFetchOnce (2026-09-06) — Les données de la SÉRIE (crédits,
+      // vidéos, recommandations, réseaux…) ne changent pas d'un épisode à
+      // l'autre : on ne les redemande pas. Vu sur le téléviseur réel : 17
+      // appels `/tv/1639` en 27 s en parcourant les épisodes d'une seule
+      // série — un appel complet par épisode sélectionné. Seul l'épisode est
+      // redemandé ; la série ne l'est que si son premier chargement a échoué.
+      final Media? seriesAlready = _tmdbData;
       final results = await Future.wait([
         service.getEpisodeDetails(
           widget.entry.displayName,
@@ -722,15 +729,16 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
           yearFilter: widget.entry.title.year,
           groupTitle: widget.entry.groupTitle,
         ),
-        fetchFull(isTv: true),
+        if (seriesAlready == null) fetchFull(isTv: true),
       ]);
       if (mounted) {
         setState(() {
           _episodeData = results[0] as Map<String, dynamic>?;
-          _tmdbData    = results[1] as Media?;
+          if (seriesAlready == null) _tmdbData = results[1] as Media?;
           _isLoading   = false;
         });
-        _computeRelated();
+        // Les rangées Saga / Similaires dépendent de la série : inchangées.
+        if (seriesAlready == null) _computeRelated();
       }
     } else {
       final data = await fetchFull(isTv: isSeries || _currentEpisode.isSerie);

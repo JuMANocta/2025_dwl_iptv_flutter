@@ -1813,6 +1813,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Trending on {name}'**
   String rowProviderTrending(String name);
+
+  /// No description provided for @perfDownloadsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloads'**
+  String get perfDownloadsSection;
+
+  /// No description provided for @perfParallelDownloadsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Simultaneous transfers'**
+  String get perfParallelDownloadsTitle;
+
+  /// No description provided for @perfParallelDownloadsSub.
+  ///
+  /// In en, this message translates to:
+  /// **'One transfer at a time per subscription: providers accept a single connection, and the player keeps one. This number only applies across different subscriptions; the others wait their turn.'**
+  String get perfParallelDownloadsSub;
+
+  /// No description provided for @taskStatusQueuedWhy.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting: one transfer at a time per subscription'**
+  String get taskStatusQueuedWhy;
+
+  /// No description provided for @perfWifiOnlyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Download on Wi-Fi only'**
+  String get perfWifiOnlyTitle;
+
+  /// No description provided for @perfWifiOnlySub.
+  ///
+  /// In en, this message translates to:
+  /// **'On mobile data (or a metered hotspot), transfers wait and resume on their own as soon as Wi-Fi or a wired connection is back.'**
+  String get perfWifiOnlySub;
+
+  /// No description provided for @taskStatusWaitWifi.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for Wi-Fi (metered network)'**
+  String get taskStatusWaitWifi;
+
+  /// No description provided for @taskStatusWaitNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for network'**
+  String get taskStatusWaitNetwork;
+
+  /// No description provided for @offlineBannerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline — only downloaded files can be played'**
+  String get offlineBannerTitle;
+
+  /// No description provided for @offlineBannerRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get offlineBannerRetry;
+
+  /// No description provided for @offlineBootMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'No network to load your lists. Your downloaded files are still here; the app will resume on its own as soon as the connection is back.'**
+  String get offlineBootMessage;
+
+  /// No description provided for @capsDisplayModesNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The screen reports up to {w}×{h}. Android renders the UI smaller; video plays at native size.'**
+  String capsDisplayModesNote(int w, int h);
+
+  /// No description provided for @capsDisplayUiNote.
+  ///
+  /// In en, this message translates to:
+  /// **'What Android reports here describes the UI, not necessarily the panel: many 4K TVs render menus at 1080p and video at 2160p. Only the decoders decide about 4K.'**
+  String get capsDisplayUiNote;
 }
 
 class _AppLocalizationsDelegate
