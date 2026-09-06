@@ -26,7 +26,7 @@ class BrightnessService {
       } else if (Platform.isWindows) {
         _instance = WindowsBrightness();
       } else {
-        throw UnsupportedError('Plateforme non supportée pour la luminosité');
+        throw UnsupportedError('Unsupported platform for brightness');
       }
     }
     return _instance!;

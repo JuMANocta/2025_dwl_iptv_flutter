@@ -391,7 +391,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get themeSettingsTitle => 'Personnalisation';
 
   @override
-  String get tmdbKeyTitle => 'Clé API TMDB';
+  String get tmdbKeyTitle => 'Affiches et infos TMDB';
 
   @override
   String get xmltvTitle => 'Guide des chaînes';
@@ -410,4 +410,618 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get navSettings => 'Paramètres';
+
+  @override
+  String get settingsSectionPhone => 'Piloter depuis le téléphone';
+
+  @override
+  String get settingsWebConsole => 'Console web';
+
+  @override
+  String get settingsWebConsoleSub =>
+      'Comptes, sauvegarde, thème, EPG, TMDB + télécommande (QR)';
+
+  @override
+  String get settingsSectionSources => 'Sources & comptes';
+
+  @override
+  String get settingsAccounts => 'Comptes IPTV';
+
+  @override
+  String get settingsAccountsSub => 'Providers, stats playlist & recharger';
+
+  @override
+  String get settingsTmdbKey => 'Affiches et infos TMDB';
+
+  @override
+  String get settingsTmdbKeySub => 'Affiches, résumés, casting — optionnel';
+
+  @override
+  String get settingsXmltv => 'Guide des chaînes';
+
+  @override
+  String get settingsXmltvSub => 'EPG XMLTV — TNT France';
+
+  @override
+  String get settingsSectionDisplay => 'Affichage';
+
+  @override
+  String get settingsRegions => 'Langues / régions';
+
+  @override
+  String get settingsRegionsSub =>
+      'Masquer le contenu étranger (réduit la mémoire)';
+
+  @override
+  String get settingsTheme => 'Personnalisation';
+
+  @override
+  String get settingsThemeSub => 'Thème, couleurs, effets cyberpunk';
+
+  @override
+  String get settingsOptimization => 'Optimisation';
+
+  @override
+  String get settingsOptimizationSub =>
+      'Profils performance, hero, vignettes, mémoire';
+
+  @override
+  String get settingsSectionBackup => 'Sauvegarde & application';
+
+  @override
+  String get settingsBackup => 'Sauvegarde / Restauration';
+
+  @override
+  String get settingsBackupSub =>
+      'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)';
+
+  @override
+  String get settingsAbout => 'À propos';
+
+  @override
+  String get settingsAboutSub => 'Version + vérification des mises à jour';
+
+  @override
+  String get settingsResetUsage => 'Réinitialiser les données d\'usage';
+
+  @override
+  String get settingsResetUsageSub =>
+      'Vide favoris, reprises & historique (garde comptes & thème)';
+
+  @override
+  String get settingsResetTitle => 'Réinitialiser les données ?';
+
+  @override
+  String get settingsResetBody =>
+      'Vide les favoris, les reprises de lecture (films & séries), l\'historique de recherche et la dernière chaîne regardée.\n\nConserve les comptes IPTV, la clé TMDB, le thème et les filtres langues/régions.\n\nCette action est irréversible.';
+
+  @override
+  String get settingsResetConfirm => 'Réinitialiser';
+
+  @override
+  String get commonCancel => 'Annuler';
+
+  @override
+  String get errNetworkUnreachable =>
+      'Connexion impossible : réseau coupé ou serveur injoignable.';
+
+  @override
+  String get errTimeout => 'Le serveur a mis trop de temps à répondre.';
+
+  @override
+  String get errTimeoutHint =>
+      'Le serveur a mis trop de temps à répondre. Vérifie ta connexion ou l\'adresse du serveur.';
+
+  @override
+  String get errTls =>
+      'Connexion sécurisée refusée par le serveur (certificat).';
+
+  @override
+  String get errBadFormat => 'Réponse illisible du serveur (format inattendu).';
+
+  @override
+  String get errFileSystem =>
+      'Impossible de lire ou d\'écrire le fichier sur l\'appareil.';
+
+  @override
+  String get errInternal => 'Une erreur interne est survenue.';
+
+  @override
+  String get errBadResponse =>
+      'Réponse invalide du serveur. Vérifie l\'adresse.';
+
+  @override
+  String errForbidden(int code) {
+    return 'Accès refusé par le serveur (HTTP $code). Vérifie les identifiants du compte.';
+  }
+
+  @override
+  String get errNotFound => 'Adresse introuvable sur le serveur (HTTP 404).';
+
+  @override
+  String errServer(int code) {
+    return 'Le serveur est en erreur (HTTP $code). Réessaie plus tard.';
+  }
+
+  @override
+  String errHttp(int code) {
+    return 'Le serveur a répondu avec une erreur (HTTP $code).';
+  }
+
+  @override
+  String get errConnection =>
+      'Erreur de connexion : vérifie que tu es en ligne et que le serveur est accessible.';
+
+  @override
+  String get errCancelled => 'Opération annulée.';
+
+  @override
+  String get errNetworkUnknown => 'Erreur réseau inconnue.';
+
+  @override
+  String rowBecauseYouWatched(String title) {
+    return 'Parce que tu as regardé « $title »';
+  }
+
+  @override
+  String get rowTopRated => 'Les mieux notés';
+
+  @override
+  String get tmdbRowsBecauseTitle => 'Rangée « Parce que tu as regardé »';
+
+  @override
+  String get tmdbRowsBecauseSub =>
+      'Des titres proches de ta dernière lecture, choisis parmi tes listes';
+
+  @override
+  String get tmdbRowsTopRatedTitle => 'Rangée « Les mieux notés »';
+
+  @override
+  String get tmdbRowsTopRatedSub =>
+      'Les titres les mieux notés que proposent tes listes';
+
+  @override
+  String get perfMinItemsTitle => 'Rangées : minimum de titres';
+
+  @override
+  String get perfMinItemsSub =>
+      'En dessous, la rangée est repliée dans « Autres » — New et Favoris jamais. 1 = ne jamais replier.';
+
+  @override
+  String get dlOnDeviceTitle => 'Sur l\'appareil';
+
+  @override
+  String dlOnDeviceSub(int count, String size) {
+    return '$count fichier(s) · $size — dans Movies/AetherStream, absents de la liste';
+  }
+
+  @override
+  String get dlScanTooltip => 'Chercher les fichiers présents sur l\'appareil';
+
+  @override
+  String dlScanFound(int count, String size) {
+    return '$count fichier(s) sur l\'appareil hors liste ($size)';
+  }
+
+  @override
+  String get dlScanNothing => 'Rien de nouveau sur l\'appareil';
+
+  @override
+  String get dlScanDenied =>
+      'Sans l\'accès aux vidéos, le dossier ne peut pas être lu';
+
+  @override
+  String get dlOrphanDeleteTitle => 'Supprimer ce fichier ?';
+
+  @override
+  String dlOrphanDeleteBody(String name, String size) {
+    return '« $name » ($size) sera effacé de l\'appareil. Irréversible.';
+  }
+
+  @override
+  String get dlOrphanDeleted => 'Fichier supprimé';
+
+  @override
+  String get dlOrphanDeleteFailed => 'Android a refusé la suppression';
+
+  @override
+  String get dlOrphanPlay => 'Lire';
+
+  @override
+  String get commonDelete => 'Supprimer';
+
+  @override
+  String get tmdbStatusOn => 'TMDB connecté : affiches, résumés et casting';
+
+  @override
+  String get tmdbStatusOff =>
+      'Sans clé TMDB : pas d\'affiches ni de résumés en plus. L\'application fonctionne quand même.';
+
+  @override
+  String get tmdbPairReplace => 'Remplacer depuis mon téléphone';
+
+  @override
+  String get tmdbPairSetup => 'Configurer depuis mon téléphone';
+
+  @override
+  String get tmdbPairSub =>
+      'Scanne le QR code et colle la clé depuis le téléphone';
+
+  @override
+  String get tmdbKeySection => 'Clé TMDB';
+
+  @override
+  String get tmdbKeySectionManual => 'Saisie à la télécommande';
+
+  @override
+  String get tmdbKeyHint => 'Colle ta clé ici…';
+
+  @override
+  String get tmdbKeyShow => 'Afficher';
+
+  @override
+  String get tmdbKeyHide => 'Masquer';
+
+  @override
+  String get tmdbKeySave => 'Enregistrer';
+
+  @override
+  String get tmdbKeyRemove => 'Retirer la clé';
+
+  @override
+  String get tmdbKeyManualEntry => 'Saisir à la télécommande';
+
+  @override
+  String get tmdbKeyConnected => 'TMDB connecté';
+
+  @override
+  String get tmdbKeyRemoved => 'Clé TMDB retirée';
+
+  @override
+  String get tmdbKeyRejected =>
+      'TMDB refuse cette clé. Vérifie que tu as copié le jeton d\'accès en lecture (API Read Access Token).';
+
+  @override
+  String get tmdbKeyUnverified =>
+      'Clé enregistrée. Impossible de la vérifier pour l\'instant (pas de réseau).';
+
+  @override
+  String get tmdbKeyChecking => 'Vérification…';
+
+  @override
+  String get tmdbHowTitle => 'Obtenir une clé (gratuit)';
+
+  @override
+  String get tmdbHowStep1 => 'Crée un compte sur themoviedb.org';
+
+  @override
+  String get tmdbHowStep2 => 'Ouvre Paramètres, puis API';
+
+  @override
+  String get tmdbHowStep3 =>
+      'Copie le jeton d\'accès en lecture (API Read Access Token)';
+
+  @override
+  String get tmdbHowStep4 => 'Colle-le ci-dessous';
+
+  @override
+  String get tmdbSignup => 'Créer un compte TMDB';
+
+  @override
+  String get tmdbLogin => 'J\'ai déjà un compte';
+
+  @override
+  String get tmdbOptionsTitle => 'Options';
+
+  @override
+  String get tmdbVisualLangTitle => 'Langue des visuels';
+
+  @override
+  String tmdbVisualLangSub(String lang) {
+    return '$lang : affiches, résumés et casting';
+  }
+
+  @override
+  String get tmdbPostersFirstTitle => 'Affiches TMDB en priorité';
+
+  @override
+  String get tmdbPostersFirstOn =>
+      'Le carrousel et les favoris prennent l\'affiche TMDB.';
+
+  @override
+  String get tmdbPostersFirstOff =>
+      'Le carrousel et les favoris gardent l\'affiche de tes listes.';
+
+  @override
+  String get tmdbMemoryTitle => 'Données mémorisées';
+
+  @override
+  String get tmdbMemoryPosters => 'Affiches';
+
+  @override
+  String get tmdbMemoryPostersNone =>
+      'Aucune affiche mémorisée pour l\'instant';
+
+  @override
+  String tmdbMemoryPostersCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count affiches mémorisées',
+      one: '1 affiche mémorisée',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tmdbMemoryClear => 'Vider';
+
+  @override
+  String get tmdbMemoryPostersCleared =>
+      'Affiches oubliées. Elles se rechargeront au fil de la navigation.';
+
+  @override
+  String get tmdbMemorySorting => 'Rangement automatique';
+
+  @override
+  String get tmdbMemorySortingNone =>
+      'Rien à réapprendre : tes listes rangent déjà leurs titres';
+
+  @override
+  String tmdbMemorySortingCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count titres rangés grâce à TMDB',
+      one: '1 titre rangé grâce à TMDB',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tmdbMemoryRelearn => 'Réapprendre';
+
+  @override
+  String get tmdbMemorySortingCleared =>
+      'Rangement oublié. Il se refera en parcourant l\'accueil.';
+
+  @override
+  String get reloadAllTitle => 'Tout recharger ?';
+
+  @override
+  String reloadAllBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Les $count listes vont être retéléchargées depuis leurs serveurs. Cela peut prendre plusieurs minutes.',
+      one:
+          'La liste va être retéléchargée depuis son serveur. Cela peut prendre plusieurs minutes.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String reloadAllBodyRecent(int count, String names) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Les $count listes vont être retéléchargées depuis leurs serveurs.',
+      one: 'La liste va être retéléchargée depuis son serveur.',
+    );
+    return '$_temp0\n\nDéjà à jour (moins de 24 h) : $names.\n\nCela peut prendre plusieurs minutes.';
+  }
+
+  @override
+  String get reloadAllConfirm => 'Tout recharger';
+
+  @override
+  String get reloadAllProgressTitle => 'Rechargement en cours';
+
+  @override
+  String get reloadAllPreparing => 'Préparation…';
+
+  @override
+  String reloadAllStep(int index, int total, String label) {
+    return 'Liste $index/$total — $label';
+  }
+
+  @override
+  String get reloadAllTooltip => 'Recharger toutes les listes';
+
+  @override
+  String get reloadAllNoAccounts => 'Aucune liste à recharger';
+
+  @override
+  String get infoSectionTitle => 'Infos';
+
+  @override
+  String get infoGenre => 'Genre';
+
+  @override
+  String get infoDirector => 'Réalisateur';
+
+  @override
+  String get infoCreator => 'Créateur';
+
+  @override
+  String get infoOriginalTitle => 'Titre original';
+
+  @override
+  String get infoCountry => 'Pays';
+
+  @override
+  String get infoStudios => 'Studios';
+
+  @override
+  String get infoStatus => 'Statut';
+
+  @override
+  String get infoRuntime => 'Durée';
+
+  @override
+  String get infoEpisodeLength => 'Épisode';
+
+  @override
+  String get infoSeasons => 'Saisons';
+
+  @override
+  String get infoNextEpisode => 'Prochain épisode';
+
+  @override
+  String get infoNetwork => 'Diffusé par';
+
+  @override
+  String get infoBudget => 'Budget';
+
+  @override
+  String get infoRevenue => 'Recettes';
+
+  @override
+  String get infoTheatrical => 'Sortie salle';
+
+  @override
+  String get infoDigital => 'Sortie numérique';
+
+  @override
+  String infoSeasonsValue(int seasons, int episodes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      episodes,
+      locale: localeName,
+      other: '$episodes épisodes',
+      one: '1 épisode',
+    );
+    return '$seasons ($_temp0)';
+  }
+
+  @override
+  String get settingsReloadAllSub =>
+      'Retélécharger toutes tes listes depuis leurs serveurs';
+
+  @override
+  String get perfProfileConfort => 'Complet';
+
+  @override
+  String get perfProfileEquilibre => 'Équilibré';
+
+  @override
+  String get perfProfilePerformance => 'Léger';
+
+  @override
+  String get autoProfileOk => 'Compris';
+
+  @override
+  String get capsTitle => 'Ce que ton appareil sait faire';
+
+  @override
+  String get capsSub => 'Décodeurs, écran, mémoire — mesurés, pas devinés';
+
+  @override
+  String get capsMeasure => 'Mesurer à nouveau';
+
+  @override
+  String get capsNever => 'Pas encore mesuré';
+
+  @override
+  String get capsDisplay => 'Écran';
+
+  @override
+  String get capsMemory => 'Mémoire';
+
+  @override
+  String get capsDecoders => 'Décodeurs vidéo';
+
+  @override
+  String get capsVerdict4k => 'Films 4K';
+
+  @override
+  String get capsHardware => 'matériel';
+
+  @override
+  String get capsSoftware => 'logiciel';
+
+  @override
+  String get capsNoDecoder => 'aucun décodeur';
+
+  @override
+  String get capsYes => 'Oui';
+
+  @override
+  String get capsNoDecoder4k => 'Non — aucun décodeur n\'accepte le 2160p';
+
+  @override
+  String get capsNoDisplay4k => 'Non — l\'écran affiche moins que 2160p';
+
+  @override
+  String get capsUnknown => 'Inconnu — mesure incomplète';
+
+  @override
+  String get capsLowRam => 'appareil à faible mémoire';
+
+  @override
+  String get refuse4kTitle => 'Cette version 4K ne peut pas être lue ici';
+
+  @override
+  String get refuse4kDecoder =>
+      'Aucun décodeur de cet appareil n\'accepte une image de 3840×2160. Choisis une version FHD ou HD.';
+
+  @override
+  String refuse4kDisplay(int w, int h) {
+    return 'L\'écran affiche $w×$h : la 4K serait décodée pour rien et risquerait de saccader. Choisis une version FHD ou HD.';
+  }
+
+  @override
+  String get refuseOk => 'Compris';
+
+  @override
+  String autoProfileTitle(String name) {
+    return 'Profil $name choisi pour cet appareil';
+  }
+
+  @override
+  String autoProfileBody(String name, int ram, int cores) {
+    return 'D\'après la mesure ($ram Mo de mémoire, $cores cœurs), l\'accueil est réglé sur le profil $name. Modifiable à tout moment dans Paramètres → Optimisation.';
+  }
+
+  @override
+  String capsMeasuredAt(String date) {
+    return 'Mesuré le $date';
+  }
+
+  @override
+  String capsDisplayValue(int w, int h, int hz) {
+    return '$w×$h à $hz Hz';
+  }
+
+  @override
+  String capsMemoryValue(int total, int avail) {
+    return '$total Mo au total, $avail Mo libres';
+  }
+
+  @override
+  String capsDecoderValue(String name, String kind, int w, int h) {
+    return '$name ($kind) — jusqu\'à $w×$h';
+  }
+
+  @override
+  String get perfProfileConfortSub => 'Toutes les animations';
+
+  @override
+  String get perfProfileEquilibreSub => 'Hero fixe, rangées courtes';
+
+  @override
+  String get perfProfilePerformanceSub => 'Peu de mémoire';
+
+  @override
+  String get tmdbRowsProvidersTitle => 'Tendances Netflix, Disney+ et Prime';
+
+  @override
+  String get tmdbRowsProvidersSub =>
+      'Ce qui marche en ce moment sur chaque plateforme en France, parmi tes listes';
+
+  @override
+  String rowProviderTrending(String name) {
+    return 'Tendances $name';
+  }
 }

@@ -98,6 +98,36 @@ et **reposé à chaque chargement**, sinon l'amplification est perdue au 2e film
 ⚠️ Encapsulé : sur un appareil sans cet effet, le volume plafonne à 100 % au
 lieu de faire échouer la lecture.
 
+**Patch 9 — `mediaInfo` par chargement (§nowPlaying, 2026-09-04).** Amont,
+les métadonnées « Now Playing » (titre, sous-titre, image) ne se posaient que
+par le champ `final` du constructeur de `NativeVideoPlayerController` :
+figées pour la vie du contrôleur. Or l'app en réutilise **un seul** pour
+enchaîner les épisodes (§episodeMeta) — la notification aurait porté le titre
+du premier film pour toujours. Le natif lisait pourtant déjà `mediaInfo` à
+chaque `load` (`handleLoad` → `updateMediaInfo`) : seul le côté Dart
+l'empêchait de changer. `load()` et `loadUrl()` acceptent un `mediaInfo`
+optionnel, replié sur le champ du constructeur. ⚠️ **C'est ce paramètre — et
+lui seul — qui active la MediaSession, la notification `MediaStyle` et le
+service de premier plan `mediaPlayback`** du paquet : `null` = rien ne
+démarre, ce qui est le comportement voulu sur téléviseur.
+
+**Patch 10 — jeton de session sans réflexion (§nowPlaying, 2026-09-04).**
+`buildNotification()` convertissait le jeton Media3 par **réflexion**
+(`getSessionCompatToken()`) puis `as? android.support.v4…MediaSessionCompat.Token`.
+Depuis Media3 1.4 la méthode rend un `androidx.media3.session.legacy…Token` :
+le cast rendait `null` **sans exception**, le repli « notification sans jeton »
+était pris en silence, et la notification n'avait **aucun bouton** ni aucune
+commande depuis l'écran verrouillé. ⚠️ Constaté à l'AVD, pas déduit :
+`dumpsys notification` sans extra `android.mediaSession`, `dumpsys
+media_session` → « Media button session is null », `input keyevent 127` sans
+effet sur la lecture. Remplacé par la voie officielle
+`MediaStyleNotificationHelper.MediaStyle(session)` (media3-session), qui prend
+la `MediaSession` Media3 directement ; `androidx.media` n'est plus utilisé ici.
+
+Patchs 5 à 8, appliqués pendant §engineVendor et marqués dans le code :
+5 `NO_VIEW` n'est pas une panne (fermeture), 6 précision de `seek`,
+7 `stopNow()` avant `dispose`, 8 langue audio préférée (§trackLangPref).
+
 ## 🛡️ Réserve §engineFeatures — NE PAS « nettoyer »
 
 Un audit du 2026-09-01 a inventorié ce qui, dans ce paquet, n'est pas encore
@@ -107,7 +137,12 @@ les options de cast etc. qui pourront servir »). Ne prendre AUCUN de ces blocs
 pour du code mort :
 
 - **Cast/Chromecast** : `lib/cast.dart` + `src/services/cast/` (~980 l. Dart,
-  + dépendance `multicast_dns`) ;
+  + dépendance `multicast_dns`) — ✅ **branché le 2026-09-04 (§castSend)** via
+  `lib/data/services/cast_service.dart`, importé par le point d'entrée séparé
+  `package:better_native_video_player/cast.dart` (pas le barrel). **Aucun
+  patch** du paquet n'a été nécessaire ; ⚠️ le récepteur ne pousse son statut
+  que sur changement d'état, l'app l'interroge (`requestStatus()`) chaque
+  seconde ;
 - **Notifications / MediaSession / écran verrouillé** :
   `VideoPlayerNotificationHandler.kt` + `VideoPlayerMediaSessionService.kt`
   (~607 l. Kotlin, deps `media3-session` + `androidx.media`) ;
@@ -145,3 +180,50 @@ ne coûte aucune capacité ; retirer du code en coûte.
 - Aucun autre écart à ce jour — l'étape 1 du plan est une copie **à
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).
+
+## patch 14 — la libération du lecteur ne gèle plus la sortie (2026-09-06)
+
+`VideoPlayerMethodHandler.handleDispose` appelait `SharedPlayerManager.removePlayer`
+— donc `ExoPlayer.release()` — **sur le thread principal**, avant de répondre à
+Flutter.
+
+⚠️ **`release()` est BLOQUANT** : il attend que le thread de lecture interne
+ait rendu ses décodeurs, jusqu'à `releaseTimeoutMs` (500 ms par défaut, plus
+sur un SoC de téléviseur lent à libérer un décodeur matériel). Pendant ce
+blocage, Flutter ne produit plus une image. Mesuré le 2026-09-06 avec
+§jankMeter sur les 1,5 s qui suivent la fermeture du lecteur : émulateur
+téléphone **5 à 9 frames, pire frame 429 ms** ; émulateur TV 15 à 18 frames,
+pire 127 ms. Signalement utilisateur : « sortir d'un film ou d'une série est
+très long ».
+
+`stop()` reste immédiat (image et son coupés), la réponse à Flutter part tout
+de suite, et `removePlayer` est **posté 450 ms plus tard** sur le looper
+principal — le temps que la transition de sortie soit dessinée. Le lecteur
+partagé reste inscrit ce court instant, sans effet : le contrôleur Dart est
+déjà détruit et un nouveau lecteur reçoit un nouvel identifiant.
+
+⚠️ Ne pas « corriger » en libérant depuis un autre thread : Media3 exige que
+`release()` soit appelé depuis le thread de l'application looper du lecteur.
+
+⚠️ **Le report couvre les DEUX chemins** : `handleDispose` (routé par la vue) ET
+`disposeController` (`NativeVideoPlayerPlugin`). Sur téléviseur, c'est le second
+qui libère vraiment : la vue de plateforme est déjà démontée quand le contrôleur
+Dart se détruit, et le premier échoue en `NO_VIEW` (journal de la TV de
+l'utilisateur, 1.18.7, le 2026-09-06). Un patch qui ne différait que le premier
+ne changeait rien pour la télé.
+
+## patch 13 — le service de lecture doit se déclarer AVANT de se retirer (2026-09-05)
+
+`VideoPlayerMediaSessionService.onStartCommand` sortait par `stopSelf()` quand
+il n'avait pas de notification à afficher, avec le commentaire « bail cleanly ».
+
+⚠️ **`stopSelf()` ne satisfait PAS le contrat de `startForegroundService()`.**
+Android exige `startForeground()` dans les ~5 s, sinon il **tue le processus**.
+Constaté sur Galaxy S25 (Android 16) le 2026-09-05 : quitter le lecteur puis en
+relancer un depuis la fiche produisait
+`ForegroundServiceDidNotStartInTimeException` — plantage complet de l'app,
+exactement 5 s après le démarrage du service.
+
+Le service se déclare désormais TOUJOURS, avec une notification de repli
+minimale si besoin, et ne se retire qu'ensuite. Couvre aussi la course où
+`stop()` arrive avant `onStartCommand`.

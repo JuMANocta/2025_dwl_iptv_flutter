@@ -1063,13 +1063,21 @@ class _HistoryChip extends StatelessWidget {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(width: 4),
+            // §touchTarget — La croix faisait 22x22 a QUATRE pixels d'un tap
+            // qui RELANCE la recherche : viser mal ne coutait pas rien. La
+            // zone tactile passe a 44 dp de large (la hauteur du chip borne le
+            // reste) et s'ecarte du libelle.
+            const SizedBox(width: 8),
             GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: onDismiss,
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Icon(Icons.close,
-                    size: 14, color: cs.onSurfaceVariant.withAlpha(160)),
+              child: SizedBox(
+                width: 44,
+                height: 40,
+                child: Center(
+                  child: Icon(Icons.close,
+                      size: 14, color: cs.onSurfaceVariant.withAlpha(160)),
+                ),
               ),
             ),
           ],

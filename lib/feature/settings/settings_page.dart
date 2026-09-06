@@ -15,10 +15,13 @@ import 'package:aetherStream/data/services/favorites_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/data/services/search_history_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
+import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Hub principal des paramètres (§1b — phase 5).
 ///
@@ -38,6 +41,34 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
+  /// §tvReloadReach — « Tout recharger » depuis le hub, pour la TÉLÉCOMMANDE.
+  /// Même chemin que le ↻ de l'accueil et que la page Comptes : `showReloadAllFlow`.
+  Future<void> _reloadAllLists() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final accounts = await StreamAccountService.listAccounts();
+    final current = await StreamAccountService.getCurrentAccount();
+    if (!mounted) return;
+    if (accounts.isEmpty) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(context.l10n.reloadAllNoAccounts)));
+      return;
+    }
+    final result = await showReloadAllFlow(
+      context,
+      accounts: accounts,
+      // Le compte actif garde le chemin « prioritaire », qui produit les
+      // messages d'erreur précis (même choix que l'accueil).
+      priorityAccountId: current?.id,
+    );
+    if (result == null || !mounted) return; // annulé
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(result.summary),
+        duration: Duration(seconds: result.allOk ? 3 : 6),
+      ));
+  }
+
   Future<void> _openAccounts() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AccountsPage()),
@@ -74,6 +105,7 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
     );
   }
 
+
   Future<void> _openAbout() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AboutPage()),
@@ -107,14 +139,8 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: cs.surfaceContainerHigh,
-        title: const Text('Réinitialiser les données ?'),
-        content: const Text(
-          'Vide les favoris, les reprises de lecture (films & séries), '
-          "l'historique de recherche et la dernière chaîne regardée.\n\n"
-          'Conserve les comptes IPTV, la clé TMDB, le thème et les filtres '
-          'langues/régions.\n\n'
-          'Cette action est irréversible.',
-        ),
+        title: Text(context.l10n.settingsResetTitle),
+        content: Text(context.l10n.settingsResetBody),
         actions: [
           TextButton(
           // §safeFocus — Sur TV, le focus d'entrée d'un dialogue n'est pas
@@ -129,13 +155,13 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
           // mobile.
           autofocus: true,
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
+            child: Text(context.l10n.commonCancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
                 backgroundColor: kError, foregroundColor: Colors.white),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Réinitialiser'),
+            child: Text(context.l10n.settingsResetConfirm),
           ),
         ],
       ),
@@ -196,84 +222,104 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
             // §18 — Sur TV et Windows desktop, on propose l'accès à la Console web
+            // (entrée prioritaire pour la télécommande / desktop). Lance
+            // un mini-serveur HTTP local + QR : le mobile devient une console
+            // complète (comptes, sauvegarde, thème, TMDB, EPG, télécommande,
+            // à propos). Aucun serveur tant que cette entrée n'est pas choisie.
             if (PlatformTv.isTv || Platform.isWindows) ...[
-              _SectionHeader(title: 'Piloter depuis le téléphone'),
+              _SectionHeader(title: context.l10n.settingsSectionPhone),
               _SettingsTile(
                 icon: Icons.smartphone,
                 accentColor: kAccentPrimary,
-                title: 'Console web',
-                subtitle:
-                    'Comptes, sauvegarde, thème, EPG, TMDB + télécommande (QR)',
+                title: context.l10n.settingsWebConsole,
+                subtitle: context.l10n.settingsWebConsoleSub,
                 onTap: _openPhoneConfig,
               ),
               const SizedBox(height: 8),
             ],
             // §settingsGroups — 3 groupes, chacun une couleur d'accent du thème.
             // ── Groupe 1 : Sources & comptes (vert) ────────────────────────
-            _SectionHeader(title: 'Sources & comptes', color: kAccentPrimary),
+            _SectionHeader(
+                title: context.l10n.settingsSectionSources,
+                color: kAccentPrimary),
             _SettingsTile(
               icon: Icons.account_circle_outlined,
               accentColor: kAccentPrimary,
-              title: 'Comptes IPTV',
-              subtitle: 'Providers, stats playlist & recharger',
+              title: context.l10n.settingsAccounts,
+              subtitle: context.l10n.settingsAccountsSub,
               onTap: _openAccounts,
             ),
+            // §tvReloadReach (2026-09-06) — Sur TÉLÉVISEUR, le ↻ de l'accueil
+            // est inatteignable à la télécommande (son rect est contenu dans
+            // celui du hero, §dpadChildFocus) : l'action doit exister ici, à un
+            // seul niveau du rail. Sur téléphone le ↻ marche, la tuile serait
+            // un doublon.
+            if (PlatformTv.isTv)
+              _SettingsTile(
+                icon: Icons.refresh,
+                accentColor: kAccentPrimary,
+                title: context.l10n.reloadAllTooltip,
+                subtitle: context.l10n.settingsReloadAllSub,
+                onTap: _reloadAllLists,
+              ),
             _SettingsTile(
               icon: Icons.movie_creation_outlined,
               accentColor: kAccentPrimary,
-              title: 'Clé API TMDB',
-              subtitle: 'Affiches, synopsis, casting (optionnel)',
+              title: context.l10n.settingsTmdbKey,
+              subtitle: context.l10n.settingsTmdbKeySub,
               onTap: _openTmdbKey,
             ),
             _SettingsTile(
               icon: Icons.tv,
               accentColor: kAccentPrimary,
-              title: 'Guide des chaînes',
-              subtitle: 'EPG XMLTV — TNT France',
+              title: context.l10n.settingsXmltv,
+              subtitle: context.l10n.settingsXmltvSub,
               onTap: _openXmltv,
             ),
             const SizedBox(height: 8),
             // ── Groupe 2 : Affichage (cyan) ────────────────────────────────
-            _SectionHeader(title: 'Affichage', color: kAccentSecondary),
+            _SectionHeader(
+                title: context.l10n.settingsSectionDisplay,
+                color: kAccentSecondary),
             _SettingsTile(
               icon: Icons.translate,
               accentColor: kAccentSecondary,
-              title: 'Langues / régions',
-              subtitle: 'Masquer le contenu étranger (réduit la mémoire)',
+              title: context.l10n.settingsRegions,
+              subtitle: context.l10n.settingsRegionsSub,
               onTap: _openRegionFilter,
             ),
             _SettingsTile(
               icon: Icons.palette_outlined,
               accentColor: kAccentSecondary,
-              title: 'Personnalisation',
-              subtitle: 'Thème, couleurs, effets cyberpunk',
+              title: context.l10n.settingsTheme,
+              subtitle: context.l10n.settingsThemeSub,
               onTap: _openThemeSettings,
             ),
             // §perfSettings — Optimisation Fire Stick / box faibles.
             _SettingsTile(
               icon: Icons.speed,
               accentColor: kAccentSecondary,
-              title: 'Optimisation',
-              subtitle: 'Profils performance, hero, vignettes, mémoire',
+              title: context.l10n.settingsOptimization,
+              subtitle: context.l10n.settingsOptimizationSub,
               onTap: _openOptimisation,
             ),
             const SizedBox(height: 8),
             // ── Groupe 3 : Sauvegarde & application (magenta) ──────────────
             _SectionHeader(
-                title: 'Sauvegarde & application', color: kAccentTertiary),
+                title: context.l10n.settingsSectionBackup,
+                color: kAccentTertiary),
             _SettingsTile(
               icon: Icons.cloud_sync_outlined,
               accentColor: kAccentTertiary,
-              title: 'Sauvegarde / Restauration',
-              subtitle:
-                  'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)',
+              title: context.l10n.settingsBackup,
+              subtitle: context.l10n.settingsBackupSub,
               onTap: _openBackup,
             ),
             _SettingsTile(
               icon: Icons.info_outline,
               accentColor: kAccentTertiary,
-              title: 'À propos',
-              subtitle: 'Version + vérification des mises à jour',
+              title: context.l10n.settingsAbout,
+              subtitle: context.l10n.settingsAboutSub,
               onTap: _openAbout,
             ),
             // §resetUsage — Action destructive : accent kError (rouge) en
@@ -281,8 +327,8 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
             _SettingsTile(
               icon: Icons.delete_sweep_outlined,
               accentColor: kError,
-              title: "Réinitialiser les données d'usage",
-              subtitle: 'Vide favoris, reprises & historique (garde comptes & thème)',
+              title: context.l10n.settingsResetUsage,
+              subtitle: context.l10n.settingsResetUsageSub,
               onTap: _resetUsageData,
             ),
           ],

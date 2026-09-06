@@ -1,9 +1,20 @@
 package com.juman.aetherstream
 
+import android.app.PictureInPictureParams
 import android.app.UiModeManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.app.Activity
+import android.app.RecoverableSecurityException
+import android.content.ContentUris
+import android.net.Uri
+import android.provider.MediaStore
+import android.os.Build
+import android.util.Rational
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -11,6 +22,63 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
+
+    // §pipPhone — Canal MAISON (voir platform_pip.dart pour le pourquoi : le
+    // PiP du paquet vendore exige `isFullScreen`, jamais vrai ici). Garde en
+    // champ pour qu'onUserLeaveHint / onPictureInPictureModeChanged puissent
+    // emettre vers Dart en dehors de configureFlutterEngine.
+    private var pipChannel: MethodChannel? = null
+    private var autoPipEnabled = false
+    private var autoPipWidth = 16
+    private var autoPipHeight = 9
+
+    // §dlNotif — Meme raisonnement que pipChannel : garde en champ pour que
+    // le BroadcastReceiver d'annulation (qui vit independamment de
+    // configureFlutterEngine) puisse emettre vers Dart.
+    private var transferChannel: MethodChannel? = null
+
+    // §castSend — Meme modele que transferChannel : les boutons Pause/Arreter
+    // de la notification de diffusion arrivent par BroadcastReceiver.
+    private var castChannel: MethodChannel? = null
+
+    // §castRelay — Créé à la première demande : la conversion est un cas rare
+    // et coûteux, rien ne doit exister tant qu'elle n'est pas acceptée.
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private var castRelay: AetherCastRelay? = null
+
+    // §dlOrphans — Supprimer une vidéo du dossier public que l'app ne possède
+    // plus (réinstallation, fichier déposé par l'utilisateur) : Android exige
+    // l'accord de l'utilisateur via un IntentSender, dont le résultat revient
+    // dans onActivityResult. On garde le `Result` Dart en attente.
+    private var pendingDeleteResult: MethodChannel.Result? = null
+    private val reqDeleteMedia = 0x4D45
+
+    private val castActionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = when (intent?.action) {
+                AetherCastService.ACTION_TOGGLE -> "toggle"
+                AetherCastService.ACTION_STOP -> "stop"
+                else -> return
+            }
+            castChannel?.invokeMethod("onCastAction", mapOf("action" to action))
+        }
+    }
+
+    // §dlNotif — Le bouton "Annuler" d'une notification de telechargement
+    // passe par un Intent (PendingIntent.getBroadcast), pas par un appel Dart
+    // direct : la notification doit pouvoir agir meme si MainActivity n'a
+    // jamais ete au premier plan depuis le dernier demarrage du processus.
+    // ⚠️ Enregistre dynamiquement (RECEIVER_NOT_EXPORTED) : l'action porte le
+    // package en `setPackage`, aucune autre app ne peut la declencher.
+    private val cancelDownloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val taskId = intent?.getStringExtra(AetherDownloadService.EXTRA_TASK_ID) ?: return
+            transferChannel?.invokeMethod(
+                "onDownloadAction",
+                mapOf("action" to "cancel", "taskId" to taskId)
+            )
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -53,6 +121,34 @@ class MainActivity : FlutterActivity() {
         // (feature flag Amazon spécifique).
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/device"
+        ).setMethodCallHandler { call, result ->
+            // §castBattery — État de la batterie, pour avertir AVANT qu'une
+            // diffusion (le téléphone porte le film) ne meure avec elle.
+            if (call.method == "battery") {
+                try {
+                    val bm = getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
+                    val percent = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                    val status = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_STATUS)
+                    val charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                        status == android.os.BatteryManager.BATTERY_STATUS_FULL
+                    result.success(mapOf("percent" to percent, "charging" to charging))
+                } catch (e: Exception) {
+                    result.error("BATTERY_ERROR", e.message, null)
+                }
+            } else if (call.method == "caps") {
+                // §deviceCaps — décodeurs, écran, mémoire : mesurés, pas devinés.
+                try {
+                    result.success(AetherDeviceCaps.probe(applicationContext))
+                } catch (e: Exception) {
+                    result.error("CAPS_ERROR", e.message, null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
             "aetherstream/tv_detection"
         ).setMethodCallHandler { call, result ->
             if (call.method == "isTv") {
@@ -71,5 +167,381 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
+
+        // §pipPhone — Picture-in-Picture. `isSupported` : feature + API >= 26
+        // (PictureInPictureParams n'existe pas avant). `enter` : bouton manuel
+        // du lecteur. `setAutoEnter` : arme/desarme le PiP au geste Accueil —
+        // rappele a CHAQUE changement d'eligibilite (verrou, erreur, TV),
+        // jamais une seule fois au demarrage.
+        // §dlOrphans — Inventaire et suppression dans /Movies/AetherStream/.
+        // Par MediaStore et non par `File.listFiles()` : sur Android 10+ le
+        // dossier public n'est pas lisible par chemin pour les fichiers d'une
+        // autre origine (une réinstallation change l'origine), alors que
+        // MediaStore les indexe tous.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/media"
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "listVideos" -> {
+                    val rel = call.argument<String>("relativePath") ?: "Movies/AetherStream/"
+                    try {
+                        result.success(listVideos(rel))
+                    } catch (e: Exception) {
+                        result.error("list", e.message, null)
+                    }
+                }
+                "deleteVideo" -> {
+                    val uriStr = call.argument<String>("uri")
+                    if (uriStr == null) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    deleteVideo(Uri.parse(uriStr), result)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        pipChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/pip"
+        )
+        pipChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isSupported" -> {
+                    val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                        packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+                    result.success(supported)
+                }
+                "enter" -> {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    val w = call.argument<Int>("width") ?: 16
+                    val h = call.argument<Int>("height") ?: 9
+                    try {
+                        val entered = enterPictureInPictureMode(
+                            PictureInPictureParams.Builder()
+                                .setAspectRatio(Rational(w, h))
+                                .build()
+                        )
+                        result.success(entered)
+                    } catch (e: Exception) {
+                        // Appareil sans le feature, ou activite pas eligible
+                        // (multi-fenetre deja actif, etc.) : jamais une exception
+                        // cote Dart, juste "non entre".
+                        result.success(false)
+                    }
+                }
+                "setAutoEnter" -> {
+                    autoPipEnabled = call.argument<Boolean>("enabled") ?: false
+                    autoPipWidth = call.argument<Int>("width") ?: 16
+                    autoPipHeight = call.argument<Int>("height") ?: 9
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        try {
+                            setPictureInPictureParams(buildAutoPipParams())
+                        } catch (e: Exception) {
+                            // Fenetre pas encore attachee : sans effet, geree
+                            // par onUserLeaveHint le moment venu.
+                        }
+                    }
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // §dlNotif — Notification de téléchargement, portée par
+        // `AetherDownloadService` (foreground service `dataSync` : sans lui, le
+        // transfert — Dio dans l'isolate principal, aucun WorkManager — meurt
+        // avec le processus dès qu'Android récupère la mémoire).
+        transferChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/transfer_notif"
+        )
+        transferChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "startOrUpdate" -> {
+                    val title = call.argument<String>("title") ?: "Téléchargement"
+                    val text = call.argument<String>("text") ?: ""
+                    val progress = call.argument<Int>("progress") ?: -1
+                    val indeterminate = call.argument<Boolean>("indeterminate") ?: false
+                    val cancelTaskId = call.argument<String>("cancelTaskId")
+                    AetherDownloadService.start(
+                        this, title, text, progress, indeterminate, cancelTaskId
+                    )
+                    result.success(null)
+                }
+                "stopOngoing" -> {
+                    AetherDownloadService.stop(this)
+                    result.success(null)
+                }
+                "postFinished" -> {
+                    val id = call.argument<Int>("id") ?: 0
+                    val title = call.argument<String>("title") ?: "Téléchargement"
+                    val success = call.argument<Boolean>("success") ?: false
+                    AetherDownloadService.postFinished(this, id, title, success)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // §castRelay — Conversion du son pour le Cast. Le canal ne fait
+        // qu'exposer `AetherCastRelay` ; la DÉCISION de convertir (et le
+        // consentement) vit côté Dart (`cast_relay_policy.dart`).
+        val relayChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/cast_relay"
+        )
+        relayChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> {
+                    val url = call.argument<String>("url")
+                    if (url == null) {
+                        result.error("NO_URL", "URL requise", null)
+                        return@setMethodCallHandler
+                    }
+                    // Rang de la piste audio à convertir (ordre du fichier) ;
+                    // -1 = laisser Media3 choisir.
+                    val audioIndex = call.argument<Int>("audioIndex") ?: -1
+                    // §castResume — position de départ de la CONVERSION (ms).
+                    val startMs = (call.argument<Number>("startMs") ?: 0).toLong()
+                    // ⚠️ `applicationContext`, PAS `this` : la conversion dure des
+                    // minutes et retiendrait l'Activity entière en mémoire.
+                    val relay = castRelay
+                        ?: AetherCastRelay(applicationContext).also { castRelay = it }
+                    relay.start(url, audioIndex, startMs, object : AetherCastRelay.Callbacks {
+                        override fun onProgress(percent: Int) {
+                            relayChannel.invokeMethod(
+                                "onRelayProgress", mapOf("percent" to percent)
+                            )
+                        }
+
+                        override fun onCompleted(outputPath: String) {
+                            relayChannel.invokeMethod(
+                                "onRelayDone", mapOf("path" to outputPath)
+                            )
+                        }
+
+                        override fun onFailed(message: String, userFacing: Boolean) {
+                            relayChannel.invokeMethod(
+                                "onRelayFailed",
+                                mapOf("message" to message, "userFacing" to userFacing)
+                            )
+                        }
+                    })
+                    result.success(relay.outputPath())
+                }
+                "stop" -> {
+                    castRelay?.clean()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // §castSend — Notification « Diffusion sur … », portée par
+        // `AetherCastService` (foreground `mediaPlayback`) : garde la session
+        // Cast (socket Dart) vivante quand l'app est en arrière-plan.
+        castChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "aetherstream/cast_notif"
+        )
+        castChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "show" -> {
+                    val title = call.argument<String>("title") ?: "AetherStream"
+                    val text = call.argument<String>("text") ?: "Diffusion en cours"
+                    val playing = call.argument<Boolean>("playing") ?: true
+                    val image = call.argument<String>("image")
+                    val lowBattery = call.argument<Boolean>("lowBattery") ?: false
+                    AetherCastService.start(this, title, text, playing, image, lowBattery)
+                    result.success(null)
+                }
+                "hide" -> {
+                    AetherCastService.stop(this)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun buildAutoPipParams(): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(autoPipWidth, autoPipHeight))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(autoPipEnabled)
+        }
+        return builder.build()
+    }
+
+    // §pipPhone — Geste Accueil : c'est le SEUL chemin qui fonctionne a partir
+    // de l'API 26 (setAutoEnterEnabled n'existe que depuis l'API 31, et ne
+    // couvre de toute facon pas tous les constructeurs). Idiome standard
+    // Android pour le PiP manuel.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (autoPipEnabled &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !isInPictureInPictureMode
+        ) {
+            try {
+                enterPictureInPictureMode(buildAutoPipParams())
+            } catch (e: Exception) {
+                // Silencieux : rien a faire cote app si le systeme refuse.
+            }
+        }
+    }
+
+    // §pipPhone — L'EVENEMENT exact (contre le sondage a 150 ms du paquet
+    // vendore, qui n'a pas acces a l'Activity et doit deviner). `dismissed`
+    // distingue « ferme depuis la fenetre PiP » (croix) de « restaure en plein
+    // ecran » : dans le premier cas, PlayerPage met la lecture en pause plutot
+    // que de laisser un son sans image derriere une activite qui se termine.
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        val dismissed = !isInPictureInPictureMode && (isFinishing || isDestroyed)
+        pipChannel?.invokeMethod(
+            "onPipChanged",
+            mapOf("active" to isInPictureInPictureMode, "dismissed" to dismissed)
+        )
+    }
+
+    // §dlNotif — Enregistre en `onCreate`/`onDestroy`, PAS en `onStart`/
+    // `onStop` : le bouton "Annuler" doit rester actionnable tant que le
+    // PROCESSUS vit, précisément quand l'app est en arrière-plan (backgroundée,
+    // pas détruite) — c'est le cas normal pour qui regarde une notification
+    // de téléchargement. Un enregistrement borné à `onStart`/`onStop` le
+    // désarmerait exactement quand il sert le plus.
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        val filter = IntentFilter(AetherDownloadService.ACTION_CANCEL)
+        // §castSend — Meme cycle de vie que le recepteur d'annulation, pour la
+        // meme raison : les boutons servent quand l'app est en arriere-plan.
+        val castFilter = IntentFilter().apply {
+            addAction(AetherCastService.ACTION_TOGGLE)
+            addAction(AetherCastService.ACTION_STOP)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(cancelDownloadReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(castActionReceiver, castFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(cancelDownloadReceiver, filter)
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(castActionReceiver, castFilter)
+        }
+    }
+
+    // §dlOrphans — Les vidéos indexées sous `relativePath` (Movies/AetherStream/).
+    // ⚠️ RELATIVE_PATH n'existe qu'à partir d'Android 10 ; avant, on filtre
+    // sur le chemin absolu (DATA).
+    private fun listVideos(relativePath: String): List<Map<String, Any?>> {
+        val out = mutableListOf<Map<String, Any?>>()
+        val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        val projection = arrayOf(
+            MediaStore.Video.Media._ID,
+            MediaStore.Video.Media.DISPLAY_NAME,
+            MediaStore.Video.Media.SIZE,
+            MediaStore.Video.Media.DATE_MODIFIED,
+            MediaStore.Video.Media.DATA
+        )
+        val (selection, args) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            "${MediaStore.Video.Media.RELATIVE_PATH} LIKE ?" to arrayOf("$relativePath%")
+        } else {
+            "${MediaStore.Video.Media.DATA} LIKE ?" to arrayOf("%/$relativePath%")
+        }
+        contentResolver.query(
+            collection, projection, selection, args,
+            "${MediaStore.Video.Media.DATE_MODIFIED} DESC"
+        )?.use { c ->
+            val iId = c.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+            val iName = c.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+            val iSize = c.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
+            val iDate = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
+            val iData = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
+            while (c.moveToNext()) {
+                val id = c.getLong(iId)
+                out.add(
+                    mapOf(
+                        "uri" to ContentUris.withAppendedId(collection, id).toString(),
+                        "name" to (c.getString(iName) ?: ""),
+                        "size" to c.getLong(iSize),
+                        "modified" to c.getLong(iDate) * 1000L,
+                        "path" to (c.getString(iData) ?: "")
+                    )
+                )
+            }
+        }
+        return out
+    }
+
+    // §dlOrphans — Suppression. Un fichier que l'app possède part directement ;
+    // sinon Android répond par une SecurityException et il faut demander
+    // l'accord de l'utilisateur (dialogue système), résultat dans
+    // onActivityResult. Jamais une exception côté Dart : `false` suffit.
+    private fun deleteVideo(uri: Uri, result: MethodChannel.Result) {
+        try {
+            val n = contentResolver.delete(uri, null, null)
+            result.success(n > 0)
+        } catch (e: SecurityException) {
+            val sender = when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+                    MediaStore.createDeleteRequest(contentResolver, listOf(uri)).intentSender
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e is RecoverableSecurityException ->
+                    e.userAction.actionIntent.intentSender
+                else -> null
+            }
+            if (sender == null) {
+                result.success(false)
+                return
+            }
+            pendingDeleteResult?.success(false) // une demande précédente traînait
+            pendingDeleteResult = result
+            try {
+                startIntentSenderForResult(sender, reqDeleteMedia, null, 0, 0, 0)
+            } catch (ex: Exception) {
+                pendingDeleteResult = null
+                result.success(false)
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == reqDeleteMedia) {
+            pendingDeleteResult?.success(resultCode == Activity.RESULT_OK)
+            pendingDeleteResult = null
+        }
+    }
+
+    override fun onDestroy() {
+        // ⚠️ **Sans ceci, une conversion survit à l'activité.** Le service de
+        // premier plan garde le processus vivant alors qu'Android peut
+        // détruire l'Activity : le `Transformer` continuait d'écrire (~1,3 Go
+        // par minute), gardait décodeur et encodeur, et parlait à un canal
+        // mort. Le `MainActivity` suivant en créait un NOUVEAU : l'ancien
+        // devenait injoignable, donc inarrêtable.
+        castRelay?.clean()
+        castRelay = null
+        try {
+            unregisterReceiver(cancelDownloadReceiver)
+        } catch (e: IllegalArgumentException) {
+            // Jamais enregistré (onCreate n'a pas eu le temps de s'exécuter) :
+            // rien à faire.
+        }
+        try {
+            unregisterReceiver(castActionReceiver)
+        } catch (e: IllegalArgumentException) {
+            // Idem.
+        }
+        super.onDestroy()
     }
 }

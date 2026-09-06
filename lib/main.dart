@@ -5,7 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
+import 'l10n/l10n_ext.dart';
 import 'data/services/download_manager_service.dart';
+import 'data/services/transfer_notification_bridge.dart';
+import 'data/services/cast_notification_bridge.dart';
 import 'data/services/favorites_service.dart';
 import 'data/services/stream_account_service.dart';
 import 'data/services/storage_janitor.dart';
@@ -15,6 +18,8 @@ import 'data/services/parsed_playlist_service.dart';
 import 'data/services/playlist_fleet_service.dart';
 import 'data/services/load_failure.dart';
 import 'data/services/watch_progress_service.dart';
+import 'data/services/device_library_service.dart';
+import 'data/services/device_caps_service.dart';
 import 'data/services/search_history_service.dart';
 import 'data/services/last_watched_channel_service.dart';
 import 'data/services/hidden_regions_service.dart';
@@ -44,6 +49,7 @@ import 'data/services/xmltv_service.dart';
 import 'data/services/measured_quality_service.dart';
 import 'data/services/inferred_category_service.dart';
 import 'data/services/tmdb_poster_cache.dart';
+import 'data/services/visual_language_service.dart';
 import 'feature/update/update_dialog.dart';
 import 'feature/player/video_fit.dart';
 import 'feature/player/video_stats.dart';
@@ -51,6 +57,7 @@ import 'core/utils/platform_tv.dart';
 import 'core/platform/storage_service.dart';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:window_manager/window_manager.dart';
+import 'core/utils/tv_text_scaler.dart';
 import 'core/utils/host_gate.dart';
 import 'package:dpad/dpad.dart';
 
@@ -185,6 +192,7 @@ Future<void> _initServices() async {
     DownloadManagerService().init(),
     FavoritesService.init(),
     WatchProgressService.init(),
+    DeviceLibraryService.init(), // §dlOrphans — orphelins du dernier balayage
     SearchHistoryService.init(),
     LastWatchedChannelService.init(),
     // §stallCount — Historique de blocages par compte (quel abonnement rame).
@@ -197,7 +205,17 @@ Future<void> _initServices() async {
     MeasuredQualityService.init(), // §qualityTruth
     InferredCategoryService.init(), // §inferredCat
     TmdbPosterCache.init(), // §tmdbUrlPersist
+    VisualLanguageService.init(), // §posterLang
+    DeviceCapsService.init(), // §deviceCaps — derniere mesure persistee
   ]);
+  // §dlNotif — APRÈS `DownloadManagerService().init()` : le pont seed sa
+  // ligne de base sur `tasksNotifier.value`, qui doit déjà porter la
+  // réconciliation du boot (§dlWatchdog bascule les tâches interrompues en
+  // `failed`) pour ne pas les annoncer comme « viennent d'échouer ».
+  TransferNotificationBridge.attach();
+  // §castSend — même modèle : lit `CastService.state`, porte la notification
+  // « Diffusion sur … » et ses boutons Pause / Arrêter.
+  CastNotificationBridge.attach();
 }
 
 /// Vérifie silencieusement si une mise à jour est disponible.
@@ -290,13 +308,23 @@ class MyApp extends StatelessWidget {
         bool isDebug = false;
         assert(isDebug = true); // Astuce pour n'être `true` qu'en mode debug.
 
+        // §l10nAll — Ici, et seulement ici, on a un `BuildContext` sous
+        // `Localizations` traversé à chaque frame : c'est le point où les
+        // couches SANS contexte (services, `describeError`) reçoivent de quoi
+        // parler la langue de l'utilisateur. Voir `l10n/l10n_ext.dart`.
+        L10n.bind(AppLocalizations.of(context)!);
+
         Widget wrapped = child ?? const SizedBox.shrink();
 
         if (PlatformTv.isTv) {
+          // §tvSmallText — L'échelle système reste neutre (le zoom uniforme a
+          // été essayé deux fois et abandonné, cf. commentaire ci-dessus), mais
+          // les 144 tailles en dur entre 9 et 12 px de l'app ne sont plus
+          // laissées telles quelles : elles seules montent, et jamais au-delà
+          // de 14 px. Voir `tv_text_scaler.dart`.
           final mq = MediaQuery.of(context);
-          final scaled = mq.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: 1.0);
           wrapped = MediaQuery(
-            data: mq.copyWith(textScaler: scaled),
+            data: mq.copyWith(textScaler: const TvSmallTextScaler()),
             child: wrapped,
           );
         }
@@ -382,17 +410,30 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   @override
   void initState() {
     super.initState();
+    // §restoreTrace — Le démarrage a été observé DEUX fois après une
+    // restauration (33 s puis 0,4 s), et l'onboarding revenait. Sans trace,
+    // impossible de dire qui relance quoi : `_initializeApp` n'a que trois
+    // appelants, mais l'un d'eux peut être une RECRÉATION de cet État.
+    debugPrint('🚦 §restoreTrace — LaunchDecider.initState (hash $hashCode)');
     _checkOnboarding();
     _initFuture = _initializeApp();
+  }
+
+  @override
+  void dispose() {
+    debugPrint('🚦 §restoreTrace — LaunchDecider.dispose (hash $hashCode)');
+    super.dispose();
   }
 
   /// §1i — Vérifie si l'onboarding doit être affiché (1re ouverture seulement).
   Future<void> _checkOnboarding() async {
     final show = await OnboardingService.shouldShow();
+    debugPrint('🚦 §restoreTrace — shouldShow = $show (monté = $mounted)');
     if (mounted) setState(() => _showOnboarding = show);
   }
 
   void _finishOnboarding() {
+    debugPrint('🚦 §restoreTrace — finishOnboarding → ré-initialisation');
     setState(() {
       _showOnboarding = false;
       // §restore — Une restauration `.aether` a pu créer des comptes pendant
@@ -417,6 +458,10 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
     BootStatus.set('// vérification du compte…');
     final accounts = await StreamAccountService.listAccounts();
+    // §reloadScope — Publié AVANT tout affichage : la fiche d'un film demande
+    // « y a-t-il plusieurs listes ? » dès le premier build, et la réponse ne
+    // doit pas dépendre de ce qui est déjà rentré en mémoire.
+    ParsedPlaylistService.reportConfiguredAccounts(accounts.length);
     if (accounts.isEmpty) return null;
 
     // §acctPurge — Ménage des fichiers sans propriétaire, en tâche de fond.
@@ -566,7 +611,8 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     }
   }
 
-  /// §perfAutoSuggest — Propose le profil Performance sur box TV (one-shot).
+  /// §autoProfile — La sonde mesure l'appareil APRÈS la première frame et
+  /// choisit le profil (one-shot, jamais par-dessus un choix utilisateur).
   /// Délai 2,5 s pour laisser la home se monter (le dialog d'expiration §17b,
   /// plus critique, arrive à 4 s et passerait par-dessus — cas rare accepté).
   Future<void> _suggestTvPerfProfile() async {
@@ -613,8 +659,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // sauterait pour toujours.
     final List<StreamAccount> pending = <StreamAccount>[];
     for (final acc in others) {
+      // §reloadScope — Une copie marquée périmée est encore affichable, mais
+      // elle n'est pas « prête » : sans ce test, le boot sauterait la
+      // ré-analyse d'une liste dont la source vient d'être renouvelée.
       final bool loaded =
-          ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded;
+          ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded &&
+              !ParsedPlaylistService.isStale(acc.id);
       if (!loaded || await PlaylistService.hasPendingWork(acc)) {
         pending.add(acc);
       }
@@ -757,6 +807,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
   /// Permet de relancer la validation, typiquement après une action de l'utilisateur.
   void _retryInitialization() {
+    debugPrint('🚦 §restoreTrace — retryInitialization → ré-initialisation');
     setState(() {
       _initFuture = _initializeApp();
     });

@@ -40,6 +40,17 @@ class PlayerControls extends StatefulWidget {
   /// audio / sous-titres (géré par [PlayerPage] pour suspendre l'auto-hide).
   final VoidCallback? onShowTracks;
 
+  /// §pipPhone — Si non-null, affiche un bouton « Réduire en fenêtre »
+  /// (téléphone seulement — `PlayerPage` passe `null` sur TV, en verrou, en
+  /// erreur ou si le système ne sait pas faire de PiP).
+  final VoidCallback? onEnterPip;
+
+  /// §castSend — Si non-null, affiche le bouton « Diffuser » (téléphone
+  /// seulement : sur TV, on EST le téléviseur). [castActive] change l'icône
+  /// pour dire qu'une diffusion est en cours.
+  final VoidCallback? onCast;
+  final bool castActive;
+
   /// §playerOptionsTouch — Ouvre le panneau d'options du lecteur (format
   /// d'image, infos vidéo, pistes, vitesse…).
   ///
@@ -80,6 +91,9 @@ class PlayerControls extends StatefulWidget {
     this.onNextEpisode,
     this.onShowTracks,
     this.onShowOptions,
+    this.onEnterPip,
+    this.onCast,
+    this.castActive = false,
   });
 
   @override
@@ -339,6 +353,42 @@ class _PlayerControlsState extends State<PlayerControls> {
                     ],
                   ),
                 ),
+                // §castSend — Diffuser sur un Chromecast. Même logique de
+                // placement que le PiP : envoyer l'image ailleurs est un geste
+                // de sortie, il vit dans la barre du haut.
+                if (widget.onCast != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: _TapTarget(
+                      tooltip: widget.castActive
+                          ? 'Diffusion en cours'
+                          : 'Diffuser sur un Chromecast',
+                      onTap: widget.onCast!,
+                      child: Icon(
+                        widget.castActive
+                            ? Icons.cast_connected_rounded
+                            : Icons.cast_rounded,
+                        color: widget.castActive ? kAccentPrimary : Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                // §pipPhone — Réduire en fenêtre. Placé ICI (barre du haut,
+                // comme ⚙) plutôt que dans le panneau d'options : c'est un
+                // geste de sortie, on ne va pas le chercher à deux niveaux.
+                if (widget.onEnterPip != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: _TapTarget(
+                      tooltip: 'Réduire en fenêtre',
+                      onTap: widget.onEnterPip!,
+                      child: const Icon(
+                        Icons.picture_in_picture_alt_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
                 // Badge contextuel (live / film / série).
                 if (widget.badgeType != PlayerBadgeType.none)
                   _ContentBadge(type: widget.badgeType),
@@ -440,7 +490,8 @@ class _PlayerControlsState extends State<PlayerControls> {
                       // §playerOptionsTouch — Accès tactile au panneau
                       // d'options (format d'image, infos vidéo…).
                       if (widget.onShowOptions != null) ...[
-                        GestureDetector(
+                        _TapTarget(
+                          tooltip: 'Options de lecture',
                           onTap: () {
                             widget.onShowOptions?.call();
                             widget.onInteraction();
@@ -451,12 +502,13 @@ class _PlayerControlsState extends State<PlayerControls> {
                             size: 24,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 4),
                       ],
                       // §5 — Bouton CC : ouvre le sélecteur de pistes audio /
                       // sous-titres (PlayerPage suspend l'auto-hide pendant).
                       if (widget.onShowTracks != null) ...[
-                        GestureDetector(
+                        _TapTarget(
+                          tooltip: 'Pistes audio et sous-titres',
                           onTap: () {
                             widget.onShowTracks?.call();
                             widget.onInteraction();
@@ -467,10 +519,11 @@ class _PlayerControlsState extends State<PlayerControls> {
                             size: 26,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 4),
                       ],
                       // Sélecteur de vitesse.
-                      GestureDetector(
+                      _TapTarget(
+                        tooltip: 'Vitesse de lecture',
                         onTap: _cycleSpeed,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -488,7 +541,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 4),
                       // Play / Pause.
                       GestureDetector(
                         onTap: _togglePlayPause,
@@ -502,8 +555,9 @@ class _PlayerControlsState extends State<PlayerControls> {
                       ),
                       // §1i — Bouton épisode suivant (séries uniquement).
                       if (widget.onNextEpisode != null) ...[
-                        const SizedBox(width: 12),
-                        GestureDetector(
+                        const SizedBox(width: 4),
+                        _TapTarget(
+                          tooltip: 'Episode suivant',
                           onTap: () {
                             widget.onNextEpisode?.call();
                             widget.onInteraction();
@@ -524,7 +578,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                             color: Colors.white70,
                             size: 26,
                           ),
-                          tooltip: widget.isFullScreen ? 'Quitter le plein écran' : 'Plein écran',
+                          tooltip: widget.isFullScreen ? 'Exit fullscreen' : 'Fullscreen',
                           onPressed: widget.onToggleFullScreen,
                         ),
                       const SizedBox(width: 8),
@@ -640,6 +694,48 @@ class _ContentBadge extends StatelessWidget {
 }
 
 /// Bouton cadenas (verrouille / déverrouille les contrôles).
+/// §touchTarget — Une cible tactile d'au moins 48 dp autour d'une icône, sans
+/// changer sa taille visuelle.
+///
+/// **Le défaut corrigé** (§audit0903 n° 15) : quatre boutons sur six de la
+/// barre du lecteur étaient sous 48 dp — les options ⚙ à **24×24**, et c'est
+/// le SEUL accès tactile au panneau — sous une barre qui se cache en 3 s.
+/// Play/Pause (48) et le cadenas (`IconButton`, 48) étaient corrects : la
+/// rangée était donc incohérente avec elle-même.
+///
+/// ⚠️ `HitTestBehavior.opaque` est indispensable : sans lui, la zone
+/// transparente autour de l'icône ne reçoit aucun tap et l'élargissement ne
+/// sert à rien.
+class _TapTarget extends StatelessWidget {
+  const _TapTarget({
+    required this.onTap,
+    required this.child,
+    this.tooltip,
+  });
+
+  /// La regle Material : 48 dp. Pas un reglage — une borne.
+  static const double size = 48;
+
+  final VoidCallback onTap;
+  final Widget child;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget target = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Center(child: child),
+      ),
+    );
+    if (tooltip == null) return target;
+    return Tooltip(message: tooltip!, child: target);
+  }
+}
+
 class _LockButton extends StatelessWidget {
   final bool locked;
   final VoidCallback onTap;

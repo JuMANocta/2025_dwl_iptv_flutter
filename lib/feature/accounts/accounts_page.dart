@@ -13,12 +13,14 @@ import 'package:aetherStream/data/services/expiration_alert_service.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/data/services/storage_janitor.dart';
 import 'package:aetherStream/data/services/playlist_reload_service.dart';
 import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
+import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
@@ -55,20 +57,11 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
   /// §reloadAll — Empêche un second lot pendant qu'un premier tourne.
   bool _reloadingAll = false;
 
-  /// Progression du lot, lue par la boîte de dialogue.
-  ///
-  /// ⚠️ Un `ValueNotifier` plutôt qu'un `setState` de la page : le lot dure
-  /// plusieurs minutes et la page entière contient quatre grosses cartes avec
-  /// leurs `FutureBuilder`. Reconstruire tout ça à chaque étape serait du
-  /// gaspillage pur — seule la ligne de progression change.
-  final ValueNotifier<String> _reloadProgress = ValueNotifier('');
-
   @override
   void dispose() {
     // §unloadGuard — On rend le jeton EXACTEMENT une fois, en miroir de
     // `initState`.
     PlaylistVisibility.release();
-    _reloadProgress.dispose();
     super.dispose();
   }
 
@@ -86,128 +79,44 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
 
 
   /// §reloadAll — Recharge TOUTES les listes, séquentiellement.
+  ///
+  /// §reloadScope — Le corps a été extrait dans `showReloadAllFlow` : le ↻ de
+  /// l'accueil déclenche EXACTEMENT le même geste (même question, même
+  /// progression, même bilan). Il ne rechargeait que la liste principale, et
+  /// rien ne le disait.
   Future<void> _reloadAll(List<StreamAccount> accounts) async {
     if (_reloadingAll) return;
-
-    // ── UNE seule confirmation, en tête ──────────────────────────────────
-    // ⚠️ La confirmation par carte se déclenche quand la playlist a moins de
-    // 24 h. Appliquée en boucle, elle poserait la question quatre fois. On
-    // demande une fois, en NOMMANT les listes récentes — c'est la seule
-    // information qui pourrait faire changer d'avis.
-    final recent = <String>[];
-    for (final a in accounts) {
-      final age = await PlaylistReloadService.cacheAge(a.id);
-      if (age != null && age.inHours < 24) recent.add(a.label);
-    }
-    if (!mounted) return;
-
-    final ok = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Tout recharger ?'),
-        content: Text(
-          recent.isEmpty
-              ? 'Les ${accounts.length} listes vont être retéléchargées depuis '
-                  'leurs serveurs. Cela peut prendre plusieurs minutes.'
-              : 'Les ${accounts.length} listes vont être retéléchargées depuis '
-                  'leurs serveurs.\n\nDéjà à jour (moins de 24 h) : '
-                  '${recent.join(', ')}.\n\nCela peut prendre plusieurs '
-                  'minutes.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Tout recharger',
-                style:
-                    TextStyle(color: kWarning, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-
     setState(() => _reloadingAll = true);
     final messenger = ScaffoldMessenger.of(context);
-    _reloadProgress.value = 'Préparation…';
-
-    // Boîte de progression : le geste dure plusieurs minutes, un spinner muet
-    // laisserait croire à un blocage.
-    unawaited(showAppDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => PopScope(
-        canPop: false, // on ne quitte pas un lot en cours par mégarde
-        child: AlertDialog(
-          title: const Text('Rechargement en cours'),
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: ValueListenableBuilder<String>(
-                  valueListenable: _reloadProgress,
-                  builder: (_, v, __) => Text(v),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ));
-
-    final succeeded = <String>[];
-    final failed = <String, String>{};
-
-    // ⚠️ SÉQUENTIEL, jamais en parallèle : chaque catalogue est parsé EN RAM.
-    // Quatre listes de 80 000 entrées décodées en même temps mettraient une
-    // Fire Stick à genoux — c'est d'ailleurs la raison d'être
-    // d'`unloadIdleSecondaries`.
-    for (var i = 0; i < accounts.length; i++) {
-      final a = accounts[i];
-      _reloadProgress.value = 'Liste ${i + 1}/${accounts.length} — ${a.label}';
-      try {
-        await PlaylistReloadService.reloadAccount(
-          a,
-          isPriority: a.id == _priorityAccountId,
-        );
-        succeeded.add(a.label);
-      } catch (e) {
-        // ⚠️ Un échec n'arrête PAS le lot : une liste injoignable ne doit pas
-        // empêcher de rafraîchir les autres — c'est exactement le problème
-        // qu'on cherche à supprimer.
-        failed[a.label] = e.toString();
-        debugPrint('❌ §reloadAll — « ${a.label} » : $e');
-      }
+    try {
+      final ReloadBatchResult? result = await showReloadAllFlow(
+        context,
+        accounts: accounts,
+        priorityAccountId: _priorityAccountId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _reloadingAll = false;
+        _accountsFuture = _loadAccounts();
+      });
+      if (result == null) return; // annulé : rien à annoncer
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(result.summary),
+          duration: Duration(seconds: result.allOk ? 3 : 6),
+        ));
+    } finally {
+      if (mounted && _reloadingAll) setState(() => _reloadingAll = false);
     }
-
-    final result = ReloadBatchResult(succeeded: succeeded, failed: failed);
-    debugPrint('🔄 §reloadAll — ${result.summary}');
-
-    if (!mounted) return;
-    Navigator.of(context).pop(); // ferme la boîte de progression
-    setState(() {
-      _reloadingAll = false;
-      _accountsFuture = _loadAccounts();
-    });
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(result.summary),
-        duration: Duration(seconds: result.allOk ? 3 : 6),
-      ));
   }
 
   Future<List<StreamAccount>> _loadAccounts() async {
     await StreamAccountService.migrateFromLegacyIfNeeded();
     final accounts = await StreamAccountService.listAccounts();
+    // §reloadScope — Ajout ou suppression d'une liste : c'est ici qu'on
+    // l'apprend en premier (cf. `ParsedPlaylistService.isMultiAccount`).
+    ParsedPlaylistService.reportConfiguredAccounts(accounts.length);
     final current = await StreamAccountService.getCurrentAccount();
     if (mounted) setState(() => _priorityAccountId = current?.id);
     // §17b — Fetch background des AccountInfo (expiration / connexions).
@@ -325,86 +234,44 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
     }
   }
 
-  Future<void> _clearCache(StreamAccount acc) async {
-    final l10n = AppLocalizations.of(context)!;
-    final isActive = acc.id == _priorityAccountId;
-    final ok = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Vider le cache ?'),
-        content: Text(
-          'La playlist du compte "${acc.label}" sera re-téléchargée depuis le '
-          'serveur maintenant.',
-        ),
-        actions: [
-          TextButton(
-              // §safeFocus — Le focus d'entrée va sur le bouton SÛR : sur TV,
-              // OK est le geste réflexe et le dialogue pouvait s'ouvrir sur
-              // l'action destructrice.
-              autofocus: true,
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(l10n.cancel)),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Vider', style: TextStyle(color: kWarning)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    if (!mounted) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-    if (isActive) {
-      // §bugPrio — compte actif : on supprime, on re-télécharge et on
-      // re-parse atomiquement pour éviter une home vide entre les deux.
-      try {
-        await PlaylistService.deleteForAccountId(acc.id);
-        final path = await PlaylistService.downloadCurrentM3U();
-        await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
-      } catch (e) {
-        if (!mounted) return;
-        messenger..hideCurrentSnackBar()..showSnackBar(
-          SnackBar(content: Text('Échec : ${describeError(e)}')),
-        );
-        return;
-      }
-      _priorityChanged = true;
-    } else {
-      // §secondaryRefresh — Avant, on se contentait d'invalider en pariant sur
-      // « le DL se fera quand l'utilisateur basculera dessus » — or basculer de
-      // compte principal ne télécharge rien : la liste restait vide jusqu'au
-      // redémarrage suivant. On retélécharge donc tout de suite, comme pour le
-      // compte actif.
-      try {
-        await PlaylistService.deleteForAccountId(acc.id);
-        ParsedPlaylistService.invalidate(acc.id);
-        final res = await PlaylistService.ensureDownloadedForAccount(acc);
-        if (res.path != null) {
-          await ParsedPlaylistService.reloadFromDisk(
-              acc.id, acc.label, res.path!);
-        }
-      } catch (e) {
-        if (!mounted) return;
-        messenger..hideCurrentSnackBar()..showSnackBar(
-          SnackBar(content: Text('Échec : ${describeError(e)}')),
-        );
-        return;
-      }
-    }
-    if (!mounted) return;
-    messenger..hideCurrentSnackBar()..showSnackBar(
-      SnackBar(content: Text('✅ Cache vidé pour ${acc.label}')),
-    );
-  }
-
   Future<void> _delete(StreamAccount acc) async {
     final l10n = AppLocalizations.of(context)!;
+
+    // §acctDeleteTruth — On MESURE ce qui va partir avant de le demander.
+    // « Cette action est définitive » ne disait ni que la liste téléchargée
+    // partait avec (jusqu'à 217 Mo mesurés, §acctPurge), ni que les favoris et
+    // les reprises SURVIVENT — deux informations qui changent la réponse.
+    final int footprint = await StorageJanitor.accountFootprint(acc.id);
+    if (!mounted) return;
+
     final ok = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(l10n.deleteAccountDialogTitle),
-        content: Text(l10n.deleteAccountDialogContent),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('« ${acc.label} » et ses identifiants seront effacés '
+                'définitivement.'),
+            const SizedBox(height: 12),
+            _DeleteBullet(
+              icon: Icons.delete_sweep_outlined,
+              color: kError,
+              text: footprint > 0
+                  ? 'La liste téléchargée part avec '
+                      '(${StorageJanitor.humanBytes(footprint)} libérés).'
+                  : 'Aucune liste téléchargée à effacer pour ce compte.',
+            ),
+            const SizedBox(height: 6),
+            _DeleteBullet(
+              icon: Icons.favorite_outline,
+              color: kSuccess,
+              text: 'Favoris, reprises de lecture et téléchargements '
+                  'terminés sont conservés.',
+            ),
+          ],
+        ),
         actions: [
           TextButton(
               // §safeFocus — Suppression de COMPTE : le focus d'entrée va sur
@@ -422,10 +289,22 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
       ),
     );
     if (ok != true) return;
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
     await StreamAccountService.deleteAccount(acc.id);
     ParsedPlaylistService.invalidate(acc.id);
     _priorityChanged = true;
     _refresh();
+    // §acctDeleteTruth — Il ne se passait RIEN après coup : la carte
+    // disparaissait, et c'était tout. On dit ce qui a été fait.
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(footprint > 0
+            ? '✅ « ${acc.label} » supprimé — '
+                '${StorageJanitor.humanBytes(footprint)} libérés'
+            : '✅ « ${acc.label} » supprimé'),
+      ));
   }
 
   /// Menu contextuel ⋯ par compte.
@@ -458,15 +337,13 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                   _openEditor(initial: acc);
                 },
               ),
-              ListTile(
-                leading: Icon(Icons.sync, color: kAccentSecondary),
-                title: const Text('Vider le cache playlist'),
-                subtitle: const Text('Force un re-téléchargement depuis le serveur'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _clearCache(acc);
-                },
-              ),
+              // §reloadNaming — Il y avait ici « Vider le cache playlist »,
+              // QUATRIÈME nom pour la même opération que « Recharger » (le
+              // bouton de la carte, juste à côté), avec sa propre logique
+              // dupliquée — qui supprimait encore la liste AVANT de la
+              // retélécharger, le défaut que §reloadKeep avait corrigé sur les
+              // trois autres chemins. Retiré : l'opération reste accessible au
+              // même endroit, sous le nom qu'elle porte partout ailleurs.
               ListTile(
                 leading: Icon(Icons.delete_outline, color: kError),
                 title: Text(l10n.accountActionDelete,
@@ -1793,6 +1670,41 @@ class _MiniStat extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// §acctDeleteTruth — Une ligne du dialogue de suppression : ce qui part, ce
+/// qui reste. Deux couleurs plutôt qu'un paragraphe — à 3 m d'un téléviseur,
+/// un bloc de texte n'est pas lu.
+class _DeleteBullet extends StatelessWidget {
+  const _DeleteBullet({
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

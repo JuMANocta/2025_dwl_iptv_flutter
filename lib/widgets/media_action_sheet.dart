@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:aetherStream/data/services/parsed_playlist_service.dart';
+import 'package:aetherStream/feature/search/details_versions.dart';
+import 'package:aetherStream/widgets/playback_gate.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
@@ -341,6 +344,7 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                         badgeType: PlayerBadgeType.replay,
                         replayStart: replayProgram.start,
                         replayDuration: replayProgram.end.difference(replayProgram.start),
+                        posterUrl: entry.logoUrl, // §nowPlaying
                       )),
                     );
                   }
@@ -429,6 +433,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
       qualityTag: v.title.qualityOrDefault,
       sourceType: VideoSourceType.network,
       badgeType: PlayerBadgeType.live,
+      posterUrl: v.logoUrl, // §nowPlaying
     )));
   }
 
@@ -492,6 +497,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                             badgeType: PlayerBadgeType.replay,
                             replayStart: replayProgram.start,
                             replayDuration: replayProgram.end.difference(replayProgram.start),
+                            posterUrl: entryForReplay.logoUrl, // §nowPlaying
                           )),
                         );
                       } else {
@@ -529,12 +535,29 @@ String _formatResumeLabel(Duration d) {
   return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
 }
 
-void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPosition}) {
-  FavoritesService.addEntry(entry);
+Future<void> _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPosition}) async {
+  final BuildContext root = navigatorKey.currentContext ?? context;
   Navigator.pop(context);
-  Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
+  // §deviceCaps — la porte, même règle que la fiche et l'accueil. Le dialogue
+  // s'ouvre sur le navigateur racine : la feuille vient d'être refermée.
+  if (!await PlaybackGate.allow(root, entry)) return;
+  if (!root.mounted) return;
+  FavoritesService.addEntry(entry);
+  // §endOfMovie — La feuille ne reçoit qu'UNE entrée : ses versions sœurs se
+  // relisent en mémoire avec la règle partagée de la fiche (§detailsLive).
+  final List<String> siblings = [
+    for (final e in entriesOfTitle(
+        ParsedPlaylistService.byTypeWithPriority(entry.accountId)[entry.type] ??
+            const <M3uEntry>[],
+        entry))
+      e.url,
+  ];
+  // ⚠️ `root`, pas `context` : la feuille est refermée et son contexte est
+  // mort après l'attente de la porte.
+  Navigator.push(root, MaterialPageRoute(builder: (_) => PlayerPage(
     path: entry.url,
     title: entry.displayName,
+    siblingResumeKeys: siblings,
     // §stallCount — rattache les blocages au fournisseur.
     accountId: entry.accountId,
     // §watchContext a/b — badges qualité + saison/épisode.
@@ -545,6 +568,7 @@ void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPositio
         ? PlayerBadgeType.series
         : PlayerBadgeType.movie,
     startPosition: startPosition,
+    posterUrl: entry.logoUrl, // §nowPlaying
   )));
 }
 

@@ -761,7 +761,7 @@ abstract class AppLocalizations {
   /// No description provided for @tmdbKeyTitle.
   ///
   /// In en, this message translates to:
-  /// **'TMDB API key'**
+  /// **'TMDB posters & info'**
   String get tmdbKeyTitle;
 
   /// No description provided for @xmltvTitle.
@@ -799,6 +799,1020 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Settings'**
   String get navSettings;
+
+  /// Settings section header
+  ///
+  /// In en, this message translates to:
+  /// **'Control from your phone'**
+  String get settingsSectionPhone;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Web console'**
+  String get settingsWebConsole;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Accounts, backup, theme, EPG, TMDB + remote (QR)'**
+  String get settingsWebConsoleSub;
+
+  /// Settings section header
+  ///
+  /// In en, this message translates to:
+  /// **'Sources & accounts'**
+  String get settingsSectionSources;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'IPTV accounts'**
+  String get settingsAccounts;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Providers, playlist stats & reload'**
+  String get settingsAccountsSub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB posters & info'**
+  String get settingsTmdbKey;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Posters, overviews, cast — optional'**
+  String get settingsTmdbKeySub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Channel guide'**
+  String get settingsXmltv;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'XMLTV EPG — French DTT'**
+  String get settingsXmltvSub;
+
+  /// Settings section header
+  ///
+  /// In en, this message translates to:
+  /// **'Display'**
+  String get settingsSectionDisplay;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Languages / regions'**
+  String get settingsRegions;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Hide foreign content (saves memory)'**
+  String get settingsRegionsSub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsTheme;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Theme, colours, cyberpunk effects'**
+  String get settingsThemeSub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Performance'**
+  String get settingsOptimization;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Performance profiles, hero, thumbnails, memory'**
+  String get settingsOptimizationSub;
+
+  /// Settings section header
+  ///
+  /// In en, this message translates to:
+  /// **'Backup & app'**
+  String get settingsSectionBackup;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Backup / Restore'**
+  String get settingsBackup;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Export/import accounts, TMDB, theme, favourites (encrypted .aether)'**
+  String get settingsBackupSub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get settingsAbout;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Version + update check'**
+  String get settingsAboutSub;
+
+  /// Settings tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Reset usage data'**
+  String get settingsResetUsage;
+
+  /// Settings tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Clears favourites, resume points & history (keeps accounts & theme)'**
+  String get settingsResetUsageSub;
+
+  /// Reset confirmation dialog title
+  ///
+  /// In en, this message translates to:
+  /// **'Reset usage data?'**
+  String get settingsResetTitle;
+
+  /// Reset confirmation dialog body
+  ///
+  /// In en, this message translates to:
+  /// **'Clears favourites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.'**
+  String get settingsResetBody;
+
+  /// Reset confirmation button
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get settingsResetConfirm;
+
+  /// Generic cancel button
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get commonCancel;
+
+  /// Network error shown to the user
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot connect: no network, or the server is unreachable.'**
+  String get errNetworkUnreachable;
+
+  /// Timeout error
+  ///
+  /// In en, this message translates to:
+  /// **'The server took too long to answer.'**
+  String get errTimeout;
+
+  /// Timeout error with hint
+  ///
+  /// In en, this message translates to:
+  /// **'The server took too long to answer. Check your connection or the server address.'**
+  String get errTimeoutHint;
+
+  /// TLS error
+  ///
+  /// In en, this message translates to:
+  /// **'Secure connection refused by the server (certificate).'**
+  String get errTls;
+
+  /// Malformed response error
+  ///
+  /// In en, this message translates to:
+  /// **'Unreadable answer from the server (unexpected format).'**
+  String get errBadFormat;
+
+  /// File system error
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot read or write the file on this device.'**
+  String get errFileSystem;
+
+  /// Internal error
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong inside the app.'**
+  String get errInternal;
+
+  /// Invalid response error
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid answer from the server. Check the address.'**
+  String get errBadResponse;
+
+  /// 401/403 error
+  ///
+  /// In en, this message translates to:
+  /// **'Access denied by the server (HTTP {code}). Check the account credentials.'**
+  String errForbidden(int code);
+
+  /// 404 error
+  ///
+  /// In en, this message translates to:
+  /// **'Address not found on the server (HTTP 404).'**
+  String get errNotFound;
+
+  /// 5xx error
+  ///
+  /// In en, this message translates to:
+  /// **'The server is failing (HTTP {code}). Try again later.'**
+  String errServer(int code);
+
+  /// Generic HTTP error
+  ///
+  /// In en, this message translates to:
+  /// **'The server answered with an error (HTTP {code}).'**
+  String errHttp(int code);
+
+  /// Connection error
+  ///
+  /// In en, this message translates to:
+  /// **'Connection error: check that you are online and that the server is reachable.'**
+  String get errConnection;
+
+  /// Cancelled operation
+  ///
+  /// In en, this message translates to:
+  /// **'Operation cancelled.'**
+  String get errCancelled;
+
+  /// Unknown network error
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown network error.'**
+  String get errNetworkUnknown;
+
+  /// Home row: TMDB recommendations seeded by the last watched title
+  ///
+  /// In en, this message translates to:
+  /// **'Because you watched “{title}”'**
+  String rowBecauseYouWatched(String title);
+
+  /// Home row: TMDB top rated titles available in the lists
+  ///
+  /// In en, this message translates to:
+  /// **'Top rated'**
+  String get rowTopRated;
+
+  /// TMDB option title
+  ///
+  /// In en, this message translates to:
+  /// **'“Because you watched” row'**
+  String get tmdbRowsBecauseTitle;
+
+  /// TMDB option subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Titles close to what you last watched, picked from your lists'**
+  String get tmdbRowsBecauseSub;
+
+  /// TMDB option title
+  ///
+  /// In en, this message translates to:
+  /// **'“Top rated” row'**
+  String get tmdbRowsTopRatedTitle;
+
+  /// TMDB option subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'The best-rated titles your lists offer'**
+  String get tmdbRowsTopRatedSub;
+
+  /// Optimisation setting title
+  ///
+  /// In en, this message translates to:
+  /// **'Rows: minimum titles'**
+  String get perfMinItemsTitle;
+
+  /// Optimisation setting subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Below this, the row folds into “Others” — never New or Favourites. 1 = never fold.'**
+  String get perfMinItemsSub;
+
+  /// Downloads: section of files found on device but absent from the list
+  ///
+  /// In en, this message translates to:
+  /// **'On this device'**
+  String get dlOnDeviceTitle;
+
+  /// Downloads: section subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'{count} file(s) · {size} — in Movies/AetherStream, missing from the list'**
+  String dlOnDeviceSub(int count, String size);
+
+  /// Downloads: scan button tooltip
+  ///
+  /// In en, this message translates to:
+  /// **'Look for files on this device'**
+  String get dlScanTooltip;
+
+  /// Downloads: scan result
+  ///
+  /// In en, this message translates to:
+  /// **'{count} file(s) on device, missing from the list ({size})'**
+  String dlScanFound(int count, String size);
+
+  /// Downloads: scan found nothing
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing new on this device'**
+  String get dlScanNothing;
+
+  /// Downloads: permission denied
+  ///
+  /// In en, this message translates to:
+  /// **'Without video access, the folder cannot be read'**
+  String get dlScanDenied;
+
+  /// Delete confirmation title
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this file?'**
+  String get dlOrphanDeleteTitle;
+
+  /// Delete confirmation body
+  ///
+  /// In en, this message translates to:
+  /// **'“{name}” ({size}) will be erased from this device. This cannot be undone.'**
+  String dlOrphanDeleteBody(String name, String size);
+
+  /// Delete done
+  ///
+  /// In en, this message translates to:
+  /// **'File deleted'**
+  String get dlOrphanDeleted;
+
+  /// Delete refused
+  ///
+  /// In en, this message translates to:
+  /// **'Android refused the deletion'**
+  String get dlOrphanDeleteFailed;
+
+  /// Play action
+  ///
+  /// In en, this message translates to:
+  /// **'Play'**
+  String get dlOrphanPlay;
+
+  /// Generic delete button
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get commonDelete;
+
+  /// Status banner, key present
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB connected: posters, overviews and cast'**
+  String get tmdbStatusOn;
+
+  /// Status banner, no key
+  ///
+  /// In en, this message translates to:
+  /// **'No TMDB key: no extra posters or overviews. The app still works.'**
+  String get tmdbStatusOff;
+
+  /// TV pairing card title, key present
+  ///
+  /// In en, this message translates to:
+  /// **'Replace from my phone'**
+  String get tmdbPairReplace;
+
+  /// TV pairing card title, no key
+  ///
+  /// In en, this message translates to:
+  /// **'Set up from my phone'**
+  String get tmdbPairSetup;
+
+  /// TV pairing card subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Scan the QR code and paste the key from your phone'**
+  String get tmdbPairSub;
+
+  /// Key field section title
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB key'**
+  String get tmdbKeySection;
+
+  /// Key field section title on TV, manual entry
+  ///
+  /// In en, this message translates to:
+  /// **'Typing with the remote'**
+  String get tmdbKeySectionManual;
+
+  /// Key field hint
+  ///
+  /// In en, this message translates to:
+  /// **'Paste your key here…'**
+  String get tmdbKeyHint;
+
+  /// Reveal key tooltip
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get tmdbKeyShow;
+
+  /// Hide key tooltip
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get tmdbKeyHide;
+
+  /// Save key button
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get tmdbKeySave;
+
+  /// Delete key button
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the key'**
+  String get tmdbKeyRemove;
+
+  /// TV: reveal the manual field
+  ///
+  /// In en, this message translates to:
+  /// **'Type it with the remote'**
+  String get tmdbKeyManualEntry;
+
+  /// Snackbar after a valid key
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB connected'**
+  String get tmdbKeyConnected;
+
+  /// Snackbar after deleting the key
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB key removed'**
+  String get tmdbKeyRemoved;
+
+  /// Snackbar when TMDB answers 401
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB rejected this key. Make sure you copied the API Read Access Token.'**
+  String get tmdbKeyRejected;
+
+  /// Snackbar when the probe could not run
+  ///
+  /// In en, this message translates to:
+  /// **'Key saved. It could not be checked right now (no network).'**
+  String get tmdbKeyUnverified;
+
+  /// Save button label while probing
+  ///
+  /// In en, this message translates to:
+  /// **'Checking…'**
+  String get tmdbKeyChecking;
+
+  /// How-to block title
+  ///
+  /// In en, this message translates to:
+  /// **'Get a key (free)'**
+  String get tmdbHowTitle;
+
+  /// How-to step 1
+  ///
+  /// In en, this message translates to:
+  /// **'Create an account on themoviedb.org'**
+  String get tmdbHowStep1;
+
+  /// How-to step 2
+  ///
+  /// In en, this message translates to:
+  /// **'Open Settings, then API'**
+  String get tmdbHowStep2;
+
+  /// How-to step 3
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the API Read Access Token'**
+  String get tmdbHowStep3;
+
+  /// How-to step 4
+  ///
+  /// In en, this message translates to:
+  /// **'Paste it below'**
+  String get tmdbHowStep4;
+
+  /// Signup button
+  ///
+  /// In en, this message translates to:
+  /// **'Create a TMDB account'**
+  String get tmdbSignup;
+
+  /// Login link
+  ///
+  /// In en, this message translates to:
+  /// **'I already have an account'**
+  String get tmdbLogin;
+
+  /// Options section title
+  ///
+  /// In en, this message translates to:
+  /// **'Options'**
+  String get tmdbOptionsTitle;
+
+  /// Visual language tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Language of visuals'**
+  String get tmdbVisualLangTitle;
+
+  /// Visual language tile subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'{lang}: posters, overviews and cast'**
+  String tmdbVisualLangSub(String lang);
+
+  /// Posters-first switch title
+  ///
+  /// In en, this message translates to:
+  /// **'TMDB posters first'**
+  String get tmdbPostersFirstTitle;
+
+  /// Posters-first switch subtitle, on
+  ///
+  /// In en, this message translates to:
+  /// **'Carousel and favourites use the TMDB poster.'**
+  String get tmdbPostersFirstOn;
+
+  /// Posters-first switch subtitle, off
+  ///
+  /// In en, this message translates to:
+  /// **'Carousel and favourites keep your lists\' poster.'**
+  String get tmdbPostersFirstOff;
+
+  /// Maintenance section title
+  ///
+  /// In en, this message translates to:
+  /// **'Stored data'**
+  String get tmdbMemoryTitle;
+
+  /// Poster cache tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Posters'**
+  String get tmdbMemoryPosters;
+
+  /// Poster cache empty
+  ///
+  /// In en, this message translates to:
+  /// **'No poster stored yet'**
+  String get tmdbMemoryPostersNone;
+
+  /// Poster cache count
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 poster stored} other{{count} posters stored}}'**
+  String tmdbMemoryPostersCount(int count);
+
+  /// Clear cache button
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get tmdbMemoryClear;
+
+  /// Snackbar after clearing posters
+  ///
+  /// In en, this message translates to:
+  /// **'Posters cleared. They will reload as you browse.'**
+  String get tmdbMemoryPostersCleared;
+
+  /// Inferred categories tile title
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic sorting'**
+  String get tmdbMemorySorting;
+
+  /// Inferred categories empty
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to relearn: your lists already sort their titles'**
+  String get tmdbMemorySortingNone;
+
+  /// Inferred categories count
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 title sorted thanks to TMDB} other{{count} titles sorted thanks to TMDB}}'**
+  String tmdbMemorySortingCount(int count);
+
+  /// Relearn button
+  ///
+  /// In en, this message translates to:
+  /// **'Relearn'**
+  String get tmdbMemoryRelearn;
+
+  /// Snackbar after clearing inferred categories
+  ///
+  /// In en, this message translates to:
+  /// **'Sorting cleared. It will rebuild as you browse the home.'**
+  String get tmdbMemorySortingCleared;
+
+  /// Title of the confirmation dialog before reloading every list
+  ///
+  /// In en, this message translates to:
+  /// **'Reload all lists?'**
+  String get reloadAllTitle;
+
+  /// Body of the reload-all confirmation, nothing is recent
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The list will be downloaded again from its server. This can take several minutes.} other{All {count} lists will be downloaded again from their servers. This can take several minutes.}}'**
+  String reloadAllBody(int count);
+
+  /// Body of the reload-all confirmation, naming the lists downloaded recently
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The list will be downloaded again from its server.}other{All {count} lists will be downloaded again from their servers.}}\n\nAlready up to date (less than 24 h): {names}.\n\nThis can take several minutes.'**
+  String reloadAllBodyRecent(int count, String names);
+
+  /// Confirm button of the reload-all dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Reload all'**
+  String get reloadAllConfirm;
+
+  /// Title of the progress dialog while every list is reloaded
+  ///
+  /// In en, this message translates to:
+  /// **'Reloading'**
+  String get reloadAllProgressTitle;
+
+  /// First line of the progress dialog, before the first list starts
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing…'**
+  String get reloadAllPreparing;
+
+  /// Progress line naming the list being reloaded
+  ///
+  /// In en, this message translates to:
+  /// **'List {index}/{total} — {label}'**
+  String reloadAllStep(int index, int total, String label);
+
+  /// Tooltip of the reload button in the home app bar
+  ///
+  /// In en, this message translates to:
+  /// **'Reload all lists'**
+  String get reloadAllTooltip;
+
+  /// Snackbar when the reload button is pressed without any account
+  ///
+  /// In en, this message translates to:
+  /// **'No list to reload'**
+  String get reloadAllNoAccounts;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get infoSectionTitle;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Genre'**
+  String get infoGenre;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Director'**
+  String get infoDirector;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Creator'**
+  String get infoCreator;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Original title'**
+  String get infoOriginalTitle;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Country'**
+  String get infoCountry;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Studios'**
+  String get infoStudios;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get infoStatus;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Runtime'**
+  String get infoRuntime;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Episode'**
+  String get infoEpisodeLength;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Seasons'**
+  String get infoSeasons;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Next episode'**
+  String get infoNextEpisode;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Network'**
+  String get infoNetwork;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Budget'**
+  String get infoBudget;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Box office'**
+  String get infoRevenue;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Theatrical release'**
+  String get infoTheatrical;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Digital release'**
+  String get infoDigital;
+
+  /// Saisons et episodes annonces par TMDB
+  ///
+  /// In en, this message translates to:
+  /// **'{seasons} ({episodes, plural, =1{1 episode} other{{episodes} episodes}})'**
+  String infoSeasonsValue(int seasons, int episodes);
+
+  /// Sous-titre de la tuile Tout recharger (TV)
+  ///
+  /// In en, this message translates to:
+  /// **'Re-download all your lists from their servers'**
+  String get settingsReloadAllSub;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Full'**
+  String get perfProfileConfort;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Balanced'**
+  String get perfProfileEquilibre;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get perfProfilePerformance;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get autoProfileOk;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'What your device can do'**
+  String get capsTitle;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Decoders, display, memory — measured, not guessed'**
+  String get capsSub;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Measure again'**
+  String get capsMeasure;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Not measured yet'**
+  String get capsNever;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Display'**
+  String get capsDisplay;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Memory'**
+  String get capsMemory;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Video decoders'**
+  String get capsDecoders;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'4K films'**
+  String get capsVerdict4k;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'hardware'**
+  String get capsHardware;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'software'**
+  String get capsSoftware;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'no decoder'**
+  String get capsNoDecoder;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Yes'**
+  String get capsYes;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'No — no decoder accepts 2160p'**
+  String get capsNoDecoder4k;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'No — the display shows less than 2160p'**
+  String get capsNoDisplay4k;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown — incomplete measurement'**
+  String get capsUnknown;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'low-memory device'**
+  String get capsLowRam;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'This 4K version can\'t play here'**
+  String get refuse4kTitle;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'No decoder on this device accepts a 3840×2160 picture. Pick an FHD or HD version.'**
+  String get refuse4kDecoder;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'The display shows {w}×{h}: 4K would be decoded for nothing and may stutter. Pick an FHD or HD version.'**
+  String refuse4kDisplay(int w, int h);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get refuseOk;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'{name} profile chosen for this device'**
+  String autoProfileTitle(String name);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Based on the measurement ({ram} MB of memory, {cores} cores), the home uses the {name} profile. You can change it anytime in Settings → Optimisation.'**
+  String autoProfileBody(String name, int ram, int cores);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Measured on {date}'**
+  String capsMeasuredAt(String date);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'{w}×{h} at {hz} Hz'**
+  String capsDisplayValue(int w, int h, int hz);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'{total} MB total, {avail} MB free'**
+  String capsMemoryValue(int total, int avail);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'{name} ({kind}) — up to {w}×{h}'**
+  String capsDecoderValue(String name, String kind, int w, int h);
+
+  /// Sous-titre d'un profil d'optimisation
+  ///
+  /// In en, this message translates to:
+  /// **'All animations'**
+  String get perfProfileConfortSub;
+
+  /// Sous-titre d'un profil d'optimisation
+  ///
+  /// In en, this message translates to:
+  /// **'Static hero, shorter rows'**
+  String get perfProfileEquilibreSub;
+
+  /// Sous-titre d'un profil d'optimisation
+  ///
+  /// In en, this message translates to:
+  /// **'Low memory'**
+  String get perfProfilePerformanceSub;
+
+  /// §tmdbProviders
+  ///
+  /// In en, this message translates to:
+  /// **'Netflix, Disney+ and Prime trends'**
+  String get tmdbRowsProvidersTitle;
+
+  /// §tmdbProviders
+  ///
+  /// In en, this message translates to:
+  /// **'What\'s popular right now on each platform in France, from your lists'**
+  String get tmdbRowsProvidersSub;
+
+  /// §tmdbProviders
+  ///
+  /// In en, this message translates to:
+  /// **'Trending on {name}'**
+  String rowProviderTrending(String name);
 }
 
 class _AppLocalizationsDelegate

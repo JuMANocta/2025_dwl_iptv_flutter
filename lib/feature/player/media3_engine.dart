@@ -251,6 +251,10 @@ class Media3Engine implements AetherPlaybackEngine {
                 id: '${e.index}',
                 title: e.displayName,
                 language: e.language,
+                // §castAudio — §engineVendor patch 11 : le codec de la piste,
+                // pour décider ce qu'un récepteur Chromecast saura décoder.
+                codec: e.codec,
+                channels: e.channelCount,
               ))
           .toList();
       _subtitles = t
@@ -271,9 +275,27 @@ class Media3Engine implements AetherPlaybackEngine {
 
   // ── Ouverture ──────────────────────────────────────────────────────────────
 
+  /// §nowPlaying — Traduit le descriptif neutre en modèle du paquet.
+  ///
+  /// ⚠️ `null` reste `null` : c'est l'ABSENCE de `mediaInfo` qui empêche le
+  /// natif de créer la session et de démarrer le service de premier plan
+  /// (`VideoPlayerObserver.onIsPlayingChanged`). Traduire `null` en objet vide
+  /// ferait apparaître une notification « Video » sans titre sur téléviseur.
+  static NativeVideoPlayerMediaInfo? _mediaInfoFor(AetherNowPlaying? n) {
+    if (n == null) return null;
+    return NativeVideoPlayerMediaInfo(
+      title: n.title,
+      subtitle: n.subtitle,
+      artworkUrl: n.artworkUrl,
+    );
+  }
+
   @override
   Future<void> open(String url,
-      {Duration? start, String? audioLang, String? subLang}) async {
+      {Duration? start,
+      String? audioLang,
+      String? subLang,
+      AetherNowPlaying? nowPlaying}) async {
     _subLang = subLang;
     await _c.initialize();
     // §trackLangPref — Posée AVANT l'ouverture : changer de piste après coup
@@ -281,6 +303,8 @@ class Media3Engine implements AetherPlaybackEngine {
     await _applyLangPrefs(audioLang);
     await _c.loadUrl(
       url: url,
+      // §nowPlaying — par chargement, pas par contrôleur (§engineVendor patch 9).
+      mediaInfo: _mediaInfoFor(nowPlaying),
       // §iptvUaCompat — Les panels Xtream rejettent les UA navigateur par un
       // 500 muet : le profil de requête doit être identique à celui de Dio.
       headers: const {'User-Agent': 'IPTVSmartersPro'},
@@ -297,11 +321,18 @@ class Media3Engine implements AetherPlaybackEngine {
 
   @override
   Future<void> openFile(String path,
-      {Duration? start, String? audioLang, String? subLang}) async {
+      {Duration? start,
+      String? audioLang,
+      String? subLang,
+      AetherNowPlaying? nowPlaying}) async {
     _subLang = subLang;
     await _c.initialize();
     await _applyLangPrefs(audioLang);
-    await _c.load(url: 'file://$path', startAt: start);
+    await _c.load(
+      url: 'file://$path',
+      startAt: start,
+      mediaInfo: _mediaInfoFor(nowPlaying),
+    );
     await _applySubPreference();
   }
 

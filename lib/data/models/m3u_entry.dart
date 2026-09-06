@@ -158,6 +158,21 @@ class TitleMetadata {
   static final _reLangMulti    = RegExp(r'\bmulti\b', caseSensitive: false);
   static final _reLangVostfr   = RegExp(r'\bvostfr\b', caseSensitive: false);
   static final _reLangVf       = RegExp(r'\b(vf|vff|truefrench|french)\b', caseSensitive: false);
+  /// §legLang — « Legendado » (portugais : sous-titré). Mesuré sur une liste
+  /// réelle : **3 215 entrées**, TOUJOURS en préfixe, sous six formes —
+  /// `|LEG.|` (1 801), `|VO-LEG.|` (1 356), `|VO-LEG|` (51), `|LEG|` (3),
+  /// `|VO.LEG.|` (2), `|4K-LEG.|` (1). C'est une LANGUE, au même titre que
+  /// MULTI / VOSTFR / VF, et elle n'en était pas une : le contenu lusophone
+  /// n'avait donc aucune pastille et rien ne le distinguait d'une VO.
+  ///
+  /// ⚠️ Frontières obligatoires des deux côtés : sans elles, **LEGO** Marvel
+  /// Super Heroes devient du portugais sous-titré (contre-exemple gardé en
+  /// test). Les séparateurs admis autour du jeton sont ceux réellement
+  /// observés dans les préfixes : espace, `-`, `.`, `|`.
+  static final _reLangLeg = RegExp(
+    r'(?:^|[\s.\-|])LEG(?:ENDAD[OA]|ENDA)?\.?(?=$|[\s.\-|])',
+    caseSensitive: false,
+  );
 
   // §23 — Préfixe provider en BLOC : gère les formes composées observées sur
   // les listes réelles (PLATINIUM & co) que l'ancien `^\|[A-Z0-9\s]+\|` ratait :
@@ -439,7 +454,7 @@ class TitleMetadata {
   }
 
   // ⚠️ Sentinelles en zone à usage privé : ni lettre, ni chiffre, ni espace, ni
-  // délimiteur. Aucune des regex de la chaîne (``, `[A-Z]`, `\d`, `\s`,
+  // délimiteur. Aucune des regex de la chaîne (`\b`, `[A-Z]`, `\d`, `\s`,
   // `[\p{L}\p{N}]`) ne peut les accrocher, donc un groupe masqué traverse le
   // strip sans une égratignure.
   static const String _maskOpen = '';
@@ -720,9 +735,22 @@ class TitleMetadata {
     // sont ici de vrais marqueurs de version (4 528 titres en `VO|`) et que
     // rien d'autre ne capterait.
     tag = tag.replaceAll(_reTagNoise, ' ');
+    // §legLang — « LEG » est une LANGUE depuis 2026-09-05, pas un marqueur de
+    // fournisseur : le laisser ici affichait DEUX pastilles pour la même
+    // information. Retiré du marqueur, il reste dans `languages`.
+    tag = tag.replaceAll(_reLangLeg, ' ');
     tag = tag.replaceAll(_reSpaces, ' ').trim();
-    while (tag.isNotEmpty && (tag.endsWith('-') || tag.endsWith('.'))) {
-      tag = tag.substring(0, tag.length - 1).trim();
+    // ⚠️ **Rogner les deux BOUTS, pas seulement la fin.** `|4K-LEG.|` perdait
+    // son `4K` (bruit de qualité) et laissait « -LEG » : le tiret de TÊTE
+    // survivait, et la vignette portait deux pastilles distinctes — `LEG` et
+    // `-LEG` — que le `Set` de `media_chips` ne pouvait pas dédoublonner.
+    // C'est ce que l'utilisateur voyait sur « Mission : Impossible ».
+    while (tag.isNotEmpty &&
+        (tag.endsWith('-') || tag.endsWith('.') ||
+         tag.startsWith('-') || tag.startsWith('.'))) {
+      tag = (tag.endsWith('-') || tag.endsWith('.'))
+          ? tag.substring(0, tag.length - 1).trim()
+          : tag.substring(1).trim();
     }
     tag = tag.toUpperCase();
     return tag.isEmpty ? null : tag;
@@ -789,6 +817,14 @@ class TitleMetadata {
       langs.add('VOSTFR');
     }
     if (_reLangVf.hasMatch(lower))     langs.add('VF');
+    // §legLang — Cherché UNIQUEMENT dans le préfixe `|…|`, jamais dans le
+    // titre : « LEGENDA » peut apparaître dans un vrai titre, et le marqueur
+    // du fournisseur est toujours en tête.
+    final legPrefix = _rePrefix.matchAsPrefix(work)?.group(0) ??
+        _reNewPrefix.matchAsPrefix(work)?.group(0);
+    if (legPrefix != null && _reLangLeg.hasMatch(legPrefix)) {
+      langs.add('LEG');
+    }
 
     String base = work;
     base = base.replaceAll(_rePrefix, '');

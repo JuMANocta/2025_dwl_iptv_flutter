@@ -1,3 +1,4 @@
+import 'playback_engine.dart' show AetherNowPlaying;
 import 'player_page.dart' show PlayerBadgeType, VideoSourceType;
 
 /// §episodeMeta — Tout ce qui décrit le contenu **actuellement lu**.
@@ -51,6 +52,15 @@ class PlayerMedia {
   /// Permet de partager une progression entre variantes (FHD/HD d'un même film).
   final String? progressKey;
 
+  /// §endOfMovie (2026-09-06) — Les clés de reprise des AUTRES versions du même
+  /// titre (FHD/HD, autres listes). ⚠️ La fiche et l'accueil affichent
+  /// « Reprendre » à partir de N'IMPORTE quelle version (§resumeUnify,
+  /// `getProgressForAny`) : finir un film dans une version et n'effacer que
+  /// la sienne laissait ressortir la vieille reprise d'une autre — constaté sur
+  /// l'émulateur (fin de « Le rêve américain » en FHD → « Reprendre · 01:30 »
+  /// venu de la version 4K). À la fin, on efface TOUT le titre.
+  final List<String> siblingResumeKeys;
+
   /// §autoNextEp — Saison du contenu (séries uniquement, `null` sinon).
   ///
   /// Sert à détecter un **franchissement de saison** : on enchaîne
@@ -66,10 +76,16 @@ class PlayerMedia {
   /// la question n'a pas de sens.
   final String accountId;
 
+  /// §nowPlaying — Image pour la notification et l'écran verrouillé : affiche
+  /// TMDB quand la fiche l'a, sinon le `tvg-logo` de la liste. `null` = la
+  /// notification s'affiche sans image, ce qui vaut mieux qu'un carré blanc.
+  final String? posterUrl;
+
   const PlayerMedia({
     required this.path,
     required this.title,
     this.accountId = '',
+    this.posterUrl,
     this.qualityTag,
     this.episodeTag,
     this.seriesName,
@@ -80,10 +96,16 @@ class PlayerMedia {
     this.replayDuration,
     this.startPosition,
     this.progressKey,
+    this.siblingResumeKeys = const [],
     this.seasonNumber,
   });
 
   /// Clé effective de sauvegarde de progression.
+
+  /// §endOfMovie — Toutes les clés à effacer quand le contenu est allé au bout :
+  /// la sienne, puis celles de ses versions sœurs (jamais deux fois la même).
+  Iterable<String> get allResumeKeys => <String>{resumeKey, ...siblingResumeKeys};
+
   String get resumeKey => progressKey ?? path;
 
   /// Vrai si le contenu ne doit pas être suivi en progression : une chaîne live
@@ -114,6 +136,56 @@ class PlayerMedia {
         replayDuration: replayDuration,
         startPosition: startPosition ?? this.startPosition,
         progressKey: progressKey,
+        siblingResumeKeys: siblingResumeKeys,
         seasonNumber: seasonNumber,
+        accountId: accountId,
+        posterUrl: posterUrl,
       );
+}
+
+/// §nowPlaying — Ce que la notification de lecture doit afficher pour [m].
+///
+/// Fonction **pure**, donc testée : c'est elle qui décide de la ligne
+/// secondaire. Règles :
+///   · série → « Nom de la série · S01 E04 » (l'un ou l'autre s'il en manque) ;
+///   · film → pas de ligne secondaire (le titre suffit, l'année est déjà dans
+///     `title` quand elle est connue) ;
+///   · chaîne en direct → « En direct », replay → « Replay » : sur l'écran
+///     verrouillé, savoir qu'on est sur du direct explique l'absence de barre
+///     de progression.
+///
+/// ⚠️ Ne décide PAS de la plateforme : c'est l'appelant qui rend `null` sur
+/// téléviseur (`PlatformTv.isTv` est un cache natif, invisible en test).
+AetherNowPlaying nowPlayingFor(PlayerMedia m) {
+  final String title = m.title.trim().isEmpty ? 'AetherStream' : m.title.trim();
+
+  String? subtitle;
+  switch (m.badgeType) {
+    case PlayerBadgeType.live:
+      subtitle = 'En direct';
+      break;
+    case PlayerBadgeType.replay:
+      subtitle = 'Replay';
+      break;
+    case PlayerBadgeType.series:
+      final parts = <String>[
+        if (m.seriesName != null &&
+            m.seriesName!.trim().isNotEmpty &&
+            m.seriesName!.trim() != title)
+          m.seriesName!.trim(),
+        if (m.episodeTag != null && m.episodeTag!.trim().isNotEmpty)
+          m.episodeTag!.trim(),
+      ];
+      subtitle = parts.isEmpty ? null : parts.join(' · ');
+      break;
+    case PlayerBadgeType.movie:
+    case PlayerBadgeType.none:
+      subtitle = null;
+      break;
+  }
+
+  final String? art =
+      (m.posterUrl != null && m.posterUrl!.trim().isNotEmpty) ? m.posterUrl : null;
+
+  return AetherNowPlaying(title: title, subtitle: subtitle, artworkUrl: art);
 }

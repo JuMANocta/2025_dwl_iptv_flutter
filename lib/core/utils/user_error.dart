@@ -1,3 +1,5 @@
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -23,6 +25,33 @@ import '../diagnostics/log_buffer.dart' show sanitizeForLog;
 ///
 /// Le mapping `DioExceptionType` reprend celui de `playlist_service.dart`,
 /// qui était le meilleur de l'app mais enfermé dans un `catch` privé.
+/// §userErrorOwn — Exception dont le message **EST déjà** la phrase à montrer.
+///
+/// **Pourquoi ce type existe** (constaté sur appareil réel le 2026-09-04) :
+/// `BackupService` levait une `FormatException` portant « Mot de passe
+/// incorrect ou fichier altéré. » — un message juste, en français… que
+/// [describeError] écrasait par « Réponse illisible du serveur (format
+/// inattendu). », parce qu'il traduit la CLASSE. L'utilisateur lisait donc un
+/// message parlant d'un serveur alors qu'il avait simplement tapé un mauvais
+/// mot de passe.
+///
+/// Même piège que §userErrorGaps, dans l'autre sens : là, une classe portait
+/// un message brut qu'on croyait métier ; ici, une classe portait un message
+/// métier qu'on croyait brut. La leçon est la même — **la classe ne dit pas la
+/// provenance du message**. D'où ce type, dont la classe, elle, l'affirme.
+///
+/// ⚠️ N'y mettre QUE des phrases écrites pour être lues : jamais une valeur
+/// venue du réseau, jamais une URL (l'invariant §tourFix s'applique quand
+/// même, [describeError] repasse tout par `sanitizeForLog`).
+class UserFacingException implements Exception {
+  const UserFacingException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 String describeError(Object? error) {
   if (error == null) return 'Une erreur inattendue est survenue.';
   final String raw = _describe(error);
@@ -32,32 +61,56 @@ String describeError(Object? error) {
 const int _maxLength = 180;
 
 String _describe(Object error) {
+  // §userErrorOwn — EN PREMIER : le message a été écrit pour être lu, aucune
+  // traduction ne peut l'améliorer. (Avant, `BackupService` levait une
+  // `FormatException` « Mot de passe incorrect » qui ressortait en « Réponse
+  // illisible du serveur » — un message parlant d'un serveur pour un mot de
+  // passe mal tapé.)
+  if (error is UserFacingException) return error.message;
   if (error is DioException) return _describeDio(error);
   if (error is HttpException) {
-    // Déjà en français dans l'app (playlist_service, playlist_reload_service)
-    // — on garde le message, le filet redact s'applique quand même.
+    // ⚠️ Constaté sur appareil réel (§userError, 2026-09-04) : `HttpException`
+    // n'est pas QUE le type que notre propre code utilise pour porter un
+    // message déjà en français (`playlist_service`, `playlist_reload_service`)
+    // — c'est aussi ce que `dart:io`/l'adaptateur IO de Dio lancent eux-mêmes
+    // pour un accident de socket en cours de lecture de flux (ex. reset de
+    // connexion en pleine réponse). Un « Connection reset by peer » brut
+    // traversait donc tel quel, en anglais. On le détecte par motif — un
+    // message métier de l'app ne contient jamais ce vocabulaire réseau bas
+    // niveau — plutôt que de faire confiance à la classe seule.
+    if (_looksLikeRawSocketMessage(error.message)) {
+      return _t.errNetworkUnreachable;
+    }
     return _stripPrefix(error.message);
   }
   if (error is SocketException) {
-    return 'Connexion impossible : réseau coupé ou serveur injoignable.';
+    return _t.errNetworkUnreachable;
   }
   if (error is TimeoutException) {
-    return 'Le serveur a mis trop de temps à répondre.';
+    return _t.errTimeout;
   }
   if (error is HandshakeException || error is TlsException) {
-    return 'Connexion sécurisée refusée par le serveur (certificat).';
+    return _t.errTls;
   }
   if (error is FormatException) {
-    return 'Réponse illisible du serveur (format inattendu).';
+    return _t.errBadFormat;
   }
   if (error is FileSystemException) {
-    return 'Impossible de lire ou d\'écrire le fichier sur l\'appareil.';
+    return _t.errFileSystem;
   }
   if (error is ArgumentError || error is StateError) {
-    return 'Une erreur interne est survenue.';
+    return _t.errInternal;
   }
   return _stripPrefix(error.toString());
 }
+
+/// §l10nAll — Les textes, hors widget.
+///
+/// ⚠️ **C'est un getter, pas un champ.** `L10n.current` est lié à la première
+/// frame : le mémoriser figerait le repli français pour toute la session.
+/// ⚠️ Ne JAMAIS le lire dans une fermeture passée à `Isolate.run`
+/// (§isolateLeak) — un isolate n'a pas ce binding.
+AppLocalizations get _t => L10n.current;
 
 String _describeDio(DioException e) {
   switch (e.type) {
@@ -65,36 +118,33 @@ String _describeDio(DioException e) {
     case DioExceptionType.sendTimeout:
     case DioExceptionType.receiveTimeout:
     case DioExceptionType.transformTimeout:
-      return 'Le serveur a mis trop de temps à répondre. '
-          'Vérifie ta connexion ou l\'adresse du serveur.';
+      return _t.errTimeoutHint;
     case DioExceptionType.badResponse:
       final int? code = e.response?.statusCode;
       if (code == null) {
-        return 'Réponse invalide du serveur. Vérifie l\'adresse.';
+        return _t.errBadResponse;
       }
       if (code == 401 || code == 403) {
-        return 'Accès refusé par le serveur (HTTP $code). '
-            'Vérifie les identifiants du compte.';
+        return _t.errForbidden(code);
       }
       if (code == 404) {
-        return 'Adresse introuvable sur le serveur (HTTP 404).';
+        return _t.errNotFound;
       }
       if (code >= 500) {
-        return 'Le serveur est en erreur (HTTP $code). Réessaie plus tard.';
+        return _t.errServer(code);
       }
-      return 'Le serveur a répondu avec une erreur (HTTP $code).';
+      return _t.errHttp(code);
     case DioExceptionType.connectionError:
-      return 'Erreur de connexion : vérifie que tu es en ligne '
-          'et que le serveur est accessible.';
+      return _t.errConnection;
     case DioExceptionType.badCertificate:
-      return 'Connexion sécurisée refusée par le serveur (certificat).';
+      return _t.errTls;
     case DioExceptionType.cancel:
-      return 'Opération annulée.';
+      return _t.errCancelled;
     case DioExceptionType.unknown:
       // ⚠️ C'est LE type dont le `toString()` embarque l'URL de requête.
       final Object? cause = e.error;
       if (cause != null && cause is! DioException) return _describe(cause);
-      return 'Erreur réseau inconnue.';
+      return _t.errNetworkUnknown;
   }
 }
 
@@ -113,6 +163,21 @@ String _stripPrefix(String s) {
     m = prefix.firstMatch(out);
   }
   return out.isEmpty ? 'Une erreur inattendue est survenue.' : out;
+}
+
+/// Motifs typiques d'une erreur socket **native** (anglais, jamais écrite par
+/// l'app) qui a fini enveloppée dans une `HttpException` par la couche IO —
+/// cf. commentaire d'appel.
+bool _looksLikeRawSocketMessage(String message) {
+  final String lower = message.toLowerCase();
+  return lower.contains('connection reset') ||
+      lower.contains('connection refused') ||
+      lower.contains('connection closed') ||
+      lower.contains('broken pipe') ||
+      lower.contains('errno') ||
+      lower.contains('os error') ||
+      lower.contains('network is unreachable') ||
+      lower.contains('no route to host');
 }
 
 String _cap(String s) {

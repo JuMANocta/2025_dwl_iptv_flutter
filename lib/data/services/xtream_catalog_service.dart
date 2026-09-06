@@ -109,15 +109,28 @@ class XtreamCatalogService {
     // est directement réduite. (Le filtre au PARSE reste actif pour réagir
     // instantanément à un changement de réglage sans re-télécharger ; le disque
     // se réduit au prochain refresh.)
+    // §regionGaps (2026-09-05) — Les noms de catégories sont résolus ICI, AVANT
+    // le filtre.
+    // ⚠️ **C'est l'ordre des opérations qui créait l'asymétrie** : ce filtre
+    // tournait avant `_injectCategoryNames`, donc `_cat` n'existait pas encore
+    // et seule la voie TITRE était appliquée. Une région encodée dans la
+    // CATÉGORIE (« Films Italiens ») était bien masquée à l'affichage (filtre
+    // au parse) mais restait écrite sur le disque à chaque refresh.
+    final liveNames = _categoryNames(liveCats.items ?? const []);
+    final vodNames = _categoryNames(vodCats.items ?? const []);
+    final seriesNames = _categoryNames(seriesCats.items ?? const []);
+
     if (HiddenRegionsService.hasAny) {
       final hidden = HiddenRegionsService.hidden;
-      bool keep(Map<String, dynamic> it) {
-        final r = entryRegionLabel((it['name'] ?? '').toString());
-        return r == null || !hidden.contains(r);
-      }
-      liveF = liveF.where(keep).toList();
-      vodF = vodF.where(keep).toList();
-      seriesF = seriesF.where(keep).toList();
+      bool Function(Map<String, dynamic>) keepWith(Map<String, String> names) =>
+          (it) => !isRegionHidden(
+                name: (it['name'] ?? '').toString(),
+                groupTitle: names[(it['category_id'] ?? '').toString()],
+                hidden: hidden,
+              );
+      liveF = liveF.where(keepWith(liveNames)).toList();
+      vodF = vodF.where(keepWith(vodNames)).toList();
+      seriesF = seriesF.where(keepWith(seriesNames)).toList();
     }
 
     debugPrint('📡 XtreamCatalog « ${account.label} » en ${sw.elapsedMilliseconds} ms : '
@@ -150,12 +163,9 @@ class XtreamCatalogService {
     // dans la liste catégories (provider désynchronisé/tronqué) ne reçoit
     // aucun `_cat` → l'entrée tombe silencieusement dans "Autres" côté parse.
     // Log récapitulatif (observabilité seulement, comportement inchangé).
-    final unresolvedLive =
-        _injectCategoryNames(liveF, _categoryNames(liveCats.items ?? const []));
-    final unresolvedVod =
-        _injectCategoryNames(vodF, _categoryNames(vodCats.items ?? const []));
-    final unresolvedSeries = _injectCategoryNames(
-        seriesF, _categoryNames(seriesCats.items ?? const []));
+    final unresolvedLive = _injectCategoryNames(liveF, liveNames);
+    final unresolvedVod = _injectCategoryNames(vodF, vodNames);
+    final unresolvedSeries = _injectCategoryNames(seriesF, seriesNames);
     final unresolvedTotal = unresolvedLive + unresolvedVod + unresolvedSeries;
     if (unresolvedTotal > 0) {
       debugPrint('⚠️ XtreamCatalog: $unresolvedTotal item(s) sans catégorie '

@@ -80,6 +80,9 @@ object SharedPlayerManager {
      * [forceSoftwareDecoders] restricts MediaCodec selection to software
      * decoders (from the Dart NativeVideoPlayerConfig.androidForceSoftwareDecoders).
      */
+    /** Patch 14 (AetherStream) — le lecteur d'un contrôleur, sans le créer. */
+    fun getPlayer(controllerId: Int): ExoPlayer? = players[controllerId]
+
     fun getOrCreatePlayer(
         context: Context,
         controllerId: Int,

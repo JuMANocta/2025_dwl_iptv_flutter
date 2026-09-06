@@ -7,6 +7,9 @@ class NativeVideoPlayerAudioTrack {
     required this.language,
     required this.displayName,
     this.isSelected = false,
+    this.codec,
+    this.channelCount,
+    this.bitrate,
   });
 
   factory NativeVideoPlayerAudioTrack.fromMap(Map<dynamic, dynamic> map) {
@@ -15,6 +18,11 @@ class NativeVideoPlayerAudioTrack {
       language: map['language'] as String,
       displayName: map['displayName'] as String,
       isSelected: map['isSelected'] as bool? ?? false,
+      // §engineVendor patch 11 — optionnels : une plateforme (ou une version
+      // du natif) qui ne les envoie pas laisse simplement `null`.
+      codec: map['codec'] as String?,
+      channelCount: map['channelCount'] as int?,
+      bitrate: map['bitrate'] as int?,
     );
   }
 
@@ -30,17 +38,33 @@ class NativeVideoPlayerAudioTrack {
   /// Whether this track is currently playing.
   final bool isSelected;
 
+  /// §engineVendor patch 11 — Sample MIME type of the track
+  /// (`audio/ac3`, `audio/mp4a-latm`, `audio/vnd.dts`…), `null` when the
+  /// platform doesn't report it. Lets an app know what a remote receiver
+  /// would have to decode before it sends the stream there.
+  final String? codec;
+
+  /// Channel count (2 = stereo, 6 = 5.1), `null` when unknown.
+  final int? channelCount;
+
+  /// Average bitrate in bits per second, `null` when unknown.
+  final int? bitrate;
+
   Map<String, dynamic> toMap() => <String, dynamic>{
     'index': index,
     'language': language,
     'displayName': displayName,
     'isSelected': isSelected,
+    if (codec != null) 'codec': codec,
+    if (channelCount != null) 'channelCount': channelCount,
+    if (bitrate != null) 'bitrate': bitrate,
   };
 
   @override
   String toString() =>
       'NativeVideoPlayerAudioTrack(index: $index, language: $language, '
-      'displayName: $displayName, isSelected: $isSelected)';
+      'displayName: $displayName, isSelected: $isSelected, codec: $codec, '
+      'channelCount: $channelCount)';
 
   @override
   bool operator ==(Object other) =>
@@ -50,8 +74,19 @@ class NativeVideoPlayerAudioTrack {
           index == other.index &&
           language == other.language &&
           displayName == other.displayName &&
-          isSelected == other.isSelected;
+          isSelected == other.isSelected &&
+          codec == other.codec &&
+          channelCount == other.channelCount &&
+          bitrate == other.bitrate;
 
   @override
-  int get hashCode => Object.hash(index, language, displayName, isSelected);
+  int get hashCode => Object.hash(
+    index,
+    language,
+    displayName,
+    isSelected,
+    codec,
+    channelCount,
+    bitrate,
+  );
 }

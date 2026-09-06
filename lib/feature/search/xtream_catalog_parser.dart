@@ -85,21 +85,26 @@ class XtreamCatalogParser {
       if (detail != null) onDetail?.call(detail);
     });
 
-    // Variables locales : la fermeture envoyée à l'isolate ne doit capturer que
-    // des valeurs transmissibles — jamais `this`, jamais un paramètre nommé.
-    final SendPort? progress = port?.sendPort;
-    final String path = filePath;
-    final String acct = accountId;
-    final Set<String> hiddenSet = hidden;
-
     try {
-      final result = await Isolate.run(
-        () => _parseCatalogIsolate((
-          path: path,
-          accountId: acct,
-          hidden: hiddenSet,
-          progress: progress,
-        )),
+      // §isolateLeak — Constaté sur appareil réel : `Isolate.run` a planté
+      // avec « object is unsendable » en pointant vers CE `onProgress` —
+      // pourtant jamais lu par `_parseCatalogIsolate`. Cause : la fermeture
+      // `port?.listen((message) { ... onProgress?.call(...) ... })`
+      // ci-dessus et celle envoyée à `Isolate.run` vivaient dans la MÊME
+      // portée de méthode ; le compilateur Dart peut fusionner leurs
+      // variables capturées dans un seul `Context` partagé — donc envoyer
+      // l'une revient à tenter d'envoyer l'autre aussi, même sans lecture
+      // directe. De simples `final` locaux (l'ancienne défense ici) ne
+      // suffisent pas : seule une portée de méthode SÉPARÉE, sans aucune
+      // variable capturant `this` (`onProgress`/`onDetail` viennent d'un
+      // appelant qui ferme sur `_LaunchDeciderState`), garantit un contexte
+      // isolé. D'où `_launchParseIsolate`, qui ne connaît que des valeurs
+      // transmissibles.
+      final result = await _launchParseIsolate(
+        path: filePath,
+        accountId: accountId,
+        hidden: hidden,
+        progress: port?.sendPort,
       );
       finished = true;
       filmsList.addAll(result.films);
@@ -112,6 +117,29 @@ class XtreamCatalogParser {
       finished = true;
       port?.close();
     }
+  }
+
+  /// §isolateLeak — Portée dédiée : AUCUNE variable ici ne capture `this` ni
+  /// un callback appelant. Voir le commentaire dans [parseFile].
+  static Future<
+      ({
+        List<M3uEntry> films,
+        List<M3uEntry> series,
+        List<M3uEntry> tv
+      })> _launchParseIsolate({
+    required String path,
+    required String accountId,
+    required Set<String> hidden,
+    required SendPort? progress,
+  }) {
+    return Isolate.run(
+      () => _parseCatalogIsolate((
+        path: path,
+        accountId: accountId,
+        hidden: hidden,
+        progress: progress,
+      )),
+    );
   }
 }
 
@@ -155,12 +183,14 @@ class XtreamCatalogParser {
   // `contentCategoryLabel(groupTitle)`) : certains providers encodent la région
   // dans la CATÉGORIE (ex. « Films Italiens ») et pas dans le titre → sans ce
   // 2e test, la rangée région réapparaissait. Court-circuit si rien n'est masqué.
+  // §legLang — prédicat PARTAGÉ avec le parseur M3U et le téléchargement.
+  // ⚠️ `cat` est ici la CATÉGORIE DÉJÀ RÉSOLUE (`_cat`), pas un group-title
+  // brut : on la teste donc directement au lieu de la recalculer.
   final filterOn = args.hidden.isNotEmpty;
   bool isHidden(String name, String? cat) {
     if (!filterOn) return false;
-    final r = entryRegionLabel(name);
-    if (r != null && args.hidden.contains(r)) return true;
-    return cat != null && args.hidden.contains(cat);
+    if (cat != null && args.hidden.contains(cat)) return true;
+    return isRegionHidden(name: name, hidden: args.hidden);
   }
 
   // §bootPercent — La progression RÉELLE commence ici : le décodage est fini,

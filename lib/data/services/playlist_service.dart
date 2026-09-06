@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import '../../core/utils/network.dart';
 import '../../core/utils/host_gate.dart';
+import '../../core/utils/user_error.dart';
 import 'stream_account_service.dart';
 import 'parsed_playlist_service.dart';
 import 'xtream_catalog_service.dart';
@@ -442,27 +443,23 @@ class PlaylistService {
         }
       }
 
-      switch (e.type) {
-        case DioExceptionType.connectionTimeout:
-        case DioExceptionType.sendTimeout:
-        case DioExceptionType.receiveTimeout:
-          throw HttpException("Le serveur a mis trop de temps à répondre (timeout).\nVérifiez votre connexion ou l'adresse du serveur.");
-        case DioExceptionType.badResponse:
-          final statusCode = e.response?.statusCode;
-          if (statusCode != null) {throw HttpException("Le serveur a répondu avec une erreur : $statusCode.\nVérifiez l'URL de la playlist.");
-          }
-          throw HttpException("Réponse invalide du serveur. Vérifiez l'URL de la playlist.");
-        case DioExceptionType.connectionError:
-          throw const HttpException("Erreur de connexion.\nAssurez-vous d'être connecté à internet et que l'hôte est accessible.");
-        case DioExceptionType.cancel:
-          throw const HttpException("Le téléchargement a été annulé.");
-        default:
-          throw HttpException("Erreur réseau inconnue : ${e.message}");
-      }
+      // §userError — Ce switch dupliquait celui de `describeError()`, en moins
+      // sûr : sa branche par défaut affichait `e.message` BRUT, sans passer
+      // par `sanitizeForLog` — un `DioException` peut embarquer l'URL de
+      // requête AVEC les identifiants Xtream (§logHygiene). Constaté sur
+      // appareil réel : `e.message` était `null` pour ce type d'exception, ce
+      // qui produisait littéralement « Erreur réseau inconnue : null » —
+      // `describeError` sait déjà déballer `e.error` pour ce cas précis
+      // (`DioExceptionType.unknown`) au lieu d'afficher le champ vide.
+      throw HttpException(describeError(e));
     } on HttpException {
       rethrow;
     } catch (e) {
-      throw HttpException("Une erreur inattendue est survenue : ${e.toString()}");
+      // §userError — Même défaut que la branche `DioException` ci-dessus : ce
+      // repli attrape aussi bien une `SocketException` brute (ex. « Connection
+      // reset by peer », jamais traduite ni passée au filet §logHygiene) qu'un
+      // Dio wrapping différent. `describeError` sait déjà classer les deux.
+      throw HttpException(describeError(e));
     }
   }
 }

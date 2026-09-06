@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/themes/aether_theme_extension.dart';
 import '../../core/themes/colors.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../core/utils/user_error.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'boot_log.dart';
 import 'boot_shell.dart';
@@ -49,9 +50,13 @@ class BootErrorScreen extends StatelessWidget {
         accent: kError,
         title: 'Démarrage interrompu',
         message: 'L\'application n\'a pas réussi à charger ta playlist.',
-        // Le détail technique reste consultable mais ne domine pas : il
-        // s'adresse au diagnostic, pas à l'utilisateur qui veut juste relancer.
-        detail: error.toString(),
+        // §userError — `error.toString()` d'origine affichait le préfixe
+        // Dart natif (« HttpException: … ») et, pour tout ce qui n'a pas déjà
+        // été mis en français par `playlist_service.dart`, le message brut
+        // d'une exception — jamais garanti sans URL ni identifiant. Le détail
+        // technique reste consultable mais ne domine pas : il s'adresse au
+        // diagnostic, pas à l'utilisateur qui veut juste relancer.
+        detail: describeError(error),
         primaryLabel: 'Réessayer',
         primaryIcon: Icons.refresh_rounded,
         onPrimary: onRetry,

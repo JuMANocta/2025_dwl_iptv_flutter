@@ -35,7 +35,7 @@ class StorageService {
       } else if (Platform.isWindows) {
         _instance = WindowsStorage();
       } else {
-        throw UnsupportedError('Plateforme non supportée pour le stockage');
+        throw UnsupportedError('Unsupported platform for storage');
       }
     }
     return _instance!;

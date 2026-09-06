@@ -170,8 +170,10 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
                     : const Icon(Icons.refresh, size: 16),
                 onPressed: _busy ? null : _refresh,
                 tooltip: 'Rafraîchir',
+                // §touchTarget — La cible faisait 24x24. L'icône reste à 16 px
+                // (l'encart est dense), seule la zone tactile passe à 48.
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
               ),
             ],
           ),

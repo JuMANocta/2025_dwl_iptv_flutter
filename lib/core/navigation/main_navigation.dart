@@ -463,7 +463,7 @@ class _AppNavigationRail extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 16),
               child: IconButton(
                 icon: Icon(isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen),
-                tooltip: isFullScreen ? 'Réduire la fenêtre' : 'Plein écran',
+                tooltip: isFullScreen ? 'Exit fullscreen' : 'Fullscreen',
                 onPressed: onToggleFullScreen,
                 color: cs.onSurfaceVariant.withAlpha(180),
               ),

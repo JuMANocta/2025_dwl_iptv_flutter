@@ -14,12 +14,20 @@ class _HomeCard extends StatefulWidget {
   /// d'entrée dpad de la rangée → ↓ depuis une rangée du dessus se cale à gauche.
   final bool isEntry;
 
+  /// §posterScope — `true` = l'affiche TMDB passe DEVANT celle des listes
+  /// (option « Affiches TMDB en priorité »). Décidé par le PARENT, jamais lu
+  /// dans les réglages : l'option ne vaut que pour le carrousel et la rangée
+  /// Favoris. Sur toutes les vignettes, elle déclenchait ~450 recherches TMDB
+  /// à l'ouverture de l'accueil et le faisait saccader pendant 15 s.
+  final bool tmdbFirst;
+
   const _HomeCard(
       {super.key,
       required this.versions,
       required this.type,
       this.width,
-      this.isEntry = false});
+      this.isEntry = false,
+      this.tmdbFirst = false});
 
   @override
   State<_HomeCard> createState() => _HomeCardState();
@@ -50,7 +58,13 @@ class _HomeCardState extends State<_HomeCard> {
     // chargement qui n'arrivera jamais : on résout tout de suite. Sinon on
     // laisse `AetherImage` essayer les adresses, et son `onAllFailed` nous
     // rappellera si toutes échouent.
-    if (_logoCandidates.isEmpty) _resolveTmdbPosterIfNeeded();
+    // §posterLang — Option « Affiches TMDB en priorité » (défaut OFF) : dans
+    // ce mode on ne peut PAS attendre l'échec des adresses du fournisseur, il
+    // faut résoudre dès le départ pour que l'affiche TMDB passe devant.
+    // §posterScope — C'est le PARENT qui décide (`widget.tmdbFirst`).
+    if (_logoCandidates.isEmpty || widget.tmdbFirst) {
+      _resolveTmdbPosterIfNeeded();
+    }
   }
 
   @override
@@ -60,7 +74,13 @@ class _HomeCardState extends State<_HomeCard> {
     // versions → on relance la résolution si le groupe a changé.
     if (oldWidget.versions.first.url != widget.versions.first.url) {
       _tmdbPoster = null;
-      if (_logoCandidates.isEmpty) _resolveTmdbPosterIfNeeded();
+      if (_logoCandidates.isEmpty || widget.tmdbFirst) {
+        _resolveTmdbPosterIfNeeded();
+      }
+    } else if (widget.tmdbFirst && !oldWidget.tmdbFirst) {
+      // §posterScope — L'option vient d'être activée : la carte existe déjà,
+      // elle va chercher son affiche TMDB maintenant.
+      _resolveTmdbPosterIfNeeded();
     }
   }
 
@@ -185,8 +205,11 @@ class _HomeCardState extends State<_HomeCard> {
                   M3uContentType.tv     => PlayerBadgeType.live,
                 };
 
-                void play({Duration? from}) {
+                Future<void> play({Duration? from}) async {
                   Navigator.pop(sheetCtx);
+                  // §deviceCaps — la porte, même règle que la fiche.
+                  if (!await PlaybackGate.allow(context, entry)) return;
+                  if (!mounted) return;
                   FavoritesService.addEntry(entry);
                   Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerPage(
                     path: entry.url,
@@ -199,6 +222,11 @@ class _HomeCardState extends State<_HomeCard> {
                     sourceType: VideoSourceType.network,
                     badgeType: badge,
                     startPosition: from,
+                    // §endOfMovie — toutes les versions du titre s'effacent à la fin.
+                    siblingResumeKeys: [for (final v in widget.versions) v.url],
+                    // §nowPlaying — la même image que la vignette.
+                    posterUrl: _tmdbPoster ??
+                        (_logoCandidates.isEmpty ? null : _logoCandidates.first),
                   )));
                 }
 
@@ -354,9 +382,16 @@ class _HomeCardState extends State<_HomeCard> {
     // §Ultimate — fallback affiche TMDB quand le M3U ne fournit aucun tvg-logo.
     // §logoFallback — Toutes les adresses du groupe, puis l'affiche TMDB une
     // fois résolue. `AetherImage` descend la liste à chaque échec.
+    // §posterLang — L'ordre des candidats EST la politique d'affiche.
+    // Par défaut le fournisseur passe devant (§23, « plus grosse liste ») et
+    // TMDB ne sert qu'en repli ; l'option inverse les deux pour qui préfère des
+    // affiches homogènes, dans la langue choisie.
+    // §posterScope — Portée décidée par le parent (carrousel + Favoris).
+    final bool tmdbFirst = widget.tmdbFirst;
     final logoCandidates = <String>[
+      if (tmdbFirst && _tmdbPoster != null) _tmdbPoster!,
       ..._logoCandidates,
-      if (_tmdbPoster != null) _tmdbPoster!,
+      if (!tmdbFirst && _tmdbPoster != null) _tmdbPoster!,
     ];
     final logoUrl = logoCandidates.isEmpty ? null : logoCandidates.first;
 
@@ -506,6 +541,44 @@ class _HomeCardState extends State<_HomeCard> {
                       right: 6,
                       child: MeasuredQualityBadge(versions: widget.versions),
                     ),
+                    // §menuHint — Le menu d'appui long est le raccourci
+                    // principal de l'app : Lire, Reprendre, Oublier la
+                    // reprise, Télécharger et Favoris n'existent QUE là. Rien
+                    // ne l'annonçait — ni « ⋯ », ni coin corné, ni un mot dans
+                    // l'accueil guidé (§audit0903 n° 17).
+                    //
+                    // ⚠️ **Non focusable, volontairement** : un focusable
+                    // imbriqué dans une `FocusableCard` n'est candidat dans
+                    // AUCUNE direction depuis dpad 3.0 (§dpadChildFocus) — il
+                    // serait donc décoratif à la télécommande. D'où l'affichage
+                    // au tactile seul, là où il est réellement utilisable ; sur
+                    // téléviseur, l'appui long sur OK reste la voie d'accès.
+                    if (!PlatformTv.isTv)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _onLongPress,
+                          child: const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Center(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: Color(0xB3000000),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.more_horiz,
+                                      size: 16, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     // §1e — Barre de progression "reprendre depuis…" :
                     // visible si l'utilisateur a regardé l'une des variantes du
                     // groupe sans aller jusqu'au bout (TV exclu — pas de durée).

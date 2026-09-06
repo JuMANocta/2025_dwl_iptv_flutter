@@ -33,7 +33,7 @@ Future<void> showPlayerOptions(
   return showAdaptiveActionSheet<void>(
     context: context,
     scrollable: false,
-    builder: (_) => _OptionsBody(
+    builder: (_) => OptionsSheetBody(
       title: 'Options',
       icon: Icons.tune_rounded,
       children: [
@@ -41,21 +41,21 @@ Future<void> showPlayerOptions(
         // c'est l'action la plus fréquente du panneau, elle reçoit le focus
         // initial au D-pad au lieu d'être en dernière position.
         if (onNext != null)
-          _OptionRow(
+          OptionSheetRow(
             icon: Icons.skip_next_rounded,
             accent: kAccentTertiary,
             title: 'Épisode suivant',
             subtitle: "Passer à l'épisode suivant",
             onTap: onNext,
           ),
-        _OptionRow(
+        OptionSheetRow(
           icon: Icons.subtitles_rounded,
           accent: kAccentSecondary,
           title: 'Pistes audio & sous-titres',
           subtitle: 'Langue audio · activer les sous-titres',
           onTap: onTracks,
         ),
-        _OptionRow(
+        OptionSheetRow(
           icon: Icons.speed_rounded,
           accent: kAccentPrimary,
           title: 'Vitesse de lecture',
@@ -65,7 +65,7 @@ Future<void> showPlayerOptions(
         // §videoFit — Format d'image : le sous-titre annonce le mode ACTIF,
         // pas l'action. Sur TV c'est le seul endroit où on peut lire l'état
         // courant (le bouton inline du lecteur n'existe qu'au tactile).
-        _OptionRow(
+        OptionSheetRow(
           icon: fitMode.icon,
           accent: kAccentSecondary,
           title: "Format d'image",
@@ -75,10 +75,8 @@ Future<void> showPlayerOptions(
         // §videoStats — Interrupteur de l'encart de diagnostic. EN DERNIER :
         // c'est un outil de mise au point, pas une action de lecture, il ne
         // doit pas passer devant « Épisode suivant » au focus D-pad.
-        _OptionRow(
-          icon: statsEnabled
-              ? Icons.speed_outlined
-              : Icons.query_stats_rounded,
+        OptionSheetRow(
+          icon: statsEnabled ? Icons.speed_outlined : Icons.query_stats_rounded,
           accent: kAccentTertiary,
           title: 'Infos vidéo',
           subtitle: statsEnabled
@@ -101,12 +99,12 @@ Future<void> showVideoFitMenu(
   return showAdaptiveActionSheet<void>(
     context: context,
     scrollable: false,
-    builder: (_) => _OptionsBody(
+    builder: (_) => OptionsSheetBody(
       title: "Format d'image",
       icon: Icons.aspect_ratio_rounded,
       children: [
         for (final mode in VideoFitMode.values)
-          _OptionRow(
+          OptionSheetRow(
             icon: mode == current ? Icons.check_circle_rounded : mode.icon,
             accent: kAccentSecondary,
             title: mode.label,
@@ -128,12 +126,12 @@ Future<void> showSpeedMenu(
   return showAdaptiveActionSheet<void>(
     context: context,
     scrollable: false,
-    builder: (_) => _OptionsBody(
+    builder: (_) => OptionsSheetBody(
       title: 'Vitesse',
       icon: Icons.speed_rounded,
       children: [
         for (final s in kPlaybackSpeeds)
-          _OptionRow(
+          OptionSheetRow(
             icon: s == current
                 ? Icons.check_circle_rounded
                 : Icons.play_arrow_rounded,
@@ -148,12 +146,16 @@ Future<void> showSpeedMenu(
   );
 }
 
-class _OptionsBody extends StatelessWidget {
+class OptionsSheetBody extends StatelessWidget {
   final String title;
   final IconData icon;
   final List<Widget> children;
-  const _OptionsBody(
-      {required this.title, required this.icon, required this.children});
+  const OptionsSheetBody({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.children,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -169,22 +171,28 @@ class _OptionsBody extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(icon, color: kAccentPrimary, size: 22),
-                    const SizedBox(width: 10),
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: cs.onSurface,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.4,
+                // Titre vide = pas d'en-tête du tout : garder l'icône seule
+                // laisserait une pastille orpheline au-dessus du contenu.
+                if (title.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      Icon(icon, color: kAccentPrimary, size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 ...children,
               ],
             ),
@@ -195,14 +203,15 @@ class _OptionsBody extends StatelessWidget {
   }
 }
 
-class _OptionRow extends StatelessWidget {
+class OptionSheetRow extends StatelessWidget {
   final IconData icon;
   final Color accent;
   final String title;
   final String? subtitle;
   final bool selected;
   final VoidCallback onTap;
-  const _OptionRow({
+  const OptionSheetRow({
+    super.key,
     required this.icon,
     required this.accent,
     required this.title,

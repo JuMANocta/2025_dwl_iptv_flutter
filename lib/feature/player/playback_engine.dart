@@ -108,11 +108,14 @@ abstract class AetherPlaybackEngine {
   /// [audioLang]/[subLang] sont posés **avant** l'ouverture (§trackLangPref) —
   /// les poser après provoque un re-demux ~3 s plus tard, l'effet « le film se
   /// relance ».
+  /// [nowPlaying] (§nowPlaying) décrit le contenu pour la notification et
+  /// l'écran verrouillé. `null` = pas de notification (téléviseur, ou refus).
   Future<void> open(
     String url, {
     Duration? start,
     String? audioLang,
     String? subLang,
+    AetherNowPlaying? nowPlaying,
   });
 
   Future<void> openFile(
@@ -120,6 +123,7 @@ abstract class AetherPlaybackEngine {
     Duration? start,
     String? audioLang,
     String? subLang,
+    AetherNowPlaying? nowPlaying,
   });
 
   // ── État instantané ────────────────────────────────────────────────────────
@@ -226,11 +230,24 @@ class AetherTrack {
   /// vraie piste dans le sélecteur.
   final bool isSpecial;
 
+  /// §castAudio — Codec de la piste (`audio/ac3`, `audio/mp4a-latm`…), tel que
+  /// le moteur le décode. `null` si la plateforme ne le dit pas.
+  ///
+  /// **Pourquoi ici** : c'est la seule information qui permet de savoir, AVANT
+  /// d'envoyer un flux à un Chromecast, si son récepteur saura en décoder le
+  /// son — il n'a ni les décodeurs du téléphone ni ceux du téléviseur.
+  final String? codec;
+
+  /// Nombre de canaux (2 = stéréo, 6 = 5.1). `null` si inconnu.
+  final int? channels;
+
   const AetherTrack({
     required this.id,
     this.title,
     this.language,
     this.isSpecial = false,
+    this.codec,
+    this.channels,
   });
 
   /// Libellé affichable, avec repli en cascade — une piste sans titre ni langue
@@ -251,4 +268,38 @@ class AetherTrack {
 
   @override
   int get hashCode => id.hashCode;
+}
+
+/// §nowPlaying — Ce que la notification de lecture et l'écran verrouillé
+/// affichent : un titre, une ligne secondaire, une image.
+///
+/// Type volontairement minuscule et sans dépendance au paquet vendoré : c'est
+/// le moteur qui le traduit dans son propre modèle. Un `null` à la place de cet
+/// objet signifie « pas de notification » — c'est le cas sur téléviseur, où un
+/// service de premier plan ferait survivre la lecture à la sortie du lecteur.
+@immutable
+class AetherNowPlaying {
+  const AetherNowPlaying({
+    required this.title,
+    this.subtitle,
+    this.artworkUrl,
+  });
+
+  final String title;
+  final String? subtitle;
+  final String? artworkUrl;
+
+  @override
+  bool operator ==(Object other) =>
+      other is AetherNowPlaying &&
+      other.title == title &&
+      other.subtitle == subtitle &&
+      other.artworkUrl == artworkUrl;
+
+  @override
+  int get hashCode => Object.hash(title, subtitle, artworkUrl);
+
+  @override
+  String toString() =>
+      'AetherNowPlaying($title · ${subtitle ?? "—"} · ${artworkUrl ?? "sans image"})';
 }

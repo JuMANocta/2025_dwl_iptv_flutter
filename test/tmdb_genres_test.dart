@@ -10,7 +10,7 @@ void main() {
       // Fiction » là où `contentCategoryLabel` écrit « Sci-Fi », on obtiendrait
       // deux rangées côte à côte et le rangement serait pire qu'avant.
       expect(kTmdbGenreLabels[878], 'Sci-Fi');
-      expect(kTmdbGenreLabels[10751], 'Enfants');
+      expect(kTmdbGenreLabels[10751], 'Jeunesse');
       expect(kTmdbGenreLabels[10752], 'Guerre');
       expect(kTmdbGenreLabels[16], 'Animation');
     });
@@ -35,7 +35,7 @@ void main() {
       // séries dans « Autres ».
       expect(tmdbGenreLabel([10759]), 'Action');
       expect(tmdbGenreLabel([10765]), 'Sci-Fi');
-      expect(tmdbGenreLabel([10762]), 'Enfants');
+      expect(tmdbGenreLabel([10762]), 'Jeunesse');
     });
 
     test('rien à déduire → null, jamais une catégorie inventée', () {

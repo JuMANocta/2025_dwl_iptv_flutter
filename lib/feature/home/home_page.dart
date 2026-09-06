@@ -21,6 +21,7 @@ import 'package:aetherStream/data/services/tmdb_api_service.dart';
 import 'package:aetherStream/data/services/tmdb_poster_cache.dart';
 import 'package:aetherStream/data/services/tmdb_group_alias_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
+import 'package:aetherStream/l10n/l10n_ext.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
@@ -31,11 +32,13 @@ import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/confirm_or_undo.dart';
-import 'package:aetherStream/widgets/confirm_reload_dialog.dart';
+import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
+import 'package:aetherStream/widgets/playback_gate.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/measured_quality_badge.dart';
 import 'package:aetherStream/data/services/inferred_category_service.dart';
+import 'package:aetherStream/feature/home/inferred_delta.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -45,6 +48,7 @@ import 'package:dpad/dpad.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
+import 'package:aetherStream/widgets/tv/section_beacon.dart';
 import 'package:aetherStream/main.dart' show appRouteObserver;
 
 // §lotD — Découpage du fichier (3400+ lignes) en `part` : même librairie, donc
@@ -486,50 +490,44 @@ class _HomePageState extends State<HomePage> with RouteAware {
     );
   }
 
-  /// §refreshHome — Re-télécharge la liste du compte actif (pipeline §xtreamApi :
-  /// JSON API puis fallback get.php) et la re-parse. Tient l'utilisateur au
-  /// courant via snackbars succès/erreur.
+  /// §reloadScope — Recharge **toutes** les listes, pas seulement la
+  /// principale.
   ///
-  /// §reloadKeep — Passe par `PlaylistReloadService.reloadAccount`, le MÊME
-  /// chemin que « Recharger » d'une carte : plus de `deleteForAccountId` à la
-  /// main avant le téléchargement, donc un échec réseau laisse l'ancienne liste
-  /// en place au lieu de vider l'accueil. Même confirmation si la liste a moins
-  /// de 24 h, même anti-double-tap ([_refreshing]).
-  Future<void> _refreshActivePlaylist() async {
+  /// **Ce que ça corrige.** Ce bouton ne rafraîchissait que le compte actif, et
+  /// rien à l'écran ne le disait : les autres listes restaient telles quelles,
+  /// et une liste absente de la mémoire — parce qu'une analyse avait échoué,
+  /// parce qu'un cache avait été invalidé par une mise à jour — n'avait AUCUN
+  /// moyen de revenir depuis l'accueil. Elle disparaissait alors des fiches
+  /// (« je n'ai plus qu'une liste dans les qualités »), sans message.
+  ///
+  /// Le geste est celui de « Tout recharger » de la page Comptes, au mot près :
+  /// une seule confirmation qui nomme les listes déjà à jour, une progression
+  /// liste par liste, un bilan qui NOMME les échecs (`showReloadAllFlow`).
+  Future<void> _reloadAllPlaylists() async {
     if (_refreshing) return;
-    final account = await StreamAccountService.getAccount(_activeAccountId);
-    if (!mounted) return;
-    if (account == null) {
-      AppSnackBar.show(context, 'Aucun compte actif à recharger');
-      return;
-    }
-
-    final Duration? age = await PlaylistReloadService.cacheAge(account.id);
-    if (!mounted) return;
-    if (PlaylistReloadService.shouldConfirm(age)) {
-      final bool? ok = await showConfirmReloadDialog(
-        context,
-        accountLabel: account.label,
-        age: age!,
-      );
-      if (ok != true || !mounted) return;
-    }
-
-    setState(() => _refreshing = true);
     final messenger = ScaffoldMessenger.of(context);
-    AppSnackBar.show(context, 'Rafraîchissement de la playlist…',
-        duration: const Duration(seconds: 4));
+    setState(() => _refreshing = true);
     try {
-      // Le compte actif = le compte principal → chemin `downloadCurrentM3U()`
-      // (messages d'erreur précis). `reloadFromDisk` swap la mémoire en une
-      // frame et bumpe `ParsedPlaylistService.version` → la home rebuild seule.
-      await PlaylistReloadService.reloadAccount(account, isPriority: true);
+      final List<StreamAccount> accounts =
+          await StreamAccountService.listAccounts();
       if (!mounted) return;
+      if (accounts.isEmpty) {
+        AppSnackBar.show(context, context.l10n.reloadAllNoAccounts);
+        return;
+      }
+      final ReloadBatchResult? result = await showReloadAllFlow(
+        context,
+        accounts: accounts,
+        // Le compte actif garde le chemin de téléchargement « prioritaire »,
+        // qui produit les messages d'erreur précis.
+        priorityAccountId: _activeAccountId,
+      );
+      if (result == null || !mounted) return; // annulé
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          content: Text('✅ Playlist rafraîchie'),
-          duration: Duration(seconds: 2),
+        ..showSnackBar(SnackBar(
+          content: Text(result.summary),
+          duration: Duration(seconds: result.allOk ? 3 : 6),
         ));
     } catch (e) {
       if (!mounted) return;
@@ -580,8 +578,23 @@ class _HomePageState extends State<HomePage> with RouteAware {
                 // a quitté le bandeau pour venir ici : même information, zéro
                 // hauteur prise à l'accueil.
                 const SecondaryAccountsCounter(),
-                // §refreshHome — Rafraîchissement du compte actif sans passer
+                // §reloadScope — Rafraîchissement de TOUTES les listes sans passer
                 // par Paramètres → Comptes IPTV.
+                //
+                // §tvReloadReach (2026-09-06) — ⚠️ **PAS sur TÉLÉVISEUR.**
+                // Mesuré sur l'AVD TV : ce bouton n'est atteignable par AUCUNE
+                // direction de la télécommande. Le hero occupe tout le haut de
+                // l'écran et la barre est transparente PAR-DESSUS : le rect du
+                // bouton est donc CONTENU dans celui du hero, et un rect contenu
+                // n'est candidat dans aucune direction (§dpadChildFocus, le même
+                // piège que le ⋯ des vignettes).
+                //
+                // On suit la convention déjà posée juste en dessous pour le ⚙️
+                // (§3c-bis) : sur TV, l'action vit là où vit la navigation TV —
+                // le rail → Paramètres, qui porte désormais « Tout recharger ».
+                // Un bouton que personne ne peut atteindre est pire que pas de
+                // bouton : il fait croire que la fonction manque.
+                if (!PlatformTv.isTv)
                 IconButton(
                   icon: _refreshing
                       ? const SizedBox(
@@ -590,9 +603,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.refresh),
-                  tooltip: 'Recharger la playlist',
+                  tooltip: context.l10n.reloadAllTooltip,
                   // §reloadKeep — désactivé pendant le rechargement (anti-double-tap).
-                  onPressed: _refreshing ? null : _refreshActivePlaylist,
+                  onPressed: _refreshing ? null : _reloadAllPlaylists,
                 ),
                 if (!PlatformTv.isTv)
                   IconButton(
@@ -922,7 +935,11 @@ class _AnimatedTabIndicator extends StatelessWidget {
   static const _labels = ['Séries', 'Films', 'Chaînes'];
   // §navHeight — Barre plus haute + police plus grande : meilleure cible
   // tactile et lisibilité (l'ancienne 26px/20px était petite à viser).
-  static const double _barHeight = 38;
+  //
+  // §touchTarget — 38 dp restait sous la borne Material de 48, alors que ces
+  // trois onglets sont la navigation la plus utilisée de l'app. Le libellé et
+  // le compteur n'ont pas bougé : c'est la hauteur de la barre qui change.
+  static const double _barHeight = 48;
 
   @override
   Widget build(BuildContext context) {
@@ -1172,6 +1189,10 @@ int _responsiveColumns(double available, {required bool channel}) {
 
 // ─── Page d'un type ──────────────────────────────────────────────────────────
 
+/// §noHeroInset — Hauteur réservée aux icônes ↻/⚙️ quand aucun hero ne les
+/// porte (cf. `_TypePage` → padding du ListView).
+const double _kNoHeroInset = 32;
+
 class _TypePage extends StatefulWidget {
   final M3uContentType type;
   final List<M3uEntry> entries;
@@ -1202,16 +1223,31 @@ class _TypePage extends StatefulWidget {
   /// Pour les chaînes TV : la catégorie virtuelle "France" passe avant tout
   /// pour respecter le réflexe utilisateur (chaînes FR en premier dans leur
   /// ordre M3U d'origine — TF1, France 2, M6, ARTE…).
+  /// §tmdbRows — Libellés des rangées virtuelles TMDB déjà émises (traduits,
+  /// donc inconnus à la compilation). Servent au tri et à l'icône.
+  static final Set<String> _becauseRowLabels = {};
+  static final Set<String> _topRatedRowLabels = {};
+  /// §tmdbProviders — « Tendances Netflix », « Tendances Disney+ », …
+  static final Set<String> _providerRowLabels = {};
+
   static int _categoryPriority(String category) {
+    // §tmdbRows — « Parce que tu as regardé » juste APRÈS « New » (consigne
+    // utilisateur du 2026-09-05 : New annonce ce qui vient d'arriver dans les
+    // listes, elle reste en tête) ; « Les mieux notés » après la curation du
+    // fournisseur, avant les genres.
+    if (_becauseRowLabels.contains(category)) return 1;
+    if (_topRatedRowLabels.contains(category)) return 7;
+    // §tmdbProviders — juste après « Les mieux notés », avant les genres.
+    if (_providerRowLabels.contains(category)) return 8;
     switch (category) {
       case 'Favoris':       return -2;  // ⭐ tout en haut
       case 'France':        return -1;
-      case 'New':           return 0;
-      case 'Coup de cœur':  return 1;
-      case 'Sélection':     return 2;
-      case 'Box Office':    return 3;
-      case 'Oscar':         return 4;
-      case 'Cultes':        return 5;
+      case 'New':           return 0;   // ⚠️ jamais reléguée, jamais repliée
+      case 'Coup de cœur':  return 2;
+      case 'Sélection':     return 3;
+      case 'Box Office':    return 4;
+      case 'Oscar':         return 5;
+      case 'Cultes':        return 6;
       // §radioCat — Les webradios passent APRÈS les genres, juste avant
       // « Autres » : elles restent accessibles, sans plus occuper la tête de
       // l'onglet Chaînes.
@@ -1265,6 +1301,9 @@ class _TypePage extends StatefulWidget {
   }
 
   static IconData categoryIcon(String cat) {
+    if (_becauseRowLabels.contains(cat)) return Icons.recommend_outlined;
+    if (_topRatedRowLabels.contains(cat)) return Icons.workspace_premium_outlined;
+    if (_providerRowLabels.contains(cat)) return Icons.live_tv_outlined;
     switch (cat) {
       case 'Favoris':       return Icons.star;
       case 'France':        return Icons.flag_outlined;
@@ -1337,6 +1376,44 @@ class _TypePage extends StatefulWidget {
 /// une somme d'entiers se collisionne, et une collision ici afficherait un
 /// hero périmé sans qu'on sache pourquoi.
 @immutable
+/// §tmdbRows — Ce que TMDB a rendu pour un type : la graine de « Parce que tu
+/// as regardé » (titre affiché), ses recommandations, et les mieux notés.
+/// `version` croît à chaque chargement : c'est la clé de mémo de
+/// `_ensureTmdbRows`.
+class _TmdbRowsMemo {
+  final int version;
+  final String? seedTitle;
+  final List<TrendingTitle> because;
+  final List<TrendingTitle> topRated;
+
+  /// §tmdbProviders — par nom de plateforme, les titres populaires en France.
+  final Map<String, List<TrendingTitle>> providers;
+
+  /// Ce qui a servi à choisir la graine : les entrées (identité), la version
+  /// des reprises et celle des favoris. Tant que rien n'a bougé, recharger
+  /// ne changerait rien — et coûterait une passe O(entrées) plus une
+  /// recherche TMDB à chaque recréation de page (§tabSwitchCost).
+  final List<M3uEntry> source;
+  final int watchVersion;
+  final int favVersion;
+
+  /// `TmdbService.generation` au chargement : une clé changée ou retirée
+  /// invalide le mémo (les caches du service, eux, meurent avec l'instance).
+  final int tmdbGeneration;
+
+  const _TmdbRowsMemo({
+    required this.version,
+    required this.seedTitle,
+    required this.because,
+    required this.topRated,
+    this.providers = const {},
+    required this.source,
+    required this.watchVersion,
+    required this.favVersion,
+    required this.tmdbGeneration,
+  });
+}
+
 class _FeaturedMemo {
   final int groupingKey;
   final int favoritesVersion;
@@ -1374,7 +1451,8 @@ class _FeaturedMemo {
       identical(this.trending, trending);
 }
 
-@immutable
+// §homeIndex — plus `@immutable` : le mémo porte un index PARESSEUX (cache
+// de calcul, pas une valeur) ; ses champs de données restent `final`.
 class _GroupingMemo {
   /// Identité de la liste d'entrées : `_byTypeMemoized` réutilise la même
   /// instance tant que playlist et compte actif ne changent pas. Comparer par
@@ -1392,14 +1470,79 @@ class _GroupingMemo {
   final List<List<M3uEntry>> groups;
   final List<String> categories;
 
-  const _GroupingMemo({
+  /// §inferDelta — La version des catégories déduites INCLUSE dans ce
+  /// rangement, et si le catalogue est horodaté (« New » virtuelle) : ce
+  /// qu'il faut pour appliquer un delta au lieu de tout refaire.
+  final int inferVersion;
+  final bool hasAddedData;
+
+  _GroupingMemo({
     required this.source,
     required this.key,
     required this.playlistVersion,
     required this.byCategory,
     required this.groups,
     required this.categories,
+    required this.inferVersion,
+    required this.hasAddedData,
   });
+
+  /// §inferDelta — Le même rangement (mêmes listes, mêmes index) sous une
+  /// nouvelle clé, après application d'un delta.
+  _GroupingMemo rekeyed({
+    required int key,
+    required int inferVersion,
+    required List<String> categories,
+  }) =>
+      _GroupingMemo(
+        source: source,
+        key: key,
+        playlistVersion: playlistVersion,
+        byCategory: byCategory,
+        groups: groups,
+        categories: categories,
+        inferVersion: inferVersion,
+        hasAddedData: hasAddedData,
+      )
+        .._byName = _byName
+        .._byKey = _byKey;
+
+  /// §inferDelta — Index « clé de groupe → groupes » (plusieurs si le titre est
+  /// éclaté par année, §homonymYear). Paresseux, retenu avec le mémo. Les clés
+  /// sont des chaînes DÉJÀ en mémoire (`groupKey` de l'entrée, ou son alias) :
+  /// l'index ne coûte que sa table.
+  Map<String, List<List<M3uEntry>>>? _byKey;
+  Map<String, List<List<M3uEntry>>> get byKey {
+    final existing = _byKey;
+    if (existing != null) return existing;
+    final m = <String, List<List<M3uEntry>>>{};
+    for (final g in groups) {
+      m.putIfAbsent(contentGroupKey(g.first), () => []).add(g);
+    }
+    return _byKey = m;
+  }
+
+  /// §homeIndex (2026-09-06, lot 13) — Index « titre normalisé → groupes »,
+  /// construit UNE fois par regroupement et partagé par le hero (tendances)
+  /// et les rangées TMDB. Avant lui, chaque recomposition du hero (à CHAQUE
+  /// sauvegarde de reprise, donc à chaque retour du lecteur) et chaque
+  /// changement d'onglet refaisaient `_normTitle` (repli d'accents + regex)
+  /// sur TOUS les groupes — mesuré sur l'émulateur TV : 128-222 ms (hero) et
+  /// 147-204 ms (rangées) par page, ×3 environ sur le processeur d'un
+  /// téléviseur. Retenu avec le mémo, purgé avec lui (version de playlist).
+  Map<String, List<List<M3uEntry>>>? _byName;
+  Map<String, List<List<M3uEntry>>> get byName {
+    final existing = _byName;
+    if (existing != null) return existing;
+    final m = <String, List<List<M3uEntry>>>{};
+    for (final g in groups) {
+      m
+          .putIfAbsent(
+              _TypePageState._normTitle(g.first.displayName), () => [])
+          .add(g);
+    }
+    return _byName = m;
+  }
 }
 
 class _TypePageState extends State<_TypePage> {
@@ -1422,6 +1565,13 @@ class _TypePageState extends State<_TypePage> {
   /// immédiatement. Deux passes O(entrées) par changement d'onglet.
   static final Map<M3uContentType, List<TrendingTitle>> _sharedTrending =
       <M3uContentType, List<TrendingTitle>>{};
+
+  // §tmdbRows — Les deux rangées éditoriales TMDB, par type, partagées comme
+  // `_sharedTrending` pour survivre à la destruction de la page. Le
+  // croisement avec la playlist se fait dans `_ensureTmdbRows`.
+  static final Map<M3uContentType, _TmdbRowsMemo> _sharedTmdbRows =
+      <M3uContentType, _TmdbRowsMemo>{};
+  static int _tmdbRowsCounter = 0;
 
   // ⚠️ Pas de `clearSharedGrouping()` de confort : `_TypePageState` est privée
   // à cette bibliothèque, donc aucun test ne peut l'atteindre — et il n'existe
@@ -1458,9 +1608,15 @@ class _TypePageState extends State<_TypePage> {
   /// séparément : `_cachedByCategory` duplique des groupes ('New', 'Favoris'),
   /// on ne peut donc pas la reconstruire depuis ses valeurs.
   List<List<M3uEntry>>? _cachedGroups;
+  /// §homeIndex — Le mémo adopté, pour son index par titre partagé.
+  _GroupingMemo? _memo;
   int _cachedGroupingKey = -1;
   int _cachedFeaturedKey = -1;
   int _cachedFavoritesKey = -1;
+  int _cachedTmdbRowsKey = -1;
+  // §tmdbRows — Les libellés injectés PAR CETTE PAGE, pour les retirer avant
+  // de les recomposer (le mémo partagé peut déjà les contenir).
+  final Set<String> _ownTmdbRowLabels = {};
 
   // §trending — Titres tendance TMDB de la semaine (chargés une fois, cache
   // 24h côté service). Null tant que pas chargé / pas de clé TMDB. Le croisement
@@ -1474,7 +1630,129 @@ class _TypePageState extends State<_TypePage> {
   void initState() {
     super.initState();
     // Tendances seulement pour films/séries (pas de matching TMDB sur le live TV).
-    if (widget.type != M3uContentType.tv) _loadTrending();
+    if (widget.type != M3uContentType.tv) {
+      _loadTrending();
+      _loadTmdbRows();
+    }
+  }
+
+  /// §tmdbRows — Charge les deux rangées TMDB du type courant, puis force le
+  /// croisement avec la playlist (`_ensureTmdbRows`) par un `setState`.
+  ///
+  /// La graine de « Parce que tu as regardé » : la lecture la plus récente de
+  /// CE type encore en cours (les films vus en entier sont oubliés par
+  /// §1e), sinon le premier favori. Sans graine, pas de rangée — jamais une
+  /// rangée « parce que tu as regardé » vide de sens.
+  Future<void> _loadTmdbRows() async {
+    final perf = PerformanceSettingsService.config.value;
+    if (!perf.tmdbRowBecause &&
+        !perf.tmdbRowTopRated &&
+        !perf.tmdbRowProviders) {
+      return;
+    }
+    final isTv = widget.type == M3uContentType.series;
+    final svc = TmdbService.instance;
+
+    // §tabSwitchCost — Le `PageView` recrée cette page à chaque changement
+    // d'onglet. Si ni les entrées, ni les reprises, ni les favoris n'ont
+    // bougé depuis le dernier chargement, la graine serait la même : on ne
+    // repaye ni l'index par URL ni la recherche TMDB. (Trouvé à la revue.)
+    final int watchV = WatchProgressService.version.value;
+    final int favV = FavoritesService.version.value;
+    final int gen = TmdbService.generation;
+    final _TmdbRowsMemo? prev = _sharedTmdbRows[widget.type];
+    if (prev != null &&
+        identical(prev.source, widget.entries) &&
+        prev.watchVersion == watchV &&
+        prev.favVersion == favV &&
+        prev.tmdbGeneration == gen) {
+      return;
+    }
+
+    final List<TrendingTitle> topRated =
+        perf.tmdbRowTopRated ? await svc.getTopRated(isTv: isTv) : const [];
+
+    // §tmdbProviders — un appel par plateforme (cache 24 h dans le service).
+    final Map<String, List<TrendingTitle>> providers = {};
+    if (perf.tmdbRowProviders) {
+      for (final p in TmdbService.watchProviders) {
+        final list =
+            await svc.getProviderPopular(isTv: isTv, providerId: p.id);
+        if (list.isNotEmpty) providers[p.name] = list;
+      }
+    }
+
+    M3uEntry? seed;
+    List<TrendingTitle> because = const [];
+    if (perf.tmdbRowBecause) {
+      final byUrl = <String, M3uEntry>{
+        for (final e in widget.entries) e.url: e,
+      };
+      final progresses = WatchProgressService.all
+        ..sort((a, b) => b.lastWatched.compareTo(a.lastWatched));
+      for (final p in progresses) {
+        final e = byUrl[p.url];
+        if (e != null) {
+          seed = e;
+          break;
+        }
+      }
+      if (seed == null) {
+        for (final e in widget.entries) {
+          if (FavoritesService.isEntryFavorite(e)) {
+            seed = e;
+            break;
+          }
+        }
+      }
+      if (seed != null) {
+        int? id = int.tryParse(seed.tmdbId ?? '');
+        id ??= await svc.resolveTmdbId(
+          query: seed.displayName,
+          isTv: isTv,
+          year: seed.title.year,
+        );
+        if (id != null) {
+          because = await svc.getRecommendations(tmdbId: id, isTv: isTv);
+        }
+      }
+    }
+    if (!mounted) return;
+
+    // Même garde que `_loadTrending` : rien n'a bougé → ne rien invalider.
+    // (Le mémo est quand même réécrit pour mémoriser les versions vues.)
+    final bool same = prev != null &&
+        identical(prev.because, because) &&
+        identical(prev.topRated, topRated) &&
+        _sameProviders(prev.providers, providers) &&
+        prev.seedTitle == seed?.displayName;
+    final memo = _TmdbRowsMemo(
+      version: same ? prev.version : ++_tmdbRowsCounter,
+      seedTitle: seed?.displayName,
+      because: because,
+      topRated: topRated,
+      providers: providers,
+      source: widget.entries,
+      watchVersion: watchV,
+      favVersion: favV,
+      tmdbGeneration: gen,
+    );
+    if (same) {
+      _sharedTmdbRows[widget.type] = memo;
+      return;
+    }
+    setState(() => _sharedTmdbRows[widget.type] = memo);
+  }
+
+  /// §tmdbProviders — Même contenu (mêmes instances, servies par le cache du
+  /// service) → pas de nouvelle version de mémo.
+  static bool _sameProviders(Map<String, List<TrendingTitle>> a,
+      Map<String, List<TrendingTitle>> b) {
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      if (!identical(b[e.key], e.value)) return false;
+    }
+    return true;
   }
 
   /// §trending — Charge les tendances TMDB du type courant (movie/series) et
@@ -1507,16 +1785,24 @@ class _TypePageState extends State<_TypePage> {
   /// (sinon re-groupement complet toutes les 10 s en lecture) ni les favoris
   /// (§favAudit — sinon re-groupement complet à chaque cœur).
   int _groupingKey() =>
+      _groupingKeyWith(inferVersion: InferredCategoryService.version.value);
+
+  /// §inferDelta — La clé pour une version DONNÉE des catégories déduites :
+  /// permet de reconnaître « seule cette version a bougé » et d'appliquer un
+  /// delta au rangement mémoïsé au lieu de tout refaire.
+  int _groupingKeyWith({required int inferVersion}) =>
       widget.entries.length * 1000003 +
       ParsedPlaylistService.version.value * 1009 +
       // §inferredCat — Les catégories déduites changent le RANGEMENT, donc le
       // groupement doit être refait quand elles avancent. Sûr uniquement parce
       // que ce compteur est groupé côté service (cf. §favAudit).
-      InferredCategoryService.version.value * 10007 +
+      inferVersion * 10007 +
       // §tmdbMerge — La table de fusion modifie la CLÉ de chaque groupe : elle
       // doit entrer dans la clé de cache, sinon l'accueil garde le regroupement
       // d'avant fusion jusqu'au prochain changement de playlist.
-      TmdbGroupAliasService.version.value * 100003;
+      TmdbGroupAliasService.version.value * 100003 +
+      // §rowFold — Le seuil de repli change le JEU de rangées.
+      PerformanceSettingsService.config.value.rowFoldMin * 7;
 
   /// Tri des catégories : priorité (Favoris → France → New → …) puis alpha.
   static List<String> _sortCategories(Map<String, dynamic> byCategory) =>
@@ -1531,23 +1817,44 @@ class _TypePageState extends State<_TypePage> {
   /// Groupe par catégorie puis par titre. Mémoïsé sur [_groupingKey], **et**
   /// sur [_sharedGrouping] pour survivre à la destruction de la page
   /// (§tabSwitchCost).
+  // §homeMeter — durée des sous-étapes : voie « clé inchangée » du
+  // groupement, et les deux passes du hero (reprise, tendances).
+  int _lastFavMs = 0;
+  int _lastTmdbRowsMs = 0;
+  int _lastResumeMs = 0;
+  int _lastTrendMs = 0;
+
   void _ensureGrouping() {
     final key = _groupingKey();
     if (_cachedByCategory != null && _cachedGroupingKey == key) {
       // Groupement toujours valide, mais un cœur a pu changer entre-temps.
+      final Stopwatch sw = Stopwatch()..start();
       _ensureFavoriteCategory();
+      _lastFavMs = sw.elapsedMilliseconds;
+      _ensureTmdbRows();
+      _lastTmdbRowsMs = sw.elapsedMilliseconds - _lastFavMs;
       return;
     }
+    _lastFavMs = 0;
+    _lastTmdbRowsMs = 0;
 
     // §tabSwitchCost — Le mémo partagé d'abord : c'est lui qui évite de
     // repayer un regroupement complet quand le `PageView` a détruit puis
     // reconstruit cette page.
     final _GroupingMemo? memo = _sharedGrouping[widget.type];
-    if (memo != null &&
-        memo.key == key &&
-        identical(memo.source, widget.entries)) {
-      _adoptGrouping(memo, key);
-      return;
+    if (memo != null && identical(memo.source, widget.entries)) {
+      if (memo.key == key) {
+        _adoptGrouping(memo, key);
+        return;
+      }
+      // §inferDelta — Seules les catégories déduites ont bougé ? On déplace
+      // les groupes concernés dans le rangement mémoïsé, sans le refaire.
+      final _GroupingMemo? patched = _applyInferredDelta(memo, key);
+      if (patched != null) {
+        _sharedGrouping[widget.type] = patched;
+        _adoptGrouping(patched, key);
+        return;
+      }
     }
 
     final res = _groupByCategoryThenByTitle(widget.entries, widget.type);
@@ -1569,9 +1876,50 @@ class _TypePageState extends State<_TypePage> {
       byCategory: res.byCategory,
       groups: res.groups,
       categories: _sortCategories(res.byCategory),
+      inferVersion: InferredCategoryService.version.value,
+      hasAddedData: res.hasAddedData,
     );
     _sharedGrouping[widget.type] = fresh;
     _adoptGrouping(fresh, key);
+  }
+
+  /// §inferDelta (2026-09-06, lot 13) — Si, entre le mémo et maintenant, SEULE
+  /// la version des catégories déduites a changé et que le service sait
+  /// encore ce qui a été appris, déplace ces groupes-là et rend le mémo sous
+  /// sa nouvelle clé. `null` ⇒ autre chose a bougé, ou delta perdu :
+  /// regroupement complet.
+  ///
+  /// Mesuré AVANT (émulateur TV, une catégorie apprise en ouvrant une fiche) :
+  /// 408 + 925 + 128 ms de regroupement pour les trois pages, au retour du
+  /// lecteur. Le delta déplace un groupe.
+  _GroupingMemo? _applyInferredDelta(_GroupingMemo memo, int key) {
+    if (_groupingKeyWith(inferVersion: memo.inferVersion) != memo.key) {
+      return null;
+    }
+    final int inferNow = InferredCategoryService.version.value;
+    final Map<String, InferredChange>? delta =
+        InferredCategoryService.deltaSince(memo.inferVersion);
+    if (delta == null) return null;
+    final Stopwatch sw = Stopwatch()..start();
+    final bool setChanged = applyInferredDelta(
+      byCategory: memo.byCategory,
+      groupsByKey: memo.byKey,
+      delta: delta,
+      hasAddedData: memo.hasAddedData,
+      rowFoldMin: PerformanceSettingsService.config.value.rowFoldMin,
+      isSortedGenre: (String c) =>
+          _TypePage._categoryPriority(c) >= 100 && c != 'Autres',
+    );
+    final List<String> categories =
+        setChanged ? _sortCategories(memo.byCategory) : memo.categories;
+    debugPrint('\u23F1\uFE0F \u00A7inferDelta (${widget.type.name}) : '
+        '${delta.length} cle(s) appliquee(s) en ${sw.elapsedMilliseconds} ms'
+        '${setChanged ? ', jeu de rangees change' : ''}');
+    return memo.rekeyed(
+      key: key,
+      inferVersion: inferNow,
+      categories: categories,
+    );
   }
 
   /// Installe un groupement partagé dans l'état de CETTE page.
@@ -1586,11 +1934,160 @@ class _TypePageState extends State<_TypePage> {
     _cachedByCategory =
         Map<String, List<List<M3uEntry>>>.of(memo.byCategory);
     _cachedGroups = memo.groups;
+    _memo = memo;
     _cachedCategories = List<String>.of(memo.categories);
     _cachedGroupingKey = key;
     _cachedFeaturedKey = -1; // groupement changé → forcer le recalcul du hero
     _cachedFavoritesKey = -1; // …et celui de la rangée ⭐
+    _cachedTmdbRowsKey = -1; // …et celui des rangées TMDB
     _ensureFavoriteCategory();
+    _ensureTmdbRows();
+  }
+
+  /// §tmdbRows — Injecte (ou retire) les deux rangées virtuelles TMDB dans le
+  /// groupement, mémoïsé sur la version du mémo, le groupement et les deux
+  /// interrupteurs. Coût : une passe sur les groupes pour l'index par titre,
+  /// puis 20 recherches de dictionnaire par rangée.
+  ///
+  /// Une rangée n'apparaît qu'à partir de **trois** titres présents dans les
+  /// listes : une rangée d'une carte est précisément le défaut qu'on
+  /// corrige par ailleurs (§catWords).
+  void _ensureTmdbRows() {
+    final perf = PerformanceSettingsService.config.value;
+    final memo = _sharedTmdbRows[widget.type];
+    final int key = Object.hash(
+      memo?.version ?? 0,
+      _cachedGroupingKey,
+      perf.tmdbRowBecause,
+      perf.tmdbRowTopRated,
+      perf.tmdbRowProviders,
+    );
+    if (_cachedTmdbRowsKey == key) return;
+    _cachedTmdbRowsKey = key;
+
+    final byCategory = _cachedByCategory!;
+    var changed = false;
+    for (final old in _ownTmdbRowLabels) {
+      if (byCategory.remove(old) != null) changed = true;
+    }
+    _ownTmdbRowLabels.clear();
+
+    final _GroupingMemo? grouping = _memo;
+    if (memo != null && grouping != null) {
+      // §homeIndex — L'index par titre vient du mémo de regroupement : une
+      // seule construction par playlist, partagée avec le hero. (Il était
+      // refait ici à chaque changement d'onglet : 147-204 ms par page.)
+      List<List<M3uEntry>> match(List<TrendingTitle> titles) {
+        final out = <List<M3uEntry>>[];
+        final seen = <String>{};
+        final idx = grouping.byName;
+        for (final t in titles) {
+          var hit = _pickByYear(idx, _normTitle(t.title), t.year);
+          if (hit == null && t.originalTitle != null) {
+            hit = _pickByYear(idx, _normTitle(t.originalTitle!), t.year);
+          }
+          if (hit == null) continue;
+          if (seen.add(hit.first.displayName)) out.add(hit);
+        }
+        return out;
+      }
+
+      // §rowFold — Une rangée TMDB obéit au même plancher que les genres
+      // (jamais moins de 3, même si l'utilisateur a désactivé le repli).
+      final int minRows = perf.rowFoldMin > 3 ? perf.rowFoldMin : 3;
+      if (perf.tmdbRowBecause &&
+          memo.seedTitle != null &&
+          memo.because.isNotEmpty) {
+        final rows = match(memo.because);
+        if (rows.length >= minRows) {
+          final label = L10n.current.rowBecauseYouWatched(memo.seedTitle!);
+          _TypePage._becauseRowLabels.add(label);
+          _ownTmdbRowLabels.add(label);
+          byCategory[label] = rows;
+          changed = true;
+        }
+      }
+      if (perf.tmdbRowTopRated && memo.topRated.isNotEmpty) {
+        final rows = match(memo.topRated);
+        if (rows.length >= minRows) {
+          final label = L10n.current.rowTopRated;
+          _TypePage._topRatedRowLabels.add(label);
+          _ownTmdbRowLabels.add(label);
+          byCategory[label] = rows;
+          changed = true;
+        }
+      }
+      // §tmdbProviders — une rangée par plateforme, si la mesure le permet.
+      if (perf.tmdbRowProviders && memo.providers.isNotEmpty) {
+        final report = <String>[];
+        for (final e in memo.providers.entries) {
+          final rows = match(e.value);
+          report.add('${e.key} ${rows.length}/${e.value.length}');
+          if (rows.length < minRows) continue;
+          final label = L10n.current.rowProviderTrending(e.key);
+          _TypePage._providerRowLabels.add(label);
+          _ownTmdbRowLabels.add(label);
+          byCategory[label] = rows;
+          changed = true;
+        }
+        // La MESURE demandée par la roadmap : combien de titres de chaque
+        // plateforme les listes ont vraiment (une rangée à 2 titres ne vaut
+        // rien — elle est repliée sous `minRows`).
+        debugPrint('\u{1F4FA} \u00A7tmdbProviders (${widget.type.name}) : ${report.join(', ')} (plancher $minRows)');
+      }
+    }
+
+    if (changed) {
+      _cachedCategories = _sortCategories(byCategory);
+      _cachedFeaturedKey = -1;
+    }
+  }
+
+  /// §trending / §tmdbRows — Le groupe de la playlist qui correspond à un
+  /// titre TMDB, à l'année près. Extrait du hero pour servir aussi aux
+  /// rangées : un seul endroit décide de « c'est le même film ».
+  ///
+  /// `yearTol` : tolérance d'écart d'année entre TMDB et le candidat. Les
+  /// tendances sont l'ACTUALITÉ, donc l'année doit coller de près : au-delà
+  /// c'est un homonyme d'une autre époque qu'on ne promeut pas. Off-by-one
+  /// toléré (décalage de sortie selon pays).
+  static List<M3uEntry>? _pickByYear(
+    Map<String, List<List<M3uEntry>>> byName,
+    String norm,
+    String? tmdbYear, {
+    int yearTol = 1,
+  }) {
+    final cands = byName[norm];
+    if (cands == null || cands.isEmpty) return null;
+    final mostRecent = ([...cands]
+          ..sort((a, b) =>
+              (b.first.title.year ?? '').compareTo(a.first.title.year ?? '')))
+        .first;
+    final ty = int.tryParse(tmdbYear ?? '');
+    // Pas d'année TMDB exploitable (souvent les séries) → permissif :
+    // le titre est le seul signal, on prend la plus récente.
+    if (ty == null) return mostRecent;
+
+    List<M3uEntry>? bestClose;
+    var bestDelta = 1 << 30;
+    var anyYearKnown = false;
+    for (final c in cands) {
+      final cy = int.tryParse(c.first.title.year ?? '');
+      if (cy == null) continue;
+      anyYearKnown = true;
+      if (cy == ty) return c; // match d'année exact
+      final d = (cy - ty).abs();
+      if (d < bestDelta) {
+        bestDelta = d;
+        bestClose = c;
+      }
+    }
+    // Aucun candidat daté → titre seul, permissif.
+    if (!anyYearKnown) return mostRecent;
+    // Le plus proche est-il dans la tolérance ? Sinon on REJETTE (homonyme
+    // d'une autre époque) → le titre suivant sera tenté à la place.
+    if (bestClose != null && bestDelta <= yearTol) return bestClose;
+    return null;
   }
 
   /// §favAudit — Recalcule la SEULE catégorie virtuelle ⭐ Favoris, mémoïsée sur
@@ -1652,6 +2149,8 @@ class _TypePageState extends State<_TypePage> {
         )) {
       _cachedFeatured = memo.featured;
       _cachedFeaturedKey = key;
+      _lastResumeMs = 0;
+      _lastTrendMs = 0;
       return;
     }
 
@@ -1672,17 +2171,14 @@ class _TypePageState extends State<_TypePage> {
       // hero. §homonymYear — la clé inclut l'année (films splittés par année) :
       // sinon "Vengeance 1990" et "Vengeance 2022" (même displayName) seraient
       // re-fusionnés ici.
-      final allGroups = <List<M3uEntry>>[];
-      final seenNames = <String>{};
-      for (final groups in byCategory.values) {
-        for (final group in groups) {
-          final dedupKey =
-              '${group.first.displayName}|${group.first.title.year ?? ''}';
-          if (seenNames.add(dedupKey)) {
-            allGroups.add(group);
-          }
-        }
-      }
+      // §homeIndex — La liste PLATE du mémo : New, Favoris et les rangées TMDB
+      // ne font que RÉFÉRENCER ces groupes, donc aucun doublon à retirer — le
+      // parcours de toutes les catégories (avec une chaîne allouée par
+      // groupe pour dédoublonner) refaisait ce travail à chaque reprise
+      // sauvegardée. Le dédoublonnage par nom+année ne vaut plus que sur les
+      // quelques cartes retenues.
+      final Stopwatch swHero = Stopwatch()..start();
+      final List<List<M3uEntry>> allGroups = _memo?.groups ?? _cachedGroups!;
       final resumeWithTime = <({List<M3uEntry> group, DateTime t})>[];
       for (final group in allGroups) {
         final p = WatchProgressService.getProgressForAny(
@@ -1694,10 +2190,17 @@ class _TypePageState extends State<_TypePage> {
       }
       resumeWithTime.sort((a, b) => b.t.compareTo(a.t));
       final resumeKeys = <String>{};
-      for (final item in resumeWithTime.take(maxResume)) {
+      final seenResume = <String>{};
+      for (final item in resumeWithTime) {
+        if (featured.length >= maxResume) break;
+        final first = item.group.first;
+        if (!seenResume.add('${first.displayName}|${first.title.year ?? ''}')) {
+          continue;
+        }
         featured.add(item.group);
-        resumeKeys.add(item.group.first.displayName);
+        resumeKeys.add(first.displayName);
       }
+      _lastResumeMs = swHero.elapsedMilliseconds;
 
       // §trending — Complète avec les TENDANCES TMDB de la semaine DISPONIBLES
       // dans la playlist (remplace les anciennes "nouveautés" du hero, déjà
@@ -1710,49 +2213,18 @@ class _TypePageState extends State<_TypePage> {
         // splittés par année, §homonymYear). On garde la liste des candidats
         // et on choisit celui dont l'année matche le retour TMDB → fini le
         // "mauvais film d'une autre époque" remonté par le hero Tendances.
-        final byName = <String, List<List<M3uEntry>>>{};
-        for (final g in allGroups) {
-          byName.putIfAbsent(_normTitle(g.first.displayName), () => []).add(g);
-        }
+        // §homeIndex — index partagé du mémo (construit une fois).
+        final Map<String, List<List<M3uEntry>>> byName =
+            _memo?.byName ?? const <String, List<List<M3uEntry>>>{};
         // §trendingYearProx — Tolérance d'écart d'année (en années) entre le
         // retour TMDB et le candidat playlist. Les tendances sont l'ACTUALITÉ
         // (films récents), donc l'année doit coller de près : au-delà, c'est un
         // homonyme d'une autre époque qu'on NE promeut PAS dans le hero.
         // Off-by-one toléré (décalage de sortie selon pays).
-        const yearTol = 1;
-        List<M3uEntry>? pick(String norm, String? tmdbYear) {
-          final cands = byName[norm];
-          if (cands == null || cands.isEmpty) return null;
-          final mostRecent = ([...cands]
-                ..sort((a, b) =>
-                    (b.first.title.year ?? '').compareTo(a.first.title.year ?? '')))
-              .first;
-          final ty = int.tryParse(tmdbYear ?? '');
-          // Pas d'année TMDB exploitable (souvent les séries) → permissif :
-          // le titre est le seul signal, on prend la plus récente.
-          if (ty == null) return mostRecent;
-
-          List<M3uEntry>? bestClose;
-          var bestDelta = 1 << 30;
-          var anyYearKnown = false;
-          for (final c in cands) {
-            final cy = int.tryParse(c.first.title.year ?? '');
-            if (cy == null) continue;
-            anyYearKnown = true;
-            if (cy == ty) return c; // match d'année exact
-            final d = (cy - ty).abs();
-            if (d < bestDelta) {
-              bestDelta = d;
-              bestClose = c;
-            }
-          }
-          // Aucun candidat daté → titre seul, permissif.
-          if (!anyYearKnown) return mostRecent;
-          // Le plus proche est-il dans la tolérance ? Sinon on REJETTE (homonyme
-          // d'une autre époque) → la tendance suivante sera tentée à la place.
-          if (bestClose != null && bestDelta <= yearTol) return bestClose;
-          return null;
-        }
+        // §tmdbRows — La logique vit dans `_pickByYear`, partagée avec les
+        // rangées éditoriales : un seul endroit décide « c'est le même film ».
+        List<M3uEntry>? pick(String norm, String? tmdbYear) =>
+            _pickByYear(byName, norm, tmdbYear);
 
         for (final t in trending) {
           if (featured.length >= maxFeatured) break;
@@ -1768,6 +2240,7 @@ class _TypePageState extends State<_TypePage> {
           usedTrending = true;
         }
       }
+      _lastTrendMs = swHero.elapsedMilliseconds - _lastResumeMs;
 
       // Fallback : pas de clé TMDB / aucune tendance dispo → comportement
       // historique (catégories prioritaires) pour ne pas laisser le hero vide.
@@ -1831,11 +2304,23 @@ class _TypePageState extends State<_TypePage> {
   Widget build(BuildContext context) {
     if (widget.entries.isEmpty) return _buildEmpty(context);
 
+    // §homeMeter (2026-09-06, lot 13) — CHRONOS de la reconstruction. Mesuré
+    // sur la TV de l'utilisateur au retour du lecteur : un build de 1 131 ms,
+    // 2 frames en 1,5 s. Avant de corriger, savoir QUI coûte : le groupement,
+    // le hero, ou le reste — et QUEL compteur a invalidé le cache.
+    final Stopwatch swBuild = Stopwatch()..start();
+    final int keyBefore = _cachedGroupingKey;
+    final int featBefore = _cachedFeaturedKey;
     _ensureGrouping();
+    final int tGroup = swBuild.elapsedMilliseconds;
     _ensureFeatured();
+    final int tFeat = swBuild.elapsedMilliseconds - tGroup;
     final byCategory = _cachedByCategory!;
     final categories = _cachedCategories!;
     final featured = _cachedFeatured!;
+    if (tGroup + tFeat >= 20) {
+      debugPrint('\u23F1\uFE0F \u00A7homeMeter (${widget.type.name}) : groupement $tGroup ms (cle ${keyBefore == -1 ? 'NEUVE' : keyBefore != _cachedGroupingKey ? 'CHANGEE' : 'inchangee'} ; fav ${_lastFavMs} ms, tmdbRows ${_lastTmdbRowsMs} ms), hero $tFeat ms (cle ${featBefore != _cachedFeaturedKey ? 'CHANGEE' : 'inchangee'} ; reprise ${_lastResumeMs} ms, tendances ${_lastTrendMs} ms) ; n=${widget.entries.length} playlist=${ParsedPlaylistService.version.value} infer=${InferredCategoryService.version.value} alias=${TmdbGroupAliasService.version.value} fold=${PerformanceSettingsService.config.value.rowFoldMin} favoris=${FavoritesService.version.value} reprise=${WatchProgressService.version.value}');
+    }
 
     // §navUX — Ordre des items de la liste :
     //   1. Hero (carrousel "en avant")
@@ -1859,7 +2344,25 @@ class _TypePageState extends State<_TypePage> {
     // ⚠️ Les carrousels horizontaux sont imbriqués dedans, et les notifications
     // de défilement REMONTENT l'arbre : c'est le filtre `depth == 0` de la
     // sonde qui empêche cette mesure-ci d'avaler les frames des rangées.
-    return JankScrollProbe(
+    // §navBlind — Repère de section. Sur l'accueil, les onglets
+    // Séries/Films/Chaînes DÉFILENT avec le contenu (§navUX, et il ne faut pas
+    // le défaire : ils sont dans le ListView pour que les gestes horizontaux
+    // ne changent plus d'onglet). Une fois la barre passée, plus rien ne dit
+    // sur quel onglet ni dans quelle catégorie on se trouve — c'est l'un des
+    // trois cas relevés à la recette. La pastille le dit, sans rien voler au
+    // hero : elle est SUPERPOSÉE et reste invisible tant qu'on est en tête.
+    return SectionBeacon(
+      floating: true,
+      floatingTop: widget.topInset + 6,
+      // ⚠️ Une rangée de l'accueil fait ~400 px : la section « courante » se
+      // lit au MILIEU de l'écran, pas au bord haut (constaté à l'AVD).
+      thresholdFraction: 0.45,
+      pageTitle: switch (widget.type) {
+        M3uContentType.series => 'Séries',
+        M3uContentType.movie => 'Films',
+        M3uContentType.tv => 'Chaînes',
+      },
+      child: JankScrollProbe(
       label: 'accueil vertical · ${widget.type.name}',
       child: ListView.builder(
       // §rowStorageKey — Case de sauvegarde PROPRE à cette liste.
@@ -1881,7 +2384,17 @@ class _TypePageState extends State<_TypePage> {
       // les clés de type `PageStorageKey`. La `ValueKey('cat_…')` de §tvExitPage
       // sert à l'identité des éléments, pas au rangement des positions.
       key: PageStorageKey('homeRows_${widget.type.name}'),
-      padding: EdgeInsets.only(top: widget.topInset, bottom: 24),
+      // §noHeroInset (2026-09-06) — Sans hero, les onglets Séries/Films/
+      // Chaînes deviennent le PREMIER élément et remontent sous la barre
+      // transparente : ↻ et ⚙️ leur passaient dessus et volaient le tap
+      // (signalement utilisateur, profil Léger). Même remède que l'état
+      // vide : une rangée `kToolbarHeight` de plus quand rien ne porte la
+      // barre. Avec hero, les icônes flottent sur lui, rien ne change.
+      // ⚠️ Pas `kToolbarHeight` (56) : les onglets ont déjà leur propre
+      // marge et l'utilisateur a trouvé l'espace « trop large » — 32 px
+      // suffisent à passer sous les icônes.
+      padding: EdgeInsets.only(
+          top: widget.topInset + (hasHero ? 0 : _kNoHeroInset), bottom: 24),
       // §dpadHeroDown — cache vertical élargi (défaut 250 px) : la 1re rangée
       // sous le pli doit être CONSTRUITE pour exister comme candidat de focus
       // D-pad (dpad ignore les nodes non buildés) — sinon un ⬇ « perdu »
@@ -1963,8 +2476,13 @@ class _TypePageState extends State<_TypePage> {
           hasMore: hasMore,
           type: widget.type,
           icon: _TypePage.categoryIcon(cat),
+          // §posterScope — L'option « Affiches TMDB en priorité » ne touche
+          // que le carrousel et cette rangée-ci (l'utilisateur les a choisis,
+          // ce sont les seules qu'il regarde vraiment).
+          tmdbFirst: isFav && perf.tmdbPostersFirst,
         );
       },
+      ),
       ),
     );
   }
@@ -2035,6 +2553,7 @@ class _TypePageState extends State<_TypePage> {
   ({
     Map<String, List<List<M3uEntry>>> byCategory,
     List<List<M3uEntry>> groups,
+    bool hasAddedData,
   }) _groupByCategoryThenByTitle(
     List<M3uEntry> entries,
     M3uContentType type,
@@ -2153,6 +2672,32 @@ class _TypePageState extends State<_TypePage> {
       }
     }
 
+    // §rowFold — Les micro-rangées sont repliées dans « Autres ». Mesuré sur
+    // le téléviseur (vrai catalogue, après §catWords) : onze rangées Films à
+    // 9 titres ou moins, dont Oscar 1, 3D 2, Juridique 2, Survie 3 — chacune
+    // un écran entier de télécommande. Le seuil est réglable (Optimisation) ;
+    // New (ce qui vient d'arriver), France (TV) et Favoris (injectée après)
+    // ne se replient jamais.
+    final int minItems = PerformanceSettingsService.config.value.rowFoldMin;
+    if (minItems > 1) {
+      final folded = <List<M3uEntry>>[];
+      for (final cat in byCategory.keys.toList()) {
+        if (cat == 'New' || cat == 'France' || cat == 'Autres') continue;
+        final rows = byCategory[cat]!;
+        if (rows.length < minItems) {
+          folded.addAll(rows);
+          byCategory.remove(cat);
+        }
+      }
+      if (folded.isNotEmpty) {
+        final others = byCategory.putIfAbsent('Autres', () => []);
+        final seen = others.map((g) => g.first.displayName).toSet();
+        for (final g in folded) {
+          if (seen.add(g.first.displayName)) others.add(g);
+        }
+      }
+    }
+
     // ⭐ La catégorie virtuelle "Favoris" n'est PLUS calculée ici (§favAudit) :
     // elle est injectée par `_ensureFavoriteCategory` à partir de `groups`,
     // pour qu'un changement de favori ne relance pas tout ce groupement.
@@ -2161,7 +2706,11 @@ class _TypePageState extends State<_TypePage> {
     // titre → un homonyme favorisé fait remonter ses variantes par année ;
     // edge case rare, acceptable, et évite une migration risquée des favoris
     // existants.)
-    return (byCategory: byCategory, groups: groups);
+    return (
+      byCategory: byCategory,
+      groups: groups,
+      hasAddedData: hasAddedData,
+    );
   }
 }
 

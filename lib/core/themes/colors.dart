@@ -51,6 +51,10 @@ const Color kProviderTag = Color(0xFF7E8FA6);
 Color get kLangMulti     => kAccentPrimary;       // suit le thème
 const Color kLangVOSTFR  = Color(0xFFFF8C00);     // Orange
 const Color kLangVF      = kAetherSecondaryCyan;  // Cyan
+/// §legLang — Portugais sous-titré (`|LEG.|`). Volontairement proche du
+/// VOSTFR (même nature : version originale + sous-titres), en plus sourd pour
+/// rester distinguable d'un coup d'œil.
+const Color kLangLeg     = Color(0xFFB8860B);     // Or sombre
 const Color kLangEpisode = kAetherSecondaryCyan;  // Cyan
 
 // ── Badges media type (player + fiches) ─────────────────────────────────────

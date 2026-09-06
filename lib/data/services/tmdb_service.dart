@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+
+import 'visual_language_service.dart';
 import 'package:flutter/foundation.dart';
 import '../models/tmdb_genres.dart';
 import 'tmdb_api_service.dart';
@@ -88,14 +90,29 @@ class TmdbService {
   final Map<int, List<MediaRef>> _collectionCache = {};
 
   static TmdbService? _instance;
+
+  /// §tmdbRows — Incrémenté à chaque `resetInstance()` (clé changée ou
+  /// retirée). Les caches de cette classe meurent avec l'instance ; ce
+  /// compteur permet aux mémos qui vivent AILLEURS (les rangées de l'accueil)
+  /// de savoir qu'ils parlent d'une autre clé.
+  static int generation = 0;
   static TmdbService get instance {
     _instance ??= TmdbService._internal();
     return _instance!;
   }
 
+  /// §posterLang — La langue demandée à TMDB, lue À CHAQUE APPEL.
+  ///
+  /// ⚠️ Ne jamais la mémoriser dans un champ : le réglage change en cours de
+  /// session (écran Paramètres) et ce singleton n'est pas recréé pour autant.
+  /// C'est aussi pourquoi `language` a été retiré des `BaseOptions`, dont les
+  /// `queryParameters` sont figés à la création du client.
+  static String get _lang => VisualLanguageService.resolvedTag;
+
   TmdbService._internal();
 
   static void resetInstance() {
+    generation++;
     debugPrint("💣 Forçage de la destruction du Singleton TmdbService.");
     _instance = null;
   }
@@ -193,6 +210,39 @@ class TmdbService {
 
   Future<void> reinitialize() async => await _init();
 
+  /// §tmdbKeyCheck (2026-09-05) — Demande à TMDB si une clé est acceptée,
+  /// AVANT de l'enregistrer.
+  ///
+  /// Jusqu'ici, n'importe quelle chaîne collée donnait « TMDB connecté » : une
+  /// clé mal copiée laissait une app sans affiche ni résumé, sans le moindre
+  /// message. `/configuration` est l'appel le plus léger qui exige le jeton.
+  ///
+  /// Rend `true` (acceptée), `false` (refusée : 401), `null` (impossible de
+  /// savoir : pas de réseau, délai dépassé, erreur serveur). Sur `null` on
+  /// enregistre quand même — l'utilisateur est peut-être hors ligne, et la
+  /// clé se vérifiera au premier usage.
+  static Future<bool?> probeKey(String token) async {
+    try {
+      final r = await Dio(
+        BaseOptions(
+          baseUrl: 'https://api.themoviedb.org/3',
+          headers: {
+            'Authorization': 'Bearer $token',
+            'accept': 'application/json',
+          },
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+          validateStatus: (_) => true,
+        ),
+      ).get<dynamic>('/configuration');
+      if (r.statusCode == 200) return true;
+      if (r.statusCode == 401) return false;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<bool> _init() async {
     final String? storedToken = await TmdbApiService.getApiKey();
     if (storedToken == null || storedToken.isEmpty) {
@@ -205,7 +255,12 @@ class TmdbService {
     _dio = Dio(
       BaseOptions(
         baseUrl: 'https://api.themoviedb.org/3',
-        queryParameters: {'language': 'fr-FR', 'include_adult': 'false'},
+        // §posterLang — ⚠️ **`language` a été RETIRÉ d'ici.** Les
+        // `queryParameters` d'un `BaseOptions` sont figés à la création du
+        // client : la langue y serait restée celle du démarrage, et changer
+        // le réglage n'aurait rien fait tant que le jeton TMDB ne bougeait
+        // pas. Chaque appel passe désormais `_lang` explicitement.
+        queryParameters: {'include_adult': 'false'},
         headers: {'Authorization': 'Bearer $_bearerToken', 'accept': 'application/json'},
         connectTimeout: const Duration(seconds: 8),
         receiveTimeout: const Duration(seconds: 15),
@@ -272,7 +327,7 @@ class TmdbService {
       final detailResponse = await _dio!.get(
         isTv ? '/tv/$id' : '/movie/$id',
         queryParameters: {
-          'language': 'fr-FR',
+          'language': _lang,
           // §tmdbReco — recommandations + (films) belongs_to_collection dans la
           // MÊME réponse (zéro appel réseau en plus pour les « similaires »).
           // §tmdbBadges — release_dates (films) / content_ratings (séries) pour
@@ -297,7 +352,7 @@ class TmdbService {
     if (!await _init()) return const [];
     try {
       final resp = await _dio!.get('/collection/$collectionId',
-          queryParameters: {'language': 'fr-FR'});
+          queryParameters: {'language': _lang});
       final parts = (resp.data['parts'] as List<dynamic>?) ?? const [];
       final list = <MediaRef>[];
       for (final p in parts) {
@@ -328,7 +383,7 @@ class TmdbService {
 
     // 1. Détections Préalables
     final bool appearsEnglish = RegExp(r'\b(VO|VOST|VOSTFR|ENGLISH)\b', caseSensitive: false).hasMatch(rawQuery);
-    final String searchLanguage = appearsEnglish ? 'en-US' : 'fr-FR';
+    final String searchLanguage = appearsEnglish ? 'en-US' : _lang;
 
     // 📅 Extraction de l'année (Crucial pour les homonymes)
     // L'année explicite (issue de TitleMetadata) est prioritaire — elle est déjà proprement parsée.
@@ -370,7 +425,7 @@ class TmdbService {
       // Tente 4: Fallback Langue Ultime (sans genre hints — dernier recours)
       if (result == null && appearsEnglish) {
         debugPrint("⚠️ Échec VO. Tentative repli FR...");
-        result = await _performSearch(cleanQuery, isTv: isTv, language: 'fr-FR');
+        result = await _performSearch(cleanQuery, isTv: isTv, language: _lang);
       }
 
       if (result == null) {
@@ -390,7 +445,7 @@ class TmdbService {
       final detailResponse = await _dio!.get(
           detailEndpoint,
           queryParameters: {
-            'language': 'fr-FR',
+            'language': _lang,
             // §tmdbMore — aligné sur getFullDetailsById : ce chemin fallback
             // (recherche par titre, sans tmdb_id provider) perdait sinon les
             // recommandations ET la certification d'âge. `credits` porte
@@ -416,7 +471,7 @@ class TmdbService {
       debugPrint("🔎 Recherche ID personne pour : '$query'");
       final response = await _dio!.get('/search/person', queryParameters: {
         'query': query,
-        'language': 'fr-FR', // Recherche de nom dans le langage ciblé
+        'language': _lang, // Recherche de nom dans le langage ciblé
       });
 
       if (response.data['results'].isNotEmpty) {
@@ -450,7 +505,7 @@ class TmdbService {
     try {
       final response = await _dio!.get('/search/person', queryParameters: {
         'query': q,
-        'language': 'fr-FR',
+        'language': _lang,
       });
       final results = (response.data?['results'] as List<dynamic>?) ?? const [];
       final hits = <PersonHit>[];
@@ -498,7 +553,7 @@ class TmdbService {
     try {
       final response = await _dio!.get('/search/multi', queryParameters: {
         'query': q,
-        'language': 'fr-FR',
+        'language': _lang,
         'include_adult': 'false',
       });
       final results = (response.data?['results'] as List<dynamic>?) ?? const [];
@@ -544,7 +599,7 @@ class TmdbService {
       final response = await _dio!.get(
           endpoint,
           queryParameters: {
-            'language': 'fr-FR',
+            'language': _lang,
             'append_to_response': 'combined_credits' // Filmographie (films et séries)
           }
       );
@@ -577,7 +632,7 @@ class TmdbService {
       final resp = await _dio!.get(
         '/tv/$id/season/$seasonNumber/episode/$episodeNumber',
         queryParameters: {
-          'language': 'fr-FR',
+          'language': _lang,
           'append_to_response': 'credits,images,videos',
         },
       );
@@ -604,7 +659,7 @@ class TmdbService {
       final searchResult = await _performSearch(
         showQuery,
         isTv: true,
-        language: 'fr-FR',
+        language: _lang,
         year: yearFilter,
         genreHints: genreHints,
       );
@@ -701,7 +756,7 @@ class TmdbService {
 
     final bool appearsEnglish =
         RegExp(r'\b(VO|VOST|VOSTFR|ENGLISH)\b', caseSensitive: false).hasMatch(query);
-    final String lang = appearsEnglish ? 'en-US' : 'fr-FR';
+    final String lang = appearsEnglish ? 'en-US' : _lang;
     final List<int> hints = groupTitle != null ? _groupTitleToGenreHints(groupTitle) : const [];
 
     try {
@@ -739,32 +794,142 @@ class TmdbService {
 
     try {
       final path = isTv ? '/trending/tv/week' : '/trending/movie/week';
-      final resp = await _dio!.get(path);
-      final results = (resp.data['results'] as List?) ?? const [];
-      final list = <TrendingTitle>[];
-      for (final r in results) {
-        if (r is! Map<String, dynamic>) continue;
-        final title = (isTv ? r['name'] : r['title']) as String?;
-        final original =
-            (isTv ? r['original_name'] : r['original_title']) as String?;
-        // §trendingYear — "YYYY-MM-DD" → année (4 premiers chars). Peut être
-        // absente/vide (films à venir sans date) → year null.
-        final rawDate =
-            (isTv ? r['first_air_date'] : r['release_date']) as String?;
-        final year = (rawDate != null && rawDate.length >= 4)
-            ? rawDate.substring(0, 4)
-            : null;
-        if (title != null && title.trim().isNotEmpty) {
-          list.add(TrendingTitle(
-              title: title, originalTitle: original, year: year));
-        }
-      }
+      // ⚠️ §posterLang avait sorti `language` des `BaseOptions` (figés) et
+      // cet appel n'en passait pas : les tendances revenaient en anglais, et
+      // le croisement par titre avec des listes françaises ne trouvait plus
+      // que les films à titre original anglais. Corrigé le 2026-09-05.
+      final resp = await _dio!.get(path, queryParameters: {'language': _lang});
+      final list = _parseTitles(resp.data['results'] as List?, isTv);
       _trendingCache[isTv] = list;
       _trendingCacheAt[isTv] = DateTime.now();
       return list;
     } catch (e) {
       debugPrint('❌ TMDB trending (isTv=$isTv) : $e');
       return cached ?? const [];
+    }
+  }
+
+  /// Les champs qui servent au croisement avec la playlist : titre localisé,
+  /// titre original, année. Partagé par les tendances et les rangées §tmdbRows.
+  static List<TrendingTitle> _parseTitles(List? results, bool isTv) {
+    final list = <TrendingTitle>[];
+    for (final r in results ?? const []) {
+      if (r is! Map<String, dynamic>) continue;
+      final title = (isTv ? r['name'] : r['title']) as String?;
+      final original =
+          (isTv ? r['original_name'] : r['original_title']) as String?;
+      // §trendingYear — "YYYY-MM-DD" → année (4 premiers chars). Peut être
+      // absente/vide (films à venir sans date) → year null.
+      final rawDate =
+          (isTv ? r['first_air_date'] : r['release_date']) as String?;
+      final year = (rawDate != null && rawDate.length >= 4)
+          ? rawDate.substring(0, 4)
+          : null;
+      if (title != null && title.trim().isNotEmpty) {
+        list.add(TrendingTitle(
+            title: title, originalTitle: original, year: year));
+      }
+    }
+    return list;
+  }
+
+  // ── §tmdbRows (2026-09-05) — Rangées éditoriales ──────────────────────────
+  //
+  // Pourquoi des RANGÉES et pas une taxonomie : classer tout le catalogue par
+  // TMDB coûterait une recherche par titre (des dizaines de milliers d'appels
+  // sur 120 000 entrées, ce que TMDB demande d'éviter) et ne marcherait
+  // qu'avec une clé. Ici, un appel rend 20 titres qu'on croise avec la
+  // playlist : « Parce que tu as regardé X », « Les mieux notés ». Cache 24 h.
+  final Map<String, List<TrendingTitle>> _rowsCache = {};
+  final Map<String, DateTime> _rowsCacheAt = {};
+
+  /// Recommandations TMDB d'un titre (`/movie|tv/{id}/recommendations`).
+  Future<List<TrendingTitle>> getRecommendations({
+    required int tmdbId,
+    required bool isTv,
+  }) =>
+      _cachedTitles(
+        'rec/$isTv/$tmdbId',
+        isTv,
+        '/${isTv ? 'tv' : 'movie'}/$tmdbId/recommendations',
+      );
+
+  /// Les mieux notés (`/movie|tv/top_rated`, première page).
+  Future<List<TrendingTitle>> getTopRated({required bool isTv}) =>
+      _cachedTitles('top/$isTv', isTv, '/${isTv ? 'tv' : 'movie'}/top_rated');
+
+  /// §tmdbProviders — Les plateformes retenues, avec leur identifiant TMDB
+  /// (`/watch/providers/movie?watch_region=FR`) : Netflix 8, Disney+ 337,
+  /// Amazon Prime Video 119. ⚠️ Identifiants STABLES côté TMDB, mais rien ne
+  /// garantit qu'une plateforme reste dans `watch_region=FR` : un discover
+  /// vide se traduit par une rangée absente, jamais par une erreur.
+  static const List<({int id, String name})> watchProviders = [
+    (id: 8, name: 'Netflix'),
+    (id: 337, name: 'Disney+'),
+    (id: 119, name: 'Prime Video'),
+  ];
+
+  /// §tmdbProviders — Ce qui marche en ce moment sur UNE plateforme, en France
+  /// (`/discover/movie|tv?with_watch_providers=<id>&watch_region=FR`, trié par
+  /// popularité). Un appel par plateforme, par type et par jour.
+  Future<List<TrendingTitle>> getProviderPopular({
+    required bool isTv,
+    required int providerId,
+  }) =>
+      _cachedTitles(
+        'prov/$isTv/$providerId',
+        isTv,
+        '/discover/${isTv ? 'tv' : 'movie'}',
+        extra: {
+          'with_watch_providers': '$providerId',
+          'watch_region': 'FR',
+          'sort_by': 'popularity.desc',
+        },
+      );
+
+  Future<List<TrendingTitle>> _cachedTitles(
+      String key, bool isTv, String path,
+      {Map<String, String> extra = const {}}) async {
+    if (!await _init()) return const [];
+    final cached = _rowsCache[key];
+    final at = _rowsCacheAt[key];
+    if (cached != null && at != null &&
+        DateTime.now().difference(at) < _trendingTtl) {
+      return cached;
+    }
+    try {
+      final resp = await _dio!
+          .get(path, queryParameters: {'language': _lang, ...extra});
+      final list = _parseTitles(resp.data['results'] as List?, isTv);
+      _rowsCache[key] = list;
+      _rowsCacheAt[key] = DateTime.now();
+      return list;
+    } catch (e) {
+      debugPrint('❌ TMDB rangée $key : $e');
+      return cached ?? const [];
+    }
+  }
+
+  /// §tmdbRows — L'identifiant TMDB d'un titre de la playlist qui n'en porte
+  /// pas (listes M3U sans `tmdb_id`). Une recherche, mémorisée par le cache
+  /// de `_performSearch` côté Dio. `null` si introuvable ou sans clé.
+  Future<int?> resolveTmdbId({
+    required String query,
+    required bool isTv,
+    String? year,
+  }) async {
+    if (!await _init()) return null;
+    final clean = _cleanQuery(query);
+    if (clean.isEmpty) return null;
+    try {
+      Map<String, dynamic>? r;
+      if (year != null) {
+        r = await _performSearch(clean, isTv: isTv, language: _lang, year: year);
+      }
+      r ??= await _performSearch(clean, isTv: isTv, language: _lang);
+      return r?['id'] as int?;
+    } catch (_) {
+      return null;
     }
   }
 }

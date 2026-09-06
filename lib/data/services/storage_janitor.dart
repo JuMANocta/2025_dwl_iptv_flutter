@@ -203,8 +203,47 @@ class StorageJanitor {
     }
   }
 
-  static String _mo(int bytes) =>
-      '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
+  /// §acctDeleteTruth — Ce que la suppression d'un compte va effacer, en
+  /// octets, **sans rien supprimer**. Sert à l'annoncer AVANT de le faire :
+  /// « cette action est définitive » ne disait pas qu'elle emportait jusqu'à
+  /// 217 Mo de liste téléchargée (mesuré, §acctPurge).
+  ///
+  /// ⚠️ Même liste de cibles que [purgeAccount] — les deux doivent rester
+  /// alignées, sinon le chiffre annoncé n'est pas celui qui part.
+  static Future<int> accountFootprint(String accountId) async {
+    var bytes = 0;
+    try {
+      final docs = await _documentsDir();
+      final support = await _supportDir();
+      final targets = <File>[
+        for (final ext in playlistExtensions)
+          File('${docs.path}/$playlistPrefix$accountId$ext'),
+        File('${support.path}/$parsedPrefix$accountId$parsedExtension'),
+      ];
+      for (final f in targets) {
+        try {
+          if (await f.exists()) bytes += await f.length();
+        } catch (_) {
+          // Un fichier illisible ne doit pas empêcher d'annoncer les autres.
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ §acctPurge — empreinte du compte $accountId : $e');
+    }
+    return bytes;
+  }
+
+  /// Taille lisible. Passe en Ko sous le mégaoctet : « 0.0 Mo » pour un cache
+  /// de 300 Ko donnerait l'impression qu'il n'y a rien à perdre.
+  static String humanBytes(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
+    }
+    if (bytes >= 1024) return '${(bytes / 1024).round()} Ko';
+    return '$bytes octets';
+  }
+
+  static String _mo(int bytes) => humanBytes(bytes);
 }
 
 /// Bilan d'un balayage. [refused] distingue « rien à faire » de « je n'ai pas

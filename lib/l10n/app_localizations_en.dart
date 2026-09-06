@@ -386,7 +386,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themeSettingsTitle => 'Appearance';
 
   @override
-  String get tmdbKeyTitle => 'TMDB API key';
+  String get tmdbKeyTitle => 'TMDB posters & info';
 
   @override
   String get xmltvTitle => 'Channel guide';
@@ -405,4 +405,611 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get navSettings => 'Settings';
+
+  @override
+  String get settingsSectionPhone => 'Control from your phone';
+
+  @override
+  String get settingsWebConsole => 'Web console';
+
+  @override
+  String get settingsWebConsoleSub =>
+      'Accounts, backup, theme, EPG, TMDB + remote (QR)';
+
+  @override
+  String get settingsSectionSources => 'Sources & accounts';
+
+  @override
+  String get settingsAccounts => 'IPTV accounts';
+
+  @override
+  String get settingsAccountsSub => 'Providers, playlist stats & reload';
+
+  @override
+  String get settingsTmdbKey => 'TMDB posters & info';
+
+  @override
+  String get settingsTmdbKeySub => 'Posters, overviews, cast — optional';
+
+  @override
+  String get settingsXmltv => 'Channel guide';
+
+  @override
+  String get settingsXmltvSub => 'XMLTV EPG — French DTT';
+
+  @override
+  String get settingsSectionDisplay => 'Display';
+
+  @override
+  String get settingsRegions => 'Languages / regions';
+
+  @override
+  String get settingsRegionsSub => 'Hide foreign content (saves memory)';
+
+  @override
+  String get settingsTheme => 'Appearance';
+
+  @override
+  String get settingsThemeSub => 'Theme, colours, cyberpunk effects';
+
+  @override
+  String get settingsOptimization => 'Performance';
+
+  @override
+  String get settingsOptimizationSub =>
+      'Performance profiles, hero, thumbnails, memory';
+
+  @override
+  String get settingsSectionBackup => 'Backup & app';
+
+  @override
+  String get settingsBackup => 'Backup / Restore';
+
+  @override
+  String get settingsBackupSub =>
+      'Export/import accounts, TMDB, theme, favourites (encrypted .aether)';
+
+  @override
+  String get settingsAbout => 'About';
+
+  @override
+  String get settingsAboutSub => 'Version + update check';
+
+  @override
+  String get settingsResetUsage => 'Reset usage data';
+
+  @override
+  String get settingsResetUsageSub =>
+      'Clears favourites, resume points & history (keeps accounts & theme)';
+
+  @override
+  String get settingsResetTitle => 'Reset usage data?';
+
+  @override
+  String get settingsResetBody =>
+      'Clears favourites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.';
+
+  @override
+  String get settingsResetConfirm => 'Reset';
+
+  @override
+  String get commonCancel => 'Cancel';
+
+  @override
+  String get errNetworkUnreachable =>
+      'Cannot connect: no network, or the server is unreachable.';
+
+  @override
+  String get errTimeout => 'The server took too long to answer.';
+
+  @override
+  String get errTimeoutHint =>
+      'The server took too long to answer. Check your connection or the server address.';
+
+  @override
+  String get errTls => 'Secure connection refused by the server (certificate).';
+
+  @override
+  String get errBadFormat =>
+      'Unreadable answer from the server (unexpected format).';
+
+  @override
+  String get errFileSystem => 'Cannot read or write the file on this device.';
+
+  @override
+  String get errInternal => 'Something went wrong inside the app.';
+
+  @override
+  String get errBadResponse =>
+      'Invalid answer from the server. Check the address.';
+
+  @override
+  String errForbidden(int code) {
+    return 'Access denied by the server (HTTP $code). Check the account credentials.';
+  }
+
+  @override
+  String get errNotFound => 'Address not found on the server (HTTP 404).';
+
+  @override
+  String errServer(int code) {
+    return 'The server is failing (HTTP $code). Try again later.';
+  }
+
+  @override
+  String errHttp(int code) {
+    return 'The server answered with an error (HTTP $code).';
+  }
+
+  @override
+  String get errConnection =>
+      'Connection error: check that you are online and that the server is reachable.';
+
+  @override
+  String get errCancelled => 'Operation cancelled.';
+
+  @override
+  String get errNetworkUnknown => 'Unknown network error.';
+
+  @override
+  String rowBecauseYouWatched(String title) {
+    return 'Because you watched “$title”';
+  }
+
+  @override
+  String get rowTopRated => 'Top rated';
+
+  @override
+  String get tmdbRowsBecauseTitle => '“Because you watched” row';
+
+  @override
+  String get tmdbRowsBecauseSub =>
+      'Titles close to what you last watched, picked from your lists';
+
+  @override
+  String get tmdbRowsTopRatedTitle => '“Top rated” row';
+
+  @override
+  String get tmdbRowsTopRatedSub => 'The best-rated titles your lists offer';
+
+  @override
+  String get perfMinItemsTitle => 'Rows: minimum titles';
+
+  @override
+  String get perfMinItemsSub =>
+      'Below this, the row folds into “Others” — never New or Favourites. 1 = never fold.';
+
+  @override
+  String get dlOnDeviceTitle => 'On this device';
+
+  @override
+  String dlOnDeviceSub(int count, String size) {
+    return '$count file(s) · $size — in Movies/AetherStream, missing from the list';
+  }
+
+  @override
+  String get dlScanTooltip => 'Look for files on this device';
+
+  @override
+  String dlScanFound(int count, String size) {
+    return '$count file(s) on device, missing from the list ($size)';
+  }
+
+  @override
+  String get dlScanNothing => 'Nothing new on this device';
+
+  @override
+  String get dlScanDenied => 'Without video access, the folder cannot be read';
+
+  @override
+  String get dlOrphanDeleteTitle => 'Delete this file?';
+
+  @override
+  String dlOrphanDeleteBody(String name, String size) {
+    return '“$name” ($size) will be erased from this device. This cannot be undone.';
+  }
+
+  @override
+  String get dlOrphanDeleted => 'File deleted';
+
+  @override
+  String get dlOrphanDeleteFailed => 'Android refused the deletion';
+
+  @override
+  String get dlOrphanPlay => 'Play';
+
+  @override
+  String get commonDelete => 'Delete';
+
+  @override
+  String get tmdbStatusOn => 'TMDB connected: posters, overviews and cast';
+
+  @override
+  String get tmdbStatusOff =>
+      'No TMDB key: no extra posters or overviews. The app still works.';
+
+  @override
+  String get tmdbPairReplace => 'Replace from my phone';
+
+  @override
+  String get tmdbPairSetup => 'Set up from my phone';
+
+  @override
+  String get tmdbPairSub =>
+      'Scan the QR code and paste the key from your phone';
+
+  @override
+  String get tmdbKeySection => 'TMDB key';
+
+  @override
+  String get tmdbKeySectionManual => 'Typing with the remote';
+
+  @override
+  String get tmdbKeyHint => 'Paste your key here…';
+
+  @override
+  String get tmdbKeyShow => 'Show';
+
+  @override
+  String get tmdbKeyHide => 'Hide';
+
+  @override
+  String get tmdbKeySave => 'Save';
+
+  @override
+  String get tmdbKeyRemove => 'Remove the key';
+
+  @override
+  String get tmdbKeyManualEntry => 'Type it with the remote';
+
+  @override
+  String get tmdbKeyConnected => 'TMDB connected';
+
+  @override
+  String get tmdbKeyRemoved => 'TMDB key removed';
+
+  @override
+  String get tmdbKeyRejected =>
+      'TMDB rejected this key. Make sure you copied the API Read Access Token.';
+
+  @override
+  String get tmdbKeyUnverified =>
+      'Key saved. It could not be checked right now (no network).';
+
+  @override
+  String get tmdbKeyChecking => 'Checking…';
+
+  @override
+  String get tmdbHowTitle => 'Get a key (free)';
+
+  @override
+  String get tmdbHowStep1 => 'Create an account on themoviedb.org';
+
+  @override
+  String get tmdbHowStep2 => 'Open Settings, then API';
+
+  @override
+  String get tmdbHowStep3 => 'Copy the API Read Access Token';
+
+  @override
+  String get tmdbHowStep4 => 'Paste it below';
+
+  @override
+  String get tmdbSignup => 'Create a TMDB account';
+
+  @override
+  String get tmdbLogin => 'I already have an account';
+
+  @override
+  String get tmdbOptionsTitle => 'Options';
+
+  @override
+  String get tmdbVisualLangTitle => 'Language of visuals';
+
+  @override
+  String tmdbVisualLangSub(String lang) {
+    return '$lang: posters, overviews and cast';
+  }
+
+  @override
+  String get tmdbPostersFirstTitle => 'TMDB posters first';
+
+  @override
+  String get tmdbPostersFirstOn =>
+      'Carousel and favourites use the TMDB poster.';
+
+  @override
+  String get tmdbPostersFirstOff =>
+      'Carousel and favourites keep your lists\' poster.';
+
+  @override
+  String get tmdbMemoryTitle => 'Stored data';
+
+  @override
+  String get tmdbMemoryPosters => 'Posters';
+
+  @override
+  String get tmdbMemoryPostersNone => 'No poster stored yet';
+
+  @override
+  String tmdbMemoryPostersCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count posters stored',
+      one: '1 poster stored',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tmdbMemoryClear => 'Clear';
+
+  @override
+  String get tmdbMemoryPostersCleared =>
+      'Posters cleared. They will reload as you browse.';
+
+  @override
+  String get tmdbMemorySorting => 'Automatic sorting';
+
+  @override
+  String get tmdbMemorySortingNone =>
+      'Nothing to relearn: your lists already sort their titles';
+
+  @override
+  String tmdbMemorySortingCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count titles sorted thanks to TMDB',
+      one: '1 title sorted thanks to TMDB',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tmdbMemoryRelearn => 'Relearn';
+
+  @override
+  String get tmdbMemorySortingCleared =>
+      'Sorting cleared. It will rebuild as you browse the home.';
+
+  @override
+  String get reloadAllTitle => 'Reload all lists?';
+
+  @override
+  String reloadAllBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'All $count lists will be downloaded again from their servers. This can take several minutes.',
+      one:
+          'The list will be downloaded again from its server. This can take several minutes.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String reloadAllBodyRecent(int count, String names) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'All $count lists will be downloaded again from their servers.',
+      one: 'The list will be downloaded again from its server.',
+    );
+    return '$_temp0\n\nAlready up to date (less than 24 h): $names.\n\nThis can take several minutes.';
+  }
+
+  @override
+  String get reloadAllConfirm => 'Reload all';
+
+  @override
+  String get reloadAllProgressTitle => 'Reloading';
+
+  @override
+  String get reloadAllPreparing => 'Preparing…';
+
+  @override
+  String reloadAllStep(int index, int total, String label) {
+    return 'List $index/$total — $label';
+  }
+
+  @override
+  String get reloadAllTooltip => 'Reload all lists';
+
+  @override
+  String get reloadAllNoAccounts => 'No list to reload';
+
+  @override
+  String get infoSectionTitle => 'Details';
+
+  @override
+  String get infoGenre => 'Genre';
+
+  @override
+  String get infoDirector => 'Director';
+
+  @override
+  String get infoCreator => 'Creator';
+
+  @override
+  String get infoOriginalTitle => 'Original title';
+
+  @override
+  String get infoCountry => 'Country';
+
+  @override
+  String get infoStudios => 'Studios';
+
+  @override
+  String get infoStatus => 'Status';
+
+  @override
+  String get infoRuntime => 'Runtime';
+
+  @override
+  String get infoEpisodeLength => 'Episode';
+
+  @override
+  String get infoSeasons => 'Seasons';
+
+  @override
+  String get infoNextEpisode => 'Next episode';
+
+  @override
+  String get infoNetwork => 'Network';
+
+  @override
+  String get infoBudget => 'Budget';
+
+  @override
+  String get infoRevenue => 'Box office';
+
+  @override
+  String get infoTheatrical => 'Theatrical release';
+
+  @override
+  String get infoDigital => 'Digital release';
+
+  @override
+  String infoSeasonsValue(int seasons, int episodes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      episodes,
+      locale: localeName,
+      other: '$episodes episodes',
+      one: '1 episode',
+    );
+    return '$seasons ($_temp0)';
+  }
+
+  @override
+  String get settingsReloadAllSub =>
+      'Re-download all your lists from their servers';
+
+  @override
+  String get perfProfileConfort => 'Full';
+
+  @override
+  String get perfProfileEquilibre => 'Balanced';
+
+  @override
+  String get perfProfilePerformance => 'Light';
+
+  @override
+  String get autoProfileOk => 'Got it';
+
+  @override
+  String get capsTitle => 'What your device can do';
+
+  @override
+  String get capsSub => 'Decoders, display, memory — measured, not guessed';
+
+  @override
+  String get capsMeasure => 'Measure again';
+
+  @override
+  String get capsNever => 'Not measured yet';
+
+  @override
+  String get capsDisplay => 'Display';
+
+  @override
+  String get capsMemory => 'Memory';
+
+  @override
+  String get capsDecoders => 'Video decoders';
+
+  @override
+  String get capsVerdict4k => '4K films';
+
+  @override
+  String get capsHardware => 'hardware';
+
+  @override
+  String get capsSoftware => 'software';
+
+  @override
+  String get capsNoDecoder => 'no decoder';
+
+  @override
+  String get capsYes => 'Yes';
+
+  @override
+  String get capsNoDecoder4k => 'No — no decoder accepts 2160p';
+
+  @override
+  String get capsNoDisplay4k => 'No — the display shows less than 2160p';
+
+  @override
+  String get capsUnknown => 'Unknown — incomplete measurement';
+
+  @override
+  String get capsLowRam => 'low-memory device';
+
+  @override
+  String get refuse4kTitle => 'This 4K version can\'t play here';
+
+  @override
+  String get refuse4kDecoder =>
+      'No decoder on this device accepts a 3840×2160 picture. Pick an FHD or HD version.';
+
+  @override
+  String refuse4kDisplay(int w, int h) {
+    return 'The display shows $w×$h: 4K would be decoded for nothing and may stutter. Pick an FHD or HD version.';
+  }
+
+  @override
+  String get refuseOk => 'Got it';
+
+  @override
+  String autoProfileTitle(String name) {
+    return '$name profile chosen for this device';
+  }
+
+  @override
+  String autoProfileBody(String name, int ram, int cores) {
+    return 'Based on the measurement ($ram MB of memory, $cores cores), the home uses the $name profile. You can change it anytime in Settings → Optimisation.';
+  }
+
+  @override
+  String capsMeasuredAt(String date) {
+    return 'Measured on $date';
+  }
+
+  @override
+  String capsDisplayValue(int w, int h, int hz) {
+    return '$w×$h at $hz Hz';
+  }
+
+  @override
+  String capsMemoryValue(int total, int avail) {
+    return '$total MB total, $avail MB free';
+  }
+
+  @override
+  String capsDecoderValue(String name, String kind, int w, int h) {
+    return '$name ($kind) — up to $w×$h';
+  }
+
+  @override
+  String get perfProfileConfortSub => 'All animations';
+
+  @override
+  String get perfProfileEquilibreSub => 'Static hero, shorter rows';
+
+  @override
+  String get perfProfilePerformanceSub => 'Low memory';
+
+  @override
+  String get tmdbRowsProvidersTitle => 'Netflix, Disney+ and Prime trends';
+
+  @override
+  String get tmdbRowsProvidersSub =>
+      'What\'s popular right now on each platform in France, from your lists';
+
+  @override
+  String rowProviderTrending(String name) {
+    return 'Trending on $name';
+  }
 }

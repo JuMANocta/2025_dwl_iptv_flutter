@@ -1,0 +1,89 @@
+# §l10nAll — plafond de chaînes françaises en dur, par fichier.
+#
+# Généré par : AS_L10N_REGEN=1 flutter test test/l10n_guard_test.dart
+# Ce fichier ne doit JAMAIS remonter : chaque tranche de
+# traduction l'abaisse. Un total qui augmente = une régression.
+#
+# TOTAL : 566 lignes dans 81 fichiers.
+
+lib/core/diagnostics/jank_meter.dart 2
+lib/core/diagnostics/log_buffer.dart 6
+lib/core/navigation/focus_route_memory.dart 7
+lib/core/navigation/main_navigation.dart 1
+lib/core/settings/perf_config.dart 2
+lib/core/utils/notification_permission.dart 2
+lib/data/models/m3u_entry.dart 7
+lib/data/models/media_model.dart 3
+lib/data/models/tmdb_genres.dart 6
+lib/data/services/backup_service.dart 8
+lib/data/services/cast_relay_service.dart 7
+lib/data/services/cast_service.dart 9
+lib/data/services/download_manager_service.dart 2
+lib/data/services/download_notice.dart 1
+lib/data/services/favorites_service.dart 2
+lib/data/services/inferred_category_service.dart 1
+lib/data/services/load_failure.dart 12
+lib/data/services/parsed_playlist_service.dart 10
+lib/data/services/playlist_fleet_service.dart 13
+lib/data/services/playlist_reload_service.dart 6
+lib/data/services/playlist_service.dart 7
+lib/data/services/storage_janitor.dart 3
+lib/data/services/stream_account_service.dart 4
+lib/data/services/tmdb_poster_cache.dart 2
+lib/data/services/tmdb_service.dart 5
+lib/data/services/update_service.dart 4
+lib/data/services/visual_language_service.dart 3
+lib/data/services/web_console_service.dart 2
+lib/data/services/xtream_api_service.dart 9
+lib/data/services/xtream_catalog_service.dart 10
+lib/feature/accounts/accounts_page.dart 34
+lib/feature/accounts/expiration_alert_dialog.dart 6
+lib/feature/boot/boot_screen.dart 8
+lib/feature/downloads/downloads_page.dart 5
+lib/feature/downloads/logic/download_initiator.dart 3
+lib/feature/downloads/widgets/download_task_tile.dart 6
+lib/feature/home/home_card.dart 5
+lib/feature/home/home_category.dart 1
+lib/feature/home/home_page.dart 14
+lib/feature/home/home_search.dart 13
+lib/feature/onboarding/onboarding_page.dart 10
+lib/feature/player/cast_policy.dart 21
+lib/feature/player/cast_relay_policy.dart 15
+lib/feature/player/media3_engine.dart 2
+lib/feature/player/playback_error_message.dart 16
+lib/feature/player/player_page.dart 8
+lib/feature/player/video_fit.dart 3
+lib/feature/player/video_stats.dart 3
+lib/feature/player/widgets/cast_overlay.dart 8
+lib/feature/player/widgets/cast_sheet.dart 10
+lib/feature/player/widgets/next_episode_overlay.dart 8
+lib/feature/player/widgets/player_controls.dart 3
+lib/feature/player/widgets/player_options_sheet.dart 5
+lib/feature/player/widgets/track_selector_sheet.dart 11
+lib/feature/player/widgets/video_stats_overlay.dart 12
+lib/feature/replay/replay_date_picker_sheet.dart 6
+lib/feature/replay/replay_widget.dart 1
+lib/feature/search/actor_details_page.dart 5
+lib/feature/search/details_page.dart 22
+lib/feature/search/m3u_parser.dart 2
+lib/feature/search/xtream_catalog_parser.dart 4
+lib/feature/settings/about_page.dart 5
+lib/feature/settings/backup_page.dart 14
+lib/feature/settings/backup_restore_flow.dart 7
+lib/feature/settings/optimization_settings_page.dart 46
+lib/feature/settings/perf_suggest_dialog.dart 2
+lib/feature/settings/region_filter_page.dart 7
+lib/feature/settings/settings_page.dart 1
+lib/feature/settings/theme_settings_page.dart 8
+lib/feature/settings/visual_language_page.dart 4
+lib/feature/settings/web_console/web_console_page.dart 10
+lib/feature/settings/xmltv_page.dart 11
+lib/feature/update/update_dialog.dart 1
+lib/main.dart 3
+lib/widgets/confirm_reload_dialog.dart 2
+lib/widgets/media_action_sheet.dart 6
+lib/widgets/memory_stats_card.dart 6
+lib/widgets/playlist_search_sheet.dart 3
+lib/widgets/quality_buttons.dart 2
+lib/widgets/terminal_download_dialog.dart 1
+lib/widgets/tv/dpad_row_anchor.dart 1

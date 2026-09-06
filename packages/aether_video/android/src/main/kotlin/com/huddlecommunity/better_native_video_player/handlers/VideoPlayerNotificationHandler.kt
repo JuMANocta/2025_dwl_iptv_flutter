@@ -15,10 +15,10 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.support.v4.media.session.MediaSessionCompat
 import androidx.core.app.NotificationCompat
-import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import androidx.media3.common.MediaMetadata
+// §engineVendor patch 10 — style media OFFICIEL de Media3 (cf. buildNotification).
+import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
@@ -326,17 +326,17 @@ class VideoPlayerNotificationHandler(
 
         val iconResId = resolveSmallIconRes()
 
-        // Convert Media3 SessionToken to MediaSessionCompat.Token for notification
-        // Media3 1.4.0+ requires us to extract the token differently
-        val token = try {
-            // Use reflection to access the session compat token
-            val method = session.javaClass.getMethod("getSessionCompatToken")
-            method.invoke(session) as? MediaSessionCompat.Token
-        } catch (e: Exception) {
-            // If reflection fails (Media3 1.4.0+), create a token from the session's underlying binder
-            NpLog.w(TAG, "getSessionCompatToken not available, using alternative method")
-            null
-        }
+        // §engineVendor patch 10 — Le jeton de session ne se convertit PLUS par
+        // reflexion. Amont : `getSessionCompatToken()` invoque par reflexion, puis
+        // `as? android.support.v4.media.session.MediaSessionCompat.Token`. Or
+        // depuis Media3 1.4 la methode rend un
+        // `androidx.media3.session.legacy.MediaSessionCompat.Token` : le cast
+        // rendait `null` SANS exception, le repli « notification sans jeton »
+        // etait pris en silence, et la notification n'avait AUCUN bouton ni
+        // aucune commande depuis l'ecran verrouille. Mesure sur l'AVD
+        // telephone : `dumpsys notification` sans extra `android.mediaSession`,
+        // `dumpsys media_session` avec « Media button session is null ».
+        // La voie officielle prend la MediaSession Media3 directement.
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(title)
@@ -348,17 +348,10 @@ class VideoPlayerNotificationHandler(
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
 
-        // Only set media session token if we successfully obtained it
-        if (token != null) {
-            builder.setStyle(
-                MediaNotificationCompat.MediaStyle()
-                    .setMediaSession(token)
-            )
-        } else {
-            // Fallback: create notification without media session integration
-            // Controls will still work through MediaSession, just not integrated in notification
-            NpLog.w(TAG, "Creating notification without MediaSession token integration")
-        }
+        // §engineVendor patch 10 — Style media relie a la session : c'est lui qui
+        // donne les boutons (lecture/pause) et fait apparaitre la notification
+        // dans le lecteur media du systeme et sur l'ecran verrouille.
+        builder.setStyle(MediaStyleNotificationHelper.MediaStyle(session))
 
         return builder.build()
     }

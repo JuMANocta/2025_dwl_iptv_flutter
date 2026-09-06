@@ -89,6 +89,26 @@ void main() {
       expect(out, startsWith('Erreur'));
     });
 
+    test(
+        'HttpException native (couche socket, anglais) → traduite, pas recopiée',
+        () {
+      // ⚠️ Constaté sur appareil réel : dart:io/l'adaptateur IO de Dio lancent
+      // une HttpException NATIVE (pas la nôtre) pour un accident de socket en
+      // cours de flux — « Connection reset by peer » traversait tel quel.
+      final cases = <String>[
+        'Connection reset by peer',
+        'Connection reset by peer (OS Error: Connection reset by peer, errno = 104)',
+        'Connection refused',
+        'Connection closed before full header was received',
+      ];
+      for (final msg in cases) {
+        final out = describeError(HttpException(msg));
+        expect(out, isNot(contains('Connection')), reason: msg);
+        expect(out, isNot(contains('errno')), reason: msg);
+        expect(out, contains('Connexion impossible'), reason: msg);
+      }
+    });
+
     test('SocketException / Timeout / Format / FileSystem / StateError', () {
       final cases = <Object>[
         const SocketException('x'),

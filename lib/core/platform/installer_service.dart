@@ -23,7 +23,7 @@ class InstallerService {
       } else if (Platform.isWindows) {
         _instance = WindowsInstaller();
       } else {
-        throw UnsupportedError('Plateforme non supportée pour l\'installation');
+        throw UnsupportedError('Unsupported platform for installation');
       }
     }
     return _instance!;

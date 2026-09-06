@@ -1,7 +1,41 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'perf_config.dart';
+
+/// §perfNotify (2026-09-05) — Le notifieur des réglages compare par IDENTITÉ,
+/// jamais par égalité.
+///
+/// **Le bug qu'il corrige.** `ValueNotifier` refuse en silence une valeur
+/// ÉGALE à l'ancienne — et `PerfConfig.==` ignore volontairement les réglages
+/// de confort (`autoNextEpisode`, `tmdbPostersFirst`, les deux rangées TMDB)
+/// pour que la page Optimisation ne bascule pas en « Personnalisé » quand on
+/// les touche. Conséquence : `save()` écrivait bien la préférence sur disque,
+/// mais la valeur EN MÉMOIRE ne bougeait pas. L'interrupteur restait muet
+/// jusqu'au prochain lancement de l'app — constaté par l'utilisateur sur
+/// « Affiches TMDB en priorité » (« il ne répond pas, puis au bout d'un
+/// certain temps il se sélectionne »), et vrai depuis §perfSettings pour
+/// « Épisode suivant automatique ».
+///
+/// Comparer par identité règle les quatre d'un coup sans toucher à `==`, qui
+/// garde son seul rôle : reconnaître le profil actif. Garde-fou :
+/// `test/perf_notify_test.dart`.
+class PerfConfigNotifier extends ChangeNotifier
+    implements ValueListenable<PerfConfig> {
+  PerfConfigNotifier(this._value);
+
+  PerfConfig _value;
+
+  @override
+  PerfConfig get value => _value;
+
+  set value(PerfConfig next) {
+    if (identical(next, _value)) return;
+    _value = next;
+    notifyListeners();
+  }
+}
 
 /// §perfSettings — Service singleton gérant les réglages d'optimisation.
 /// Charge depuis SharedPreferences au démarrage et notifie les listeners à
@@ -9,8 +43,8 @@ import 'perf_config.dart';
 class PerformanceSettingsService {
   static const _kKey = 'aether_perf_v1';
 
-  static final ValueNotifier<PerfConfig> config =
-      ValueNotifier(PerfConfig.defaults);
+  static final PerfConfigNotifier config =
+      PerfConfigNotifier(PerfConfig.defaults);
 
   /// Charge la config persistée. À appeler avant runApp().
   static Future<void> load() async {
@@ -29,7 +63,7 @@ class PerformanceSettingsService {
   }
 
   /// Applique et persiste une nouvelle config.
-  /// Le ValueNotifier déclenche immédiatement le rebuild de la home.
+  /// Le notifieur déclenche immédiatement le rebuild de la home.
   static Future<void> save(PerfConfig newConfig) async {
     config.value = newConfig;
     applyImageCacheLimit();

@@ -13,6 +13,9 @@ import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
+import 'package:aetherStream/widgets/tv/section_beacon.dart';
+import 'package:aetherStream/feature/settings/device_caps_page.dart';
 
 /// §perfSettings — Page « Optimisation » (Fire Stick / terminaux faibles).
 ///
@@ -194,14 +197,23 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                 )
               : null,
         ),
-        child: SingleChildScrollView(
+        // §navBlind — La page la plus longue de l'app : sept sections, aucun
+        // repere. Le bandeau nomme celle qu'on regarde (TV uniquement).
+        child: SectionBeacon(
+          pageTitle: 'Optimisation',
+          // Repli tactile : au doigt rien n'a le focus, on lit au tiers haut.
+          thresholdFraction: 0.3,
+          child: SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 40),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionLabel('Profils', cs),
+              // §deviceCaps — La sonde d'abord : c'est elle qui explique le
+              // profil choisi, et ce que l'appareil peut lire.
+              _capsTile(cs),
+              const SectionMark('Profils'),
               _buildProfilesRow(cs),
-              _sectionLabel('Hero banner', cs),
+              const SectionMark('Hero banner'),
               _switchTile(
                 icon: Icons.style_outlined,
                 title: 'Hero banner',
@@ -227,7 +239,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                 enabled: _config.heroEnabled,
                 onChanged: (v) => _apply(_config.copyWith(heroCardCount: v)),
               ),
-              _sectionLabel('Rangées de catégories', cs),
+              const SectionMark('Rangées de catégories'),
               _buildStepper(
                 label: 'Vignettes',
                 value: _config.maxItemsPerRow,
@@ -244,9 +256,27 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
+              // §rowFold — Seuil de repli des micro-rangées. Réglage de
+              // confort (exclu de l'égalité des profils), mesuré sur TV : une
+              // rangée d'une carte coûte un écran entier de télécommande.
+              _buildStepper(
+                label: context.l10n.perfMinItemsTitle,
+                value: _config.rowFoldMin,
+                min: PerfConfig.minRowFoldMin,
+                max: PerfConfig.maxRowFoldMin,
+                step: 1,
+                onChanged: (v) => _apply(_config.copyWith(rowFoldMin: v)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Text(
+                  context.l10n.perfMinItemsSub,
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ),
               // §autoNextEp — Réglage de CONFORT, volontairement hors des
               // profils de performance (les 3 presets le laissent intact).
-              _sectionLabel('Lecture', cs),
+              const SectionMark('Lecture'),
               _switchTile(
                 icon: Icons.skip_next_rounded,
                 title: 'Épisode suivant automatique',
@@ -285,7 +315,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               // était codé en dur (5 min) et invisible : l'utilisateur voyait
               // ses listes passer à « NON CHARGÉ » sans rien avoir demandé, et
               // n'avait aucun moyen de l'éteindre.
-              _sectionLabel('Listes', cs),
+              const SectionMark('Listes'),
               _switchTile(
                 icon: Icons.playlist_add_check_circle_outlined,
                 title: 'Garder toutes les listes en mémoire',
@@ -324,7 +354,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
-              _sectionLabel('Mémoire & usage', cs),
+              const SectionMark('Mémoire & usage'),
               // §imgMemCache — plafond du cache image EN RAM.
               _buildStepper(
                 label: 'Images (RAM)',
@@ -418,7 +448,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               ),
 
               // §acctPurge — Fichiers sans propriétaire.
-              _sectionLabel('Stockage', cs),
+              const SectionMark('Stockage'),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Text(
@@ -475,6 +505,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               ),
             ],
           ),
+          ),
         ),
       ),
     );
@@ -482,18 +513,39 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
 
   // ── Helpers UI (mêmes patterns que ThemeSettingsPage) ────────────────────
 
-  Widget _sectionLabel(String title, ColorScheme cs) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
-        child: Text(
-          title.toUpperCase(),
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.8,
-            color: cs.onSurfaceVariant,
-          ),
+  /// §deviceCaps — Libellés des profils : par identifiant, dans la l10n.
+  String _presetLabel(String id) => switch (id) {
+        'confort' => context.l10n.perfProfileConfort,
+        'equilibre' => context.l10n.perfProfileEquilibre,
+        'performance' => context.l10n.perfProfilePerformance,
+        _ => id,
+      };
+
+  String _presetSubtitle(String id) => switch (id) {
+        'confort' => context.l10n.perfProfileConfortSub,
+        'equilibre' => context.l10n.perfProfileEquilibreSub,
+        'performance' => context.l10n.perfProfilePerformanceSub,
+        _ => '',
+      };
+
+  Widget _capsTile(ColorScheme cs) {
+    final l10n = context.l10n;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: FocusableCard(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const DeviceCapsPage()),
         ),
-      );
+        child: ListTile(
+          leading: Icon(Icons.memory, color: kAccentSecondary),
+          title: Text(l10n.capsTitle),
+          subtitle: Text(l10n.capsSub, style: const TextStyle(fontSize: 11)),
+          trailing: Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
 
   Widget _buildProfilesRow(ColorScheme cs) {
     return SizedBox(
@@ -510,8 +562,11 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           // c'est un réglage de CONFORT volontairement hors des profils de
           // performance (cf. §autoNextEp dans perf_config.dart) ; appliquer
           // preset.config tel quel l'écrasait silencieusement.
-          void applyPreset() => _apply(
-              preset.config.copyWith(autoNextEpisode: _config.autoNextEpisode));
+          void applyPreset() => _apply(preset.config.copyWith(
+                autoNextEpisode: _config.autoNextEpisode,
+                // §posterLang — même raison : hors profils, donc préservé.
+                tmdbPostersFirst: _config.tmdbPostersFirst,
+              ));
           return FocusableChip(
             onTap: applyPreset,
             borderRadius: BorderRadius.circular(10),
@@ -545,7 +600,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                         color: active ? kAccentSecondary : cs.onSurfaceVariant),
                     const SizedBox(height: 4),
                     Text(
-                      preset.name,
+                      _presetLabel(preset.name),
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight:
@@ -556,7 +611,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      preset.subtitle,
+                      _presetSubtitle(preset.name),
                       style: TextStyle(
                         fontSize: 9,
                         color: cs.onSurfaceVariant,
@@ -653,12 +708,17 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               width: 72,
               child: Text(label, style: const TextStyle(fontSize: 13)),
             ),
+            // §boundFocus — `onPressed: null` retire le bouton de la
+            // traversee ALORS QU'IL A LE FOCUS : arrive a la borne, le bouton
+            // focuse disparait et la telecommande se retrouve nulle part.
+            // Il reste donc actif — le `clamp` en fait deja un geste sans
+            // effet — et c'est la COULEUR qui dit qu'on est au bout.
             IconButton(
               icon: const Icon(Icons.remove_circle_outline),
-              onPressed: enabled && value > min
+              onPressed: enabled
                   ? () => onChanged((value - step).clamp(min, max))
                   : null,
-              color: color,
+              color: value > min ? color : color.withAlpha(70),
               tooltip: 'Diminuer',
             ),
             Expanded(
@@ -684,10 +744,10 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
             ),
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
-              onPressed: enabled && value < max
+              onPressed: enabled
                   ? () => onChanged((value + step).clamp(min, max))
                   : null,
-              color: color,
+              color: value < max ? color : color.withAlpha(70),
               tooltip: 'Augmenter',
             ),
             SizedBox(

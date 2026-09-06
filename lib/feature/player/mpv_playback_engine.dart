@@ -169,6 +169,7 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
     Duration? start,
     String? audioLang,
     String? subLang,
+    AetherNowPlaying? nowPlaying,
   }) async {
     _openTime = DateTime.now();
     _firstPlayTime = null;
@@ -196,6 +197,7 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
     Duration? start,
     String? audioLang,
     String? subLang,
+    AetherNowPlaying? nowPlaying,
   }) async {
     _openTime = DateTime.now();
     _firstPlayTime = null;
