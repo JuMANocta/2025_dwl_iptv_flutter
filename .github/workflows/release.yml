@@ -32,7 +32,9 @@ jobs:
           channel: stable
           cache: true
           pub-cache: true
-          pub-cache-key: pub-${{ hashFiles('pubspec.lock') }}
+          # ⚠️ pubspec.lock est gitignoré : sans pubspec.yaml dans le hachage la
+          # clé serait constante (« pub-- », vu au premier run).
+          pub-cache-key: pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
 
       - name: Installer les dépendances
         run: flutter pub get
@@ -75,7 +77,9 @@ jobs:
           channel: stable
           cache: true
           pub-cache: true
-          pub-cache-key: pub-${{ hashFiles('pubspec.lock') }}
+          # ⚠️ pubspec.lock est gitignoré : sans pubspec.yaml dans le hachage la
+          # clé serait constante (« pub-- », vu au premier run).
+          pub-cache-key: pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
 
       - name: Synchroniser pubspec.yaml avec le tag git
         run: |
@@ -152,7 +156,7 @@ jobs:
           ls -la aetherstream.apk
 
       - name: Conserver l'APK pour le job de release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: apk
           path: |
@@ -169,7 +173,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Récupérer l'APK signé
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: apk
 
@@ -183,7 +187,7 @@ jobs:
           cat body.md
 
       - name: Créer la release GitHub et uploader l'APK
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: AetherStream ${{ github.ref_name }}
           files: |
