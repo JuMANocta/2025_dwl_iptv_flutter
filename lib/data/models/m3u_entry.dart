@@ -375,13 +375,58 @@ class TitleMetadata {
     r')(?!\w)',
     caseSensitive: false,
   );
-  static final _reTrimStart    = RegExp(r'^[ \t\-_.\(\)\[\]]+');
-  static final _reTrimEnd      = RegExp(r'[ \t\-_.\(\)\[\]]+$');
+  /// §parseSpeed (2026-09-06) — Était construite À CHAQUE titre dans
+  /// [parse] (une regex Unicode compilée 153 000 fois : 4 % du parsing).
+  static final _reHasWord = RegExp(r'[\p{L}]{2,}', unicode: true);
+
+  /// §parseSpeed — Rogne les deux bouts sans regex ; même jeu de caractères
+  /// que les `_reTrim*` correspondantes.
+  static String _trimChars(String v, String chars) {
+    int start = 0;
+    int end = v.length;
+    while (start < end && chars.contains(v[start])) {
+      start++;
+    }
+    while (end > start && chars.contains(v[end - 1])) {
+      end--;
+    }
+    return (start == 0 && end == v.length) ? v : v.substring(start, end);
+  }
+
+  static const String _trimSetBase = ' \t-_.';
+  static const String _trimSetLabel = ' \t-_.()[]';
+
+  /// §parseSpeed — `replaceAll(_reSpaces, ' ')` ne change rien quand la chaîne
+  /// n'a que des espaces ASCII simples : on ne lance la regex que s'il y a
+  /// un blanc d'une autre nature (tabulation, insécable, espace Unicode) ou
+  /// deux blancs de suite. Le jeu est celui de `\s` en ECMAScript.
+  static bool _needsSpaceCollapse(String v) {
+    int prev = -1;
+    for (int i = 0; i < v.length; i++) {
+      final int c = v.codeUnitAt(i);
+      final bool ws = c == 32 ||
+          (c >= 9 && c <= 13) ||
+          c == 0xA0 ||
+          c == 0x1680 ||
+          (c >= 0x2000 && c <= 0x200A) ||
+          c == 0x2028 ||
+          c == 0x2029 ||
+          c == 0x202F ||
+          c == 0x205F ||
+          c == 0x3000 ||
+          c == 0xFEFF;
+      if (ws && (c != 32 || prev == 32)) return true;
+      prev = c;
+    }
+    return false;
+  }
+
+  static String _collapseSpaces(String v) =>
+      _needsSpaceCollapse(v) ? v.replaceAll(_reSpaces, ' ') : v;
+
   // §23b — Trim du TITRE D'AFFICHAGE : ne mange PAS les parenthèses/crochets
   // (sinon "Totally Killer (Dezesseis Facadas)" perdait sa fermante — les
   // paires vides résiduelles sont déjà traitées par _reEmptyBrackets).
-  static final _reTrimBaseStart = RegExp(r'^[ \t\-_.]+');
-  static final _reTrimBaseEnd   = RegExp(r'[ \t\-_.]+$');
 
   /// §orphanBracket — Retire les parenthèses/crochets SANS partenaire.
   ///
@@ -673,8 +718,34 @@ class TitleMetadata {
   // brut le garde, donc « Franz K. » vs « Franz K » ne s'appariaient pas et le
   // « K » ressortait en libellé de version. 1 154 titres réels.
   static final _reWordEdge = RegExp(r'^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$', unicode: true);
-  static String _wordKey(String token) =>
-      token.replaceAll(_reWordEdge, '').toLowerCase();
+  static bool _isAsciiAlnum(int c) =>
+      (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+
+  /// §parseSpeed — Voie rapide ASCII : les bords se rognent sans regex (pour
+  /// de l'ASCII pur, `\p{L}\p{N}` = lettres et chiffres ASCII). Un jeton
+  /// non-ASCII garde la regex Unicode.
+  static String _wordKey(String token) {
+    for (int i = 0; i < token.length; i++) {
+      if (token.codeUnitAt(i) > 127) {
+        return token.replaceAll(_reWordEdge, '').toLowerCase();
+      }
+    }
+    int start = 0;
+    int end = token.length;
+    while (start < end && !_isAsciiAlnum(token.codeUnitAt(start))) {
+      start++;
+    }
+    while (end > start && !_isAsciiAlnum(token.codeUnitAt(end - 1))) {
+      end--;
+    }
+    return token.substring(start, end).toLowerCase();
+  }
+
+  /// §parseSpeed — Découpe sur les blancs : `split(' ')` quand il n'y a que
+  /// des espaces ASCII simples (le cas courant), la regex sinon. Les jetons
+  /// vides sont ignorés par l'appelant dans les deux cas.
+  static Iterable<String> _splitWords(String v) =>
+      _needsSpaceCollapse(v) ? v.split(_reSpaces) : v.split(' ');
 
   /// §labelLeak — Retire de [label] les mots de [base], en différence de
   /// multiensemble (ordre indifférent, casse ignorée).
@@ -684,13 +755,12 @@ class TitleMetadata {
   /// ce que le titre ne contenait pas — la définition même d'un libellé de
   /// version.
   static String _subtractWords(String label, String base) {
-    final pending = base
-        .split(_reSpaces)
+    final pending = _splitWords(base)
         .map(_wordKey)
         .where((t) => t.isNotEmpty)
         .toList();
     final kept = <String>[];
-    for (final token in label.split(_reSpaces)) {
+    for (final token in _splitWords(label)) {
       final key = _wordKey(token);
       // Miette de ponctuation isolée (« , », « - ») : jamais un libellé de
       // version, et elle survivrait à toute soustraction. On la jette.
@@ -715,11 +785,11 @@ class TitleMetadata {
   ///
   /// Sur un préfixe à plusieurs segments (`|FR|VOST|`), seul le PREMIER est
   /// retenu : les suivants sont des langues/qualités, déjà extraites ailleurs.
-  static String? _extractProviderTag(String source) {
-    final m = _rePrefix.matchAsPrefix(source) ??
-        _reNewPrefix.matchAsPrefix(source);
-    if (m == null) return null;
-    var tag = m.group(0)!.trim();
+  /// §parseSpeed — Le préfixe est reconnu UNE fois dans [parse] (pour la
+  /// langue LEG) et réutilisé ici, au lieu de deux `matchAsPrefix` de plus.
+  static String? _providerTagFrom(String? prefix) {
+    if (prefix == null) return null;
+    var tag = prefix.trim();
     while (tag.startsWith('|')) {
       tag = tag.substring(1);
     }
@@ -761,8 +831,22 @@ class TitleMetadata {
   /// valeurs distinctes pour des centaines de milliers d'entrées. Facultatif —
   /// par défaut [StringPool.none] rend chaque valeur telle quelle, donc les
   /// appels isolés (fiche détail, tests) sont inchangés.
+  /// §parseSpeed — Chronos par étape de [parse], pour le banc
+  /// (`test/parse_bench_test.dart`). Inactifs en production (`profileStages`
+  /// faux : aucun `Stopwatch` créé).
+  static bool profileStages = false;
+  static final Map<String, int> stageUs = <String, int>{};
+
   factory TitleMetadata.parse(String rawTitle,
       [StringPool pool = StringPool.none]) {
+    final Stopwatch? sw = profileStages ? (Stopwatch()..start()) : null;
+    int lapAt = 0;
+    void lap(String k) {
+      if (sw == null) return;
+      final int now = sw.elapsedMicroseconds;
+      stageUs[k] = (stageUs[k] ?? 0) + (now - lapAt);
+      lapAt = now;
+    }
     // §23 — Pré-normalisation : superscripts Unicode → ASCII (live "GEO ᶠᴴᴰ")
     // pour que la détection qualité/le nettoyage fonctionnent dessus.
     String work = rawTitle;
@@ -776,6 +860,7 @@ class TitleMetadata {
       if (work.contains(e.key)) work = work.replaceAll(e.key, e.value);
     }
     final lower = work.toLowerCase();
+    lap('A prenorm');
 
     final seasonMatch   = _reSeason.firstMatch(work);
     // Fallback NNxNN (ex: "01x01") UNIQUEMENT pour le format série signé par un
@@ -798,6 +883,7 @@ class TitleMetadata {
     // `1992`, `2046`, `2001 Maniacs`, `1941 (1979)`…) et, sur TOUS, le nombre
     // de tête est le titre : la date, elle, est entre parenthèses ou en fin.
     final year = _extractYear(work);
+    lap('B saison+annee');
 
     String? quality;
     // §camQuality — Testé EN PREMIER : sur un rip de salle, la résolution
@@ -813,7 +899,23 @@ class TitleMetadata {
     if (_reLangMulti.hasMatch(lower))  langs.add('MULTI');
     // §23 — VOSTFR : forme compacte ("vostfr") OU éclatée dans le préfixe
     // PLATINIUM (`|VO|STFR|`).
-    if (_reLangVostfr.hasMatch(lower) || _reVoStfr.hasMatch(work)) {
+    // §parseSpeed — Pré-tests par caractère : une regex qui ne peut rien
+    // trouver n'est pas lancée. Chaque test est EXACT (le motif exige ce
+    // caractère / ce mot), et `base`/`label` ne dérivent de `work` que par
+    // retraits : ce que `work` n'a pas, ils ne l'ont pas.
+    final bool hasPipe = work.contains('|');
+    final bool hasBracket = work.contains('(') || work.contains('[');
+    // Une fermante ORPHELINE (« Drishyam 2015) ») n'a pas d'ouvrante : le
+    // nettoyage des orphelines regarde les quatre caractères (le filet
+    // d'instantané a attrapé ce cas au premier passage).
+    final bool hasAnyBracket =
+        hasBracket || work.contains(')') || work.contains(']');
+    final bool hasDolby = lower.contains('dolby');
+    final bool hasFps = lower.contains('fps');
+    final bool hasSub = lower.contains('sub');
+    final bool hasYearDigits = lower.contains('19') || lower.contains('20');
+    final bool hasDupSep = work.contains('-') || work.contains('.');
+    if (_reLangVostfr.hasMatch(lower) || (hasPipe && _reVoStfr.hasMatch(work))) {
       langs.add('VOSTFR');
     }
     if (_reLangVf.hasMatch(lower))     langs.add('VF');
@@ -825,11 +927,12 @@ class TitleMetadata {
     if (legPrefix != null && _reLangLeg.hasMatch(legPrefix)) {
       langs.add('LEG');
     }
+    lap('C qualite+langues');
 
     String base = work;
     base = base.replaceAll(_rePrefix, '');
     base = base.replaceAll(_reNewPrefix, ''); // §xenoFormat
-    base = base.replaceAll(_reSubSuffix, '');
+    if (hasSub) base = base.replaceAll(_reSubSuffix, '');
     // §23 — Coupe au marqueur SxxExx recalculé SUR base (post-préfixe).
     // L'ancien code réutilisait l'index calculé sur rawTitle, décalé dès que
     // le préfixe était retiré → coupe au mauvais endroit sur les préfixes longs.
@@ -852,19 +955,25 @@ class TitleMetadata {
     // sa propre question — « le strip a-t-il entamé ce groupe ? » — puisque le
     // strip est déjà passé. Mesuré : 1 266 résidus avant, 1 266 après. Placé
     // ici, il voit `[MULTi VQF/VO]` entier et tranche.
+    lap('D1 prefixes+saison');
     final keptGroups = <String>[];
     base = _cleanTagGroups(base, keptGroups);
-    base = base.replaceAll(_reMultiSubTag, ' '); // §xenoFormat — avant _reLangTags
-    base = base.replaceAll(_reDolby, '');        // multi-mots en premier
+    lap('D2 cleanTagGroups');
+    if (hasBracket) base = base.replaceAll(_reMultiSubTag, ' '); // §xenoFormat — avant _reLangTags
+    if (hasDolby) base = base.replaceAll(_reDolby, '');        // multi-mots en premier
     base = base.replaceAll(_reQualityTags, '');
     base = base.replaceAll(_reLangTags, '');
-    base = base.replaceAll(_reLangParens, ' '); // (FR), (AR), (VOST FR), (MUET)…
-    base = base.replaceAll(_reFpsParens, ' ');  // §parseAudit2026-06-30 — (50 FPS), (60FPS)
+    if (hasBracket) base = base.replaceAll(_reLangParens, ' '); // (FR), (AR), (VOST FR), (MUET)…
+    if (hasBracket && hasFps) base = base.replaceAll(_reFpsParens, ' ');  // §parseAudit2026-06-30 — (50 FPS), (60FPS)
+    lap('D3 tags (6 replaceAll)');
     base = _stripYears(base); // §yearTitle — préserve une année de tête
+    lap('D4 stripYears');
     // §midYear — Retirer une année ENCADRÉE par un séparateur laisse les deux
     // délimiteurs collés (`Lees Baghdad - - لص بغداد`, `Wrong.Place..lati`).
     // (`replaceAll` ne fait PAS de rétro-référence en Dart, d'où le Mapped.)
-    base = base.replaceAllMapped(_reDupSeparator, (m) => m.group(1)!);
+    if (hasDupSep) {
+      base = base.replaceAllMapped(_reDupSeparator, (m) => m.group(1)!);
+    }
     // §23b — La PONCTUATION INTERNE est CONSERVÉE pour l'affichage
     // ("M.A.S.H", "Cape Fear - Les Nerfs à vif", "Narcos: Mexico").
     // L'ancien `_rePunct → espace` produisait "M A S H" à l'écran. Le
@@ -872,7 +981,7 @@ class TitleMetadata {
     // par [groupKey] (voir computeGroupKey). On ne retire ici que les
     // artefacts laissés par le strip des tags : paires de parenthèses/
     // crochets VIDES ("Michael [ ]" après retrait de "[4K DV HDR MULTi]").
-    base = base.replaceAll(_reEmptyBrackets, ' ');
+    if (hasBracket) base = base.replaceAll(_reEmptyBrackets, ' ');
     base = base.replaceAll(_reSeasonClean, ' ');
     // §parseAudit2026-06-30 — Tout `|` restant à ce stade n'est JAMAIS un vrai
     // caractère de titre (le seul usage légitime, le préfixe région en tête,
@@ -881,28 +990,31 @@ class TitleMetadata {
     // ("CORP|US| CHRISTI" → "CORPUS CHRISTI", "COLUMB|US|" → "COLUMBUS") et
     // nettoyer les séparateurs pipe résiduels ("All My Life || MULTI" →
     // "All My Life" une fois MULTI retiré). ~6 900 titres réels concernés.
-    base = base.replaceAll('|', '');
+    if (hasPipe) base = base.replaceAll('|', '');
     base = _unmaskGroups(base, keptGroups); // §tagResidue — groupes conservés
-    base = _dropOrphanBrackets(base); // §orphanBracket
-    base = base.replaceAll(_reSpaces, ' ').trim();
-    base = base.replaceAll(_reTrimBaseStart, '').replaceAll(_reTrimBaseEnd, '');
+    if (hasAnyBracket) base = _dropOrphanBrackets(base); // §orphanBracket
+    base = _collapseSpaces(base).trim();
+    base = _trimChars(base, _trimSetBase);
+    lap('D5 fin base');
     if (base.isEmpty) {
       // §23b — Fallback RÉPARÉ : l'ancien `length < 2` rejetait les titres
       // légitimes d'1 caractère (séries "H", "V") et retombait sur le titre
       // BRUT (préfixe `|FR|` + année inclus) → clé "|fr| h (1998)" → tuile
       // moche + zéro fusion. Nouveau repli : version post-préfixe/année,
       // ponctuation conservée ; brut seulement en dernier recours.
-      var fb = work
-          .replaceAll(_rePrefix, '')
-          .replaceAll(_reNewPrefix, '') // §xenoFormat
-          .replaceAll('|', '')
-          .replaceAll(_reSpaces, ' ')
+      var fb = _collapseSpaces(work
+              .replaceAll(_rePrefix, '')
+              .replaceAll(_reNewPrefix, '') // §xenoFormat
+              .replaceAll('|', ''))
           .trim();
       fb = _dropOrphanBrackets(fb); // §orphanBracket
-      fb = fb.replaceAll(_reTrimBaseStart, '').replaceAll(_reTrimBaseEnd, '');
+      fb = _trimChars(fb, _trimSetBase);
       base = fb.isNotEmpty ? fb : work.trim();
     }
 
+    // §parseSpeed — la clé de la base, calculée UNE fois (elle servait deux
+    // fois : le test du libellé, puis le champ).
+    final String groupKey = computeGroupKey(base);
     String? versionLabel;
     if (base.isNotEmpty) {
       String label = work;
@@ -910,18 +1022,18 @@ class TitleMetadata {
       // §providerTag — Le marqueur de tête part dans son propre champ :
       // le laisser ici le faisait afficher comme une QUALITÉ.
       label = label.replaceAll(_reNewPrefix, '');
-      label = label.replaceAll(_reSubSuffix, '');
-      label = label.replaceAll(_reYearClean, '');
+      if (hasSub) label = label.replaceAll(_reSubSuffix, '');
+      if (hasYearDigits) label = label.replaceAll(_reYearClean, '');
       // §tagResidue — Même traitement EN BLOC que `baseTitle`, sinon on nettoie
       // le titre et le débris ressort dans la pastille de version : mesuré,
       // `Superman (2025) [4K HDR10+ Dolby A/V]` donnait `label=A/V`. C'est
       // exactement le motif de §labelLeak.
-      label = label.replaceAll(_reMultiSubTag, ' '); // §xenoFormat
-      label = label.replaceAll(_reDolby, '');    // multi-mots en premier
+      if (hasBracket) label = label.replaceAll(_reMultiSubTag, ' '); // §xenoFormat
+      if (hasDolby) label = label.replaceAll(_reDolby, '');    // multi-mots en premier
       label = label.replaceAll(_reAllTags, '');
-      label = label.replaceAll(_reLangParens, ' ');
-      label = label.replaceAll(_reFpsParens, ' '); // §parseAudit2026-06-30
-      label = label.replaceAll('|', '');            // §parseAudit2026-06-30
+      if (hasBracket) label = label.replaceAll(_reLangParens, ' ');
+      if (hasBracket && hasFps) label = label.replaceAll(_reFpsParens, ' '); // §parseAudit2026-06-30
+      if (hasPipe) label = label.replaceAll('|', '');            // §parseAudit2026-06-30
       // §labelLeak — Soustraction du titre par MOTS, et non par sous-chaîne
       // littérale. L'ancien `replaceAll(RegExp.escape(base))` supposait que le
       // titre nettoyé soit resté une sous-chaîne EXACTE du brut : un double
@@ -934,10 +1046,11 @@ class TitleMetadata {
       // ⚠️ Placée EN DERNIER, pas en tête : sur le titre encore brut, les mots
       // portent leur ponctuation collée (« 2026, ») et ne correspondent à aucun
       // mot du titre nettoyé — la soustraction laissait alors des miettes.
+      lap('E1 label replaceAll');
       label = _subtractWords(label, base);
-      label = label.replaceAll(_reTrimStart, '');
-      label = label.replaceAll(_reTrimEnd, '');
-      label = label.trim().replaceAll(_reSpaces, ' ');
+      lap('E2 subtractWords');
+      label = _trimChars(label, _trimSetLabel);
+      label = _collapseSpaces(label.trim());
       // §labelLeak — Filet final : un libellé de VERSION ne répète jamais le
       // titre. Il reste quelques tokenisations impossibles à apparier mot à mot
       // (titres arabes dont l'année est collée au 1er mot : « (2023)ملك الحلبة »
@@ -949,28 +1062,32 @@ class TitleMetadata {
       // s'affichait tel quel sur la pastille de version. On exige au moins un
       // mot de 2 lettres — ce qui laisse passer `Directors.Cut` (§labelLeak,
       // le seul libellé authentique du corpus) et rejette `A/V`, `/`, `-`.
-      final hasWord = RegExp(r'[\p{L}]{2,}', unicode: true).hasMatch(label);
+      final hasWord = _reHasWord.hasMatch(label);
+      lap('E3 hasWord');
       if (label.isNotEmpty &&
           hasWord &&
-          !computeGroupKey(base).contains(computeGroupKey(label))) {
+          !groupKey.contains(computeGroupKey(label))) {
         versionLabel = label;
       }
+      lap('E4 groupKey label');
     }
 
     // §ramDiet — `rawTitle`, `baseTitle` et `groupKey` ne sont PAS internés :
     // ils sont quasiment uniques par entrée, la table ne ferait que doubler
     // l'empreinte. Seuls les champs à vocabulaire fermé passent par le pool.
+    final String? providerTag = _providerTagFrom(legPrefix);
+    lap('F providerTag');
     return TitleMetadata(
       rawTitle: rawTitle,
       baseTitle: base,
-      groupKey: computeGroupKey(base),
+      groupKey: groupKey,
       year: pool.of(year),
       seasonNumber: seasonNumber,
       episodeNumber: episodeNumber,
       quality: pool.of(quality),
       languages: pool.ofList(langs),
       versionLabel: pool.of(versionLabel),
-      providerTag: pool.of(_extractProviderTag(work)),
+      providerTag: pool.of(providerTag),
     );
   }
 

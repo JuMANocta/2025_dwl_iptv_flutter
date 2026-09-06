@@ -32,8 +32,12 @@ class _CategoryRow extends StatelessWidget {
     this.tmdbFirst = false,
   });
 
+  /// §tabMeter — builds de rangées depuis le lancement (cf. `_HomeCardState`).
+  static int buildCount = 0;
+
   @override
   Widget build(BuildContext context) {
+    buildCount++;
     final cs = Theme.of(context).colorScheme;
 
     return Padding(

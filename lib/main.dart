@@ -505,6 +505,16 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       // §bootStatus — Seule étape à progression DÉTERMINÉE : `loadActive`
       // expose déjà `onProgress` (throttlé côté BootStatus au pourcentage
       // entier). C'est aussi la plus longue sur un gros catalogue.
+      // §bootPipeline (2026-09-06) — Le téléchargement de la PREMIÈRE liste
+      // secondaire part maintenant, pendant l'analyse de la principale : le
+      // réseau et l'analyse se recouvrent au lieu de se suivre (mesuré : 60 s
+      // de réseau en série sur un démarrage de 154 s). Un téléchargement
+      // n'écrit qu'un fichier ; il ne touche pas la mémoire des listes.
+      final List<StreamAccount> othersEarly =
+          accounts.where((a) => a.id != acc.id).toList();
+      _prestartedDl =
+          othersEarly.isEmpty ? null : _downloadPhase(othersEarly.first);
+      _prestartedDlId = othersEarly.isEmpty ? null : othersEarly.first.id;
       BootStatus.set('// analyse du catalogue…', progress: 0);
       await ParsedPlaylistService.loadActive(
         acc.id,
@@ -645,7 +655,65 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   /// exactement comme avant, on cesse simplement de l'attendre. L'annuler
   /// laisserait un `.part` orphelin ; le relancer téléchargerait deux fois le
   /// même fichier au même endroit.
-  static const Duration _bootHydrateBudget = Duration(seconds: 60);
+  // (2026-09-06) L'ancien budget fixe de 60 s a été RETIRÉ : voir
+  // `_bootStallLimit` / `_bootHydrateHardCap` ci-dessous (§bootProgress).
+
+  /// §bootProgress (2026-09-06) — Le budget FIXE ci-dessus n'est plus ce qui
+  /// rend la main : sur le téléviseur, trois grosses listes à ré-analyser
+  /// (46 s chacune, l'une après l'autre) le dépassaient à chaque mise à jour,
+  /// et l'accueil arrivait avec « 2/3 » et un chargement qui continuait — que
+  /// le réconciliateur DOUBLAIT (cf. §fleetSingle). Règle désormais : le boot
+  /// attend tant qu'une liste **avance** (l'étape, sa progression ou son
+  /// détail changent sur l'écran de boot), et ne rend la main que si elle est
+  /// **immobile** — 20 s sans mouvement pendant une analyse, 95 s pendant un
+  /// téléchargement (qui n'annonce pas sa progression et dont les délais
+  /// réseau sont bornés à 30 + 60 s) — ou au plafond absolu de 5 min. Un
+  /// panel mort ne retient donc plus le démarrage que le temps de son délai
+  /// réseau, une analyse longue mais vivante reste sur le boot principal.
+  static const Duration _bootStallLimit = Duration(seconds: 20);
+  static const Duration _bootDownloadStallLimit = Duration(seconds: 95);
+  static const Duration _bootHydrateHardCap = Duration(minutes: 5);
+
+  static String _bootSignature() {
+    final BootStep s = BootStatus.step.value;
+    return '${s.label}|${s.progress}|${s.detail}';
+  }
+
+  /// Attend [f] tant que l'écran de boot bouge. Rend `true` si la tâche s'est
+  /// terminée, `false` si on cesse de l'attendre (immobile, ou plafond).
+  Future<bool> _awaitWhileProgressing(
+    Future<void> f,
+    StreamAccount acc,
+    DateTime hardDeadline,
+  ) async {
+    bool done = false;
+    f.whenComplete(() => done = true).catchError((_) {});
+    String sig = _bootSignature();
+    DateTime lastMove = DateTime.now();
+    while (!done) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (done) break;
+      final String now = _bootSignature();
+      if (now != sig) {
+        sig = now;
+        lastMove = DateTime.now();
+      }
+      final bool downloading =
+          ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.downloading;
+      final Duration limit =
+          downloading ? _bootDownloadStallLimit : _bootStallLimit;
+      final Duration still = DateTime.now().difference(lastMove);
+      if (still > limit) {
+        debugPrint('⏳ §bootProgress : « ${acc.label} » immobile depuis ${still.inSeconds} s (${downloading ? 'téléchargement' : 'analyse'}) — on cesse de l\'attendre, le travail continue.');
+        return false;
+      }
+      if (DateTime.now().isAfter(hardDeadline)) {
+        debugPrint('⏳ §bootProgress : plafond de ${_bootHydrateHardCap.inMinutes} min atteint — la suite est reportée.');
+        return false;
+      }
+    }
+    return true;
+  }
 
   /// §bootHydrate — Le journal de démarrage accepte-t-il encore des étapes ?
   ///
@@ -685,13 +753,31 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
     debugPrint('🚚 §bootHydrate : ${pending.length}/${others.length} compte(s) '
         'à mettre à jour dans le boot.');
-    final DateTime deadline = DateTime.now().add(_bootHydrateBudget);
+    // §bootProgress — le plafond absolu remplace l'ancien budget de 60 s
+    // (60 s, retiré) ; c'est le MOUVEMENT qui
+    // décide, dans `_awaitWhileProgressing`.
+    final DateTime deadline = DateTime.now().add(_bootHydrateHardCap);
     final List<Future<void>> started = <Future<void>>[];
+    bool gaveUp = false;
+
+    // §bootPipeline — Le téléchargement de la liste i+1 part pendant
+    // l'ANALYSE de la liste i (une analyse à la fois, §ramDiet ; les
+    // téléchargements vont vers des panels différents — un même hôte est de
+    // toute façon sérialisé par §hostGate). Le tout premier a pu être lancé
+    // pendant l'analyse de la liste principale (`_prestartedDl`).
+    Future<_DlPhase>? nextDl;
+    if (_prestartedDl != null && pending.first.id == _prestartedDlId) {
+      nextDl = _prestartedDl;
+    } else {
+      nextDl = _downloadPhase(pending.first);
+    }
+    _prestartedDl = null;
+    _prestartedDlId = null;
 
     for (int i = 0; i < pending.length; i++) {
       final StreamAccount acc = pending[i];
       final Duration left = deadline.difference(DateTime.now());
-      if (left <= Duration.zero) {
+      if (left <= Duration.zero || gaveUp) {
         // §fleetLoad — ⚠️ L'ancien code lançait ici tous les comptes restants
         // d'un coup, SANS `await`. La rafale se déclenchait précisément quand
         // le fournisseur ramait : la lenteur fabriquait le parallélisme qui
@@ -713,19 +799,29 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       BootStatus.set(
         '// mise à jour ${i + 1}/${pending.length} · ${acc.label}…',
       );
-      final Future<void> f = _hydrateOne(acc, announce: true);
-      started.add(f);
-      // ⚠️ `catchError` en plus du try/catch interne de `_hydrateOne` : ce
-      // `await` est sur le chemin du DÉMARRAGE. Une exception qui remonterait
-      // ici ferait échouer `_initializeApp` en entier — un compte secondaire
-      // cassé empêcherait d'ouvrir l'application.
-      await f.timeout(left, onTimeout: () {
-        debugPrint('⏳ §bootHydrate : « ${acc.label} » dépasse le budget ; on '
-            'cesse de l\'attendre, le travail continue.');
-      }).catchError((Object e) {
-        debugPrint('⚠️ §bootHydrate : « ${acc.label} » a échoué ($e) — on passe '
-            'au suivant.');
-      });
+      // §bootProgress — On attend tant que ça avance ; une liste immobile
+      // rend la main (son travail continue, sans doublon : §fleetSingle) et
+      // les suivantes sont reportées au réconciliateur.
+      // §bootPipeline — phase réseau (déjà en cours), puis phase analyse ; le
+      // téléchargement suivant part ENTRE les deux.
+      final Future<_DlPhase> dlF = nextDl!;
+      final bool dlDone =
+          await _awaitWhileProgressing(dlF.then((_) {}), acc, deadline);
+      if (!dlDone) {
+        gaveUp = true;
+        // Le téléchargement continue ; son analyse suivra en arrière-plan.
+        started.add(dlF.then((dl) async {
+          if (!dl.failed) await _parsePhase(acc, dl, announce: false);
+        }));
+        continue;
+      }
+      final _DlPhase dl = await dlF;
+      if (i + 1 < pending.length) nextDl = _downloadPhase(pending[i + 1]);
+      if (dl.failed) continue;
+      final Future<void> pf = _parsePhase(acc, dl, announce: true);
+      started.add(pf);
+      final bool finished = await _awaitWhileProgressing(pf, acc, deadline);
+      if (!finished) gaveUp = true;
     }
 
     // §favReconcile — La passe FINALE pose un drapeau one-shot : elle ne doit
@@ -746,7 +842,41 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   /// faite DANS le boot, où l'étape est visible et où une barre figée pendant
   /// 14 s serait exactement le défaut que §bootPercent corrige. En arrière-plan,
   /// la méthode reste silencieuse comme avant.
-  Future<void> _hydrateOne(StreamAccount acc, {bool announce = false}) async {
+  // §bootPipeline — le premier téléchargement secondaire, lancé pendant
+  // l'analyse de la liste principale (cf. `_initializeApp`).
+  Future<_DlPhase>? _prestartedDl;
+  String? _prestartedDlId;
+
+  /// §bootPipeline — Phase RÉSEAU : le fichier, ou l'échec. Ne lève jamais.
+  /// §secondaryRefresh — On ne saute PLUS les comptes déjà chargés depuis le
+  /// disque : ils passent quand même par le contrôle de TTL.
+  Future<_DlPhase> _downloadPhase(StreamAccount acc) async {
+    final bool alreadyLoaded =
+        ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded;
+    if (!alreadyLoaded) {
+      ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.downloading);
+    }
+    try {
+      final res = await PlaylistService.ensureDownloadedForAccount(acc);
+      if (res.path == null) {
+        if (!alreadyLoaded) {
+          ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
+        }
+        return (path: null, downloaded: false, alreadyLoaded: alreadyLoaded, failed: true);
+      }
+      return (path: res.path, downloaded: res.downloaded, alreadyLoaded: alreadyLoaded, failed: false);
+    } catch (_) {
+      if (!alreadyLoaded) {
+        ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
+      }
+      return (path: null, downloaded: false, alreadyLoaded: alreadyLoaded, failed: true);
+    }
+  }
+
+  /// §bootPipeline — Phase ANALYSE : charge en mémoire ce que la phase réseau
+  /// a rendu. Ne lève jamais.
+  Future<void> _parsePhase(StreamAccount acc, _DlPhase dl,
+      {bool announce = false}) async {
     // Fermetures plutôt que tear-offs : le droit de parler est réévalué à
     // CHAQUE publication, pas figé au lancement de l'hydratation.
     void report(double v) {
@@ -759,36 +889,22 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
     final void Function(double)? onProgress = announce ? report : null;
     final void Function(String)? onDetail = announce ? detail : null;
-    // §secondaryRefresh — On ne saute PLUS les comptes déjà chargés depuis le
-    // disque : ils passent quand même par le contrôle de TTL. Avant, un compte
-    // secondaire dont le cache existait n'était jamais retéléchargé, quelle
-    // que soit son ancienneté — sa liste restait figée à vie.
-    final bool alreadyLoaded =
-        ParsedPlaylistService.stateOf(acc.id) == AccountLoadState.loaded;
-    if (!alreadyLoaded) {
-      ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.downloading);
-    }
+    final bool alreadyLoaded = dl.alreadyLoaded;
+    final String path = dl.path!;
     try {
-      final res = await PlaylistService.ensureDownloadedForAccount(acc);
-      if (res.path == null) {
-        if (!alreadyLoaded) {
-          ParsedPlaylistService.setLoadState(acc.id, AccountLoadState.error);
-        }
-        return;
-      }
       if (announce && _bootAnnouncing) {
         BootStatus.set('// analyse · ${acc.label}…', progress: 0);
       }
       if (alreadyLoaded) {
         // Rien de neuf : la copie en mémoire est déjà la bonne.
-        if (!res.downloaded) return;
+        if (!dl.downloaded) return;
         // Fichier renouvelé → la mémoire est périmée, on la remplace
         // atomiquement (reloadFromDisk parse AVANT de permuter, donc pas
         // d'état vide intermédiaire visible sur la home).
         await ParsedPlaylistService.reloadFromDisk(
           acc.id,
           acc.label,
-          res.path!,
+          path,
           onProgress: onProgress,
           onDetail: onDetail,
         );
@@ -799,7 +915,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       await ParsedPlaylistService.loadSecondary(
         acc.id,
         acc.label,
-        res.path!,
+        path,
         onProgress: onProgress,
         onDetail: onDetail,
       );
@@ -903,3 +1019,6 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     );
   }
 }
+
+/// §bootPipeline — ce que la phase réseau d'une liste secondaire a rendu.
+typedef _DlPhase = ({String? path, bool downloaded, bool alreadyLoaded, bool failed});

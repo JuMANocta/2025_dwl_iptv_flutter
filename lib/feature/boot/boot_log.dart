@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -188,34 +189,43 @@ class _BlinkingCursor extends StatefulWidget {
   State<_BlinkingCursor> createState() => _BlinkingCursorState();
 }
 
-class _BlinkingCursorState extends State<_BlinkingCursor>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1060),
-  )..repeat();
+class _BlinkingCursorState extends State<_BlinkingCursor> {
+  // §bootCursorTimer (2026-09-06) — Le curseur clignotait par un
+  // `AnimationController..repeat()` : une frame à CHAQUE vsync, pendant tout
+  // le démarrage, pour un état qui ne change que deux fois par seconde. Sur
+  // l'émulateur TV (rendu logiciel), recomposer l'écran de boot — halo flouté
+  // du logo compris — 60 fois par seconde mangeait le CPU de l'analyse : la
+  // liste « Ultimate » se lisait en 22 s hors du boot et 73 s pendant. Un
+  // `Timer` à 530 ms produit les deux mêmes états, et deux frames par seconde.
+  Timer? _timer;
+  bool _on = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(milliseconds: 530), (_) {
+      if (mounted) setState(() => _on = !_on);
+    });
+  }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        builder: (_, __) => Opacity(
-          // Créneau franc plutôt qu'un fondu : c'est un curseur de terminal.
-          opacity: _ctrl.value < 0.5 ? 1 : 0,
-          child: Text(
-            '▌',
-            style: GoogleFonts.sourceCodePro(
-              color: widget.color,
-              fontSize: widget.fontSize,
-              height: 1.7,
-            ),
+      child: Opacity(
+        // Créneau franc plutôt qu'un fondu : c'est un curseur de terminal.
+        opacity: _on ? 1 : 0,
+        child: Text(
+          '▌',
+          style: GoogleFonts.sourceCodePro(
+            color: widget.color,
+            fontSize: widget.fontSize,
+            height: 1.7,
           ),
         ),
       ),

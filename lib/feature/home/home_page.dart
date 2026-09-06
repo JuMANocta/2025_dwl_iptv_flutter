@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:aetherStream/core/diagnostics/jank_meter.dart';
@@ -111,10 +112,17 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with RouteAware {
+  /// §tabPageKeep (2026-09-06, lot 13b) — L'onglet courant est un NOTIFIEUR :
+  /// l'indicateur d'onglets l'écoute seul, et les trois pages n'ont plus
+  /// besoin d'être reconstruites pour qu'un libellé change de couleur.
+  /// Mesuré avant (émulateur TV, §tabMeter) : chaque bascule reconstruisait
+  /// 3 pages, 9 rangées, 49 à 110 cartes.
+  final ValueNotifier<int> _tabIndex = ValueNotifier<int>(_initialPageIndex);
   static const int _initialPageIndex = 1; // Films par défaut
 
   late final PageController _pageController;
-  int _currentIndex = _initialPageIndex;
+  int get _currentIndex => _tabIndex.value;
+  set _currentIndex(int v) => _tabIndex.value = v;
   /// §initBoot — Initialement `true` UNIQUEMENT si la playlist active n'a pas
   /// encore été parsée (cas rares : changement de compte runtime, hot reload).
   /// Au boot normal, `main._initializeApp` a déjà appelé `loadActive` → la
@@ -347,6 +355,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
     _searchFocus.removeListener(_onSearchFocusChanged);
     _searchFocus.dispose();
     _pageController.dispose();
+    _tabIndex.dispose();
     StreamAccountService.currentAccountIdNotifier
         .removeListener(_onCurrentAccountChanged);
     super.dispose();
@@ -383,11 +392,27 @@ class _HomePageState extends State<HomePage> with RouteAware {
     if (mounted) setState(() => _loading = false);
   }
 
+  // §tabMeter (lot 13b) — relevés au début d'un changement d'onglet.
+  int _tabPagesBefore = 0;
+  int _tabRowsBefore = 0;
+  int _tabCardsBefore = 0;
+
+  /// §tabMeter — Ce qu'un changement d'onglet a RECONSTRUIT : pages, rangées,
+  /// cartes. C'est la sonde du lot 13b : §jankMeter dit combien de ms, ceci
+  /// dit combien de widgets — et donc si le correctif a porté.
+  void _logTabMeter(int from, int to) {
+    debugPrint('\u23F1\uFE0F \u00A7tabMeter \u00AB onglet $from \u2192 $to \u00BB : ${_TypePageState.buildCount - _tabPagesBefore} build(s) de page, ${_CategoryRow.buildCount - _tabRowsBefore} rangee(s), ${_HomeCardState.buildCount - _tabCardsBefore} carte(s)');
+  }
+
   void _goToPage(int i) {
     // §jankMeter + §tabSwitchCost — Le changement d'onglet est le geste que
     // l'utilisateur décrit comme « lourd ». La fenêtre se referme après la
     // transition, et la purge de la sonde laisse encore remonter les frames
     // de reconstruction — qui sont justement les plus chères.
+    final int from = _currentIndex;
+    _tabPagesBefore = _TypePageState.buildCount;
+    _tabRowsBefore = _CategoryRow.buildCount;
+    _tabCardsBefore = _HomeCardState.buildCount;
     JankMeter.beginSpan('onglet $_currentIndex → $i');
     if (PlatformTv.isTv) {
       // §dpadNav — Changement de section INSTANTANÉ sur TV (pas de glissement
@@ -406,7 +431,14 @@ class _HomePageState extends State<HomePage> with RouteAware {
       // changement d'onglet VOULU — c'est donc ici, et nulle part ailleurs.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) FocusScope.of(context).nextFocus();
-        JankMeter.endSpan();
+        // Une frame de plus : la reconstruction déclenchée par le setState
+        // ci-dessus se termine dans celle-ci.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _logTabMeter(from, i);
+          // §jankMeter livre ses mesures par lots, quelques frames plus tard :
+          // fermer tout de suite ne voyait « aucune frame » sur TV.
+          Timer(const Duration(milliseconds: 400), JankMeter.endSpan);
+        });
       });
       return;
     }
@@ -416,7 +448,10 @@ class _HomePageState extends State<HomePage> with RouteAware {
           duration: const Duration(milliseconds: 320),
           curve: Curves.easeInOut,
         )
-        .then((_) => JankMeter.endSpan());
+        .then((_) {
+      _logTabMeter(from, i);
+      JankMeter.endSpan();
+    });
   }
 
   /// §dpadNav — TV : repince la PageView sur la page courante dès qu'un
@@ -479,10 +514,89 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // de widgets de la page reconstruite.
     // (Un bénéfice en CPU au repos sur une box faible reste plausible mais
     // n'a PAS été mesuré : ce serait un autre relevé, pas celui-ci.)
-    return ExcludeFocus(
-      excluding: _currentIndex != index,
-      child: DpadRegion(debugLabel: 'homePage$index', child: wrapped),
+    // §tabPageKeep (lot 13b) — Les trois pages restent VIVANTES
+    // (`AutomaticKeepAliveClientMixin` sur `_TypePageState`) : la page
+    // distante n'est plus détruite puis recréée par la `PageView` (121 ms
+    // mesurés pour la page Chaînes à chaque passage Séries ↔ Films). En
+    // contrepartie elles sont GELÉES hors écran : `TickerMode` coupe leurs
+    // animations, et le hero met sa rotation en pause tant qu'il n'est pas
+    // visible (`_HeroFanBanner` lit `TickerMode.of`). Le relevé §tabTicker
+    // reste vrai — ce n'est pas ça qui rendait la bascule lente — mais c'est
+    // ce qui empêche trois pages vivantes de tourner pour rien.
+    return TickerMode(
+      enabled: _currentIndex == index,
+      child: ExcludeFocus(
+        excluding: _currentIndex != index,
+        child: DpadRegion(debugLabel: 'homePage$index', child: wrapped),
+      ),
     );
+  }
+
+  // §tabPageKeep — Les trois `_TypePage` sont des instances STABLES tant que
+  // leurs entrées ne changent pas : un `setState` de la HomePage (changement
+  // d'onglet, réglage, reprise) reconstruit les enveloppes, et Flutter saute
+  // les pages elles-mêmes (`identical(oldWidget, newWidget)`).
+  List<Widget>? _pagesCache;
+  Object? _pagesCacheKey;
+  List<int> _tabCounts = const [0, 0, 0];
+
+  Widget _buildTabs(BuildContext ctx) {
+    return _AnimatedTabIndicator(
+      controller: _pageController,
+      currentIndex: _tabIndex,
+      counts: _tabCounts,
+      onTap: _goToPage,
+    );
+  }
+
+  List<Widget> _typePages(
+    Map<M3uContentType, List<M3uEntry>> byType,
+    double liftedTopInset,
+  ) {
+    final List<M3uEntry> series = byType[M3uContentType.series]!;
+    final List<M3uEntry> movies = byType[M3uContentType.movie]!;
+    final List<M3uEntry> tv = byType[M3uContentType.tv]!;
+    final Object key = (
+      identityHashCode(series),
+      identityHashCode(movies),
+      identityHashCode(tv),
+      liftedTopInset,
+      _activeAccountId,
+    );
+    final List<Widget>? cached = _pagesCache;
+    if (cached != null && _pagesCacheKey == key) return cached;
+    _tabCounts = [series.length, movies.length, tv.length];
+    final List<Widget> pages = [
+      _TypePage(
+        // Key sur _activeAccountId : si l'utilisateur change de compte
+        // prioritaire, on force le rebuild complet du _TypePage
+        // (memoization invalidée).
+        key: ValueKey('series_$_activeAccountId'),
+        type: M3uContentType.series,
+        entries: series,
+        topInset: liftedTopInset,
+        tabsBuilder: _buildTabs,
+      ),
+      _TypePage(
+        key: ValueKey('movie_$_activeAccountId'),
+        type: M3uContentType.movie,
+        entries: movies,
+        topInset: liftedTopInset,
+        tabsBuilder: _buildTabs,
+      ),
+      _TypePage(
+        key: ValueKey('tv_$_activeAccountId'),
+        type: M3uContentType.tv,
+        entries: tv,
+        // §heroUnify — même topInset que films/séries → le hero fan des
+        // Chaînes démarre à la même hauteur (plus de saut vertical au swipe).
+        topInset: liftedTopInset,
+        tabsBuilder: _buildTabs,
+      ),
+    ];
+    _pagesCache = pages;
+    _pagesCacheKey = key;
+    return pages;
   }
 
   Future<void> _openSettings() async {
@@ -699,18 +813,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
                   // sous le hero dans chaque _TypePage. Toutes les instances
                   // écoutent le même PageController → l'underline reste synchro
                   // au swipe horizontal.
-                  Widget buildTabs(BuildContext ctx) {
-                    return _AnimatedTabIndicator(
-                      controller: _pageController,
-                      currentIndex: _currentIndex,
-                      counts: [
-                        byType[M3uContentType.series]!.length,
-                        byType[M3uContentType.movie]!.length,
-                        byType[M3uContentType.tv]!.length,
-                      ],
-                      onTap: _goToPage,
-                    );
-                  }
+                  // §tabPageKeep — instances stables (cf. `_typePages`).
+                  final List<Widget> typePages =
+                      _typePages(byType, liftedTopInset);
 
                   final Widget browseBody = Stack(
                     children: [
@@ -773,43 +878,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
                       //  • FocusTraversalGroup : scope la traversée directionnelle
                       //    à la page courante (sortie vers le rail toujours
                       //    possible si aucune cible dans la direction).
-                      _pageFocusWrap(
-                        0,
-                        _TypePage(
-                          // Key sur _activeAccountId : si l'utilisateur change de
-                          // compte prioritaire, on force le rebuild complet du
-                          // _TypePage (memoization invalidée).
-                          key: ValueKey('series_$_activeAccountId'),
-                          type: M3uContentType.series,
-                          entries: byType[M3uContentType.series]!,
-                          topInset: liftedTopInset,
-                          tabsBuilder: buildTabs,
-                        ),
-                      ),
-                      _pageFocusWrap(
-                        1,
-                        _TypePage(
-                          key: ValueKey('movie_$_activeAccountId'),
-                          type: M3uContentType.movie,
-                          entries: byType[M3uContentType.movie]!,
-                          topInset: liftedTopInset,
-                          tabsBuilder: buildTabs,
-                        ),
-                      ),
-                      _pageFocusWrap(
-                        2,
-                        _TypePage(
-                          key: ValueKey('tv_$_activeAccountId'),
-                          type: M3uContentType.tv,
-                          entries: byType[M3uContentType.tv]!,
-                          // §heroUnify — même topInset que films/séries → le
-                          // hero fan des Chaînes démarre à la même hauteur (plus
-                          // de saut vertical au swipe). `defaultTopInset` n'est
-                          // plus utilisé que par le calcul (gardé pour réf).
-                          topInset: liftedTopInset,
-                          tabsBuilder: buildTabs,
-                        ),
-                      ),
+                      _pageFocusWrap(0, typePages[0]),
+                      _pageFocusWrap(1, typePages[1]),
+                      _pageFocusWrap(2, typePages[2]),
                     ],
                         ),
                       ),
@@ -922,7 +993,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
 
 class _AnimatedTabIndicator extends StatelessWidget {
   final PageController controller;
-  final int currentIndex;
+  /// §tabPageKeep — l'onglet courant, ÉCOUTÉ ici : seule la barre se
+  /// reconstruit quand il change, pas la page qui la porte.
+  final ValueListenable<int> currentIndex;
   final List<int> counts; // [series, films, tv]
   final ValueChanged<int> onTap;
 
@@ -955,7 +1028,9 @@ class _AnimatedTabIndicator extends StatelessWidget {
         builder: (ctx, constraints) {
           final tabWidth = constraints.maxWidth / 3;
 
-          return SizedBox(
+          return ValueListenableBuilder<int>(
+            valueListenable: this.currentIndex,
+            builder: (ctx, currentIndex, _) => SizedBox(
             height: _barHeight,
             child: Stack(
               children: [
@@ -1039,6 +1114,7 @@ class _AnimatedTabIndicator extends StatelessWidget {
                 ),
               ],
             ),
+          ),
           );
         },
       ),
@@ -1565,7 +1641,14 @@ class _GroupingMemo {
   }
 }
 
-class _TypePageState extends State<_TypePage> {
+class _TypePageState extends State<_TypePage>
+    with AutomaticKeepAliveClientMixin<_TypePage> {
+  /// §tabPageKeep — La page survit à son éloignement dans la `PageView` :
+  /// sans ça, Séries ↔ Films détruisait et recréait Chaînes (121 ms). Hors
+  /// écran elle est gelée par `TickerMode` (cf. `_pageFocusWrap`).
+  @override
+  bool get wantKeepAlive => true;
+
   /// §tabSwitchCost — Un mémo par type, donc **trois au maximum**.
   static final Map<M3uContentType, _GroupingMemo> _sharedGrouping =
       <M3uContentType, _GroupingMemo>{};
@@ -1837,6 +1920,9 @@ class _TypePageState extends State<_TypePage> {
   /// Groupe par catégorie puis par titre. Mémoïsé sur [_groupingKey], **et**
   /// sur [_sharedGrouping] pour survivre à la destruction de la page
   /// (§tabSwitchCost).
+  /// §tabMeter — builds de `_TypePage` depuis le lancement.
+  static int buildCount = 0;
+
   // §homeMeter — durée des sous-étapes : voie « clé inchangée » du
   // groupement, et les deux passes du hero (reprise, tendances).
   int _lastFavMs = 0;
@@ -2344,7 +2430,9 @@ class _TypePageState extends State<_TypePage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin
     if (widget.entries.isEmpty) return _buildEmpty(context);
+    buildCount++;
 
     // §homeMeter (2026-09-06, lot 13) — CHRONOS de la reconstruction. Mesuré
     // sur la TV de l'utilisateur au retour du lecteur : un build de 1 131 ms,

@@ -34,6 +34,10 @@ class _HomeCard extends StatefulWidget {
 }
 
 class _HomeCardState extends State<_HomeCard> {
+  /// §tabMeter — nombre de builds de cartes depuis le lancement (sonde du
+  /// changement d'onglet, relevée par différence dans `_goToPage`).
+  static int buildCount = 0;
+
   bool _pressed = false;
 
   /// §Ultimate — affiche TMDB résolue à la volée quand le M3U ne fournit aucun
@@ -376,6 +380,7 @@ class _HomeCardState extends State<_HomeCard> {
 
   @override
   Widget build(BuildContext context) {
+    buildCount++;
     final cs = Theme.of(context).colorScheme;
     final entry = widget.versions.first;
     // §23 — politique image « plus grosse liste ».

@@ -18,6 +18,10 @@ import 'hidden_regions_service.dart';
 import 'last_watched_channel_service.dart';
 import 'parsed_playlist_service.dart';
 import 'playlist_service.dart';
+import '../../core/boot/boot_status.dart';
+import '../../feature/search/xtream_catalog_parser.dart';
+import '../../feature/search/m3u_parser.dart';
+import '../models/m3u_entry.dart';
 import 'remote_control_service.dart';
 import 'search_history_service.dart';
 import 'stream_account_service.dart';
@@ -460,6 +464,43 @@ class WebConsoleService {
         case '/api/reset':
           await _resetUsage();
           _json(req, 200, {'ok': true});
+          break;
+        case '/api/dev/parsebench':
+          // §parseSpeed — Banc AOT sur l'appareil : ré-analyse le fichier en
+          // cache d'un compte (payload {"id": …}) sur le thread principal,
+          // exactement comme au démarrage, et rend le chrono. Le banc
+          // `flutter test` est en JIT et a donné le résultat INVERSE du
+          // release sur ce parseur : seul ceci fait foi.
+          final String? benchId = payload['id'] as String?;
+          if (benchId == null) {
+            _json(req, 400, {'ok': false, 'error': 'id requis'});
+            break;
+          }
+          final String benchPath = await PlaylistService.pathForAccountId(benchId);
+          final films = <M3uEntry>[], series = <M3uEntry>[], tv = <M3uEntry>[];
+          final Stopwatch swBench = Stopwatch()..start();
+          // `mode` : 'nu' (rien d'autre), 'boot' (filtre régions + callbacks de
+          // progression, comme au démarrage).
+          final bool likeBoot = (payload['mode'] as String?) == 'boot';
+          final Set<String> benchHidden = likeBoot ? HiddenRegionsService.hidden : const <String>{};
+          int benchTicks = 0;
+          void benchProgress(double v) { benchTicks++; if (likeBoot) BootStatus.report(v); }
+          void benchDetail(String d) { if (likeBoot) BootStatus.setDetail(d); }
+          if (benchPath.toLowerCase().endsWith('.json')) {
+            await XtreamCatalogParser.parseFile(benchPath, films, series, tv, accountId: benchId,
+                hidden: benchHidden, onProgress: likeBoot ? benchProgress : null, onDetail: likeBoot ? benchDetail : null);
+          } else {
+            await M3uParser.parseFile(benchPath, films, series, tv, accountId: benchId,
+                hidden: benchHidden, onProgress: likeBoot ? benchProgress : null, onDetail: likeBoot ? benchDetail : null);
+          }
+          _json(req, 200, {
+            'ok': true,
+            'ms': swBench.elapsedMilliseconds,
+            'entries': films.length + series.length + tv.length,
+            'path': benchPath.split('/').last,
+            'ticks': benchTicks,
+            'hidden': benchHidden.length,
+          });
           break;
         case '/api/remote':
           final key = (payload['key'] as String?) ?? '';

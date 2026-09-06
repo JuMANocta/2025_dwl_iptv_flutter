@@ -102,6 +102,8 @@ abstract final class BootStatus {
     // « 34 279 films » resterait affiché sous « // prêt. ».
     _detail = detail;
     _lastBucket = progress == null ? -1 : _bucketOf(progress.clamp(0.0, 1.0));
+    _pendingDetail = null;
+    _lastDetailAt = DateTime.fromMillisecondsSinceEpoch(0);
     step.value = BootStep(label, progress: progress, detail: detail);
   }
 
@@ -120,6 +122,12 @@ abstract final class BootStatus {
     if (bucket == _lastBucket) return;
     _lastBucket = bucket;
     _progress = v;
+    // §bootDetailThrottle — un détail retenu part avec le palier suivant.
+    if (_pendingDetail != null) {
+      _detail = _pendingDetail;
+      _pendingDetail = null;
+      _lastDetailAt = DateTime.now();
+    }
     step.value = BootStep(_label, progress: v, detail: _detail);
   }
 
@@ -134,8 +142,29 @@ abstract final class BootStatus {
   /// Le débit est celui du parseur, qui n'émet qu'au changement de pourcentage
   /// entier — donc une centaine d'appels pour un catalogue entier, quel que
   /// soit son nombre d'entrées.
+  /// §bootDetailThrottle (2026-09-06) — **Régulé à 4 publications par seconde.**
+  ///
+  /// Le parseur M3U publie son compteur d'entrées à CHAQUE tranche de 8 ms
+  /// (~125 fois par seconde) : chaque publication reconstruisait tout le
+  /// journal de boot (Column, polices, barre). Mesuré sur l'émulateur TV : la
+  /// même analyse de 153 000 entrées prend **22 s** hors du boot et **73 s**
+  /// pendant — l'écran mangeait deux tiers du thread principal. Un compteur
+  /// lisible n'a pas besoin de plus de quelques rafraîchissements par seconde.
+  static DateTime _lastDetailAt = DateTime.fromMillisecondsSinceEpoch(0);
+  static String? _pendingDetail;
+  static const Duration _detailEvery = Duration(milliseconds: 250);
+
   static void setDetail(String? detail) {
     if (detail == _detail) return;
+    final DateTime now = DateTime.now();
+    if (now.difference(_lastDetailAt) < _detailEvery) {
+      // Trop tôt : on garde la valeur, elle partira avec la suivante ou au
+      // changement d'étape (`set` republie l'état complet).
+      _pendingDetail = detail;
+      return;
+    }
+    _pendingDetail = null;
+    _lastDetailAt = now;
     _detail = detail;
     step.value = BootStep(_label, progress: _progress, detail: detail);
   }
