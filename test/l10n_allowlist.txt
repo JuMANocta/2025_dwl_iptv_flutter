@@ -4,7 +4,7 @@
 # Ce fichier ne doit JAMAIS remonter : chaque tranche de
 # traduction l'abaisse. Un total qui augmente = une régression.
 #
-# TOTAL : 568 lignes dans 81 fichiers.
+# TOTAL : 566 lignes dans 81 fichiers.
 
 lib/core/diagnostics/jank_meter.dart 2
 lib/core/diagnostics/log_buffer.dart 6
@@ -64,7 +64,7 @@ lib/feature/player/widgets/video_stats_overlay.dart 12
 lib/feature/replay/replay_date_picker_sheet.dart 6
 lib/feature/replay/replay_widget.dart 1
 lib/feature/search/actor_details_page.dart 5
-lib/feature/search/details_page.dart 24
+lib/feature/search/details_page.dart 22
 lib/feature/search/m3u_parser.dart 2
 lib/feature/search/xtream_catalog_parser.dart 4
 lib/feature/settings/about_page.dart 5

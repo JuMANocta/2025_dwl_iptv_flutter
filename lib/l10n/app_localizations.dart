@@ -1483,6 +1483,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No list to reload'**
   String get reloadAllNoAccounts;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get infoSectionTitle;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Genre'**
+  String get infoGenre;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Director'**
+  String get infoDirector;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Creator'**
+  String get infoCreator;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Original title'**
+  String get infoOriginalTitle;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Country'**
+  String get infoCountry;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Studios'**
+  String get infoStudios;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get infoStatus;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Runtime'**
+  String get infoRuntime;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Episode'**
+  String get infoEpisodeLength;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Seasons'**
+  String get infoSeasons;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Next episode'**
+  String get infoNextEpisode;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Network'**
+  String get infoNetwork;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Budget'**
+  String get infoBudget;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Box office'**
+  String get infoRevenue;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Theatrical release'**
+  String get infoTheatrical;
+
+  /// Libelle de l'encadre Infos de la fiche
+  ///
+  /// In en, this message translates to:
+  /// **'Digital release'**
+  String get infoDigital;
+
+  /// Saisons et episodes annonces par TMDB
+  ///
+  /// In en, this message translates to:
+  /// **'{seasons} ({episodes, plural, =1{1 episode} other{{episodes} episodes}})'**
+  String infoSeasonsValue(int seasons, int episodes);
 }
 
 class _AppLocalizationsDelegate

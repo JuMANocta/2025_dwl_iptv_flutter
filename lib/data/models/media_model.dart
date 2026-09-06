@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Membre du casting TMDB (acteur + rôle + photo). Utilisé pour afficher les
 /// vignettes d'acteurs sur la fiche détail (mobile + TV).
 class CastMember {
@@ -21,6 +23,42 @@ class MediaRef {
   final String title;
   final String? year;
   const MediaRef({required this.id, required this.title, this.year});
+}
+
+/// §tmdbInfo — Le prochain épisode ANNONCÉ par TMDB (`next_episode_to_air`).
+///
+/// ⚠️ Il n'a rien à voir avec ce que les listes contiennent : c'est la date de
+/// DIFFUSION, pas une disponibilité. La fiche doit donc l'écrire comme une
+/// annonce, jamais comme un lien de lecture.
+class NextEpisodeInfo {
+  final int? seasonNumber;
+  final int? episodeNumber;
+  final String? name;
+
+  /// Date ISO brute (`2026-03-12`), telle que rendue par TMDB.
+  final String? airDate;
+
+  const NextEpisodeInfo({
+    this.seasonNumber,
+    this.episodeNumber,
+    this.name,
+    this.airDate,
+  });
+
+  /// Rend `null` si l'objet est absent ou vide de tout repère utile.
+  static NextEpisodeInfo? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    final info = NextEpisodeInfo(
+      seasonNumber: (json['season_number'] as num?)?.toInt(),
+      episodeNumber: (json['episode_number'] as num?)?.toInt(),
+      name: (json['name'] as String?)?.trim(),
+      airDate: (json['air_date'] as String?)?.trim(),
+    );
+    final bool vide = info.airDate == null &&
+        info.episodeNumber == null &&
+        (info.name == null || info.name!.isEmpty);
+    return vide ? null : info;
+  }
 }
 
 class Media {
@@ -82,6 +120,35 @@ class Media {
   /// d'afficher « 12 juillet 2023 » sans casser l'existant.
   final String? releaseDateFull;
 
+  /// §tmdbInfo (2026-09-06) — Champs DÉJÀ présents dans la réponse que l'app
+  /// télécharge (`/movie|tv/{id}` + `append_to_response=credits,videos,
+  /// recommendations,release_dates,content_ratings`) et qu'elle jetait.
+  /// ⚠️ Aucun appel réseau supplémentaire : `append_to_response` emballe tout
+  /// dans la MÊME requête.
+  ///
+  /// Séries : nombre de saisons / d'épisodes ANNONCÉ par TMDB — à comparer avec
+  /// ce que les listes contiennent réellement.
+  final int? numberOfSeasons;
+  final int? numberOfEpisodes;
+
+  /// Séries : prochain épisode annoncé (`next_episode_to_air`).
+  final NextEpisodeInfo? nextEpisode;
+
+  /// Séries : diffuseurs (`networks`). C'est la réponse HONNÊTE à « où ça
+  /// passe », là où le bloc « Disponible sur » de la fiche est DÉDUIT du
+  /// `group-title` du fournisseur.
+  final List<String> networks;
+
+  /// Films : budget et recettes, en dollars. ⚠️ TMDB met **0** quand il ne sait
+  /// pas — jamais `null` : ne rien afficher en dessous de 1.
+  final int? budget;
+  final int? revenue;
+
+  /// Films : dates de sortie SALLE et NUMÉRIQUE (ISO), extraites de
+  /// `release_dates`, déjà téléchargé pour la certification d'âge.
+  final String? theatricalDate;
+  final String? digitalDate;
+
   Media({
     required this.id,
     required this.title,
@@ -107,6 +174,14 @@ class Media {
     this.status,
     this.productionCountries = const [],
     this.releaseDateFull,
+    this.numberOfSeasons,
+    this.numberOfEpisodes,
+    this.nextEpisode,
+    this.networks = const [],
+    this.budget,
+    this.revenue,
+    this.theatricalDate,
+    this.digitalDate,
   });
 
   factory Media.fromJson(Map<String, dynamic> json) {
@@ -272,6 +347,48 @@ class Media {
       }
     }
 
+    // §tmdbInfo — Séries : ce que TMDB annonce, à côté de ce que les listes ont.
+    final next = NextEpisodeInfo.fromJson(
+        json['next_episode_to_air'] as Map<String, dynamic>?);
+    final networkNames = ((json['networks'] as List<dynamic>?) ?? const [])
+        .map((n) => (n is Map ? n['name'] : null) as String?)
+        .whereType<String>()
+        .toList();
+
+    // §tmdbInfo — Films : dates SALLE (type 2/3) et NUMÉRIQUE (type 4), prises
+    // dans `release_dates`, déjà en main pour la certification. Priorité FR,
+    // puis US, puis la première trouvée — même règle que le badge d'âge.
+    String? theatrical, digital;
+    if (isMovie) {
+      String? pickDate(Set<int> types) {
+        String? fr, us, any;
+        for (final r in (json['release_dates']?['results'] as List<dynamic>?) ??
+            const []) {
+          if (r is! Map) continue;
+          final iso = (r['iso_3166_1'] ?? '').toString().toUpperCase();
+          for (final d in (r['release_dates'] as List<dynamic>?) ?? const []) {
+            if (d is! Map) continue;
+            if (!types.contains((d['type'] as num?)?.toInt() ?? -1)) continue;
+            final raw = d['release_date']?.toString();
+            if (raw == null || raw.isEmpty) continue;
+            if (iso == 'FR') {
+              fr ??= raw;
+            } else if (iso == 'US') {
+              us ??= raw;
+            }
+            any ??= raw;
+          }
+        }
+        return fr ?? us ?? any;
+      }
+
+      theatrical = pickDate(const {2, 3});
+      digital = pickDate(const {4});
+    }
+
+    // §tmdbInfo — Journal de RECETTE : ce que la reponse a vraiment porte.
+    debugPrint('\u{1F3AC} \u00A7tmdbInfo : saisons=${json['number_of_seasons']} episodes=${json['number_of_episodes']} next=${next != null} networks=${networkNames.length} budget=${json['budget']} recettes=${json['revenue']} salle=$theatrical num=$digital');
+
     return Media(
       id: json['id'] as int,
       title: (isMovie ? json['title'] : json['name']) as String,
@@ -311,6 +428,14 @@ class Media {
           ? (json['status'] as String).trim()
           : null,
       productionCountries: countries,
+      numberOfSeasons: (json['number_of_seasons'] as num?)?.toInt(),
+      numberOfEpisodes: (json['number_of_episodes'] as num?)?.toInt(),
+      nextEpisode: next,
+      networks: networkNames,
+      budget: (json['budget'] as num?)?.toInt(),
+      revenue: (json['revenue'] as num?)?.toInt(),
+      theatricalDate: theatrical,
+      digitalDate: digital,
       releaseDateFull:
           (isMovie ? json['release_date'] : json['first_air_date']) as String?,
     );

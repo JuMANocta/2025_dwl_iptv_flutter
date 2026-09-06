@@ -820,4 +820,66 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reloadAllNoAccounts => 'No list to reload';
+
+  @override
+  String get infoSectionTitle => 'Details';
+
+  @override
+  String get infoGenre => 'Genre';
+
+  @override
+  String get infoDirector => 'Director';
+
+  @override
+  String get infoCreator => 'Creator';
+
+  @override
+  String get infoOriginalTitle => 'Original title';
+
+  @override
+  String get infoCountry => 'Country';
+
+  @override
+  String get infoStudios => 'Studios';
+
+  @override
+  String get infoStatus => 'Status';
+
+  @override
+  String get infoRuntime => 'Runtime';
+
+  @override
+  String get infoEpisodeLength => 'Episode';
+
+  @override
+  String get infoSeasons => 'Seasons';
+
+  @override
+  String get infoNextEpisode => 'Next episode';
+
+  @override
+  String get infoNetwork => 'Network';
+
+  @override
+  String get infoBudget => 'Budget';
+
+  @override
+  String get infoRevenue => 'Box office';
+
+  @override
+  String get infoTheatrical => 'Theatrical release';
+
+  @override
+  String get infoDigital => 'Digital release';
+
+  @override
+  String infoSeasonsValue(int seasons, int episodes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      episodes,
+      locale: localeName,
+      other: '$episodes episodes',
+      one: '1 episode',
+    );
+    return '$seasons ($_temp0)';
+  }
 }

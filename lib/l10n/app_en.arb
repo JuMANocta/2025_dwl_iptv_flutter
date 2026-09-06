@@ -655,5 +655,85 @@
   "reloadAllNoAccounts": "No list to reload",
   "@reloadAllNoAccounts": {
     "description": "Snackbar when the reload button is pressed without any account"
+  },
+  "infoSectionTitle": "Details",
+  "@infoSectionTitle": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoGenre": "Genre",
+  "@infoGenre": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoDirector": "Director",
+  "@infoDirector": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoCreator": "Creator",
+  "@infoCreator": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoOriginalTitle": "Original title",
+  "@infoOriginalTitle": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoCountry": "Country",
+  "@infoCountry": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoStudios": "Studios",
+  "@infoStudios": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoStatus": "Status",
+  "@infoStatus": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoRuntime": "Runtime",
+  "@infoRuntime": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoEpisodeLength": "Episode",
+  "@infoEpisodeLength": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoSeasons": "Seasons",
+  "@infoSeasons": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoNextEpisode": "Next episode",
+  "@infoNextEpisode": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoNetwork": "Network",
+  "@infoNetwork": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoBudget": "Budget",
+  "@infoBudget": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoRevenue": "Box office",
+  "@infoRevenue": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoTheatrical": "Theatrical release",
+  "@infoTheatrical": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoDigital": "Digital release",
+  "@infoDigital": {
+    "description": "Libelle de l'encadre Infos de la fiche"
+  },
+  "infoSeasonsValue": "{seasons} ({episodes, plural, =1{1 episode} other{{episodes} episodes}})",
+  "@infoSeasonsValue": {
+    "description": "Saisons et episodes annonces par TMDB",
+    "placeholders": {
+      "seasons": {
+        "type": "int"
+      },
+      "episodes": {
+        "type": "int"
+      }
+    }
   }
 }
