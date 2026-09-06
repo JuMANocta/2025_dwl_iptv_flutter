@@ -136,9 +136,11 @@ flutter pub get
 # Lancer en debug
 flutter run
 
-# Build APK universel (téléphone + TV + Fire Stick)
+# Build APK universel (téléphone + TV + Fire Stick — armeabi-v7a + arm64-v8a)
 flutter build apk --release
 ```
+
+Les releases GitHub sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : analyse et 780 tests en parallèle du build, signature, empreinte SHA-256 publiée dans la release — et **pas de release si un test échoue**.
 
 ---
 

@@ -5,28 +5,77 @@ on:
     tags:
       - 'v*.*.*'
 
-jobs:
-  build:
-    name: Build APK et créer la release
-    runs-on: ubuntu-latest
-    environment: aetherstream
+# Le jeton n'a besoin que d'écrire la release : dit explicitement, il survit
+# à un changement du réglage « permissions par défaut » du dépôt.
+permissions:
+  contents: write
 
+env:
+  # ⚠️ La MÊME version que la machine de recette (émulateurs + Galaxy S25) : un
+  # APK compilé avec un autre framework/moteur n'est pas celui qu'on a mesuré
+  # (§jankMeter, §homeMeter, §exitCost). Monter les deux ENSEMBLE.
+  FLUTTER_VERSION: '3.44.0'
+
+jobs:
+  check:
+    name: Analyse + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout du code
-        uses: actions/checkout@v4
-
-      - name: Setup Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
+        uses: actions/checkout@v5
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.7'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+          pub-cache: true
+          pub-cache-key: pub-${{ hashFiles('pubspec.lock') }}
+
+      - name: Installer les dépendances
+        run: flutter pub get
+
+      # `--no-fatal-infos` : le lint `package_names` (aetherStream) est une info
+      # permanente ; les erreurs et les avertissements redeviennent BLOQUANTS
+      # (avant : `|| true`, l'analyse ne bloquait jamais rien).
+      - name: Analyser le code
+        run: flutter analyze --no-fatal-infos
+
+      # 780 tests (cliquet l10n, invariant redactUrl, règles Cast, delta de
+      # l'accueil…). Vérifié le 2026-09-06 : la suite passe sans les dumps de
+      # lib/iptv_exemple/ (non versionnés) — les tests qui en dépendent se
+      # sautent d'eux-mêmes.
+      - name: Tests
+        run: flutter test
+
+  build:
+    name: Build + signature
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: aetherstream
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v5
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          # Wrapper Gradle (130 Mo) + dépendances AGP / Kotlin / Media3 :
+          # retéléchargés à chaque tag sans ce cache.
+          cache: gradle
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+          pub-cache: true
+          pub-cache-key: pub-${{ hashFiles('pubspec.lock') }}
 
       - name: Synchroniser pubspec.yaml avec le tag git
         run: |
@@ -41,11 +90,14 @@ jobs:
       - name: Installer les dépendances
         run: flutter pub get
 
-      - name: Analyser le code (non bloquant)
-        run: flutter analyze --no-fatal-warnings || true
-
-      - name: Build APK universel (téléphone + TV + Fire Stick — toutes architectures)
-        run: flutter build apk --release
+      # §apkDiet — le release ne contient que armeabi-v7a + arm64-v8a (téléphones,
+      # box, Fire Stick, téléviseurs). Le retrait de x86_64 se fait au PACKAGING
+      # (build.gradle.kts) : sans `--target-platform`, Flutter compilait quand
+      # même le snapshot x86_64, jeté ensuite — une compilation AOT sur trois.
+      - name: Build APK (armeabi-v7a + arm64-v8a)
+        run: >
+          flutter build apk --release
+          --target-platform android-arm,android-arm64
         # Produit : build/app/outputs/flutter-apk/app-release.apk
 
       - name: Décoder le keystore PKCS12
@@ -84,15 +136,59 @@ jobs:
             --key-pass pass:"$STORE_PASSWORD" \
             --out build/app/outputs/flutter-apk/aetherstream.apk \
             build/app/outputs/flutter-apk/app-release.apk
+          # La signature est vérifiée AVANT de publier : un APK mal signé
+          # échouerait à l'installation chez l'utilisateur, pas ici.
+          $BUILD_TOOLS/apksigner verify --print-certs \
+            build/app/outputs/flutter-apk/aetherstream.apk
         env:
           KEY_ALIAS: ${{ vars.KEY_ALIAS }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+
+      - name: Empreinte SHA-256
+        run: |
+          cd build/app/outputs/flutter-apk
+          sha256sum aetherstream.apk > aetherstream.apk.sha256
+          cat aetherstream.apk.sha256
+          ls -la aetherstream.apk
+
+      - name: Conserver l'APK pour le job de release
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: |
+            build/app/outputs/flutter-apk/aetherstream.apk
+            build/app/outputs/flutter-apk/aetherstream.apk.sha256
+          retention-days: 3
+          if-no-files-found: error
+
+  release:
+    name: Release GitHub
+    # Pas de release si un test échoue, même avec un APK prêt.
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Récupérer l'APK signé
+        uses: actions/download-artifact@v4
+        with:
+          name: apk
+
+      - name: Corps de la release
+        run: |
+          {
+            echo "**APK** : \`aetherstream.apk\` — SHA-256 \`$(cut -d' ' -f1 aetherstream.apk.sha256)\`"
+            echo ""
+            echo "Flutter ${{ env.FLUTTER_VERSION }} · armeabi-v7a + arm64-v8a"
+          } > body.md
+          cat body.md
 
       - name: Créer la release GitHub et uploader l'APK
         uses: softprops/action-gh-release@v2
         with:
           name: AetherStream ${{ github.ref_name }}
-          files: build/app/outputs/flutter-apk/aetherstream.apk
+          files: |
+            aetherstream.apk
+            aetherstream.apk.sha256
+          body_path: body.md
+          append_body: true
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
