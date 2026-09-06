@@ -52,6 +52,15 @@ class PlayerMedia {
   /// Permet de partager une progression entre variantes (FHD/HD d'un même film).
   final String? progressKey;
 
+  /// §endOfMovie (2026-09-06) — Les clés de reprise des AUTRES versions du même
+  /// titre (FHD/HD, autres listes). ⚠️ La fiche et l'accueil affichent
+  /// « Reprendre » à partir de N'IMPORTE quelle version (§resumeUnify,
+  /// `getProgressForAny`) : finir un film dans une version et n'effacer que
+  /// la sienne laissait ressortir la vieille reprise d'une autre — constaté sur
+  /// l'émulateur (fin de « Le rêve américain » en FHD → « Reprendre · 01:30 »
+  /// venu de la version 4K). À la fin, on efface TOUT le titre.
+  final List<String> siblingResumeKeys;
+
   /// §autoNextEp — Saison du contenu (séries uniquement, `null` sinon).
   ///
   /// Sert à détecter un **franchissement de saison** : on enchaîne
@@ -87,10 +96,16 @@ class PlayerMedia {
     this.replayDuration,
     this.startPosition,
     this.progressKey,
+    this.siblingResumeKeys = const [],
     this.seasonNumber,
   });
 
   /// Clé effective de sauvegarde de progression.
+
+  /// §endOfMovie — Toutes les clés à effacer quand le contenu est allé au bout :
+  /// la sienne, puis celles de ses versions sœurs (jamais deux fois la même).
+  Iterable<String> get allResumeKeys => <String>{resumeKey, ...siblingResumeKeys};
+
   String get resumeKey => progressKey ?? path;
 
   /// Vrai si le contenu ne doit pas être suivi en progression : une chaîne live
@@ -121,6 +136,7 @@ class PlayerMedia {
         replayDuration: replayDuration,
         startPosition: startPosition ?? this.startPosition,
         progressKey: progressKey,
+        siblingResumeKeys: siblingResumeKeys,
         seasonNumber: seasonNumber,
         accountId: accountId,
         posterUrl: posterUrl,

@@ -96,7 +96,7 @@ class _EpGroup {
   _EpGroup(this.episodeNumber, this.versions);
 }
 
-class _DetailsPageState extends State<DetailsPage> {
+class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   Media? _tmdbData;
   Map<String, dynamic>? _episodeData;
   bool _isLoading = true;
@@ -209,6 +209,7 @@ class _DetailsPageState extends State<DetailsPage> {
     _currentEpisode = widget.entry;
     _memorySignature = versionsSignature(_entriesFromMemory());
     ParsedPlaylistService.version.addListener(_onPlaylistChanged);
+    WidgetsBinding.instance.addObserver(this); // §exitCost — mesure de la rotation
     _buildSeasonEpisodes();
 
     if (widget.entry.type == M3uContentType.series) {
@@ -248,7 +249,20 @@ class _DetailsPageState extends State<DetailsPage> {
   }
 
   @override
+  /// §exitCost — Mesure : la fiche repeinte à sa NOUVELLE taille (retour en
+  /// portrait après le lecteur). Horodaté pour être lu face à « retour
+  /// demandé » du lecteur.
+  @override
+  void didChangeMetrics() {
+    final Size size = WidgetsBinding.instance.platformDispatcher.views.first.physicalSize;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint('\u23F1\uFE0F \u00A7exitCost \u2014 fiche repeinte en ${size.width.toInt()}x${size.height.toInt()}');
+    });
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     ParsedPlaylistService.version.removeListener(_onPlaylistChanged);
     _episodeScrollController.dispose();
     super.dispose();
@@ -274,8 +288,11 @@ class _DetailsPageState extends State<DetailsPage> {
   /// n'apparaissaient qu'après avoir refermé puis rouvert la fiche.
   void _onPlaylistChanged() {
     if (!mounted) return;
+    final Stopwatch sw = Stopwatch()..start();
     final entries = _entriesFromMemory();
     final sig = versionsSignature(entries);
+    // §exitCost — mesure : ce balayage tourne a chaque bump de version.
+    debugPrint('\u23F1\uFE0F \u00A7detailsLive : balayage memoire ${sw.elapsedMilliseconds} ms (${entries.length} entrees du titre, change=${sig != _memorySignature})');
     if (sig == _memorySignature) return; // rien de neuf pour CE titre
     _memorySignature = sig;
     if (widget.entry.type == M3uContentType.series) {
@@ -847,7 +864,12 @@ class _DetailsPageState extends State<DetailsPage> {
             debugLabel: 'detailsRelated',
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              // §rowFocusFit (2026-09-06) — Marge HORIZONTALE aussi : au focus,
+              // la carte grossit de 5 % et porte un contour ; sans marge, le
+              // bord gauche de la PREMIÈRE carte était rogné par la fenêtre du
+              // ListView (« position négative », signalement utilisateur sur
+              // téléviseur). 6 px suffisent pour +2,6 px d'échelle et le trait.
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               // ignore: deprecated_member_use
               cacheExtent: 600,
               itemCount: groups.length,
@@ -1288,7 +1310,12 @@ class _DetailsPageState extends State<DetailsPage> {
                     // toujours peint : sans le taux de repli (`open`), connu du
                     // seul `LayoutBuilder`, on aurait le titre EN DOUBLE avec
                     // celui posé sur l'image.
-                    if (open < 0.999)
+                    // ⚠️ Pas `1 - open` tel quel : au repos, `open` vaut
+                    // ~0,95 et non 1,0 (la barre d'état grignote la hauteur
+                    // mesurée) → un titre FANTÔME à 5 % restait visible en
+                    // haut à gauche, constaté sur l'émulateur TV. On ne fait
+                    // apparaître le titre qu'une fois l'en-tête bien engagé.
+                    if (open < 0.85)
                       Positioned(
                         top: MediaQuery.paddingOf(context).top,
                         left: 56,
@@ -1296,7 +1323,7 @@ class _DetailsPageState extends State<DetailsPage> {
                         height: kToolbarHeight,
                         child: IgnorePointer(
                           child: Opacity(
-                            opacity: 1 - open,
+                            opacity: ((0.85 - open) / 0.85).clamp(0.0, 1.0),
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
@@ -1462,7 +1489,8 @@ class _DetailsPageState extends State<DetailsPage> {
                         debugLabel: 'detailsCast',
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          // §rowFocusFit — cf. la rangée des similaires.
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                           // §focusScroll — cache plus large pour que la nav D-pad
                           // trouve toujours la card suivante dans l'arbre de focus.
                           // ignore: deprecated_member_use
@@ -2213,6 +2241,8 @@ class _DetailsPageState extends State<DetailsPage> {
             ? PlayerBadgeType.series
             : PlayerBadgeType.movie,
         startPosition: from,
+        // §endOfMovie — toutes les versions du titre s'effacent à la fin.
+        siblingResumeKeys: _resumeUrls(),
         seasonNumber: _selectedEntry.title.seasonNumber,
         // §nowPlaying — affiche TMDB pour l'écran verrouillé, logo en repli.
         posterUrl: TmdbService.getPosterUrl(_tmdbData?.posterPath) ??
@@ -2276,6 +2306,7 @@ class _DetailsPageState extends State<DetailsPage> {
       sourceType: VideoSourceType.network,
       badgeType: PlayerBadgeType.series,
       seasonNumber: season,
+      siblingResumeKeys: _resumeUrls(), // §endOfMovie
       // §nowPlaying — l'épisode suivant garde une image dans la notification.
       posterUrl: TmdbService.getPosterUrl(_tmdbData?.posterPath) ??
           _selectedEntry.logoUrl,
@@ -2940,7 +2971,10 @@ class _CastCard extends StatelessWidget {
         );
 
     // §rowAnchorDetails — carte focusée calée à gauche de la rangée casting.
-    return FocusableCard(
+    // §rowFocusFit — cf. _RelatedCard : hauteur naturelle, pas celle de la rangée.
+    return Align(
+      alignment: Alignment.topLeft,
+      child: FocusableCard(
       scaleOnFocus: false,
       anchorRowStart: true,
       entry: isEntry,
@@ -3000,6 +3034,7 @@ class _CastCard extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }
@@ -3029,7 +3064,14 @@ class _RelatedCard extends StatelessWidget {
           alignment: Alignment.center,
           child: Icon(Icons.movie_outlined, color: cs.onSurfaceVariant),
         );
-    return SizedBox(
+    // §rowFocusFit — Un enfant de ListView horizontal reçoit une hauteur
+    // IMPOSÉE (celle de la rangée, 230) : la carte focusée peignait donc son
+    // fond et son contour sur toute cette hauteur, bien en dessous du titre
+    // (« encart trop haut », signalement utilisateur sur téléviseur). `Align`
+    // rend à la carte sa hauteur naturelle : affiche + titre, rien de plus.
+    return Align(
+      alignment: Alignment.topLeft,
+      child: SizedBox(
       width: w,
       // §rowAnchorDetails — carte focusée calée à gauche (saga/similaires).
       child: FocusableCard(
@@ -3073,6 +3115,7 @@ class _RelatedCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

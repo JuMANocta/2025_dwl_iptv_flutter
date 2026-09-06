@@ -1591,6 +1591,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{seasons} ({episodes, plural, =1{1 episode} other{{episodes} episodes}})'**
   String infoSeasonsValue(int seasons, int episodes);
+
+  /// Sous-titre de la tuile Tout recharger (TV)
+  ///
+  /// In en, this message translates to:
+  /// **'Re-download all your lists from their servers'**
+  String get settingsReloadAllSub;
 }
 
 class _AppLocalizationsDelegate

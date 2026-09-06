@@ -169,8 +169,19 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                     val args = call.arguments as? Map<*, *>
                     val controllerId = args?.get("controllerId") as? Int
                     if (controllerId != null) {
-                        SharedPlayerManager.removePlayer(applicationContext, controllerId)
+                        // Patch 14 (AetherStream, 2026-09-06) — même report que
+                        // `handleDispose` : `removePlayer` → `ExoPlayer.release()`
+                        // est BLOQUANT sur ce thread principal. ⚠️ Sur téléviseur,
+                        // c'est CE chemin qui libère vraiment : la vue de
+                        // plateforme est déjà démontée quand le contrôleur Dart se
+                        // détruit, et le `dispose` routé par la vue échoue en
+                        // `NO_VIEW` (constaté dans le journal de la TV de
+                        // l'utilisateur, 1.18.7). Différer seulement l'autre
+                        // chemin ne changeait donc rien pour la télé.
                         result.success(null)
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            SharedPlayerManager.removePlayer(applicationContext, controllerId)
+                        }, 450L)
                     } else {
                         result.error("INVALID_ARGUMENT", "Controller ID is required", null)
                     }

@@ -578,6 +578,21 @@ class _HomePageState extends State<HomePage> with RouteAware {
                 const SecondaryAccountsCounter(),
                 // §reloadScope — Rafraîchissement de TOUTES les listes sans passer
                 // par Paramètres → Comptes IPTV.
+                //
+                // §tvReloadReach (2026-09-06) — ⚠️ **PAS sur TÉLÉVISEUR.**
+                // Mesuré sur l'AVD TV : ce bouton n'est atteignable par AUCUNE
+                // direction de la télécommande. Le hero occupe tout le haut de
+                // l'écran et la barre est transparente PAR-DESSUS : le rect du
+                // bouton est donc CONTENU dans celui du hero, et un rect contenu
+                // n'est candidat dans aucune direction (§dpadChildFocus, le même
+                // piège que le ⋯ des vignettes).
+                //
+                // On suit la convention déjà posée juste en dessous pour le ⚙️
+                // (§3c-bis) : sur TV, l'action vit là où vit la navigation TV —
+                // le rail → Paramètres, qui porte désormais « Tout recharger ».
+                // Un bouton que personne ne peut atteindre est pire que pas de
+                // bouton : il fait croire que la fonction manque.
+                if (!PlatformTv.isTv)
                 IconButton(
                   icon: _refreshing
                       ? const SizedBox(

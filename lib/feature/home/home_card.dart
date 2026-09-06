@@ -219,6 +219,8 @@ class _HomeCardState extends State<_HomeCard> {
                     sourceType: VideoSourceType.network,
                     badgeType: badge,
                     startPosition: from,
+                    // §endOfMovie — toutes les versions du titre s'effacent à la fin.
+                    siblingResumeKeys: [for (final v in widget.versions) v.url],
                     // §nowPlaying — la même image que la vignette.
                     posterUrl: _tmdbPoster ??
                         (_logoCandidates.isEmpty ? null : _logoCandidates.first),

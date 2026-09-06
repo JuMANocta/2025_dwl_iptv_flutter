@@ -181,6 +181,37 @@ ne coûte aucune capacité ; retirer du code en coûte.
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).
 
+## patch 14 — la libération du lecteur ne gèle plus la sortie (2026-09-06)
+
+`VideoPlayerMethodHandler.handleDispose` appelait `SharedPlayerManager.removePlayer`
+— donc `ExoPlayer.release()` — **sur le thread principal**, avant de répondre à
+Flutter.
+
+⚠️ **`release()` est BLOQUANT** : il attend que le thread de lecture interne
+ait rendu ses décodeurs, jusqu'à `releaseTimeoutMs` (500 ms par défaut, plus
+sur un SoC de téléviseur lent à libérer un décodeur matériel). Pendant ce
+blocage, Flutter ne produit plus une image. Mesuré le 2026-09-06 avec
+§jankMeter sur les 1,5 s qui suivent la fermeture du lecteur : émulateur
+téléphone **5 à 9 frames, pire frame 429 ms** ; émulateur TV 15 à 18 frames,
+pire 127 ms. Signalement utilisateur : « sortir d'un film ou d'une série est
+très long ».
+
+`stop()` reste immédiat (image et son coupés), la réponse à Flutter part tout
+de suite, et `removePlayer` est **posté 450 ms plus tard** sur le looper
+principal — le temps que la transition de sortie soit dessinée. Le lecteur
+partagé reste inscrit ce court instant, sans effet : le contrôleur Dart est
+déjà détruit et un nouveau lecteur reçoit un nouvel identifiant.
+
+⚠️ Ne pas « corriger » en libérant depuis un autre thread : Media3 exige que
+`release()` soit appelé depuis le thread de l'application looper du lecteur.
+
+⚠️ **Le report couvre les DEUX chemins** : `handleDispose` (routé par la vue) ET
+`disposeController` (`NativeVideoPlayerPlugin`). Sur téléviseur, c'est le second
+qui libère vraiment : la vue de plateforme est déjà démontée quand le contrôleur
+Dart se détruit, et le premier échoue en `NO_VIEW` (journal de la TV de
+l'utilisateur, 1.18.7, le 2026-09-06). Un patch qui ne différait que le premier
+ne changeait rien pour la télé.
+
 ## patch 13 — le service de lecture doit se déclarer AVANT de se retirer (2026-09-05)
 
 `VideoPlayerMediaSessionService.onStartCommand` sortait par `stopSelf()` quand

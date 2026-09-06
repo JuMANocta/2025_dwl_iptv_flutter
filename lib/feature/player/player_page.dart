@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:aetherStream/core/diagnostics/jank_meter.dart';
 import 'package:aetherStream/data/services/playback_health_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/data/services/track_preferences_service.dart';
@@ -98,6 +99,10 @@ class PlayerPage extends StatefulWidget {
   /// même film) en passant une clé canonique commune.
   final String? progressKey;
 
+  /// §endOfMovie — Clés de reprise des autres versions du même titre,
+  /// effacées avec la sienne quand la lecture va au bout.
+  final List<String> siblingResumeKeys;
+
   /// §episodeMeta — Fournit le contenu à lire ENSUITE (séries).
   ///
   /// Si défini, le bouton ▶▶ apparaît dans les contrôles et l'enchaînement
@@ -141,6 +146,7 @@ class PlayerPage extends StatefulWidget {
     this.replayDuration,
     this.startPosition,
     this.progressKey,
+    this.siblingResumeKeys = const [],
     this.onRequestNext,
     this.seasonNumber,
   });
@@ -159,6 +165,7 @@ class PlayerPage extends StatefulWidget {
         replayDuration: replayDuration,
         startPosition: startPosition,
         progressKey: progressKey,
+        siblingResumeKeys: siblingResumeKeys,
         seasonNumber: seasonNumber,
         accountId: accountId,
         posterUrl: posterUrl,
@@ -233,6 +240,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// Vrai pour les sources qui ne doivent PAS sauvegarder de progression
   /// (chaînes TV live = durée infinie, replay timeshift = pas de reprise utile).
   bool get _skipProgress => _media.skipProgress;
+
+  /// §endOfMovie (2026-09-06) — Vrai dès que le contenu COURANT est allé au
+  /// bout. Empêche `dispose()` de ré-écrire une progression sur un titre qu'on
+  /// vient d'effacer. Remis à faux à chaque bascule d'épisode.
+  bool _finished = false;
 
   // ── §1h Wakelock + Lifecycle ─────────────────────────────────────────────
   /// Souscription à `stream.playing` pour activer/désactiver le wakelock.
@@ -847,7 +859,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   void _saveProgress() {
-    if (_skipProgress) return;
+    // §endOfMovie — Après la fin, `dispose()` rappelle `_saveProgress` : sans
+    // ce garde-fou, il réécrivait une progression sur un titre qu'on venait
+    // d'effacer, et le film repassait en « Reprendre ».
+    if (_finished || _skipProgress) return;
     // §castSend — Pendant une diffusion de CE contenu, la position vraie est
     // celle du téléviseur, pas celle du lecteur local mis en pause.
     final bool viaCast = _castsThisMedia;
@@ -947,6 +962,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() {
       _media = next;
+      _finished = false; // §endOfMovie — nouvel épisode, nouvelle progression
       _pendingNext = null;
       _endOfPlayback = null;
       _currentPath = next.path; // sinon un retry .ts/.m3u8 de l'épisode
@@ -972,9 +988,32 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   Future<void> _onPlaybackCompleted() async {
-    if (widget.onRequestNext == null) return;
     _handlingCompletion = true;
     try {
+      // §endOfMovie — On SAIT que le contenu est fini : on efface la reprise
+      // ICI, sans dépendre de la règle des 95 % de `saveProgress`.
+      // ⚠️ La position rendue au moment du `completed` n'est pas fiable (elle
+      // peut retomber à zéro) : s'en remettre à elle laissait la reprise en
+      // place, et un film vu en entier restait marqué « Reprendre ».
+      _finished = true;
+      // ⚠️ TOUTES les versions du titre (§resumeUnify) : n'effacer que la
+      // version lue laissait ressortir la vieille reprise d'une autre.
+      for (final String key in _media.allResumeKeys) {
+        await WatchProgressService.clearProgress(key);
+      }
+      if (!mounted) return;
+
+      // §endOfMovie — ⚠️ Un FILM n'a PAS de suite : `widget.onRequestNext` est
+      // nul, et la méthode s'arrêtait ICI (`if (... == null) return;`). Le
+      // lecteur restait donc figé sur la dernière image, sans rien proposer.
+      // On rend la main à l'application.
+      if (widget.onRequestNext == null) {
+        // Une diffusion en cours garde l'écran : c'est le téléviseur qui lit,
+        // fermer le lecteur ici couperait la télécommande (§castSend).
+        if (_castsThisMedia) return;
+        Navigator.of(context).maybePop();
+        return;
+      }
       await _resolveAndShowEndOverlay();
     } finally {
       _handlingCompletion = false;
@@ -1497,6 +1536,19 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    // §exitCost (2026-09-06) — « sortir d'un film est très long » : on mesure
+    // avant de corriger. Trois marqueurs dans `dispose` (qui ne coûte que
+    // 1 ms, mesuré), PLUS une fenêtre §jankMeter sur les 1,5 s qui suivent :
+    // c'est là que vivent la transition de route, la rotation et le
+    // repeint de la page du dessous.
+    final Stopwatch swAll = Stopwatch()..start();
+    JankMeter.beginSpan('sortie lecteur');
+    Timer(const Duration(milliseconds: 1500), JankMeter.endSpan);
+    final DateTime tSortie = DateTime.now();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final int ms = DateTime.now().difference(tSortie).inMilliseconds;
+      debugPrint('\u23F1\uFE0F \u00A7exitCost \u2014 1re frame apres la fermeture : +$ms ms');
+    });
     _hideTimer?.cancel();
     _progressTimer?.cancel();
     _pendingRetryTimer?.cancel();
@@ -1524,7 +1576,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _autoNextTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _releaseWakelock();
+    final int tAvantMoteur = swAll.elapsedMilliseconds;
     _ctrl.dispose();
+    final int tMoteur = swAll.elapsedMilliseconds - tAvantMoteur;
     _recoveryLabel.dispose();
     ScreenBrightness().resetScreenBrightness().catchError((_) {});
     // §3c-bis — Sur TV, la sortie du player NE DOIT PAS basculer en portrait
@@ -1546,6 +1600,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       ]);
     }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    debugPrint('\u23F1\uFE0F \u00A7exitCost \u2014 sortie du lecteur : total ${swAll.elapsedMilliseconds} ms (avant moteur $tAvantMoteur ms, dispose moteur $tMoteur ms)');
     super.dispose();
   }
 
@@ -1556,7 +1611,28 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // §3c-5 — Sur Android TV : wrap Shortcuts/Actions/Focus pour mapper le
     // D-pad sur les actions du player. Sur mobile : pass-through neutre.
     final isTv = PlatformTv.isTv;
-    return Scaffold(
+    // §exitRotate (2026-09-06) — Sur TÉLÉPHONE, la rotation vers le portrait
+    // était demandée dans `dispose()`, c'est-à-dire à la FIN de la transition
+    // de sortie. Mesuré sur le Galaxy S25 : 1,4 s après Retour, l'écran
+    // montrait encore la FICHE EN PAYSAGE (en-tête géant, mise en page cassée),
+    // puis Android tournait, et la fiche n'était en portrait qu'à ~2 s. C'est
+    // le « sortir d'un film est très long » du téléphone.
+    //
+    // La rotation part maintenant AU MOMENT de la sortie (`onPopInvoked`,
+    // avant que la transition ne commence) : Android tourne pendant que le
+    // lecteur s'efface, et la fiche arrive déjà en portrait. `dispose()`
+    // redemande la même orientation : c'est idempotent, sans effet.
+    return PopScope(
+      onPopInvokedWithResult: (bool didPop, Object? _) {
+        if (!didPop) return;
+        debugPrint('\u23F1\uFE0F \u00A7exitCost \u2014 retour demande');
+        if (isTv || PlayerPage.suppressOrientationRestore) return;
+        SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]);
+      },
+      child: Scaffold(
       backgroundColor: Colors.black,
       // §dpadNav — La zone vidéo est un `DpadFocusable` (autofocus) qui capte la
       // télécommande pendant la lecture : OK=play/pause, long-OK=options,
@@ -1800,6 +1876,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               ),
           ],
         ),
+      ),
       ),
     );
   }

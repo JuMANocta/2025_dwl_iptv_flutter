@@ -123,6 +123,9 @@ class VideoPlayerMethodHandler(
     private val audioFocusHandler = Handler(Looper.getMainLooper())
     private var pendingAudioFocusAbandon: Runnable? = null
 
+    /** Patch 14 — délai avant la libération bloquante du lecteur (cf. handleDispose). */
+    private val DEFERRED_RELEASE_MS = 450L
+
     private val audioFocusPlaybackListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
@@ -1321,14 +1324,33 @@ class VideoPlayerMethodHandler(
         abandonAudioFocusForPlayback()
         player.stop()
 
-        // Remove from shared manager if this is a shared player
-        if (controllerId != null) {
-            SharedPlayerManager.removePlayer(context, controllerId)
-            NpLog.d(TAG, "Removed shared player for controller ID: $controllerId")
-        }
-
         eventHandler.sendEvent("stopped")
         result.success(null)
+
+        // Patch 14 (AetherStream, 2026-09-06) — la libération du lecteur est
+        // DIFFÉRÉE de quelques centaines de ms.
+        //
+        // Ce gestionnaire tourne sur le thread principal, et
+        // `SharedPlayerManager.removePlayer` appelle `ExoPlayer.release()`, qui
+        // est BLOQUANT : il attend que le thread de lecture interne ait rendu
+        // ses décodeurs (jusqu'à `releaseTimeoutMs`, 500 ms par défaut). Pendant
+        // ce blocage Flutter ne peut plus produire une seule image : mesuré sur
+        // l'émulateur téléphone, 5 frames en 1,5 s et une frame de 429 ms au
+        // moment de quitter le lecteur — c'est le « sortir d'un film est très
+        // long » signalé par l'utilisateur.
+        //
+        // `stop()` (ci-dessus) est immédiat et coupe déjà l'image et le son ;
+        // la libération lourde attend que la transition de sortie ait été
+        // dessinée. Le lecteur partagé reste inscrit ce court instant, ce qui
+        // est sans effet : le contrôleur Dart est déjà détruit et un nouveau
+        // lecteur reçoit un nouvel identifiant.
+        if (controllerId != null) {
+            val id = controllerId
+            audioFocusHandler.postDelayed({
+                SharedPlayerManager.removePlayer(context, id)
+                NpLog.d(TAG, "Removed shared player for controller ID: $id (deferred, patch 14)")
+            }, DEFERRED_RELEASE_MS)
+        }
     }
 
     /**

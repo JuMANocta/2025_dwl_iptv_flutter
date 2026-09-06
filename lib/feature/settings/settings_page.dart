@@ -14,6 +14,8 @@ import 'package:aetherStream/data/services/favorites_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/data/services/search_history_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
+import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
@@ -38,6 +40,34 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
+  /// §tvReloadReach — « Tout recharger » depuis le hub, pour la TÉLÉCOMMANDE.
+  /// Même chemin que le ↻ de l'accueil et que la page Comptes : `showReloadAllFlow`.
+  Future<void> _reloadAllLists() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final accounts = await StreamAccountService.listAccounts();
+    final current = await StreamAccountService.getCurrentAccount();
+    if (!mounted) return;
+    if (accounts.isEmpty) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(context.l10n.reloadAllNoAccounts)));
+      return;
+    }
+    final result = await showReloadAllFlow(
+      context,
+      accounts: accounts,
+      // Le compte actif garde le chemin « prioritaire », qui produit les
+      // messages d'erreur précis (même choix que l'accueil).
+      priorityAccountId: current?.id,
+    );
+    if (result == null || !mounted) return; // annulé
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(result.summary),
+        duration: Duration(seconds: result.allOk ? 3 : 6),
+      ));
+  }
+
   Future<void> _openAccounts() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AccountsPage()),
@@ -217,6 +247,19 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
               subtitle: context.l10n.settingsAccountsSub,
               onTap: _openAccounts,
             ),
+            // §tvReloadReach (2026-09-06) — Sur TÉLÉVISEUR, le ↻ de l'accueil
+            // est inatteignable à la télécommande (son rect est contenu dans
+            // celui du hero, §dpadChildFocus) : l'action doit exister ici, à un
+            // seul niveau du rail. Sur téléphone le ↻ marche, la tuile serait
+            // un doublon.
+            if (PlatformTv.isTv)
+              _SettingsTile(
+                icon: Icons.refresh,
+                accentColor: kAccentPrimary,
+                title: context.l10n.reloadAllTooltip,
+                subtitle: context.l10n.settingsReloadAllSub,
+                onTap: _reloadAllLists,
+              ),
             _SettingsTile(
               icon: Icons.movie_creation_outlined,
               accentColor: kAccentPrimary,

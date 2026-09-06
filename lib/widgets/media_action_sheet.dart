@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:aetherStream/data/services/parsed_playlist_service.dart';
+import 'package:aetherStream/feature/search/details_versions.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
@@ -535,9 +537,19 @@ String _formatResumeLabel(Duration d) {
 void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPosition}) {
   FavoritesService.addEntry(entry);
   Navigator.pop(context);
+  // §endOfMovie — La feuille ne reçoit qu'UNE entrée : ses versions sœurs se
+  // relisent en mémoire avec la règle partagée de la fiche (§detailsLive).
+  final List<String> siblings = [
+    for (final e in entriesOfTitle(
+        ParsedPlaylistService.byTypeWithPriority(entry.accountId)[entry.type] ??
+            const <M3uEntry>[],
+        entry))
+      e.url,
+  ];
   Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
     path: entry.url,
     title: entry.displayName,
+    siblingResumeKeys: siblings,
     // §stallCount — rattache les blocages au fournisseur.
     accountId: entry.accountId,
     // §watchContext a/b — badges qualité + saison/épisode.

@@ -882,4 +882,8 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$seasons ($_temp0)';
   }
+
+  @override
+  String get settingsReloadAllSub =>
+      'Re-download all your lists from their servers';
 }

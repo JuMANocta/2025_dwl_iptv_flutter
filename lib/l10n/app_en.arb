@@ -735,5 +735,9 @@
         "type": "int"
       }
     }
+  },
+  "settingsReloadAllSub": "Re-download all your lists from their servers",
+  "@settingsReloadAllSub": {
+    "description": "Sous-titre de la tuile Tout recharger (TV)"
   }
 }
