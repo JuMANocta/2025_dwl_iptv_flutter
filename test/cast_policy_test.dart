@@ -95,11 +95,18 @@ void main() {
   group('castEligibility', () {
     const okProbe = CastProbe(statusCode: 200, corsAllowed: true);
 
-    test('fichier local : jamais, et le motif le dit', () {
+    test('§castLocal — fichier local SERVI par le téléphone : diffusable', () {
       final v = castEligibility(
-          isLocalFile: true, url: '/sdcard/x.mkv', probe: okProbe);
+          isLocalFile: true,
+          url: 'http://192.168.1.10:41234/local/media.mkv',
+          probe: okProbe);
+      expect(v.castable, isTrue);
+    });
+
+    test('§castLocal — fichier local sans adresse LAN : refus, motif réseau', () {
+      final v = castEligibility(isLocalFile: true, url: '', probe: null);
       expect(v.castable, isFalse);
-      expect(v.reason, contains('fichier téléchargé'));
+      expect(v.reason, contains('Wi-Fi'));
     });
 
     test('schéma non http(s) : non', () {

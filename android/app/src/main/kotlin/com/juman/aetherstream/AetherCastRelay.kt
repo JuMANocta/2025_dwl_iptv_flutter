@@ -13,6 +13,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.Clock
 import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -204,7 +205,15 @@ class AetherCastRelay(private val context: Context) {
                     context,
                     DefaultDecoderFactory.Builder(context).build(),
                     Clock.DEFAULT,
-                    DefaultMediaSourceFactory(httpFactory, extractors)
+                    // §castLocal (2026-09-06) — `DefaultDataSource` : lit un
+                    // FICHIER (chemin, file://, content://) comme une URL
+                    // (déléguée à `httpFactory`). Avec le seul
+                    // `DefaultHttpDataSource`, convertir un film téléchargé
+                    // échouait avant même de commencer.
+                    DefaultMediaSourceFactory(
+                        DefaultDataSource.Factory(context, httpFactory),
+                        extractors
+                    )
                 )
             )
             .addListener(object : Transformer.Listener {

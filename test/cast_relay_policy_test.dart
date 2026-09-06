@@ -61,16 +61,28 @@ void main() {
       expect(castRelayBlockerMessage(p.blocker!), contains('direct'));
     });
 
-    test('fichier local : hors périmètre de cette version', () {
+    test('§castLocal — un fichier local avec de l AC3 se convertit comme un flux',
+        () {
       final p = castRelayPlan(
         isLocalFile: true,
         isLive: false,
         url: '/sdcard/Movies/AetherStream/film.mkv',
         tracks: const [ac3],
       );
+      expect(p.offered, isTrue);
+      expect(p.blocker, isNull);
+    });
+
+    test('§castLocal — un fichier local SANS adresse (aucun chemin) reste bloqué',
+        () {
+      final p = castRelayPlan(
+        isLocalFile: true,
+        isLive: false,
+        url: '',
+        tracks: const [ac3],
+      );
       expect(p.offered, isFalse);
       expect(p.blocker, CastRelayBlocker.localFile);
-      expect(castRelayBlockerMessage(p.blocker!), isNotNull);
     });
 
     test('adresse non http : refusée', () {

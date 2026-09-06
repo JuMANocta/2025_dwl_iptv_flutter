@@ -61,7 +61,11 @@ CastRelayPlan castRelayPlan({
     return null;
   }
 
-  if (isLocalFile) {
+  // §castLocal (2026-09-06) — Un fichier téléchargé se convertit comme un
+  // flux : le convertisseur natif (Media3) lit un chemin local aussi bien
+  // qu'une URL. `isLocalFile` ne bloque plus ; il reste dans la signature pour
+  // le jour où une source ne serait ni l'un ni l'autre.
+  if (isLocalFile && url.isEmpty) {
     return (
       offered: false,
       blocker: CastRelayBlocker.localFile,
@@ -69,7 +73,10 @@ CastRelayPlan castRelayPlan({
     );
   }
   final Uri? uri = Uri.tryParse(url);
-  if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) {
+  // §castLocal — un chemin local n'a pas de schéma : ce contrôle ne vaut que
+  // pour une source réseau.
+  if (!isLocalFile &&
+      (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https'))) {
     return (
       offered: false,
       blocker: CastRelayBlocker.unsupportedSource,

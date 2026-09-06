@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:aetherStream/core/diagnostics/jank_meter.dart';
+import 'package:aetherStream/data/services/cast_file_server.dart';
 import 'package:aetherStream/data/services/playback_health_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/data/services/track_preferences_service.dart';
@@ -494,8 +495,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// depuis le téléphone, dans les mêmes conditions (`cast_policy.dart`).
   Future<CastEligibility> _checkCastable() async {
     final bool isFile = _media.sourceType == VideoSourceType.file;
-    final String url = castUrlFor(_media.path);
-    final CastProbe? probe = isFile ? null : await CastService.probe(url);
+    // §castLocal — Un fichier téléchargé est SERVI par le téléphone : l'adresse
+    // à sonder est celle de notre serveur LAN (vide = pas de réseau → refus
+    // motivé par la politique). La sonde tourne aussi sur lui : c'est
+    // exactement ce que le récepteur va faire.
+    final String url = isFile
+        ? (await CastFileServer.start(_media.path) ?? '')
+        : castUrlFor(_media.path);
+    final CastProbe? probe =
+        url.isEmpty ? null : await CastService.probe(url);
     final verdict =
         castEligibility(isLocalFile: isFile, url: url, probe: probe);
     if (!verdict.castable) return verdict;
@@ -649,7 +657,17 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// Envoie le contenu courant à [device], depuis la position locale.
   Future<void> _startCast(CastDevice device) async {
     _castMediaPath = _media.path;
-    final String url = castUrlFor(_media.path);
+    final bool isFile = _media.sourceType == VideoSourceType.file;
+    // §castLocal — l'adresse du serveur LAN pour un fichier téléchargé.
+    final String url = isFile
+        ? (CastFileServer.url ?? await CastFileServer.start(_media.path) ?? '')
+        : castUrlFor(_media.path);
+    if (url.isEmpty) {
+      if (!mounted) return;
+      AppSnackBar.show(context, castEligibility(
+              isLocalFile: true, url: '', probe: null).reason ?? '');
+      return;
+    }
     final Duration pos = _skipProgress ? Duration.zero : _ctrl.position;
     final bool live = _media.badgeType == PlayerBadgeType.live;
     await _ctrl.pause();

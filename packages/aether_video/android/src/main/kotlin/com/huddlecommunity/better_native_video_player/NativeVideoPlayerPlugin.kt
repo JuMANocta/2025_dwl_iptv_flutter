@@ -178,6 +178,12 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                         // `NO_VIEW` (constaté dans le journal de la TV de
                         // l'utilisateur, 1.18.7). Différer seulement l'autre
                         // chemin ne changeait donc rien pour la télé.
+                        // ⚠️ Sur téléviseur, `handleDispose` (chemin par la vue) ne
+                        // tourne JAMAIS (NO_VIEW) : c'est donc ICI que `stop()`
+                        // doit couper image et son, immédiatement — sinon le
+                        // lecteur continue de tourner les 450 ms du report
+                        // (journal de la TV de l'utilisateur, 1.18.8).
+                        SharedPlayerManager.getPlayer(controllerId)?.stop()
                         result.success(null)
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                             SharedPlayerManager.removePlayer(applicationContext, controllerId)

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:aetherStream/feature/home/inferred_delta.dart';
 
 /// §inferredCat — Catégorie DÉDUITE d'un titre, pour les listes qui n'en
 /// fournissent aucune.
@@ -57,6 +58,16 @@ abstract final class InferredCategoryService {
 
   static const _persistDelay = Duration(seconds: 5);
 
+  // §inferDelta (2026-09-06, lot 13) — Ce qui a été appris, PAR SIGNAL. L'accueil
+  // ne refait plus tout son rangement à chaque bump de `version` : il demande
+  // le delta depuis la version qu'il connaît et ne déplace que ces groupes.
+  // `previous` = la catégorie que le titre avait AVANT (celle où l'accueil l'a
+  // rangé), `category` = la nouvelle. Une fenêtre trop ancienne (ou absente
+  // après `clear`) rend `null` → regroupement complet, comme avant.
+  static final Map<int, Map<String, InferredChange>> _deltas = {};
+  static Map<String, InferredChange> _pending = {};
+  static const _keptDeltas = 8;
+
   /// Écritures en attente — on ne touche pas au disque à chaque vignette
   /// résolue (il y en a des dizaines par seconde au défilement).
   static bool _dirty = false;
@@ -90,8 +101,50 @@ abstract final class InferredCategoryService {
     if (category == null || category.isEmpty) return;
     if (_cache[groupKey] == category) return;
     if (_cache.length >= _maxEntries && !_cache.containsKey(groupKey)) return;
+    // §inferDelta — On garde la PREMIÈRE origine si la clé est réapprise dans
+    // la même fenêtre : c'est là que l'accueil a rangé le groupe.
+    final InferredChange? already = _pending[groupKey];
+    _pending[groupKey] = (
+      previous: already != null ? already.previous : _cache[groupKey],
+      category: category,
+    );
     _cache[groupKey] = category;
     _schedulePersist();
+  }
+
+  /// §inferDelta — Le delta cumulé entre [sinceVersion] (exclue) et la version
+  /// courante ; vide si rien n'a changé ; `null` si une fenêtre manque (trop
+  /// ancienne, ou effacée par [clear]) → l'appelant refait tout.
+  static Map<String, InferredChange>? deltaSince(int sinceVersion) {
+    final int current = version.value;
+    if (sinceVersion == current) return const <String, InferredChange>{};
+    if (sinceVersion > current) return null;
+    final merged = <String, InferredChange>{};
+    for (int v = sinceVersion + 1; v <= current; v++) {
+      final Map<String, InferredChange>? d = _deltas[v];
+      if (d == null) return null;
+      d.forEach((String k, InferredChange c) {
+        final InferredChange? seen = merged[k];
+        merged[k] = (
+          previous: seen != null ? seen.previous : c.previous,
+          category: c.category,
+        );
+      });
+    }
+    return merged;
+  }
+
+  /// Publie ce qui est en attente : UN signal, et son delta rangé sous la
+  /// nouvelle version. Séparé de l'écriture disque pour être testable.
+  @visibleForTesting
+  static void publishPending() {
+    final int v = version.value + 1;
+    _deltas[v] = Map<String, InferredChange>.unmodifiable(_pending);
+    _pending = {};
+    while (_deltas.length > _keptDeltas) {
+      _deltas.remove(_deltas.keys.first);
+    }
+    version.value = v;
   }
 
   /// Écriture disque groupée : au défilement, des dizaines de titres se rangent
@@ -102,7 +155,7 @@ abstract final class InferredCategoryService {
     Future.delayed(_persistDelay, () async {
       _dirty = false;
       // Un SEUL signal pour tout ce qui a été appris pendant la fenêtre.
-      version.value++;
+      publishPending();
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_key, jsonEncode(_cache));
@@ -115,6 +168,9 @@ abstract final class InferredCategoryService {
   /// Oublie tout (entretien / tests).
   static Future<void> clear() async {
     _cache.clear();
+    // §inferDelta — plus de delta valable : l'accueil refera tout.
+    _deltas.clear();
+    _pending = {};
     version.value++;
     try {
       final prefs = await SharedPreferences.getInstance();

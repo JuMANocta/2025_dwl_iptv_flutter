@@ -289,19 +289,22 @@ int? castPreferredAudioIndex(List<CastAudioTrack> tracks) {
 
 /// Peut-on envoyer ce contenu au récepteur ?
 ///
-/// [isLocalFile] — lecture d'un fichier téléchargé : sans serveur HTTP
-/// embarqué, le récepteur n'a aucun moyen de l'atteindre (hors périmètre).
-/// [url] — l'adresse **déjà réécrite** par [castUrlFor].
+/// [isLocalFile] — lecture d'un fichier téléchargé. §castLocal (2026-09-06) :
+/// il n'est plus refusé — le téléphone le SERT au téléviseur
+/// (`CastFileServer`), et [url] est alors l'adresse LAN de ce serveur. ⚠️
+/// Sans adresse LAN (données mobiles, [url] vide), le récepteur ne peut pas
+/// atteindre le téléphone : on refuse AVANT d'envoyer, avec la raison.
+/// [url] — l'adresse **déjà réécrite** par [castUrlFor], ou celle du serveur.
 /// [probe] — ce que la sonde a vu ; `null` si elle n'a pas pu tourner.
 CastEligibility castEligibility({
   required bool isLocalFile,
   required String url,
   required CastProbe? probe,
 }) {
-  if (isLocalFile) {
+  if (isLocalFile && url.isEmpty) {
     return const CastEligibility.no(
-      'Un fichier téléchargé ne peut pas être diffusé : le Chromecast va '
-      "chercher l'adresse lui-même et n'a pas accès au téléphone.",
+      "Le téléphone n'est pas sur un réseau Wi-Fi : le Chromecast ne peut "
+      "pas venir chercher le fichier. Connecte-le au même réseau que la télé.",
     );
   }
   final Uri? uri = Uri.tryParse(url);

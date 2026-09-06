@@ -38,6 +38,7 @@ import 'package:aetherStream/widgets/playback_gate.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/measured_quality_badge.dart';
 import 'package:aetherStream/data/services/inferred_category_service.dart';
+import 'package:aetherStream/feature/home/inferred_delta.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -1450,7 +1451,8 @@ class _FeaturedMemo {
       identical(this.trending, trending);
 }
 
-@immutable
+// §homeIndex — plus `@immutable` : le mémo porte un index PARESSEUX (cache
+// de calcul, pas une valeur) ; ses champs de données restent `final`.
 class _GroupingMemo {
   /// Identité de la liste d'entrées : `_byTypeMemoized` réutilise la même
   /// instance tant que playlist et compte actif ne changent pas. Comparer par
@@ -1468,14 +1470,79 @@ class _GroupingMemo {
   final List<List<M3uEntry>> groups;
   final List<String> categories;
 
-  const _GroupingMemo({
+  /// §inferDelta — La version des catégories déduites INCLUSE dans ce
+  /// rangement, et si le catalogue est horodaté (« New » virtuelle) : ce
+  /// qu'il faut pour appliquer un delta au lieu de tout refaire.
+  final int inferVersion;
+  final bool hasAddedData;
+
+  _GroupingMemo({
     required this.source,
     required this.key,
     required this.playlistVersion,
     required this.byCategory,
     required this.groups,
     required this.categories,
+    required this.inferVersion,
+    required this.hasAddedData,
   });
+
+  /// §inferDelta — Le même rangement (mêmes listes, mêmes index) sous une
+  /// nouvelle clé, après application d'un delta.
+  _GroupingMemo rekeyed({
+    required int key,
+    required int inferVersion,
+    required List<String> categories,
+  }) =>
+      _GroupingMemo(
+        source: source,
+        key: key,
+        playlistVersion: playlistVersion,
+        byCategory: byCategory,
+        groups: groups,
+        categories: categories,
+        inferVersion: inferVersion,
+        hasAddedData: hasAddedData,
+      )
+        .._byName = _byName
+        .._byKey = _byKey;
+
+  /// §inferDelta — Index « clé de groupe → groupes » (plusieurs si le titre est
+  /// éclaté par année, §homonymYear). Paresseux, retenu avec le mémo. Les clés
+  /// sont des chaînes DÉJÀ en mémoire (`groupKey` de l'entrée, ou son alias) :
+  /// l'index ne coûte que sa table.
+  Map<String, List<List<M3uEntry>>>? _byKey;
+  Map<String, List<List<M3uEntry>>> get byKey {
+    final existing = _byKey;
+    if (existing != null) return existing;
+    final m = <String, List<List<M3uEntry>>>{};
+    for (final g in groups) {
+      m.putIfAbsent(contentGroupKey(g.first), () => []).add(g);
+    }
+    return _byKey = m;
+  }
+
+  /// §homeIndex (2026-09-06, lot 13) — Index « titre normalisé → groupes »,
+  /// construit UNE fois par regroupement et partagé par le hero (tendances)
+  /// et les rangées TMDB. Avant lui, chaque recomposition du hero (à CHAQUE
+  /// sauvegarde de reprise, donc à chaque retour du lecteur) et chaque
+  /// changement d'onglet refaisaient `_normTitle` (repli d'accents + regex)
+  /// sur TOUS les groupes — mesuré sur l'émulateur TV : 128-222 ms (hero) et
+  /// 147-204 ms (rangées) par page, ×3 environ sur le processeur d'un
+  /// téléviseur. Retenu avec le mémo, purgé avec lui (version de playlist).
+  Map<String, List<List<M3uEntry>>>? _byName;
+  Map<String, List<List<M3uEntry>>> get byName {
+    final existing = _byName;
+    if (existing != null) return existing;
+    final m = <String, List<List<M3uEntry>>>{};
+    for (final g in groups) {
+      m
+          .putIfAbsent(
+              _TypePageState._normTitle(g.first.displayName), () => [])
+          .add(g);
+    }
+    return _byName = m;
+  }
 }
 
 class _TypePageState extends State<_TypePage> {
@@ -1541,6 +1608,8 @@ class _TypePageState extends State<_TypePage> {
   /// séparément : `_cachedByCategory` duplique des groupes ('New', 'Favoris'),
   /// on ne peut donc pas la reconstruire depuis ses valeurs.
   List<List<M3uEntry>>? _cachedGroups;
+  /// §homeIndex — Le mémo adopté, pour son index par titre partagé.
+  _GroupingMemo? _memo;
   int _cachedGroupingKey = -1;
   int _cachedFeaturedKey = -1;
   int _cachedFavoritesKey = -1;
@@ -1716,12 +1785,18 @@ class _TypePageState extends State<_TypePage> {
   /// (sinon re-groupement complet toutes les 10 s en lecture) ni les favoris
   /// (§favAudit — sinon re-groupement complet à chaque cœur).
   int _groupingKey() =>
+      _groupingKeyWith(inferVersion: InferredCategoryService.version.value);
+
+  /// §inferDelta — La clé pour une version DONNÉE des catégories déduites :
+  /// permet de reconnaître « seule cette version a bougé » et d'appliquer un
+  /// delta au rangement mémoïsé au lieu de tout refaire.
+  int _groupingKeyWith({required int inferVersion}) =>
       widget.entries.length * 1000003 +
       ParsedPlaylistService.version.value * 1009 +
       // §inferredCat — Les catégories déduites changent le RANGEMENT, donc le
       // groupement doit être refait quand elles avancent. Sûr uniquement parce
       // que ce compteur est groupé côté service (cf. §favAudit).
-      InferredCategoryService.version.value * 10007 +
+      inferVersion * 10007 +
       // §tmdbMerge — La table de fusion modifie la CLÉ de chaque groupe : elle
       // doit entrer dans la clé de cache, sinon l'accueil garde le regroupement
       // d'avant fusion jusqu'au prochain changement de playlist.
@@ -1742,24 +1817,44 @@ class _TypePageState extends State<_TypePage> {
   /// Groupe par catégorie puis par titre. Mémoïsé sur [_groupingKey], **et**
   /// sur [_sharedGrouping] pour survivre à la destruction de la page
   /// (§tabSwitchCost).
+  // §homeMeter — durée des sous-étapes : voie « clé inchangée » du
+  // groupement, et les deux passes du hero (reprise, tendances).
+  int _lastFavMs = 0;
+  int _lastTmdbRowsMs = 0;
+  int _lastResumeMs = 0;
+  int _lastTrendMs = 0;
+
   void _ensureGrouping() {
     final key = _groupingKey();
     if (_cachedByCategory != null && _cachedGroupingKey == key) {
       // Groupement toujours valide, mais un cœur a pu changer entre-temps.
+      final Stopwatch sw = Stopwatch()..start();
       _ensureFavoriteCategory();
+      _lastFavMs = sw.elapsedMilliseconds;
       _ensureTmdbRows();
+      _lastTmdbRowsMs = sw.elapsedMilliseconds - _lastFavMs;
       return;
     }
+    _lastFavMs = 0;
+    _lastTmdbRowsMs = 0;
 
     // §tabSwitchCost — Le mémo partagé d'abord : c'est lui qui évite de
     // repayer un regroupement complet quand le `PageView` a détruit puis
     // reconstruit cette page.
     final _GroupingMemo? memo = _sharedGrouping[widget.type];
-    if (memo != null &&
-        memo.key == key &&
-        identical(memo.source, widget.entries)) {
-      _adoptGrouping(memo, key);
-      return;
+    if (memo != null && identical(memo.source, widget.entries)) {
+      if (memo.key == key) {
+        _adoptGrouping(memo, key);
+        return;
+      }
+      // §inferDelta — Seules les catégories déduites ont bougé ? On déplace
+      // les groupes concernés dans le rangement mémoïsé, sans le refaire.
+      final _GroupingMemo? patched = _applyInferredDelta(memo, key);
+      if (patched != null) {
+        _sharedGrouping[widget.type] = patched;
+        _adoptGrouping(patched, key);
+        return;
+      }
     }
 
     final res = _groupByCategoryThenByTitle(widget.entries, widget.type);
@@ -1781,9 +1876,50 @@ class _TypePageState extends State<_TypePage> {
       byCategory: res.byCategory,
       groups: res.groups,
       categories: _sortCategories(res.byCategory),
+      inferVersion: InferredCategoryService.version.value,
+      hasAddedData: res.hasAddedData,
     );
     _sharedGrouping[widget.type] = fresh;
     _adoptGrouping(fresh, key);
+  }
+
+  /// §inferDelta (2026-09-06, lot 13) — Si, entre le mémo et maintenant, SEULE
+  /// la version des catégories déduites a changé et que le service sait
+  /// encore ce qui a été appris, déplace ces groupes-là et rend le mémo sous
+  /// sa nouvelle clé. `null` ⇒ autre chose a bougé, ou delta perdu :
+  /// regroupement complet.
+  ///
+  /// Mesuré AVANT (émulateur TV, une catégorie apprise en ouvrant une fiche) :
+  /// 408 + 925 + 128 ms de regroupement pour les trois pages, au retour du
+  /// lecteur. Le delta déplace un groupe.
+  _GroupingMemo? _applyInferredDelta(_GroupingMemo memo, int key) {
+    if (_groupingKeyWith(inferVersion: memo.inferVersion) != memo.key) {
+      return null;
+    }
+    final int inferNow = InferredCategoryService.version.value;
+    final Map<String, InferredChange>? delta =
+        InferredCategoryService.deltaSince(memo.inferVersion);
+    if (delta == null) return null;
+    final Stopwatch sw = Stopwatch()..start();
+    final bool setChanged = applyInferredDelta(
+      byCategory: memo.byCategory,
+      groupsByKey: memo.byKey,
+      delta: delta,
+      hasAddedData: memo.hasAddedData,
+      rowFoldMin: PerformanceSettingsService.config.value.rowFoldMin,
+      isSortedGenre: (String c) =>
+          _TypePage._categoryPriority(c) >= 100 && c != 'Autres',
+    );
+    final List<String> categories =
+        setChanged ? _sortCategories(memo.byCategory) : memo.categories;
+    debugPrint('\u23F1\uFE0F \u00A7inferDelta (${widget.type.name}) : '
+        '${delta.length} cle(s) appliquee(s) en ${sw.elapsedMilliseconds} ms'
+        '${setChanged ? ', jeu de rangees change' : ''}');
+    return memo.rekeyed(
+      key: key,
+      inferVersion: inferNow,
+      categories: categories,
+    );
   }
 
   /// Installe un groupement partagé dans l'état de CETTE page.
@@ -1798,6 +1934,7 @@ class _TypePageState extends State<_TypePage> {
     _cachedByCategory =
         Map<String, List<List<M3uEntry>>>.of(memo.byCategory);
     _cachedGroups = memo.groups;
+    _memo = memo;
     _cachedCategories = List<String>.of(memo.categories);
     _cachedGroupingKey = key;
     _cachedFeaturedKey = -1; // groupement changé → forcer le recalcul du hero
@@ -1835,22 +1972,15 @@ class _TypePageState extends State<_TypePage> {
     }
     _ownTmdbRowLabels.clear();
 
-    if (memo != null && _cachedGroups != null) {
-      // Index par titre normalisé, construit à la première rangée qui en a
-      // besoin et partagé par la seconde (une seule passe sur les groupes).
-      Map<String, List<List<M3uEntry>>>? byName;
-      Map<String, List<List<M3uEntry>>> index() {
-        if (byName != null) return byName!;
-        final m = <String, List<List<M3uEntry>>>{};
-        for (final g in _cachedGroups!) {
-          m.putIfAbsent(_normTitle(g.first.displayName), () => []).add(g);
-        }
-        return byName = m;
-      }
+    final _GroupingMemo? grouping = _memo;
+    if (memo != null && grouping != null) {
+      // §homeIndex — L'index par titre vient du mémo de regroupement : une
+      // seule construction par playlist, partagée avec le hero. (Il était
+      // refait ici à chaque changement d'onglet : 147-204 ms par page.)
       List<List<M3uEntry>> match(List<TrendingTitle> titles) {
         final out = <List<M3uEntry>>[];
         final seen = <String>{};
-        final idx = index();
+        final idx = grouping.byName;
         for (final t in titles) {
           var hit = _pickByYear(idx, _normTitle(t.title), t.year);
           if (hit == null && t.originalTitle != null) {
@@ -2019,6 +2149,8 @@ class _TypePageState extends State<_TypePage> {
         )) {
       _cachedFeatured = memo.featured;
       _cachedFeaturedKey = key;
+      _lastResumeMs = 0;
+      _lastTrendMs = 0;
       return;
     }
 
@@ -2039,17 +2171,14 @@ class _TypePageState extends State<_TypePage> {
       // hero. §homonymYear — la clé inclut l'année (films splittés par année) :
       // sinon "Vengeance 1990" et "Vengeance 2022" (même displayName) seraient
       // re-fusionnés ici.
-      final allGroups = <List<M3uEntry>>[];
-      final seenNames = <String>{};
-      for (final groups in byCategory.values) {
-        for (final group in groups) {
-          final dedupKey =
-              '${group.first.displayName}|${group.first.title.year ?? ''}';
-          if (seenNames.add(dedupKey)) {
-            allGroups.add(group);
-          }
-        }
-      }
+      // §homeIndex — La liste PLATE du mémo : New, Favoris et les rangées TMDB
+      // ne font que RÉFÉRENCER ces groupes, donc aucun doublon à retirer — le
+      // parcours de toutes les catégories (avec une chaîne allouée par
+      // groupe pour dédoublonner) refaisait ce travail à chaque reprise
+      // sauvegardée. Le dédoublonnage par nom+année ne vaut plus que sur les
+      // quelques cartes retenues.
+      final Stopwatch swHero = Stopwatch()..start();
+      final List<List<M3uEntry>> allGroups = _memo?.groups ?? _cachedGroups!;
       final resumeWithTime = <({List<M3uEntry> group, DateTime t})>[];
       for (final group in allGroups) {
         final p = WatchProgressService.getProgressForAny(
@@ -2061,10 +2190,17 @@ class _TypePageState extends State<_TypePage> {
       }
       resumeWithTime.sort((a, b) => b.t.compareTo(a.t));
       final resumeKeys = <String>{};
-      for (final item in resumeWithTime.take(maxResume)) {
+      final seenResume = <String>{};
+      for (final item in resumeWithTime) {
+        if (featured.length >= maxResume) break;
+        final first = item.group.first;
+        if (!seenResume.add('${first.displayName}|${first.title.year ?? ''}')) {
+          continue;
+        }
         featured.add(item.group);
-        resumeKeys.add(item.group.first.displayName);
+        resumeKeys.add(first.displayName);
       }
+      _lastResumeMs = swHero.elapsedMilliseconds;
 
       // §trending — Complète avec les TENDANCES TMDB de la semaine DISPONIBLES
       // dans la playlist (remplace les anciennes "nouveautés" du hero, déjà
@@ -2077,10 +2213,9 @@ class _TypePageState extends State<_TypePage> {
         // splittés par année, §homonymYear). On garde la liste des candidats
         // et on choisit celui dont l'année matche le retour TMDB → fini le
         // "mauvais film d'une autre époque" remonté par le hero Tendances.
-        final byName = <String, List<List<M3uEntry>>>{};
-        for (final g in allGroups) {
-          byName.putIfAbsent(_normTitle(g.first.displayName), () => []).add(g);
-        }
+        // §homeIndex — index partagé du mémo (construit une fois).
+        final Map<String, List<List<M3uEntry>>> byName =
+            _memo?.byName ?? const <String, List<List<M3uEntry>>>{};
         // §trendingYearProx — Tolérance d'écart d'année (en années) entre le
         // retour TMDB et le candidat playlist. Les tendances sont l'ACTUALITÉ
         // (films récents), donc l'année doit coller de près : au-delà, c'est un
@@ -2105,6 +2240,7 @@ class _TypePageState extends State<_TypePage> {
           usedTrending = true;
         }
       }
+      _lastTrendMs = swHero.elapsedMilliseconds - _lastResumeMs;
 
       // Fallback : pas de clé TMDB / aucune tendance dispo → comportement
       // historique (catégories prioritaires) pour ne pas laisser le hero vide.
@@ -2168,11 +2304,23 @@ class _TypePageState extends State<_TypePage> {
   Widget build(BuildContext context) {
     if (widget.entries.isEmpty) return _buildEmpty(context);
 
+    // §homeMeter (2026-09-06, lot 13) — CHRONOS de la reconstruction. Mesuré
+    // sur la TV de l'utilisateur au retour du lecteur : un build de 1 131 ms,
+    // 2 frames en 1,5 s. Avant de corriger, savoir QUI coûte : le groupement,
+    // le hero, ou le reste — et QUEL compteur a invalidé le cache.
+    final Stopwatch swBuild = Stopwatch()..start();
+    final int keyBefore = _cachedGroupingKey;
+    final int featBefore = _cachedFeaturedKey;
     _ensureGrouping();
+    final int tGroup = swBuild.elapsedMilliseconds;
     _ensureFeatured();
+    final int tFeat = swBuild.elapsedMilliseconds - tGroup;
     final byCategory = _cachedByCategory!;
     final categories = _cachedCategories!;
     final featured = _cachedFeatured!;
+    if (tGroup + tFeat >= 20) {
+      debugPrint('\u23F1\uFE0F \u00A7homeMeter (${widget.type.name}) : groupement $tGroup ms (cle ${keyBefore == -1 ? 'NEUVE' : keyBefore != _cachedGroupingKey ? 'CHANGEE' : 'inchangee'} ; fav ${_lastFavMs} ms, tmdbRows ${_lastTmdbRowsMs} ms), hero $tFeat ms (cle ${featBefore != _cachedFeaturedKey ? 'CHANGEE' : 'inchangee'} ; reprise ${_lastResumeMs} ms, tendances ${_lastTrendMs} ms) ; n=${widget.entries.length} playlist=${ParsedPlaylistService.version.value} infer=${InferredCategoryService.version.value} alias=${TmdbGroupAliasService.version.value} fold=${PerformanceSettingsService.config.value.rowFoldMin} favoris=${FavoritesService.version.value} reprise=${WatchProgressService.version.value}');
+    }
 
     // §navUX — Ordre des items de la liste :
     //   1. Hero (carrousel "en avant")
@@ -2405,6 +2553,7 @@ class _TypePageState extends State<_TypePage> {
   ({
     Map<String, List<List<M3uEntry>>> byCategory,
     List<List<M3uEntry>> groups,
+    bool hasAddedData,
   }) _groupByCategoryThenByTitle(
     List<M3uEntry> entries,
     M3uContentType type,
@@ -2557,7 +2706,11 @@ class _TypePageState extends State<_TypePage> {
     // titre → un homonyme favorisé fait remonter ses variantes par année ;
     // edge case rare, acceptable, et évite une migration risquée des favoris
     // existants.)
-    return (byCategory: byCategory, groups: groups);
+    return (
+      byCategory: byCategory,
+      groups: groups,
+      hasAddedData: hasAddedData,
+    );
   }
 }
 
