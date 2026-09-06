@@ -39,6 +39,7 @@ import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/measured_quality_badge.dart';
 import 'package:aetherStream/data/services/inferred_category_service.dart';
 import 'package:aetherStream/feature/home/inferred_delta.dart';
+import 'package:aetherStream/feature/home/home_row_index.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -1505,7 +1506,26 @@ class _GroupingMemo {
         hasAddedData: hasAddedData,
       )
         .._byName = _byName
-        .._byKey = _byKey;
+        .._byKey = _byKey
+        .._byUrl = _byUrl;
+
+  /// §resumeIndex — Index « URL d'entrée → groupe », pour retrouver les
+  /// reprises (quelques-unes) sans balayer toutes les URL du catalogue à
+  /// chaque reprise sauvegardée (31-43 ms mesurés sur la télé, page Films).
+  /// Paresseux ; les clés sont les URL déjà en mémoire. ~85 000 entrées pour
+  /// trois vraies listes : quelques Mo, retenus avec le mémo.
+  Map<String, List<M3uEntry>>? _byUrl;
+  Map<String, List<M3uEntry>> get byUrl {
+    final existing = _byUrl;
+    if (existing != null) return existing;
+    final m = <String, List<M3uEntry>>{};
+    for (final g in groups) {
+      for (final e in g) {
+        m[e.url] = g;
+      }
+    }
+    return _byUrl = m;
+  }
 
   /// §inferDelta — Index « clé de groupe → groupes » (plusieurs si le titre est
   /// éclaté par année, §homonymYear). Paresseux, retenu avec le mémo. Les clés
@@ -2102,9 +2122,24 @@ class _TypePageState extends State<_TypePage> {
     final byCategory = _cachedByCategory!;
     final hadRow = byCategory.containsKey('Favoris');
 
-    final favorites = <List<M3uEntry>>[];
-    for (final group in _cachedGroups!) {
-      if (FavoritesService.isEntryFavorite(group.first)) favorites.add(group);
+    // §favIndex — Films/séries : depuis les clés favorites (quelques dizaines),
+    // retrouvées dans l'index du mémo — plus de clé construite par groupe
+    // (84-110 ms mesurés sur la télé). Les chaînes gardent le parcours : leur
+    // clé (`tvGroupKey`) n'est pas celle de l'index, et elles sont 4 000.
+    final _GroupingMemo? memo = _memo;
+    final List<List<M3uEntry>> favorites;
+    if (widget.type != M3uContentType.tv && memo != null) {
+      favorites = favoriteGroupsFor(
+        favoriteKeys: FavoritesService.all,
+        type: widget.type,
+        byKey: memo.byKey,
+        groups: memo.groups,
+      );
+    } else {
+      favorites = <List<M3uEntry>>[];
+      for (final group in _cachedGroups!) {
+        if (FavoritesService.isEntryFavorite(group.first)) favorites.add(group);
+      }
     }
 
     if (favorites.isEmpty) {
@@ -2178,27 +2213,34 @@ class _TypePageState extends State<_TypePage> {
       // sauvegardée. Le dédoublonnage par nom+année ne vaut plus que sur les
       // quelques cartes retenues.
       final Stopwatch swHero = Stopwatch()..start();
-      final List<List<M3uEntry>> allGroups = _memo?.groups ?? _cachedGroups!;
-      final resumeWithTime = <({List<M3uEntry> group, DateTime t})>[];
-      for (final group in allGroups) {
-        final p = WatchProgressService.getProgressForAny(
-          group.map((e) => e.url),
+      // §resumeIndex — Depuis les reprises (quelques-unes) vers leurs groupes,
+      // par l'index du mémo ; sans mémo (première composition), l'ancien
+      // parcours de toutes les URL.
+      final _GroupingMemo? memo = _memo;
+      final List<ResumeHit> resumes;
+      if (memo != null) {
+        resumes = resumeGroupsFor(
+          progress: WatchProgressService.all,
+          byUrl: memo.byUrl,
+          max: maxResume,
         );
-        if (p != null && p.ratio < 0.95) {
-          resumeWithTime.add((group: group, t: p.lastWatched));
+      } else {
+        final byUrl = <String, List<M3uEntry>>{};
+        for (final g in _cachedGroups!) {
+          for (final e in g) {
+            byUrl[e.url] = g;
+          }
         }
+        resumes = resumeGroupsFor(
+          progress: WatchProgressService.all,
+          byUrl: byUrl,
+          max: maxResume,
+        );
       }
-      resumeWithTime.sort((a, b) => b.t.compareTo(a.t));
       final resumeKeys = <String>{};
-      final seenResume = <String>{};
-      for (final item in resumeWithTime) {
-        if (featured.length >= maxResume) break;
-        final first = item.group.first;
-        if (!seenResume.add('${first.displayName}|${first.title.year ?? ''}')) {
-          continue;
-        }
-        featured.add(item.group);
-        resumeKeys.add(first.displayName);
+      for (final ResumeHit hit in resumes) {
+        featured.add(hit.group);
+        resumeKeys.add(hit.group.first.displayName);
       }
       _lastResumeMs = swHero.elapsedMilliseconds;
 
