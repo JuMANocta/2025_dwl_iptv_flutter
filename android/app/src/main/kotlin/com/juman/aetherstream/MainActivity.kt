@@ -136,6 +136,13 @@ class MainActivity : FlutterActivity() {
                 } catch (e: Exception) {
                     result.error("BATTERY_ERROR", e.message, null)
                 }
+            } else if (call.method == "caps") {
+                // §deviceCaps — décodeurs, écran, mémoire : mesurés, pas devinés.
+                try {
+                    result.success(AetherDeviceCaps.probe(applicationContext))
+                } catch (e: Exception) {
+                    result.error("CAPS_ERROR", e.message, null)
+                }
             } else {
                 result.notImplemented()
             }

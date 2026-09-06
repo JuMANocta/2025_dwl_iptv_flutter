@@ -34,6 +34,7 @@ import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/confirm_or_undo.dart';
 import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
+import 'package:aetherStream/widgets/playback_gate.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/measured_quality_badge.dart';
 import 'package:aetherStream/data/services/inferred_category_service.dart';

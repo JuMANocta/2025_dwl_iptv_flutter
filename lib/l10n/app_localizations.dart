@@ -1597,6 +1597,204 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Re-download all your lists from their servers'**
   String get settingsReloadAllSub;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Full'**
+  String get perfProfileConfort;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Balanced'**
+  String get perfProfileEquilibre;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get perfProfilePerformance;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get autoProfileOk;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'What your device can do'**
+  String get capsTitle;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Decoders, display, memory — measured, not guessed'**
+  String get capsSub;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Measure again'**
+  String get capsMeasure;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Not measured yet'**
+  String get capsNever;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Display'**
+  String get capsDisplay;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Memory'**
+  String get capsMemory;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Video decoders'**
+  String get capsDecoders;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'4K films'**
+  String get capsVerdict4k;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'hardware'**
+  String get capsHardware;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'software'**
+  String get capsSoftware;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'no decoder'**
+  String get capsNoDecoder;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Yes'**
+  String get capsYes;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'No — no decoder accepts 2160p'**
+  String get capsNoDecoder4k;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'No — the display shows less than 2160p'**
+  String get capsNoDisplay4k;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown — incomplete measurement'**
+  String get capsUnknown;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'low-memory device'**
+  String get capsLowRam;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'This 4K version can\'t play here'**
+  String get refuse4kTitle;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'No decoder on this device accepts a 3840×2160 picture. Pick an FHD or HD version.'**
+  String get refuse4kDecoder;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'The display shows {w}×{h}: 4K would be decoded for nothing and may stutter. Pick an FHD or HD version.'**
+  String refuse4kDisplay(int w, int h);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get refuseOk;
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'{name} profile chosen for this device'**
+  String autoProfileTitle(String name);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Based on the measurement ({ram} MB of memory, {cores} cores), the home uses the {name} profile. You can change it anytime in Settings → Optimisation.'**
+  String autoProfileBody(String name, int ram, int cores);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'Measured on {date}'**
+  String capsMeasuredAt(String date);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'{w}×{h} at {hz} Hz'**
+  String capsDisplayValue(int w, int h, int hz);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'{total} MB total, {avail} MB free'**
+  String capsMemoryValue(int total, int avail);
+
+  /// §deviceCaps
+  ///
+  /// In en, this message translates to:
+  /// **'{name} ({kind}) — up to {w}×{h}'**
+  String capsDecoderValue(String name, String kind, int w, int h);
+
+  /// Sous-titre d'un profil d'optimisation
+  ///
+  /// In en, this message translates to:
+  /// **'All animations'**
+  String get perfProfileConfortSub;
+
+  /// Sous-titre d'un profil d'optimisation
+  ///
+  /// In en, this message translates to:
+  /// **'Static hero, shorter rows'**
+  String get perfProfileEquilibreSub;
+
+  /// Sous-titre d'un profil d'optimisation
+  ///
+  /// In en, this message translates to:
+  /// **'Low memory'**
+  String get perfProfilePerformanceSub;
 }
 
 class _AppLocalizationsDelegate

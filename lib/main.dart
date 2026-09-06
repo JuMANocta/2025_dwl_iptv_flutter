@@ -19,6 +19,7 @@ import 'data/services/playlist_fleet_service.dart';
 import 'data/services/load_failure.dart';
 import 'data/services/watch_progress_service.dart';
 import 'data/services/device_library_service.dart';
+import 'data/services/device_caps_service.dart';
 import 'data/services/search_history_service.dart';
 import 'data/services/last_watched_channel_service.dart';
 import 'data/services/hidden_regions_service.dart';
@@ -186,6 +187,7 @@ Future<void> _initServices() async {
     InferredCategoryService.init(), // §inferredCat
     TmdbPosterCache.init(), // §tmdbUrlPersist
     VisualLanguageService.init(), // §posterLang
+    DeviceCapsService.init(), // §deviceCaps — derniere mesure persistee
   ]);
   // §dlNotif — APRÈS `DownloadManagerService().init()` : le pont seed sa
   // ligne de base sur `tasksNotifier.value`, qui doit déjà porter la
@@ -589,7 +591,8 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     }
   }
 
-  /// §perfAutoSuggest — Propose le profil Performance sur box TV (one-shot).
+  /// §autoProfile — La sonde mesure l'appareil APRÈS la première frame et
+  /// choisit le profil (one-shot, jamais par-dessus un choix utilisateur).
   /// Délai 2,5 s pour laisser la home se monter (le dialog d'expiration §17b,
   /// plus critique, arrive à 4 s et passerait par-dessus — cas rare accepté).
   Future<void> _suggestTvPerfProfile() async {

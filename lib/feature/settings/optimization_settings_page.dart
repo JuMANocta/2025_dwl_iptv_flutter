@@ -15,6 +15,7 @@ import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_ext.dart';
 import 'package:aetherStream/widgets/tv/section_beacon.dart';
+import 'package:aetherStream/feature/settings/device_caps_page.dart';
 
 /// §perfSettings — Page « Optimisation » (Fire Stick / terminaux faibles).
 ///
@@ -207,6 +208,9 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // §deviceCaps — La sonde d'abord : c'est elle qui explique le
+              // profil choisi, et ce que l'appareil peut lire.
+              _capsTile(cs),
               const SectionMark('Profils'),
               _buildProfilesRow(cs),
               const SectionMark('Hero banner'),
@@ -509,6 +513,40 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
 
   // ── Helpers UI (mêmes patterns que ThemeSettingsPage) ────────────────────
 
+  /// §deviceCaps — Libellés des profils : par identifiant, dans la l10n.
+  String _presetLabel(String id) => switch (id) {
+        'confort' => context.l10n.perfProfileConfort,
+        'equilibre' => context.l10n.perfProfileEquilibre,
+        'performance' => context.l10n.perfProfilePerformance,
+        _ => id,
+      };
+
+  String _presetSubtitle(String id) => switch (id) {
+        'confort' => context.l10n.perfProfileConfortSub,
+        'equilibre' => context.l10n.perfProfileEquilibreSub,
+        'performance' => context.l10n.perfProfilePerformanceSub,
+        _ => '',
+      };
+
+  Widget _capsTile(ColorScheme cs) {
+    final l10n = context.l10n;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: FocusableCard(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const DeviceCapsPage()),
+        ),
+        child: ListTile(
+          leading: Icon(Icons.memory, color: kAccentSecondary),
+          title: Text(l10n.capsTitle),
+          subtitle: Text(l10n.capsSub, style: const TextStyle(fontSize: 11)),
+          trailing: Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+
   Widget _buildProfilesRow(ColorScheme cs) {
     return SizedBox(
       height: 84,
@@ -562,7 +600,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                         color: active ? kAccentSecondary : cs.onSurfaceVariant),
                     const SizedBox(height: 4),
                     Text(
-                      preset.name,
+                      _presetLabel(preset.name),
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight:
@@ -573,7 +611,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      preset.subtitle,
+                      _presetSubtitle(preset.name),
                       style: TextStyle(
                         fontSize: 9,
                         color: cs.onSurfaceVariant,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/feature/search/details_versions.dart';
+import 'package:aetherStream/widgets/playback_gate.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
@@ -534,9 +535,14 @@ String _formatResumeLabel(Duration d) {
   return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
 }
 
-void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPosition}) {
-  FavoritesService.addEntry(entry);
+Future<void> _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPosition}) async {
+  final BuildContext root = navigatorKey.currentContext ?? context;
   Navigator.pop(context);
+  // §deviceCaps — la porte, même règle que la fiche et l'accueil. Le dialogue
+  // s'ouvre sur le navigateur racine : la feuille vient d'être refermée.
+  if (!await PlaybackGate.allow(root, entry)) return;
+  if (!root.mounted) return;
+  FavoritesService.addEntry(entry);
   // §endOfMovie — La feuille ne reçoit qu'UNE entrée : ses versions sœurs se
   // relisent en mémoire avec la règle partagée de la fiche (§detailsLive).
   final List<String> siblings = [
@@ -546,7 +552,9 @@ void _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPositio
         entry))
       e.url,
   ];
-  Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
+  // ⚠️ `root`, pas `context` : la feuille est refermée et son contexte est
+  // mort après l'attente de la porte.
+  Navigator.push(root, MaterialPageRoute(builder: (_) => PlayerPage(
     path: entry.url,
     title: entry.displayName,
     siblingResumeKeys: siblings,

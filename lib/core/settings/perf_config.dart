@@ -274,22 +274,26 @@ class PerfConfig {
 
   /// Profils affichés dans OptimizationSettingsPage. Un état ne correspondant
   /// à aucun preset = « Personnalisé » (implicite, rien n'est stocké pour ça).
+  ///
+  /// §deviceCaps (2026-09-06) — `name` est un IDENTIFIANT, plus un libellé :
+  /// les libellés vivent dans la l10n (« Complet / Équilibré / Léger »). Les
+  /// anciens sous-titres nommaient des appareils (« Fire Stick ») ; depuis que
+  /// la sonde choisit le profil d'après la MESURE, un nom d'appareil ne veut
+  /// plus rien dire — un profil décrit ce qu'il allège, pas pour qui.
+  /// ⚠️ Rien n'est persisté par nom (seule la config l'est) : renommer est sûr.
   static const presets = [
     (
-      name: 'Confort',
-      subtitle: 'Défaut',
+      name: 'confort',
       icon: Icons.weekend_outlined,
       config: defaults,
     ),
     (
-      name: 'Équilibré',
-      subtitle: 'Hero fixe',
+      name: 'equilibre',
       icon: Icons.balance,
       config: equilibre,
     ),
     (
-      name: 'Performance',
-      subtitle: 'Fire Stick',
+      name: 'performance',
       icon: Icons.speed,
       config: performance,
     ),

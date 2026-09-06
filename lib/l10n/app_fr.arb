@@ -739,5 +739,199 @@
   "settingsReloadAllSub": "Retélécharger toutes tes listes depuis leurs serveurs",
   "@settingsReloadAllSub": {
     "description": "Sous-titre de la tuile Tout recharger (TV)"
+  },
+  "perfProfileConfort": "Complet",
+  "@perfProfileConfort": {
+    "description": "§deviceCaps"
+  },
+  "perfProfileEquilibre": "Équilibré",
+  "@perfProfileEquilibre": {
+    "description": "§deviceCaps"
+  },
+  "perfProfilePerformance": "Léger",
+  "@perfProfilePerformance": {
+    "description": "§deviceCaps"
+  },
+  "autoProfileOk": "Compris",
+  "@autoProfileOk": {
+    "description": "§deviceCaps"
+  },
+  "capsTitle": "Ce que ton appareil sait faire",
+  "@capsTitle": {
+    "description": "§deviceCaps"
+  },
+  "capsSub": "Décodeurs, écran, mémoire — mesurés, pas devinés",
+  "@capsSub": {
+    "description": "§deviceCaps"
+  },
+  "capsMeasure": "Mesurer à nouveau",
+  "@capsMeasure": {
+    "description": "§deviceCaps"
+  },
+  "capsNever": "Pas encore mesuré",
+  "@capsNever": {
+    "description": "§deviceCaps"
+  },
+  "capsDisplay": "Écran",
+  "@capsDisplay": {
+    "description": "§deviceCaps"
+  },
+  "capsMemory": "Mémoire",
+  "@capsMemory": {
+    "description": "§deviceCaps"
+  },
+  "capsDecoders": "Décodeurs vidéo",
+  "@capsDecoders": {
+    "description": "§deviceCaps"
+  },
+  "capsVerdict4k": "Films 4K",
+  "@capsVerdict4k": {
+    "description": "§deviceCaps"
+  },
+  "capsHardware": "matériel",
+  "@capsHardware": {
+    "description": "§deviceCaps"
+  },
+  "capsSoftware": "logiciel",
+  "@capsSoftware": {
+    "description": "§deviceCaps"
+  },
+  "capsNoDecoder": "aucun décodeur",
+  "@capsNoDecoder": {
+    "description": "§deviceCaps"
+  },
+  "capsYes": "Oui",
+  "@capsYes": {
+    "description": "§deviceCaps"
+  },
+  "capsNoDecoder4k": "Non — aucun décodeur n'accepte le 2160p",
+  "@capsNoDecoder4k": {
+    "description": "§deviceCaps"
+  },
+  "capsNoDisplay4k": "Non — l'écran affiche moins que 2160p",
+  "@capsNoDisplay4k": {
+    "description": "§deviceCaps"
+  },
+  "capsUnknown": "Inconnu — mesure incomplète",
+  "@capsUnknown": {
+    "description": "§deviceCaps"
+  },
+  "capsLowRam": "appareil à faible mémoire",
+  "@capsLowRam": {
+    "description": "§deviceCaps"
+  },
+  "refuse4kTitle": "Cette version 4K ne peut pas être lue ici",
+  "@refuse4kTitle": {
+    "description": "§deviceCaps"
+  },
+  "refuse4kDecoder": "Aucun décodeur de cet appareil n'accepte une image de 3840×2160. Choisis une version FHD ou HD.",
+  "@refuse4kDecoder": {
+    "description": "§deviceCaps"
+  },
+  "refuse4kDisplay": "L'écran affiche {w}×{h} : la 4K serait décodée pour rien et risquerait de saccader. Choisis une version FHD ou HD.",
+  "@refuse4kDisplay": {
+    "description": "§deviceCaps",
+    "placeholders": {
+      "w": {
+        "type": "int"
+      },
+      "h": {
+        "type": "int"
+      }
+    }
+  },
+  "refuseOk": "Compris",
+  "@refuseOk": {
+    "description": "§deviceCaps"
+  },
+  "autoProfileTitle": "Profil {name} choisi pour cet appareil",
+  "@autoProfileTitle": {
+    "description": "§deviceCaps",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "autoProfileBody": "D'après la mesure ({ram} Mo de mémoire, {cores} cœurs), l'accueil est réglé sur le profil {name}. Modifiable à tout moment dans Paramètres → Optimisation.",
+  "@autoProfileBody": {
+    "description": "§deviceCaps",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "ram": {
+        "type": "int"
+      },
+      "cores": {
+        "type": "int"
+      }
+    }
+  },
+  "capsMeasuredAt": "Mesuré le {date}",
+  "@capsMeasuredAt": {
+    "description": "§deviceCaps",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "capsDisplayValue": "{w}×{h} à {hz} Hz",
+  "@capsDisplayValue": {
+    "description": "§deviceCaps",
+    "placeholders": {
+      "w": {
+        "type": "int"
+      },
+      "h": {
+        "type": "int"
+      },
+      "hz": {
+        "type": "int"
+      }
+    }
+  },
+  "capsMemoryValue": "{total} Mo au total, {avail} Mo libres",
+  "@capsMemoryValue": {
+    "description": "§deviceCaps",
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "avail": {
+        "type": "int"
+      }
+    }
+  },
+  "capsDecoderValue": "{name} ({kind}) — jusqu'à {w}×{h}",
+  "@capsDecoderValue": {
+    "description": "§deviceCaps",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      },
+      "w": {
+        "type": "int"
+      },
+      "h": {
+        "type": "int"
+      }
+    }
+  },
+  "perfProfileConfortSub": "Toutes les animations",
+  "@perfProfileConfortSub": {
+    "description": "Sous-titre d'un profil d'optimisation"
+  },
+  "perfProfileEquilibreSub": "Hero fixe, rangées courtes",
+  "@perfProfileEquilibreSub": {
+    "description": "Sous-titre d'un profil d'optimisation"
+  },
+  "perfProfilePerformanceSub": "Peu de mémoire",
+  "@perfProfilePerformanceSub": {
+    "description": "Sous-titre d'un profil d'optimisation"
   }
 }

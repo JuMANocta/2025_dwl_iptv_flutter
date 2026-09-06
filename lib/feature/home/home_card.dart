@@ -205,8 +205,11 @@ class _HomeCardState extends State<_HomeCard> {
                   M3uContentType.tv     => PlayerBadgeType.live,
                 };
 
-                void play({Duration? from}) {
+                Future<void> play({Duration? from}) async {
                   Navigator.pop(sheetCtx);
+                  // §deviceCaps — la porte, même règle que la fiche.
+                  if (!await PlaybackGate.allow(context, entry)) return;
+                  if (!mounted) return;
                   FavoritesService.addEntry(entry);
                   Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerPage(
                     path: entry.url,

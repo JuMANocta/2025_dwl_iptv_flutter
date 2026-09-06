@@ -31,6 +31,7 @@ import 'actor_details_page.dart';
 import 'm3u_filter.dart';
 import 'details_facts.dart';
 import 'details_versions.dart';
+import '../../widgets/playback_gate.dart';
 import 'version_dedup.dart';
 
 Color _qualityColor(String? quality) {
@@ -2218,7 +2219,11 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     return null;
   }
 
-  void _launchSelected({Duration? from}) {
+  Future<void> _launchSelected({Duration? from}) async {
+    // §deviceCaps — la porte : une version que l'appareil ne peut pas lire est
+    // refusée ICI, avec la raison mesurée, avant d'ouvrir quoi que ce soit.
+    if (!await PlaybackGate.allow(context, _selectedEntry)) return;
+    if (!mounted) return;
     // Auto-ajout favoris au play, cohérent avec le reste de l'app (§1d)
     FavoritesService.addEntry(_selectedEntry);
     // §1i — Si on lance un épisode et qu'il existe un suivant, on passe le

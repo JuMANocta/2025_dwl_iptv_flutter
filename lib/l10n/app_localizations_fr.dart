@@ -898,4 +898,118 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get settingsReloadAllSub =>
       'Retélécharger toutes tes listes depuis leurs serveurs';
+
+  @override
+  String get perfProfileConfort => 'Complet';
+
+  @override
+  String get perfProfileEquilibre => 'Équilibré';
+
+  @override
+  String get perfProfilePerformance => 'Léger';
+
+  @override
+  String get autoProfileOk => 'Compris';
+
+  @override
+  String get capsTitle => 'Ce que ton appareil sait faire';
+
+  @override
+  String get capsSub => 'Décodeurs, écran, mémoire — mesurés, pas devinés';
+
+  @override
+  String get capsMeasure => 'Mesurer à nouveau';
+
+  @override
+  String get capsNever => 'Pas encore mesuré';
+
+  @override
+  String get capsDisplay => 'Écran';
+
+  @override
+  String get capsMemory => 'Mémoire';
+
+  @override
+  String get capsDecoders => 'Décodeurs vidéo';
+
+  @override
+  String get capsVerdict4k => 'Films 4K';
+
+  @override
+  String get capsHardware => 'matériel';
+
+  @override
+  String get capsSoftware => 'logiciel';
+
+  @override
+  String get capsNoDecoder => 'aucun décodeur';
+
+  @override
+  String get capsYes => 'Oui';
+
+  @override
+  String get capsNoDecoder4k => 'Non — aucun décodeur n\'accepte le 2160p';
+
+  @override
+  String get capsNoDisplay4k => 'Non — l\'écran affiche moins que 2160p';
+
+  @override
+  String get capsUnknown => 'Inconnu — mesure incomplète';
+
+  @override
+  String get capsLowRam => 'appareil à faible mémoire';
+
+  @override
+  String get refuse4kTitle => 'Cette version 4K ne peut pas être lue ici';
+
+  @override
+  String get refuse4kDecoder =>
+      'Aucun décodeur de cet appareil n\'accepte une image de 3840×2160. Choisis une version FHD ou HD.';
+
+  @override
+  String refuse4kDisplay(int w, int h) {
+    return 'L\'écran affiche $w×$h : la 4K serait décodée pour rien et risquerait de saccader. Choisis une version FHD ou HD.';
+  }
+
+  @override
+  String get refuseOk => 'Compris';
+
+  @override
+  String autoProfileTitle(String name) {
+    return 'Profil $name choisi pour cet appareil';
+  }
+
+  @override
+  String autoProfileBody(String name, int ram, int cores) {
+    return 'D\'après la mesure ($ram Mo de mémoire, $cores cœurs), l\'accueil est réglé sur le profil $name. Modifiable à tout moment dans Paramètres → Optimisation.';
+  }
+
+  @override
+  String capsMeasuredAt(String date) {
+    return 'Mesuré le $date';
+  }
+
+  @override
+  String capsDisplayValue(int w, int h, int hz) {
+    return '$w×$h à $hz Hz';
+  }
+
+  @override
+  String capsMemoryValue(int total, int avail) {
+    return '$total Mo au total, $avail Mo libres';
+  }
+
+  @override
+  String capsDecoderValue(String name, String kind, int w, int h) {
+    return '$name ($kind) — jusqu\'à $w×$h';
+  }
+
+  @override
+  String get perfProfileConfortSub => 'Toutes les animations';
+
+  @override
+  String get perfProfileEquilibreSub => 'Hero fixe, rangées courtes';
+
+  @override
+  String get perfProfilePerformanceSub => 'Peu de mémoire';
 }
