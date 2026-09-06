@@ -933,5 +933,22 @@
   "perfProfilePerformanceSub": "Peu de mémoire",
   "@perfProfilePerformanceSub": {
     "description": "Sous-titre d'un profil d'optimisation"
+  },
+  "tmdbRowsProvidersTitle": "Tendances Netflix, Disney+ et Prime",
+  "@tmdbRowsProvidersTitle": {
+    "description": "§tmdbProviders"
+  },
+  "tmdbRowsProvidersSub": "Ce qui marche en ce moment sur chaque plateforme en France, parmi tes listes",
+  "@tmdbRowsProvidersSub": {
+    "description": "§tmdbProviders"
+  },
+  "rowProviderTrending": "Tendances {name}",
+  "@rowProviderTrending": {
+    "description": "§tmdbProviders",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }

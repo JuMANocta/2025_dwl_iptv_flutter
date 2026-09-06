@@ -85,6 +85,13 @@ class PerfConfig {
   /// listes). Un appel par type et par jour. ⚠️ Exclu de l'égalité.
   final bool tmdbRowTopRated;
 
+  /// §tmdbProviders (2026-09-06) — Rangées « Tendances Netflix / Disney+ /
+  /// Prime Video » en France (`/discover` par `with_watch_providers`,
+  /// `watch_region=FR`, croisé avec les listes). Deux appels par plateforme
+  /// et par jour (films + séries). Choix utilisateur du 2026-09-06 : la seule
+  /// des sept rangées candidates retenue. ⚠️ Exclu de l'égalité.
+  final bool tmdbRowProviders;
+
   /// §rowFold (2026-09-05) — En dessous de ce nombre de titres, une rangée
   /// de genre est REPLIÉE dans « Autres » au lieu d'occuper une rangée à elle
   /// seule. Mesuré sur le téléviseur avec un vrai catalogue : après §catWords,
@@ -193,6 +200,7 @@ class PerfConfig {
     this.tmdbPostersFirst = false,
     this.tmdbRowBecause = true,
     this.tmdbRowTopRated = true,
+    this.tmdbRowProviders = true,
     this.rowFoldMin = 5,
     this.keepAllListsInMemory = true,
     this.idleUnloadMinutes = 0,
@@ -312,6 +320,7 @@ class PerfConfig {
         'tpf': tmdbPostersFirst,
         'trb': tmdbRowBecause,
         'trt': tmdbRowTopRated,
+        'trp': tmdbRowProviders,
         'mnr': rowFoldMin,
         'kal': keepAllListsInMemory,
         'ium': idleUnloadMinutes,
@@ -335,6 +344,7 @@ class PerfConfig {
         tmdbPostersFirst: j['tpf'] as bool? ?? defaults.tmdbPostersFirst,
         tmdbRowBecause: j['trb'] as bool? ?? defaults.tmdbRowBecause,
         tmdbRowTopRated: j['trt'] as bool? ?? defaults.tmdbRowTopRated,
+        tmdbRowProviders: j['trp'] as bool? ?? defaults.tmdbRowProviders,
         rowFoldMin: (j['mnr'] as int? ?? defaults.rowFoldMin)
             .clamp(minRowFoldMin, maxRowFoldMin),
         // §unloadGuard — Absentes des backups `.aether` antérieurs : elles
@@ -359,6 +369,7 @@ class PerfConfig {
     bool? tmdbPostersFirst,
     bool? tmdbRowBecause,
     bool? tmdbRowTopRated,
+    bool? tmdbRowProviders,
     int? rowFoldMin,
     bool? keepAllListsInMemory,
     int? idleUnloadMinutes,
@@ -375,6 +386,7 @@ class PerfConfig {
         tmdbPostersFirst: tmdbPostersFirst ?? this.tmdbPostersFirst,
         tmdbRowBecause: tmdbRowBecause ?? this.tmdbRowBecause,
         tmdbRowTopRated: tmdbRowTopRated ?? this.tmdbRowTopRated,
+        tmdbRowProviders: tmdbRowProviders ?? this.tmdbRowProviders,
         rowFoldMin: rowFoldMin ?? this.rowFoldMin,
         keepAllListsInMemory:
             keepAllListsInMemory ?? this.keepAllListsInMemory,
@@ -399,8 +411,8 @@ class PerfConfig {
       other.keepAllListsInMemory == keepAllListsInMemory &&
       other.idleUnloadMinutes == idleUnloadMinutes &&
       other.hostMaxConcurrent == hostMaxConcurrent;
-  // NB : `autoNextEpisode`, `tmdbPostersFirst`, `tmdbRowBecause` et
-  // `tmdbRowTopRated` sont volontairement EXCLUS de l'égalité — c'est un
+  // NB : `autoNextEpisode`, `tmdbPostersFirst`, `tmdbRowBecause`,
+  // `tmdbRowTopRated` et `tmdbRowProviders` sont volontairement EXCLUS de l'égalité — c'est un
   // réglage de confort, pas un paramètre de profil. L'inclure ferait basculer
   // la page en « Personnalisé » dès qu'on touche l'interrupteur.
 

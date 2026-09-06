@@ -858,8 +858,38 @@ class TmdbService {
   Future<List<TrendingTitle>> getTopRated({required bool isTv}) =>
       _cachedTitles('top/$isTv', isTv, '/${isTv ? 'tv' : 'movie'}/top_rated');
 
+  /// §tmdbProviders — Les plateformes retenues, avec leur identifiant TMDB
+  /// (`/watch/providers/movie?watch_region=FR`) : Netflix 8, Disney+ 337,
+  /// Amazon Prime Video 119. ⚠️ Identifiants STABLES côté TMDB, mais rien ne
+  /// garantit qu'une plateforme reste dans `watch_region=FR` : un discover
+  /// vide se traduit par une rangée absente, jamais par une erreur.
+  static const List<({int id, String name})> watchProviders = [
+    (id: 8, name: 'Netflix'),
+    (id: 337, name: 'Disney+'),
+    (id: 119, name: 'Prime Video'),
+  ];
+
+  /// §tmdbProviders — Ce qui marche en ce moment sur UNE plateforme, en France
+  /// (`/discover/movie|tv?with_watch_providers=<id>&watch_region=FR`, trié par
+  /// popularité). Un appel par plateforme, par type et par jour.
+  Future<List<TrendingTitle>> getProviderPopular({
+    required bool isTv,
+    required int providerId,
+  }) =>
+      _cachedTitles(
+        'prov/$isTv/$providerId',
+        isTv,
+        '/discover/${isTv ? 'tv' : 'movie'}',
+        extra: {
+          'with_watch_providers': '$providerId',
+          'watch_region': 'FR',
+          'sort_by': 'popularity.desc',
+        },
+      );
+
   Future<List<TrendingTitle>> _cachedTitles(
-      String key, bool isTv, String path) async {
+      String key, bool isTv, String path,
+      {Map<String, String> extra = const {}}) async {
     if (!await _init()) return const [];
     final cached = _rowsCache[key];
     final at = _rowsCacheAt[key];
@@ -868,8 +898,8 @@ class TmdbService {
       return cached;
     }
     try {
-      final resp =
-          await _dio!.get(path, queryParameters: {'language': _lang});
+      final resp = await _dio!
+          .get(path, queryParameters: {'language': _lang, ...extra});
       final list = _parseTitles(resp.data['results'] as List?, isTv);
       _rowsCache[key] = list;
       _rowsCacheAt[key] = DateTime.now();

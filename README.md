@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.18.9+142-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.18.10+143-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -326,7 +326,7 @@ lib/
 - [x] **Cinq informations de plus sur la fiche, sans une requête de plus** (§tmdbInfo, 2026-09-06) — ✅ fait : elles étaient déjà téléchargées et jetées. Séries : **nombre de saisons et d'épisodes** (ce qui existe, face à ce que tes listes ont), **prochain épisode annoncé**, **diffuseurs**. Films : **budget et recettes**, **sortie salle et numérique**. Et le bloc « Disponible sur » ne **devine** plus à partir du nom de catégorie de ton fournisseur — il annonçait six plateformes sur des milliers de séries sans qu'aucune soit vérifiée.
 - [x] **Deux rangées TMDB sur l'accueil** (§tmdbRows, 2026-09-05) — ✅ fait : « Parce que tu as regardé X » (les recommandations TMDB de ta dernière lecture, parmi tes listes) et « Les mieux notés », chacune désactivable dans la page de la clé TMDB
 - [x] **Les fichiers présents sur l'appareil mais absents de la liste** (§dlOrphans, 2026-09-05) — ✅ fait : un bouton dans la page Téléchargements balaye `Movies/AetherStream` et fait remonter ce que la liste ignore, lisible et supprimable
-- [ ] **Ce qui marche en ce moment sur Netflix, Disney+ et Prime** (§tmdbRowsMore, choisi le 2026-09-06) — une rangée par plateforme sur l'accueil : les films et séries que TMDB donne comme populaires en France chez ce diffuseur, **et que tes listes ont vraiment**. Interrupteur dans « Affiches et infos TMDB », comme les deux rangées déjà en place.
+- [x] **Ce qui marche en ce moment sur Netflix, Disney+ et Prime** (§tmdbProviders, 2026-09-06) — ✅ fait : une rangée par plateforme sur l'accueil, après « Les mieux notés » : les films et séries que TMDB donne comme populaires en France chez ce diffuseur, **et que tes listes ont vraiment** (mesuré avant de livrer : 15 à 19 titres sur 20 par plateforme). Interrupteur dans « Affiches et infos TMDB ». Au passage, sans hero les icônes ↻ et ⚙️ ne recouvrent plus les onglets Séries / Films / Chaînes.
 - [ ] **Changer d'onglet, encore plus vite** (§jankNext, mesuré le 2026-09-03) — après les trois correctifs de septembre, la bascule Accueil ↔ Recherche ↔ Téléchargements coûte encore ~42 ms sur sa pire image : les trois pages restent vivantes en même temps, avec leurs trois carrousels animés. Onze pistes chiffrées, à reprendre à la mesure.
 - [ ] **Choisir la qualité d'une chaîne en direct** (§engineFeatures) — sur les chaînes servies en plusieurs débits, pouvoir forcer une qualité plus basse quand la connexion faiblit, au lieu de subir les coupures.
 - [ ] **Diffuser un film téléchargé sur le Chromecast** (§castLocal, demandé le 2026-09-05) — aujourd'hui le bouton Cast refuse un fichier local ; le téléphone sait pourtant déjà servir un flux au téléviseur (§castRelay) : le film téléchargé sera servi tel quel, ou converti si le téléviseur ne lit pas sa piste audio

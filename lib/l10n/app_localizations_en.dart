@@ -1000,4 +1000,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get perfProfilePerformanceSub => 'Low memory';
+
+  @override
+  String get tmdbRowsProvidersTitle => 'Netflix, Disney+ and Prime trends';
+
+  @override
+  String get tmdbRowsProvidersSub =>
+      'What\'s popular right now on each platform in France, from your lists';
+
+  @override
+  String rowProviderTrending(String name) {
+    return 'Trending on $name';
+  }
 }

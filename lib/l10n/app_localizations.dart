@@ -1795,6 +1795,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Low memory'**
   String get perfProfilePerformanceSub;
+
+  /// §tmdbProviders
+  ///
+  /// In en, this message translates to:
+  /// **'Netflix, Disney+ and Prime trends'**
+  String get tmdbRowsProvidersTitle;
+
+  /// §tmdbProviders
+  ///
+  /// In en, this message translates to:
+  /// **'What\'s popular right now on each platform in France, from your lists'**
+  String get tmdbRowsProvidersSub;
+
+  /// §tmdbProviders
+  ///
+  /// In en, this message translates to:
+  /// **'Trending on {name}'**
+  String rowProviderTrending(String name);
 }
 
 class _AppLocalizationsDelegate

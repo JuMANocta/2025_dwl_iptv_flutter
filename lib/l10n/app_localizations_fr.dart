@@ -1012,4 +1012,16 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get perfProfilePerformanceSub => 'Peu de mémoire';
+
+  @override
+  String get tmdbRowsProvidersTitle => 'Tendances Netflix, Disney+ et Prime';
+
+  @override
+  String get tmdbRowsProvidersSub =>
+      'Ce qui marche en ce moment sur chaque plateforme en France, parmi tes listes';
+
+  @override
+  String rowProviderTrending(String name) {
+    return 'Tendances $name';
+  }
 }

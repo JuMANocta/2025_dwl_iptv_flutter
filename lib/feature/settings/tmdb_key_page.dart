@@ -634,6 +634,15 @@ class _TmdbOptionsBlockState extends State<_TmdbOptionsBlock> {
     widget.onChanged();
   }
 
+  // §tmdbProviders — « Tendances Netflix / Disney+ / Prime Video ».
+  void _toggleRowProviders(bool v) {
+    PerformanceSettingsService.save(
+      PerformanceSettingsService.config.value.copyWith(tmdbRowProviders: v),
+    );
+    setState(() {});
+    widget.onChanged();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -742,6 +751,27 @@ class _TmdbOptionsBlockState extends State<_TmdbOptionsBlock> {
             ),
             value: perf.tmdbRowTopRated,
             onChanged: _toggleRowTopRated,
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // ── §tmdbProviders — « Tendances Netflix / Disney+ / Prime » ─────
+        FocusableCard(
+          decorateOnly: true,
+          scaleOnFocus: false,
+          onTap: () => _toggleRowProviders(!perf.tmdbRowProviders),
+          borderRadius: BorderRadius.circular(12),
+          child: SwitchListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            secondary: Icon(Icons.live_tv_outlined, color: kAccentSecondary),
+            title: Text(l10n.tmdbRowsProvidersTitle),
+            subtitle: Text(
+              l10n.tmdbRowsProvidersSub,
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+            value: perf.tmdbRowProviders,
+            onChanged: _toggleRowProviders,
           ),
         ),
       ],

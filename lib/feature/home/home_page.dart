@@ -1188,6 +1188,10 @@ int _responsiveColumns(double available, {required bool channel}) {
 
 // ─── Page d'un type ──────────────────────────────────────────────────────────
 
+/// §noHeroInset — Hauteur réservée aux icônes ↻/⚙️ quand aucun hero ne les
+/// porte (cf. `_TypePage` → padding du ListView).
+const double _kNoHeroInset = 32;
+
 class _TypePage extends StatefulWidget {
   final M3uContentType type;
   final List<M3uEntry> entries;
@@ -1222,6 +1226,8 @@ class _TypePage extends StatefulWidget {
   /// donc inconnus à la compilation). Servent au tri et à l'icône.
   static final Set<String> _becauseRowLabels = {};
   static final Set<String> _topRatedRowLabels = {};
+  /// §tmdbProviders — « Tendances Netflix », « Tendances Disney+ », …
+  static final Set<String> _providerRowLabels = {};
 
   static int _categoryPriority(String category) {
     // §tmdbRows — « Parce que tu as regardé » juste APRÈS « New » (consigne
@@ -1230,6 +1236,8 @@ class _TypePage extends StatefulWidget {
     // fournisseur, avant les genres.
     if (_becauseRowLabels.contains(category)) return 1;
     if (_topRatedRowLabels.contains(category)) return 7;
+    // §tmdbProviders — juste après « Les mieux notés », avant les genres.
+    if (_providerRowLabels.contains(category)) return 8;
     switch (category) {
       case 'Favoris':       return -2;  // ⭐ tout en haut
       case 'France':        return -1;
@@ -1294,6 +1302,7 @@ class _TypePage extends StatefulWidget {
   static IconData categoryIcon(String cat) {
     if (_becauseRowLabels.contains(cat)) return Icons.recommend_outlined;
     if (_topRatedRowLabels.contains(cat)) return Icons.workspace_premium_outlined;
+    if (_providerRowLabels.contains(cat)) return Icons.live_tv_outlined;
     switch (cat) {
       case 'Favoris':       return Icons.star;
       case 'France':        return Icons.flag_outlined;
@@ -1376,6 +1385,9 @@ class _TmdbRowsMemo {
   final List<TrendingTitle> because;
   final List<TrendingTitle> topRated;
 
+  /// §tmdbProviders — par nom de plateforme, les titres populaires en France.
+  final Map<String, List<TrendingTitle>> providers;
+
   /// Ce qui a servi à choisir la graine : les entrées (identité), la version
   /// des reprises et celle des favoris. Tant que rien n'a bougé, recharger
   /// ne changerait rien — et coûterait une passe O(entrées) plus une
@@ -1393,6 +1405,7 @@ class _TmdbRowsMemo {
     required this.seedTitle,
     required this.because,
     required this.topRated,
+    this.providers = const {},
     required this.source,
     required this.watchVersion,
     required this.favVersion,
@@ -1563,7 +1576,11 @@ class _TypePageState extends State<_TypePage> {
   /// rangée « parce que tu as regardé » vide de sens.
   Future<void> _loadTmdbRows() async {
     final perf = PerformanceSettingsService.config.value;
-    if (!perf.tmdbRowBecause && !perf.tmdbRowTopRated) return;
+    if (!perf.tmdbRowBecause &&
+        !perf.tmdbRowTopRated &&
+        !perf.tmdbRowProviders) {
+      return;
+    }
     final isTv = widget.type == M3uContentType.series;
     final svc = TmdbService.instance;
 
@@ -1585,6 +1602,16 @@ class _TypePageState extends State<_TypePage> {
 
     final List<TrendingTitle> topRated =
         perf.tmdbRowTopRated ? await svc.getTopRated(isTv: isTv) : const [];
+
+    // §tmdbProviders — un appel par plateforme (cache 24 h dans le service).
+    final Map<String, List<TrendingTitle>> providers = {};
+    if (perf.tmdbRowProviders) {
+      for (final p in TmdbService.watchProviders) {
+        final list =
+            await svc.getProviderPopular(isTv: isTv, providerId: p.id);
+        if (list.isNotEmpty) providers[p.name] = list;
+      }
+    }
 
     M3uEntry? seed;
     List<TrendingTitle> because = const [];
@@ -1628,12 +1655,14 @@ class _TypePageState extends State<_TypePage> {
     final bool same = prev != null &&
         identical(prev.because, because) &&
         identical(prev.topRated, topRated) &&
+        _sameProviders(prev.providers, providers) &&
         prev.seedTitle == seed?.displayName;
     final memo = _TmdbRowsMemo(
       version: same ? prev.version : ++_tmdbRowsCounter,
       seedTitle: seed?.displayName,
       because: because,
       topRated: topRated,
+      providers: providers,
       source: widget.entries,
       watchVersion: watchV,
       favVersion: favV,
@@ -1644,6 +1673,17 @@ class _TypePageState extends State<_TypePage> {
       return;
     }
     setState(() => _sharedTmdbRows[widget.type] = memo);
+  }
+
+  /// §tmdbProviders — Même contenu (mêmes instances, servies par le cache du
+  /// service) → pas de nouvelle version de mémo.
+  static bool _sameProviders(Map<String, List<TrendingTitle>> a,
+      Map<String, List<TrendingTitle>> b) {
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      if (!identical(b[e.key], e.value)) return false;
+    }
+    return true;
   }
 
   /// §trending — Charge les tendances TMDB du type courant (movie/series) et
@@ -1783,6 +1823,7 @@ class _TypePageState extends State<_TypePage> {
       _cachedGroupingKey,
       perf.tmdbRowBecause,
       perf.tmdbRowTopRated,
+      perf.tmdbRowProviders,
     );
     if (_cachedTmdbRowsKey == key) return;
     _cachedTmdbRowsKey = key;
@@ -1845,6 +1886,24 @@ class _TypePageState extends State<_TypePage> {
           byCategory[label] = rows;
           changed = true;
         }
+      }
+      // §tmdbProviders — une rangée par plateforme, si la mesure le permet.
+      if (perf.tmdbRowProviders && memo.providers.isNotEmpty) {
+        final report = <String>[];
+        for (final e in memo.providers.entries) {
+          final rows = match(e.value);
+          report.add('${e.key} ${rows.length}/${e.value.length}');
+          if (rows.length < minRows) continue;
+          final label = L10n.current.rowProviderTrending(e.key);
+          _TypePage._providerRowLabels.add(label);
+          _ownTmdbRowLabels.add(label);
+          byCategory[label] = rows;
+          changed = true;
+        }
+        // La MESURE demandée par la roadmap : combien de titres de chaque
+        // plateforme les listes ont vraiment (une rangée à 2 titres ne vaut
+        // rien — elle est repliée sous `minRows`).
+        debugPrint('\u{1F4FA} \u00A7tmdbProviders (${widget.type.name}) : ${report.join(', ')} (plancher $minRows)');
       }
     }
 
@@ -2177,7 +2236,17 @@ class _TypePageState extends State<_TypePage> {
       // les clés de type `PageStorageKey`. La `ValueKey('cat_…')` de §tvExitPage
       // sert à l'identité des éléments, pas au rangement des positions.
       key: PageStorageKey('homeRows_${widget.type.name}'),
-      padding: EdgeInsets.only(top: widget.topInset, bottom: 24),
+      // §noHeroInset (2026-09-06) — Sans hero, les onglets Séries/Films/
+      // Chaînes deviennent le PREMIER élément et remontent sous la barre
+      // transparente : ↻ et ⚙️ leur passaient dessus et volaient le tap
+      // (signalement utilisateur, profil Léger). Même remède que l'état
+      // vide : une rangée `kToolbarHeight` de plus quand rien ne porte la
+      // barre. Avec hero, les icônes flottent sur lui, rien ne change.
+      // ⚠️ Pas `kToolbarHeight` (56) : les onglets ont déjà leur propre
+      // marge et l'utilisateur a trouvé l'espace « trop large » — 32 px
+      // suffisent à passer sous les icônes.
+      padding: EdgeInsets.only(
+          top: widget.topInset + (hasHero ? 0 : _kNoHeroInset), bottom: 24),
       // §dpadHeroDown — cache vertical élargi (défaut 250 px) : la 1re rangée
       // sous le pli doit être CONSTRUITE pour exister comme candidat de focus
       // D-pad (dpad ignore les nodes non buildés) — sinon un ⬇ « perdu »
