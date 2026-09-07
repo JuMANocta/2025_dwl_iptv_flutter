@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../models/stream_account.dart';
 import 'parsed_playlist_service.dart';
 import 'playlist_service.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §reloadAll — Rechargement FORCÉ de la playlist d'un compte.
 ///
@@ -65,8 +66,7 @@ abstract final class PlaylistReloadService {
     }
 
     if (newPath == null) {
-      throw const HttpException(
-          'Téléchargement impossible (vérifie l\'URL ou la connexion).');
+      throw HttpException(L10n.current.reloadDownloadFailed);
     }
 
     // §cacheKeep — Le retour était IGNORÉ. `reloadFromDisk` rend `null` quand
@@ -81,7 +81,7 @@ abstract final class PlaylistReloadService {
       newPath,
     );
     if (reloaded == null) {
-      throw const HttpException('L\'analyse de la liste a échoué.');
+      throw HttpException(L10n.current.reloadParseFailed);
     }
     debugPrint('✅ §reloadAll — « ${account.label} » rechargée '
         '(${reloaded.entries.length} entrées)');
@@ -117,7 +117,7 @@ abstract final class PlaylistReloadService {
     final int m = age.inMinutes % 60;
     if (h > 0) return m > 0 ? '${h}h ${m}min' : '${h}h';
     if (m > 0) return '${m}min';
-    return 'moins d\'une minute';
+    return L10n.current.reloadLessThanMinute;
   }
 }
 
@@ -140,12 +140,12 @@ class ReloadBatchResult {
   /// rouvrir chaque carte pour trouver le coupable.
   String get summary {
     if (failed.isEmpty) {
-      return '✅ ${succeeded.length} liste(s) rechargée(s)';
+      return L10n.current.reloadBatchAllOk(succeeded.length);
     }
     if (succeeded.isEmpty) {
-      return '❌ Aucune liste rechargée — ${failed.keys.join(', ')}';
+      return L10n.current.reloadBatchAllFailed(failed.keys.join(', '));
     }
-    return '⚠️ ${succeeded.length} rechargée(s), '
-        '${failed.length} en échec : ${failed.keys.join(', ')}';
+    return L10n.current.reloadBatchMixed(
+        succeeded.length, failed.length, failed.keys.join(', '));
   }
 }

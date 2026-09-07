@@ -8,6 +8,7 @@ import 'package:aetherStream/widgets/memory_stats_card.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Page À propos (§1L-e).
 ///
@@ -52,7 +53,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
     setState(() => _checking = true);
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-      const SnackBar(content: Text('🔍 Vérification des mises à jour…')),
+      SnackBar(content: Text(context.l10n.aboutChecking)),
     );
     final result = await UpdateService.checkForUpdateDetailed();
     if (!mounted) return;
@@ -62,11 +63,11 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
     switch (result) {
       case UpToDate():
         messenger.showSnackBar(
-          const SnackBar(content: Text('Vous êtes à jour.')),
+          SnackBar(content: Text(context.l10n.aboutUpToDate)),
         );
       case UpdateUnavailable(reason: final reason):
         messenger.showSnackBar(
-          SnackBar(content: Text('⚠️ Vérification impossible : $reason')),
+          SnackBar(content: Text(context.l10n.aboutCheckFailed(reason))),
         );
       case UpdateAvailable(info: final info):
         await UpdateDialog.show(context, info);
@@ -128,7 +129,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Client IPTV Android — multi-comptes, EPG, replay, TMDB.',
+                      context.l10n.aboutTagline,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,
@@ -155,7 +156,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                         ),
                       ),
                       icon: const Icon(Icons.receipt_long),
-                      label: const Text('Journal de diagnostic',
+                      label: Text(context.l10n.aboutDiagnosticLog,
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       style: FilledButton.styleFrom(
                         backgroundColor: kAccentTertiary,
@@ -178,8 +179,8 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                           : const Icon(Icons.system_update),
                       label: Text(
                         _checking
-                            ? 'Vérification…'
-                            : 'Vérifier les mises à jour',
+                            ? context.l10n.aboutCheckingShort
+                            : context.l10n.aboutCheckUpdates,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       style: FilledButton.styleFrom(
@@ -194,7 +195,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                     FilledButton.icon(
                       onPressed: () => _open(_ghRepo),
                       icon: const Icon(Icons.code),
-                      label: const Text('Voir le code sur GitHub',
+                      label: Text(context.l10n.aboutSourceOnGithub,
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       style: FilledButton.styleFrom(
                         backgroundColor: kAccentSecondary,
@@ -206,7 +207,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                     FilledButton.icon(
                       onPressed: () => _open(_ghReleases),
                       icon: const Icon(Icons.archive_outlined),
-                      label: const Text('Toutes les releases',
+                      label: Text(context.l10n.aboutAllReleases,
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       style: FilledButton.styleFrom(
                         backgroundColor: kAccentTertiary,

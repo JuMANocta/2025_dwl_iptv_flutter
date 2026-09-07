@@ -78,6 +78,10 @@ class _HostState extends State<_Host> {
   /// que Flutter saute (`identical`) quand seul le parent se reconstruit.
   late final Widget _probe = _Probe(tick: widget.tick);
 
+  /// Rendre la page visible ou non depuis le test, sans appeler
+  /// `setState` de l'exterieur (avertissement `invalid_use_of_protected_member`).
+  void show(bool value) => setState(() => visible = value);
+
   @override
   Widget build(BuildContext context) {
     return TickerMode(enabled: visible, child: _probe);
@@ -94,7 +98,7 @@ void main() {
     final host = tester.state<_HostState>(find.byType(_Host));
 
     // Cacher la page : aucune reconstruction (pas de dépendance TickerMode).
-    host.setState(() => host.visible = false);
+    host.show(false);
     await tester.pump();
     expect(_ProbeState.builds, 1);
 
@@ -104,16 +108,16 @@ void main() {
     expect(_ProbeState.builds, 1);
 
     // Elle redevient visible : rattrapage dans la même frame, sans exception.
-    host.setState(() => host.visible = true);
+    host.show(true);
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(_ProbeState.builds, 2);
     expect(find.text('build 2'), findsOneWidget);
 
     // Revenir visible sans signal : rien.
-    host.setState(() => host.visible = false);
+    host.show(false);
     await tester.pump();
-    host.setState(() => host.visible = true);
+    host.show(true);
     await tester.pump();
     expect(_ProbeState.builds, 2);
 

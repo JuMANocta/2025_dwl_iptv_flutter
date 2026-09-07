@@ -11,6 +11,7 @@ import '../../core/utils/log_sanitizer.dart';
 import '../../feature/player/cast_policy.dart';
 import '../../feature/player/cast_relay_policy.dart';
 import 'watch_progress_service.dart';
+import '../../l10n/l10n_ext.dart';
 
 export 'package:better_native_video_player/cast.dart'
     show CastDevice, CastSessionStatus, CastMediaTrack;
@@ -157,9 +158,8 @@ abstract final class CastService {
       return devices;
     } on nvp.CastDiscoveryException catch (e) {
       debugPrint('❌ CastService.discover : ${e.message}');
-      throw const CastException(
-        'Recherche impossible sur ce réseau. Le téléphone doit être sur le '
-        'même WiFi que le téléviseur, hors réseau invité.',
+      throw CastException(
+        L10n.current.castDiscoveryFailed,
       );
     }
   }
@@ -257,13 +257,12 @@ abstract final class CastService {
         session = await nvp.CastSession.connect(device);
       } on TimeoutException {
         throw CastException(
-          '${device.displayName} ne répond pas. Vérifie qu\'il est allumé et '
-          'sur le même réseau.',
+          L10n.current.castDeviceNotResponding(device.displayName),
         );
       } catch (e) {
         debugPrint('❌ CastService.connect ${device.displayName} : $e');
         throw CastException(
-          'Connexion à ${device.displayName} impossible.',
+          L10n.current.castConnectFailed(device.displayName),
         );
       }
       _session = session;
@@ -323,8 +322,8 @@ abstract final class CastService {
       _poll = null;
       _stopBatteryWatch();
       state.value = null;
-      throw const CastException(
-        "Le téléviseur n'a pas accepté ce flux.",
+      throw CastException(
+        L10n.current.castStreamRefused,
       );
     }
     _startPolling();
@@ -488,7 +487,7 @@ abstract final class CastService {
     state.value = null;
     _started = false;
     _awaitingStart = false;
-    if (wasActive) _messages.add('Connexion au téléviseur perdue.');
+    if (wasActive) _messages.add(L10n.current.castConnectionLost);
   }
 
   static Future<void> play() async => _session?.play();

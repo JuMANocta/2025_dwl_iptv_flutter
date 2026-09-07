@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/quality_scale.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §videoStats — Ce que le moteur décode RÉELLEMENT, à un instant donné.
 ///
@@ -173,11 +174,11 @@ class VideoStatsSnapshot {
     final ch = audioChannels;
     if (ch != null && ch > 0) {
       parts.add(switch (ch) {
-        1 => 'mono',
-        2 => 'stéréo',
+        1 => L10n.current.statsChannelsMono,
+        2 => L10n.current.statsChannelsStereo,
         6 => '5.1',
         8 => '7.1',
-        _ => '$ch canaux',
+        _ => L10n.current.statsChannelsCount(ch),
       });
     }
     final sr = audioSampleRate;
@@ -190,9 +191,9 @@ class VideoStatsSnapshot {
   String? get stallLabel {
     final n = stalls;
     if (n == null) return null;
-    if (n == 0) return 'aucun';
+    if (n == 0) return L10n.current.statsStallsNone;
     final s = ((stalledMs ?? 0) / 1000).round();
-    return s > 0 ? '$n (${s}s au total)' : '$n';
+    return s > 0 ? L10n.current.statsStallsWithTime(n, s) : '$n';
   }
 
   /// Le décodage passe-t-il par le matériel ?

@@ -49,7 +49,7 @@ class _CategoryRow extends StatelessWidget {
           // TV, la pastille en tête d'accueil nomme la catégorie regardée.
           // ⚠️ `child:` et pas le libellé par défaut — l'en-tête existe déjà.
           SectionMark(
-            category,
+            categoryDisplayLabel(category, context.l10n),
             child:
           // Header : barre verticale gradient + icône + titre + count
           Padding(
@@ -69,7 +69,7 @@ class _CategoryRow extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    category,
+                    categoryDisplayLabel(category, context.l10n),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 17,
@@ -385,7 +385,7 @@ class _SeeAllTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Voir tout',
+                            context.l10n.homeSeeAll,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
@@ -471,7 +471,7 @@ class _CategoryListPageState extends State<CategoryListPage> with TvInitialFocus
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                widget.category,
+                categoryDisplayLabel(widget.category, context.l10n),
                 style: const TextStyle(fontWeight: FontWeight.w700),
                 overflow: TextOverflow.ellipsis,
               ),

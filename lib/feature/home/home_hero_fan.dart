@@ -696,11 +696,11 @@ class _HeroFanCardState extends State<_HeroFanCard> {
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.play_arrow, size: 14, color: Colors.black),
-                      SizedBox(width: 2),
+                    children: [
+                      const Icon(Icons.play_arrow, size: 14, color: Colors.black),
+                      const SizedBox(width: 2),
                       Text(
-                        'REPRENDRE',
+                        context.l10n.homeResume,
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,

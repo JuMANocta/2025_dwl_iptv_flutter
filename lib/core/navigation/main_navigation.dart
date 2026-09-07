@@ -18,6 +18,7 @@ import 'package:aetherStream/main.dart' show checkForUpdate;
 import '../../l10n/app_localizations.dart';
 import '../themes/colors.dart';
 import 'package:aetherStream/widgets/offline_banner.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
 ///
@@ -155,10 +156,9 @@ class _MainNavigationState extends State<MainNavigation> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          content: Text(
-              '💡 Pour quitter l\'application : appuie 2 fois sur Retour'),
-          duration: Duration(seconds: 6),
+        ..showSnackBar(SnackBar(
+          content: Text(L10n.current.navExitHint),
+          duration: const Duration(seconds: 6),
         ));
       await prefs.setBool(key, true);
     } catch (_) {/* silent */}
@@ -354,9 +354,9 @@ class _MainNavigationState extends State<MainNavigation> {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(
-              content: Text('Appuie à nouveau sur Retour pour quitter'),
-              duration: Duration(seconds: 2),
+            SnackBar(
+              content: Text(L10n.current.navExitConfirm),
+              duration: const Duration(seconds: 2),
             ),
           );
       },

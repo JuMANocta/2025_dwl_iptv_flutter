@@ -63,7 +63,7 @@ class _SearchView extends StatelessWidget {
     final sections = <Widget>[persons];
     if (filmsHits.isNotEmpty) {
       sections.add(_ResultSection(
-        title: 'Films',
+        title: context.l10n.homeTabMovies,
         icon: Icons.movie_outlined,
         groups: filmsHits,
         type: M3uContentType.movie,
@@ -72,7 +72,7 @@ class _SearchView extends StatelessWidget {
     }
     if (seriesHits.isNotEmpty) {
       sections.add(_ResultSection(
-        title: 'Séries',
+        title: context.l10n.homeTabSeries,
         icon: Icons.tv_outlined,
         groups: seriesHits,
         type: M3uContentType.series,
@@ -81,7 +81,7 @@ class _SearchView extends StatelessWidget {
     }
     if (tvHits.isNotEmpty) {
       sections.add(_ResultSection(
-        title: 'Chaînes',
+        title: context.l10n.homeTabTv,
         icon: Icons.live_tv_outlined,
         groups: tvHits,
         type: M3uContentType.tv,
@@ -121,18 +121,15 @@ class _SearchView extends StatelessWidget {
         child: deepSearch
             ? EmptyState(
                 icon: Icons.search_off,
-                title: 'Aucun titre trouvé',
+                title: context.l10n.searchNoTitleFound,
                 subtitle:
-                    'Rien dans vos listes pour "$query". Essaie un autre '
-                    'mot-clé ou vérifie l\'orthographe.',
+                    context.l10n.searchNoTitleSub(query),
               )
-            : const EmptyState(
+            : EmptyState(
                 icon: Icons.keyboard_outlined,
-                title: 'Continue à taper…',
+                title: context.l10n.searchKeepTyping,
                 subtitle:
-                    'Au moins $_kMinQueryLength lettres pour chercher un film '
-                    'ou une série. Les chaînes, elles, se cherchent dès la '
-                    'première lettre.',
+                    context.l10n.searchKeepTypingSub(_kMinQueryLength),
               ),
       ));
     }
@@ -326,7 +323,7 @@ class _PersonTitlesSectionState extends State<_PersonTitlesSection> {
   Widget build(BuildContext context) {
     if (_groups.isEmpty || _personName == null) return const SizedBox.shrink();
     return _ResultSection(
-      title: 'De $_personName, dans tes listes',
+      title: context.l10n.searchFromPerson(_personName!),
       icon: Icons.person_search_outlined,
       groups: _groups,
       type: M3uContentType.movie,
@@ -422,7 +419,7 @@ class _TmdbOnlySectionState extends State<_TmdbOnlySection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SearchSectionHeader(
-            title: 'Sur TMDB, absent de tes listes',
+            title: context.l10n.searchOnTmdbMissing,
             icon: Icons.cloud_off_outlined,
             count: missing.length,
           ),
@@ -507,7 +504,7 @@ class _TmdbOnlyCard extends StatelessWidget {
                         border: Border.all(color: kWarning.withAlpha(140)),
                       ),
                       child: Text(
-                        'NON DISPO',
+                        context.l10n.searchNotAvailable,
                         style: TextStyle(
                           fontSize: 8,
                           fontWeight: FontWeight.bold,
@@ -927,13 +924,13 @@ class _SearchEmptyState extends StatelessWidget {
                           color: cs.onSurfaceVariant.withAlpha(120)),
                       const SizedBox(height: 12),
                       Text(
-                        "Tapez pour chercher dans votre playlist",
+                        context.l10n.searchTypeToSearch,
                         textAlign: TextAlign.center,
                         style: TextStyle(color: cs.onSurfaceVariant),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "Films · Séries · Chaînes",
+                        context.l10n.searchTypesLine,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             color: cs.onSurfaceVariant.withAlpha(150),
@@ -948,7 +945,7 @@ class _SearchEmptyState extends StatelessWidget {
                     Icon(Icons.history, size: 18, color: kAccentSecondary),
                     const SizedBox(width: 8),
                     Text(
-                      "Recherches récentes",
+                      context.l10n.searchRecent,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -973,12 +970,13 @@ class _SearchEmptyState extends StatelessWidget {
                         if (snapshot.isEmpty) return;
                         await confirmOrUndo(
                           context,
-                          title: 'Effacer l\'historique ?',
+                          title: context.l10n.searchClearHistoryTitle,
                           question: snapshot.length == 1
-                              ? 'La dernière recherche sera supprimée.'
-                              : 'Les ${snapshot.length} dernières recherches seront supprimées.',
-                          confirmLabel: 'Effacer',
-                          doneMessage: 'Historique effacé',
+                              ? context.l10n.searchClearHistoryOne
+                              : context.l10n.searchClearHistoryMany(
+                                  snapshot.length),
+                          confirmLabel: context.l10n.searchClearConfirm,
+                          doneMessage: context.l10n.searchHistoryCleared,
                           action: () => SearchHistoryService.clear(),
                           onUndo: () async {
                             for (final q in snapshot.reversed) {
@@ -1162,7 +1160,7 @@ class _LastWatchedTvTile extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "REPRENDRE LA CHAÎNE",
+                          context.l10n.homeResumeChannel,
                           style: TextStyle(
                             color: kAccentSecondary,
                             fontSize: 10,

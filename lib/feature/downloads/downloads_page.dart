@@ -92,10 +92,10 @@ enum DownloadFilter { all, active, completed, errors }
 
 extension on DownloadFilter {
   String get label => switch (this) {
-        DownloadFilter.all => 'Tout',
-        DownloadFilter.active => 'En cours',
-        DownloadFilter.completed => 'Terminés',
-        DownloadFilter.errors => 'Erreurs',
+        DownloadFilter.all => L10n.current.dlFilterAll,
+        DownloadFilter.active => L10n.current.dlFilterActive,
+        DownloadFilter.completed => L10n.current.dlFilterCompleted,
+        DownloadFilter.errors => L10n.current.dlFilterErrors,
       };
 
   /// `active` regroupe tout ce qui est en mouvement (y compris la finalisation,
@@ -182,8 +182,8 @@ class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
                 controller: _searchCtrl,
                 autofocus: true,
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  hintText: 'Rechercher un téléchargement',
+                decoration: InputDecoration(
+                  hintText: context.l10n.dlSearchHint,
                   border: InputBorder.none,
                 ),
               )
@@ -207,7 +207,9 @@ class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
           ),
           IconButton(
             icon: Icon(_searching ? Icons.close : Icons.search),
-            tooltip: _searching ? 'Fermer la recherche' : 'Rechercher',
+            tooltip: _searching
+                ? context.l10n.dlSearchClose
+                : context.l10n.dlSearchOpen,
             onPressed: _toggleSearch,
           ),
         ],
@@ -247,7 +249,7 @@ class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
                 icon: Icons.download_done,
                 title: l10n.noDownloads,
                 subtitle:
-                    'Lance un téléchargement depuis la fiche d\'un film ou d\'une série — il apparaîtra ici avec sa progression.',
+                    context.l10n.dlEmptyHint,
               ),
             ),
           ],
@@ -284,8 +286,8 @@ class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
                     child: Center(
                       child: Text(
                         _searchCtrl.text.trim().isNotEmpty
-                            ? 'Aucun téléchargement ne correspond à cette recherche.'
-                            : 'Aucun téléchargement dans « ${_filter.label} ».',
+                            ? context.l10n.dlNoSearchResult
+                            : context.l10n.dlNoneInFilter(_filter.label),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,

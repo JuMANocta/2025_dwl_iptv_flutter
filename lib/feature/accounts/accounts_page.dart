@@ -19,6 +19,7 @@ import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:aetherStream/l10n/l10n_ext.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
@@ -196,7 +197,7 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
     final choice = await showAppDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Comment ajouter une playlist ?'),
+        title: Text(ctx.l10n.acctAddHowTitle),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -204,17 +205,15 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
             ListTile(
               autofocus: true,
               leading: Icon(Icons.phone_iphone, color: kAccentPrimary),
-              title: const Text('Depuis mon téléphone'),
-              subtitle: const Text(
-                  'Recommandé — QR vers le panneau complet (ajout, édition, '
-                  'rechargement)'),
+              title: Text(ctx.l10n.acctAddFromPhone),
+              subtitle: Text(ctx.l10n.acctAddFromPhoneSub),
               onTap: () => Navigator.of(ctx).pop('console'),
             ),
             ListTile(
               leading: Icon(Icons.keyboard_alt_outlined,
                   color: Theme.of(ctx).colorScheme.onSurfaceVariant),
-              title: const Text('Avec la télécommande'),
-              subtitle: const Text('Saisie touche par touche'),
+              title: Text(ctx.l10n.acctAddWithRemote),
+              subtitle: Text(ctx.l10n.acctAddWithRemoteSub),
               onTap: () => Navigator.of(ctx).pop('manual'),
             ),
           ],
@@ -222,7 +221,7 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Annuler'),
+            child: Text(ctx.l10n.commonCancel),
           ),
         ],
       ),
@@ -252,23 +251,21 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('« ${acc.label} » et ses identifiants seront effacés '
-                'définitivement.'),
+            Text(l10n.acctDeleteBody(acc.label)),
             const SizedBox(height: 12),
             _DeleteBullet(
               icon: Icons.delete_sweep_outlined,
               color: kError,
               text: footprint > 0
-                  ? 'La liste téléchargée part avec '
-                      '(${StorageJanitor.humanBytes(footprint)} libérés).'
-                  : 'Aucune liste téléchargée à effacer pour ce compte.',
+                  ? l10n.acctDeleteListGone(
+                      StorageJanitor.humanBytes(footprint))
+                  : l10n.acctDeleteNoList,
             ),
             const SizedBox(height: 6),
             _DeleteBullet(
               icon: Icons.favorite_outline,
               color: kSuccess,
-              text: 'Favoris, reprises de lecture et téléchargements '
-                  'terminés sont conservés.',
+              text: l10n.acctDeleteKept,
             ),
           ],
         ),
@@ -301,9 +298,9 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
         content: Text(footprint > 0
-            ? '✅ « ${acc.label} » supprimé — '
-                '${StorageJanitor.humanBytes(footprint)} libérés'
-            : '✅ « ${acc.label} » supprimé'),
+            ? l10n.acctDeletedWithSize(
+                acc.label, StorageJanitor.humanBytes(footprint))
+            : l10n.acctDeleted(acc.label)),
       ));
   }
 
@@ -394,7 +391,7 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                   return const SizedBox.shrink();
                 }
                 return IconButton(
-                  tooltip: 'Tout recharger',
+                  tooltip: ctx.l10n.reloadAllConfirm,
                   icon: const Icon(Icons.refresh),
                   onPressed: _reloadingAll ? null : () => _reloadAll(accounts),
                 );
@@ -412,7 +409,7 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
             return FloatingActionButton.extended(
               onPressed: _onAddTap,
               icon: const Icon(Icons.add),
-              label: const Text('Ajouter'),
+              label: Text(ctx.l10n.acctAdd),
               backgroundColor: kAccentPrimary,
               foregroundColor: Colors.black,
             );
@@ -489,11 +486,13 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
     final isTv = PlatformTv.isTv;
     return EmptyState(
       icon: isTv ? Icons.qr_code_2 : Icons.account_circle_outlined,
-      title: 'Aucun compte configuré',
+      title: context.l10n.acctEmptyTitle,
       subtitle: isTv
-          ? 'Scanne le QR code avec ton téléphone pour configurer ta playlist sans avoir à taper au D-pad.'
-          : 'Ajoute une URL M3U complète ou un compte Xtream Codes pour commencer à streamer.',
-      ctaLabel: isTv ? 'Configurer depuis mon téléphone' : 'Ajouter une playlist',
+          ? context.l10n.acctEmptySubTv
+          : context.l10n.acctEmptySubPhone,
+      ctaLabel: isTv
+          ? context.l10n.acctEmptyCtaTv
+          : context.l10n.acctEmptyCtaPhone,
       ctaIcon: isTv ? Icons.phone_iphone : Icons.add,
       onCtaTap: isTv ? _openPhoneConfig : () => _openEditor(),
     );
@@ -584,7 +583,7 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'COMPTE PRINCIPAL',
+                      context.l10n.acctMainAccount,
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w700,
@@ -615,7 +614,7 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '${accounts.length} listes',
+                      context.l10n.acctListsCount(accounts.length),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -661,11 +660,11 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
       int loaded, int inProgress, int total, int failed) {
     if (total == 0) return '';
     if (inProgress > 0) {
-      final base = '$loaded/$total · $inProgress en cours…';
-      return failed > 0 ? '$base · $failed en échec' : base;
+      final base = context.l10n.acctStatusInProgress(loaded, total, inProgress);
+      return failed > 0 ? context.l10n.acctStatusWithFailed(base, failed) : base;
     }
-    if (failed > 0) return '$loaded/$total · $failed en échec';
-    return '✓ $loaded/$total chargées';
+    if (failed > 0) return context.l10n.acctStatusFailed(loaded, total, failed);
+    return context.l10n.acctStatusLoaded(loaded, total);
   }
 }
 
@@ -746,14 +745,15 @@ class _AccountCardState extends State<_AccountCard> {
       if (!mounted) return;
       messenger..hideCurrentSnackBar()..showSnackBar(
         SnackBar(
-          content: Text('✅ Playlist rechargée pour ${widget.account.label}'),
+          content: Text(context.l10n.acctReloadedFor(widget.account.label)),
           backgroundColor: kAccentPrimary.withAlpha(180),
         ),
       );
       widget.onReloaded();
     } catch (e) {
       if (!mounted) return;
-      messenger..hideCurrentSnackBar()..showSnackBar(SnackBar(content: Text('❌ Échec : ${describeError(e)}')));
+      messenger..hideCurrentSnackBar()..showSnackBar(SnackBar(
+          content: Text(context.l10n.commonFailedWith(describeError(e)))));
     } finally {
       if (mounted) setState(() => _reloading = false);
     }
@@ -762,23 +762,23 @@ class _AccountCardState extends State<_AccountCard> {
   Future<bool?> _confirmReload(Duration age) {
     final h = age.inHours;
     final m = age.inMinutes % 60;
-    final ageStr = h > 0 ? '${h}h${m > 0 ? ' ${m}min' : ''}' : '${m}min';
+    final ageStr = h > 0
+        ? context.l10n.acctAgeHoursMinutes(h, m > 0 ? ' ${m}min' : '')
+        : context.l10n.acctAgeMinutesShort(m);
     return showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Recharger ?'),
+        title: Text(ctx.l10n.acctReloadTitle),
         content: Text(
-          'La playlist de "${widget.account.label}" a été téléchargée il y a $ageStr.\n'
-          'Recharger quand même depuis le serveur ?',
-        ),
+            ctx.l10n.acctReloadBody(widget.account.label, ageStr)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
+            child: Text(ctx.l10n.commonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Recharger',
+            child: Text(ctx.l10n.acctReload,
                 style: TextStyle(color: kWarning, fontWeight: FontWeight.bold)),
           ),
         ],
@@ -1037,7 +1037,9 @@ class _AccountCardState extends State<_AccountCard> {
                     )
                   : const Icon(Icons.refresh),
               label: Text(
-                _reloading ? 'Téléchargement…' : 'Recharger la playlist',
+                _reloading
+                    ? context.l10n.acctDownloading
+                    : context.l10n.acctReloadPlaylist,
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               style: FilledButton.styleFrom(
@@ -1179,19 +1181,19 @@ class _AccountStateChips extends StatelessWidget {
     }
     switch (state) {
       case AccountLoadState.loaded:
-        return _Chip(text: 'DISPONIBLE', color: kAccentPrimary, opacity: 0.6);
+        return _Chip(text: L10n.current.acctChipAvailable, color: kAccentPrimary, opacity: 0.6);
       case AccountLoadState.downloading:
-        return _Chip(text: 'TÉLÉCHARGEMENT…', color: kAccentSecondary);
+        return _Chip(text: L10n.current.acctChipDownloading, color: kAccentSecondary);
       case AccountLoadState.parsing:
-        return _Chip(text: 'CHARGEMENT…', color: kAccentSecondary);
+        return _Chip(text: L10n.current.acctChipLoading, color: kAccentSecondary);
       case AccountLoadState.error:
       case AccountLoadState.notLoaded:
         // Sans motif enregistré, on retombe sur l'ancien libellé : mieux vaut
         // une chip vague qu'une chip qui invente une cause.
         if (failure == null) {
           return state == AccountLoadState.error
-              ? _Chip(text: 'ERREUR', color: kError)
-              : _Chip(text: 'NON CHARGÉ', color: Colors.grey);
+              ? _Chip(text: L10n.current.acctChipError, color: kError)
+              : _Chip(text: L10n.current.acctChipNotLoaded, color: Colors.grey);
         }
         return _Chip(
           text: labelForFailure(failure.kind),
@@ -1203,7 +1205,7 @@ class _AccountStateChips extends StatelessWidget {
   Widget _expirationChip(int days) {
     if (days < 0) {
       return _Chip(
-        text: 'EXPIRÉE',
+        text: L10n.current.acctChipExpired,
         color: kError,
         filled: true,
         icon: Icons.warning_amber_rounded,
@@ -1211,7 +1213,7 @@ class _AccountStateChips extends StatelessWidget {
     }
     if (days == 0) {
       return _Chip(
-        text: 'EXPIRE AUJOURD\'HUI',
+        text: L10n.current.acctChipExpiresToday,
         color: kError,
         filled: true,
         icon: Icons.warning_amber_rounded,
@@ -1219,7 +1221,7 @@ class _AccountStateChips extends StatelessWidget {
     }
     final critical = days <= 7;
     return _Chip(
-      text: 'EXPIRE DANS $days J',
+      text: L10n.current.acctChipExpiresIn(days),
       color: critical ? kError : kWarning,
       filled: critical,
       icon: Icons.warning_amber_rounded,
@@ -1305,11 +1307,11 @@ class _CountsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _CountTile(icon: Icons.movie_outlined, value: films, label: 'Films', color: kAccentPrimary)),
+        Expanded(child: _CountTile(icon: Icons.movie_outlined, value: films, label: context.l10n.acctCountFilms, color: kAccentPrimary)),
         const SizedBox(width: 8),
-        Expanded(child: _CountTile(icon: Icons.video_library_outlined, value: series, label: 'Séries', color: kAccentTertiary)),
+        Expanded(child: _CountTile(icon: Icons.video_library_outlined, value: series, label: context.l10n.acctCountSeries, color: kAccentTertiary)),
         const SizedBox(width: 8),
-        Expanded(child: _CountTile(icon: Icons.live_tv_outlined, value: tv, label: 'Chaînes', color: kAccentSecondary)),
+        Expanded(child: _CountTile(icon: Icons.live_tv_outlined, value: tv, label: context.l10n.acctCountTv, color: kAccentSecondary)),
       ],
     );
   }
@@ -1356,7 +1358,8 @@ class _PlaybackHealthLine extends StatelessWidget {
                   [
                     h.summary,
                     if (startup != null)
-                      'départ ${(startup.inMilliseconds / 1000).toStringAsFixed(1)} s',
+                      L10n.current.acctStartupTime(
+                          (startup.inMilliseconds / 1000).toStringAsFixed(1)),
                   ].join(' · '),
                   style: TextStyle(
                     fontSize: 11,
@@ -1451,7 +1454,7 @@ class _FileStatsBlock extends StatelessWidget {
               Expanded(
                 child: _MiniStat(
                   icon: Icons.sd_storage_outlined,
-                  label: 'Taille M3U',
+                  label: L10n.current.acctM3uSize,
                   value: stats == null ? '—' : _formatSize(stats.size),
                 ),
               ),
@@ -1459,9 +1462,9 @@ class _FileStatsBlock extends StatelessWidget {
               Expanded(
                 child: _MiniStat(
                   icon: Icons.access_time,
-                  label: 'Âge cache',
+                  label: L10n.current.acctCacheAge,
                   value: stats == null
-                      ? 'Aucun cache'
+                      ? L10n.current.acctNoCache
                       : _formatAge(stats.modified),
                 ),
               ),
@@ -1487,17 +1490,20 @@ class _FileStatsBlock extends StatelessWidget {
   }
 
   static String _formatSize(int bytes) {
-    if (bytes < 1024) return '$bytes o';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} ko';
-    return '${(bytes / 1024 / 1024).toStringAsFixed(1)} Mo';
+    if (bytes < 1024) return L10n.current.unitBytes('$bytes');
+    if (bytes < 1024 * 1024) {
+      return L10n.current.unitKilobytes((bytes / 1024).toStringAsFixed(1));
+    }
+    return L10n.current.unitMegabytes(
+        (bytes / 1024 / 1024).toStringAsFixed(1));
   }
 
   static String _formatAge(DateTime when) {
     final age = DateTime.now().difference(when);
-    if (age.inMinutes < 1) return 'à l\'instant';
-    if (age.inMinutes < 60) return 'il y a ${age.inMinutes} min';
-    if (age.inHours < 24) return 'il y a ${age.inHours} h';
-    return 'il y a ${age.inDays} j';
+    if (age.inMinutes < 1) return L10n.current.acctAgeJustNow;
+    if (age.inMinutes < 60) return L10n.current.acctAgeMinutes(age.inMinutes);
+    if (age.inHours < 24) return L10n.current.acctAgeHours(age.inHours);
+    return L10n.current.acctAgeDays(age.inDays);
   }
 }
 
@@ -1537,7 +1543,7 @@ class _XtreamInfoBlock extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'Lecture des infos Xtream…',
+                  L10n.current.acctXtreamLoading,
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                 ),
               ],
@@ -1545,14 +1551,14 @@ class _XtreamInfoBlock extends StatelessWidget {
           }
           final info = snap.data;
           if (info == null) {
-            return _InlineError(message: 'Infos Xtream indisponibles');
+            return _InlineError(message: L10n.current.acctXtreamUnavailable);
           }
           return Row(
             children: [
               Expanded(
                 child: _MiniStat(
                   icon: Icons.event_outlined,
-                  label: 'Expiration',
+                  label: L10n.current.acctExpiration,
                   value: _formatExpiration(info.expirationDate),
                   valueColor: _expirationColor(info.expirationDate),
                 ),
@@ -1561,7 +1567,7 @@ class _XtreamInfoBlock extends StatelessWidget {
               Expanded(
                 child: _MiniStat(
                   icon: Icons.cable,
-                  label: 'Connexions',
+                  label: L10n.current.acctConnections,
                   value: info.maxConnections > 0
                       ? '${info.activeConnections} / ${info.maxConnections}'
                       : '${info.activeConnections}',
@@ -1575,15 +1581,15 @@ class _XtreamInfoBlock extends StatelessWidget {
   }
 
   static String _formatExpiration(DateTime? exp) {
-    if (exp == null) return 'Inconnue';
+    if (exp == null) return L10n.current.acctExpiryUnknown;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final expDay = DateTime(exp.year, exp.month, exp.day);
     final days = expDay.difference(today).inDays;
-    if (days < 0) return 'Expirée (${-days} j)';
-    if (days == 0) return 'Expire aujourd\'hui';
-    if (days == 1) return 'Expire demain';
-    return 'Dans $days jours';
+    if (days < 0) return L10n.current.acctExpiryPast(-days);
+    if (days == 0) return L10n.current.acctExpiryToday;
+    if (days == 1) return L10n.current.acctExpiryTomorrow;
+    return L10n.current.acctExpiryInDays(days);
   }
 
   static Color? _expirationColor(DateTime? exp) {

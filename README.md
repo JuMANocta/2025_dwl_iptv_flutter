@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.18.14+147-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.18.15+148-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -140,7 +140,7 @@ flutter run
 flutter build apk --release
 ```
 
-Les releases GitHub sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : analyse et 780 tests en parallèle du build, signature, empreinte SHA-256 publiée dans la release — et **pas de release si un test échoue**.
+Les releases GitHub sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : analyse et 837 tests en parallèle du build, signature, empreinte SHA-256 publiée dans la release — et **pas de release si un test échoue**.
 
 ---
 
@@ -212,7 +212,8 @@ lib/
 │   └── update/                        # Mise à jour in-app (GitHub Releases)
 ├── widgets/                           # MediaActionSheet (+_FavoriteToggleTile, _PlayResumeTiles, _SkeletonLine),
 │                                      # MediaCard, MediaChips, QualityButtons, EpgBlock, TerminalDownloadDialog
-└── l10n/                              # Traductions FR / EN
+├── l10n/                              # Traductions FR / EN (app_en.arb = template)
+└── feature/search/category_labels.dart # Catégories : la clé reste FR, l'affichage est traduit
 ```
 
 ### Stack technique
@@ -235,6 +236,7 @@ lib/
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Un favori retiré disparaît tout de suite** (§pageTick, 2026-09-07) — Depuis l'optimisation du changement d'onglet, les pages de l'accueil ne se reconstruisaient plus du tout : retirer un favori laissait la vignette dans la rangée ⭐ jusqu'au redémarrage de l'application, et le hero « Reprendre » ne suivait plus les films quittés en cours de route. L'accueil prévient maintenant ses pages directement : celle qu'on regarde se met à jour immédiatement, les deux autres à l'instant où on y arrive — sans jamais retomber dans les reconstructions que l'optimisation avait supprimées.
 - [x] **Changer d'onglet ne reconstruit plus rien** (§tabPageKeep, 2026-09-06) — Chaque passage Séries / Films / Chaînes reconstruisait les trois pages (jusqu'à 110 vignettes) et recréait la page la plus éloignée. Les pages sont désormais gardées telles quelles et gelées hors écran : plus aucune vignette reconstruite à la bascule, temps de construction divisé par cinq en mesure
 - [x] **Téléchargements : file d'attente, Wi-Fi seulement, mode hors-ligne** (lot 6, 2026-09-06) — Les fournisseurs n'acceptent qu'une connexion par abonnement : l'application ne lance plus qu'un transfert à la fois par abonnement, les autres attendent leur tour en le disant, et repartent seuls (aussi après un redémarrage). Un réglage « Wi-Fi seulement » fait attendre les transferts sur les données mobiles et les relance dès qu'un Wi-Fi ou une connexion filaire revient. Sans réseau, un bandeau le dit sur l'accueil ; si les listes ne peuvent pas se charger, l'application ouvre directement les fichiers téléchargés et reprend seule au retour du réseau
 - [x] **La 4K n'est plus refusée sur un téléviseur 4K** (§caps4kDisplay, 2026-09-06) — Android décrit l'interface (souvent 1080p), pas la dalle : seuls les décodeurs décident désormais, et la page « Ce que ton appareil sait faire » l'explique
@@ -338,7 +340,7 @@ lib/
 - [ ] **Diffuser un film téléchargé sur le Chromecast** (§castLocal, demandé le 2026-09-05) — aujourd'hui le bouton Cast refuse un fichier local ; le téléphone sait pourtant déjà servir un flux au téléviseur (§castRelay) : le film téléchargé sera servi tel quel, ou converti si le téléviseur ne lit pas sa piste audio
 - [x] **Le repère de section reste sur l'accueil** (§beaconScope, 2026-09-05) — ✅ fait : la pastille « SYNOPSIS / CASTING / INFOS » (téléviseur uniquement) ne s'affiche plus sur les fiches, où elle n'annonçait que trois sections sur une page courte. Elle est ensuite partie de l'accueil aussi (§beaconDev, même jour, après recette sur téléviseur avec un vrai catalogue) : l'application publiée n'affiche plus aucun repère de ce genre. Le titre « Saisons » est aligné sur les autres titres de section — ancienne description : — la pastille « SYNOPSIS / CASTING / INFOS » (télé uniquement) n'apporte rien sur une fiche courte
 - [x] **Jaquettes dans la langue du téléphone** (§posterLang, 2026-09-05) — ✅ fait : un réglage « Langue des visuels » (comme le téléphone, français, anglais, ou version originale sans texte) décide de la langue des affiches, résumés et castings venus de TMDB ; l'interface, elle, reste en français. Une option séparée permet de préférer l'affiche TMDB à celle de vos listes. Les deux vivent dans la page de la clé TMDB, avec un bloc « Mémoire TMDB » qui montre enfin ce que l'application a retenu (nombre d'affiches, titres rangés grâce à TMDB) et permet de tout oublier pour repartir de zéro, ou de faire réapprendre les catégories devinées. Chaque affiche trouvée est mémorisée durablement pour ne jamais être recherchée deux fois — y compris les recherches infructueuses, qui évitent de chercher indéfiniment un titre que TMDB ne connaît pas. ⏳ À vérifier sur l'appareil — ancienne description : — aujourd'hui l'affiche vient du plus gros fournisseur et TMDB est figé en français ; une préférence « Langue des visuels » (auto / fr / en / original) et, en option, « jaquettes TMDB d'abord »
-- [ ] **Interface entièrement traduisible** (§l10nAll, commencé le 2026-09-05) — 🔄 en cours : l'outillage est posé (un contrôle automatique interdit désormais toute nouvelle phrase écrite en dur, et le compteur ne peut que baisser), le hub des paramètres et tous les messages d'erreur sont traduits. Reste à reprendre les autres écrans un par un ; le français imposé ne sera retiré qu'à la toute fin, pour ne jamais livrer une application à moitié traduite — environ 870 textes sont écrits en français dans le code (116 clés traduites aujourd'hui) ; passage par tranches, écran par écran, avec une garde qui interdit toute nouvelle chaîne en dur ; le français forcé sera retiré à la fin
+- [x] **Interface entièrement traduisible** (§l10nAll, terminé le 2026-09-07) — ✅ fait : **l'application suit désormais la langue du téléphone**. Les 25 écrans, les messages du lecteur, ceux du Chromecast, les erreurs de téléchargement et jusqu'aux noms de genres et de régions des rangées d'accueil existent en français **et** en anglais — 1 011 textes traduits, contre 299 au départ. Le français n'est plus imposé : sur un téléphone en anglais, l'application est en anglais, et rien ne change sur un téléphone en français. Trois contrôles automatiques empêchent la marche arrière : aucune phrase ne peut être réécrite en dur, aucune traduction ne peut manquer d'un côté, et les noms de rangées doivent rester identiques en français. ⏳ À vérifier sur l'appareil
 
 **🔥 Top priorité (2026-08-05)** :
 - [x] **Plafond du cache image en RAM** (§imgMemCache) — réglable dans Optimisation (20-150 Mo, 40 Mo en profil Performance) au lieu des 100 Mo par défaut de Flutter ; rendu possible par le cache disque

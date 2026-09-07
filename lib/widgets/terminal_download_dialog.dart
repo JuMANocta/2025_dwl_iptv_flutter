@@ -8,6 +8,7 @@ import '../data/services/download_manager_service.dart';
 import '../core/utils/formatters.dart';
 import '../l10n/app_localizations.dart';
 import 'package:aetherStream/core/utils/network_kind.dart';
+import '../l10n/l10n_ext.dart';
 
 // Pool de messages de boot Matrix (1 tiré au sort)
 const List<String> _kBootPool = [
@@ -439,7 +440,8 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '> [!] ${messages.length} ERREUR(S) PRÉCÉDENTE(S)  ${isExpanded ? '▲ MASQUER' : '▼ AFFICHER'}',
+                                  '> [!] ${context.l10n.termPreviousErrors(messages.length)}'
+                                  '  ${isExpanded ? '▲ MASQUER' : '▼ AFFICHER'}',
                                   style: GoogleFonts.sourceCodePro(
                                     color: kWarning.withAlpha(200),
                                     fontSize: 12,

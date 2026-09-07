@@ -6,6 +6,7 @@ import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Page Sauvegarde / Restauration (§10).
 ///
@@ -44,7 +45,7 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('❌ Échec : ${describeError(e)}')),
+        SnackBar(content: Text(context.l10n.commonFailedWith(describeError(e)))),
       );
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -63,13 +64,13 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
             return AlertDialog(
-              title: const Text('Mot de passe de chiffrement'),
+              title: Text(ctx.l10n.bkPasswordTitle),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Choisis un mot de passe — il sera demandé pour restaurer la sauvegarde.',
+                    ctx.l10n.bkPasswordHelp,
                     style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(ctx).colorScheme.onSurfaceVariant,
@@ -82,7 +83,7 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
                     textInputAction: TextInputAction.next,
                     onSubmitted: (_) => FocusScope.of(ctx).nextFocus(),
                     decoration: InputDecoration(
-                      labelText: 'Mot de passe',
+                      labelText: ctx.l10n.bkPasswordLabel,
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(visible
@@ -98,8 +99,8 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
                     obscureText: !visible,
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => FocusScope.of(ctx).unfocus(),
-                    decoration: const InputDecoration(
-                      labelText: 'Confirmer',
+                    decoration: InputDecoration(
+                      labelText: ctx.l10n.bkPasswordConfirmLabel,
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -113,22 +114,22 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, null),
-                  child: const Text('Annuler'),
+                  child: Text(ctx.l10n.commonCancel),
                 ),
                 FilledButton(
                   onPressed: () {
                     final a = pwd1.text;
                     final b = pwd2.text;
                     if (a.isEmpty) {
-                      setLocal(() => error = 'Le mot de passe ne peut pas être vide.');
+                      setLocal(() => error = ctx.l10n.bkPasswordEmpty);
                       return;
                     }
                     if (a.length < 6) {
-                      setLocal(() => error = 'Au moins 6 caractères.');
+                      setLocal(() => error = ctx.l10n.bkPasswordTooShort);
                       return;
                     }
                     if (a != b) {
-                      setLocal(() => error = 'Les deux mots de passe ne correspondent pas.');
+                      setLocal(() => error = ctx.l10n.bkPasswordMismatch);
                       return;
                     }
                     Navigator.pop(ctx, a);
@@ -137,7 +138,7 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
                     backgroundColor: kAccentPrimary,
                     foregroundColor: Colors.black,
                   ),
-                  child: const Text('Sauvegarder'),
+                  child: Text(ctx.l10n.bkSave),
                 ),
               ],
             );
@@ -168,7 +169,7 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
           children: [
             Icon(Icons.check_circle, color: kAccentPrimary, size: 22),
             const SizedBox(width: 8),
-            const Text('Sauvegarde créée'),
+            Text(ctx.l10n.bkCreated),
           ],
         ),
         content: Column(
@@ -184,9 +185,7 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
             ),
             const SizedBox(height: 12),
             Text(
-              'Disponible dans :\n/storage/emulated/0/Download/AetherStream/\n\n'
-              'Copie ce fichier sur Drive, ton PC, ou un autre device pour le restaurer plus tard. '
-              'N\'oublie pas le mot de passe — il n\'est nulle part stocké.',
+              ctx.l10n.bkExportLocation,
               style: TextStyle(
                 fontSize: 12,
                 color: Theme.of(ctx).colorScheme.onSurfaceVariant,
@@ -202,7 +201,7 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
               backgroundColor: kAccentPrimary,
               foregroundColor: Colors.black,
             ),
-            child: const Text('OK'),
+            child: Text(ctx.l10n.commonOk),
           ),
         ],
       ),
@@ -261,12 +260,12 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
               _ActionCard(
                 icon: Icons.cloud_upload_outlined,
                 color: kAccentPrimary,
-                title: 'Créer une sauvegarde',
+                title: context.l10n.bkCreateTitle,
                 subtitle:
-                    'Chiffre tes comptes, clé TMDB, thème, favoris et progression dans un fichier .aether.',
+                    context.l10n.bkCreateSub,
                 buttonLabel: _exporting
-                    ? 'Chiffrement en cours…'
-                    : 'Sauvegarder',
+                    ? context.l10n.bkEncrypting
+                    : context.l10n.bkSave,
                 busy: _exporting,
                 disabled: busy,
                 onPressed: _onExportTap,
@@ -275,12 +274,12 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
               _ActionCard(
                 icon: Icons.cloud_download_outlined,
                 color: kAccentSecondary,
-                title: 'Restaurer une sauvegarde',
+                title: context.l10n.bkRestoreTitle,
                 subtitle:
-                    'Sélectionne un fichier .aether, saisis ton mot de passe, vérifie le résumé, applique.',
+                    context.l10n.bkRestoreSub,
                 buttonLabel: _importing
-                    ? 'Restauration en cours…'
-                    : 'Importer un fichier .aether',
+                    ? context.l10n.bkRestoring
+                    : context.l10n.bkImportFile,
                 busy: _importing,
                 disabled: busy,
                 onPressed: _onImportTap,
@@ -412,7 +411,7 @@ class _InfoBlock extends StatelessWidget {
               Icon(Icons.lock_outline, size: 18, color: kAccentSecondary),
               const SizedBox(width: 8),
               Text(
-                'Comment ça marche',
+                context.l10n.bkHowTitle,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
@@ -423,12 +422,7 @@ class _InfoBlock extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            '• Fichier `.aether` chiffré AES-256-GCM + PBKDF2 (100k itérations).\n'
-            '• Mot de passe choisi par toi — l\'app ne le stocke nulle part.\n'
-            '• Stockage : Download/AetherStream/ (survit à un uninstall).\n'
-            '• Contenu : comptes IPTV, clé TMDB, thème, favoris, progression.\n'
-            '• Exclus : téléchargements (trop lourds), historique de recherche.\n'
-            '• L\'import écrase entièrement la config actuelle (action irréversible).',
+            context.l10n.bkHowBody,
             style: TextStyle(
               fontSize: 12,
               color: cs.onSurfaceVariant,

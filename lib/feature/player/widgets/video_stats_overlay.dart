@@ -6,6 +6,7 @@ import '../playback_engine.dart';
 import '../../../core/themes/colors.dart';
 import '../../../data/models/quality_scale.dart';
 import '../video_stats.dart';
+import '../../../l10n/l10n_ext.dart';
 
 /// §videoStats — Encart de diagnostic vidéo, en direct par-dessus l'image.
 ///
@@ -173,10 +174,12 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     // alerte systématique, sur la ligne même dont dépend tout le diagnostic.
     final hw = s.hardwareDecoding;
     rows.add(_StatRow(
-      label: 'Décodage',
+      label: context.l10n.statsDecoding,
       value: !s.hwdecKnown
-          ? 'en cours…'
-          : (hw ? 'matériel · ${s.hwdec}' : 'LOGICIEL'),
+          ? context.l10n.statsDecodingPending
+          : (hw
+              ? context.l10n.statsHardwareWith(s.hwdec ?? '')
+              : context.l10n.statsSoftware),
       valueColor: !s.hwdecKnown ? null : (hw ? kSuccess : kError),
       alert: s.hwdecKnown && !hw,
     ));
@@ -186,13 +189,13 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     // partout). Sous Media3 elle nomme `SurfaceView`, c'est-à-dire précisément
     // le chemin qui rend le HDR possible — l'information vaut d'être montrée.
     if (s.vo != null) {
-      rows.add(_StatRow(label: 'Sortie', value: s.vo!));
+      rows.add(_StatRow(label: context.l10n.statsOutput, value: s.vo!));
     }
 
     if (s.codec != null) {
       final decoder = s.decoder;
       rows.add(_StatRow(
-        label: 'Codec',
+        label: context.l10n.statsCodec,
         value: decoder == null || decoder == s.codec
             ? s.codec!
             : '${s.codec} · $decoder',
@@ -204,7 +207,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     if (resolution != null) {
       final def = s.definitionLabel;
       rows.add(_StatRow(
-        label: 'Résolution',
+        label: context.l10n.statsResolution,
         value: def == null ? resolution : '$resolution  ($def)',
       ));
     }
@@ -218,20 +221,20 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
         case QualityVerdict.conforme:
           rows.add(_StatRow(
             label: 'Annoncé',
-            value: '$announced · conforme',
+            value: context.l10n.statsAnnouncedOk(announced),
             valueColor: kSuccess,
           ));
         case QualityVerdict.survendu:
           rows.add(_StatRow(
             label: 'Annoncé',
-            value: '$announced — la liste SURVEND',
+            value: context.l10n.statsAnnouncedOversold(announced),
             valueColor: kError,
             alert: true,
           ));
         case QualityVerdict.sousEstime:
           rows.add(_StatRow(
             label: 'Annoncé',
-            value: '$announced · mieux que promis',
+            value: context.l10n.statsAnnouncedBetter(announced),
             valueColor: kAccentSecondary,
           ));
         case QualityVerdict.unknown:
@@ -244,8 +247,10 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     // `signalPeak: 2.0` posée en dur ne laissait à cette ligne qu'une seule
     // réponse possible — elle affichait TOUJOURS « oui ».
     rows.add(_StatRow(
-      label: 'HDR',
-      value: s.hdr == null ? '—' : (s.hdr! ? 'oui' : 'non'),
+      label: context.l10n.statsHdr,
+      value: s.hdr == null
+          ? '—'
+          : (s.hdr! ? context.l10n.statsYes : context.l10n.statsNo),
       valueColor: s.hdr == true ? kAccentSecondary : null,
     ));
 
@@ -255,11 +260,11 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     // mesure comme une mesure.
     final target = s.containerFps;
     if (target != null) {
-      rows.add(_StatRow(label: 'Images/s', value: target.toStringAsFixed(1)));
+      rows.add(_StatRow(label: context.l10n.statsFps, value: target.toStringAsFixed(1)));
     }
     if (s.hasDroppedFrames) {
       rows.add(_StatRow(
-        label: 'Perdues',
+        label: context.l10n.statsLost,
         value: '${s.droppedFrames ?? 0}',
         valueColor: kWarning,
         alert: true,
@@ -275,26 +280,28 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       final annonce = s.containerFps;
       final manque = annonce != null && annonce > 0 && rendered < annonce * 0.9;
       rows.add(_StatRow(
-        label: 'Rendu',
-        value: '${rendered.toStringAsFixed(1)} img/s'
-            '${manque ? ' (annoncé ${annonce.toStringAsFixed(0)})' : ''}',
+        label: context.l10n.statsRendered,
+        value: manque
+            ? context.l10n.statsRenderedVsAnnounced(
+                rendered.toStringAsFixed(1), annonce.toStringAsFixed(0))
+            : context.l10n.statsRenderedValue(rendered.toStringAsFixed(1)),
         valueColor: manque ? kWarning : null,
         alert: manque,
       ));
     }
     if ((s.skippedFrames ?? 0) > 0) {
-      rows.add(_StatRow(label: 'Sautées', value: '${s.skippedFrames}'));
+      rows.add(_StatRow(label: context.l10n.statsDropped, value: '${s.skippedFrames}'));
     }
 
     final bitrate = s.bitrateLabel;
     if (bitrate != null) {
-      rows.add(_StatRow(label: 'Débit', value: bitrate));
+      rows.add(_StatRow(label: context.l10n.statsBitrate, value: bitrate));
     }
 
     // §videoStatsPlus — Le débit RÉELLEMENT servi, et le tampon qu'il remplit.
     final net = s.networkBitrateLabel;
     if (net != null) {
-      rows.add(_StatRow(label: 'Réseau', value: net));
+      rows.add(_StatRow(label: context.l10n.statsNetwork, value: net));
     }
     final buf = s.bufferAhead;
     if (buf != null) {
@@ -302,19 +309,20 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       // précède un blocage, pas une valeur anodine.
       final court = buf.inMilliseconds < 2000;
       rows.add(_StatRow(
-        label: 'Tampon',
-        value: '${(buf.inMilliseconds / 1000).toStringAsFixed(1)} s',
+        label: context.l10n.statsBuffer,
+        value: context.l10n.statsSecondsValue(
+            (buf.inMilliseconds / 1000).toStringAsFixed(1)),
         valueColor: court ? kWarning : null,
         alert: court,
       ));
     }
     final transferred = s.transferredLabel;
     if (transferred != null) {
-      rows.add(_StatRow(label: 'Transféré', value: transferred));
+      rows.add(_StatRow(label: context.l10n.statsTransferred, value: transferred));
     }
     final audio = s.audioLabel;
     if (audio != null) {
-      rows.add(_StatRow(label: 'Audio', value: audio));
+      rows.add(_StatRow(label: context.l10n.statsAudio, value: audio));
     }
 
     // §stallCount — La ligne qui accuse la SOURCE et non l'appareil.
@@ -328,7 +336,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     if (stall != null) {
       final bad = (s.stalls ?? 0) > 0;
       rows.add(_StatRow(
-        label: 'Blocages',
+        label: context.l10n.statsStalls,
         value: stall,
         valueColor: bad ? kWarning : null,
         alert: bad,
@@ -337,8 +345,8 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     final start = s.startupMs;
     if (start != null && start > 0) {
       rows.add(_StatRow(
-        label: 'Démarrage',
-        value: '${(start / 1000).toStringAsFixed(1)} s',
+        label: context.l10n.statsStartup,
+        value: context.l10n.statsSecondsValue((start / 1000).toStringAsFixed(1)),
       ));
     }
 

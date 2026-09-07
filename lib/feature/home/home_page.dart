@@ -23,6 +23,7 @@ import 'package:aetherStream/data/services/tmdb_poster_cache.dart';
 import 'package:aetherStream/data/services/tmdb_group_alias_service.dart';
 import 'package:aetherStream/data/services/tmdb_service.dart';
 import 'package:aetherStream/l10n/l10n_ext.dart';
+import 'package:aetherStream/feature/search/category_labels.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
@@ -749,7 +750,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
                 if (!PlatformTv.isTv)
                   IconButton(
                     icon: const Icon(Icons.settings_outlined),
-                    tooltip: 'Paramètres',
+                    tooltip: context.l10n.settingsTitle,
                     onPressed: _openSettings,
                   ),
                 const SizedBox(width: 4),
@@ -809,7 +810,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
                             children: [
                               IconButton(
                                 icon: const Icon(Icons.arrow_back),
-                                tooltip: 'Quitter la recherche',
+                                tooltip: context.l10n.homeExitSearch,
                                 onPressed: () => widget.onExitSearch?.call(),
                               ),
                               Expanded(child: _buildSearchField(cs)),
@@ -965,7 +966,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
           SearchHistoryService.record(q);
         },
         decoration: InputDecoration(
-          hintText: 'Rechercher dans la playlist…',
+          hintText: context.l10n.homeSearchHint,
           hintStyle: TextStyle(
             color: cs.onSurfaceVariant.withAlpha(140),
             fontSize: 16,
@@ -1030,7 +1031,11 @@ class _AnimatedTabIndicator extends StatelessWidget {
     required this.onTap,
   });
 
-  static const _labels = ['Séries', 'Films', 'Chaînes'];
+  static List<String> _labelsOf(BuildContext context) => [
+        context.l10n.homeTabSeries,
+        context.l10n.homeTabMovies,
+        context.l10n.homeTabTv,
+      ];
   // §navHeight — Barre plus haute + police plus grande : meilleure cible
   // tactile et lisibilité (l'ancienne 26px/20px était petite à viser).
   //
@@ -1092,7 +1097,7 @@ class _AnimatedTabIndicator extends StatelessWidget {
                               letterSpacing: active ? 0.5 : 0.2,
                               color: color,
                             ),
-                            child: Center(child: Text(_labels[i])),
+                            child: Center(child: Text(_labelsOf(context)[i])),
                           ),
                         ),
                       ),
@@ -2584,9 +2589,9 @@ class _TypePageState extends State<_TypePage>
       // lit au MILIEU de l'écran, pas au bord haut (constaté à l'AVD).
       thresholdFraction: 0.45,
       pageTitle: switch (widget.type) {
-        M3uContentType.series => 'Séries',
-        M3uContentType.movie => 'Films',
-        M3uContentType.tv => 'Chaînes',
+        M3uContentType.series => context.l10n.homeTabSeries,
+        M3uContentType.movie => context.l10n.homeTabMovies,
+        M3uContentType.tv => context.l10n.homeTabTv,
       },
       child: JankScrollProbe(
       label: 'accueil vertical · ${widget.type.name}',
@@ -2724,16 +2729,15 @@ class _TypePageState extends State<_TypePage>
   /// passer sous les icônes ↻/⚙️.
   Widget _buildEmpty(BuildContext context) {
     final (icon, label) = switch (widget.type) {
-      M3uContentType.movie  => (Icons.movie_outlined, 'Aucun film'),
-      M3uContentType.series => (Icons.tv_outlined, 'Aucune série'),
-      M3uContentType.tv     => (Icons.live_tv_outlined, 'Aucune chaîne'),
+      M3uContentType.movie  => (Icons.movie_outlined, context.l10n.homeEmptyMovies),
+      M3uContentType.series => (Icons.tv_outlined, context.l10n.homeEmptySeries),
+      M3uContentType.tv     => (Icons.live_tv_outlined, context.l10n.homeEmptyTv),
     };
     final empty = EmptyState(
       icon: icon,
       title: label,
-      subtitle: 'Aucune de tes listes n\'en contient. '
-          'Recharge une liste ou ajoute un compte.',
-      ctaLabel: 'Gérer les comptes',
+      subtitle: context.l10n.homeEmptySub,
+      ctaLabel: context.l10n.homeEmptyCta,
       ctaIcon: Icons.manage_accounts_outlined,
       onCtaTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const AccountsPage()),

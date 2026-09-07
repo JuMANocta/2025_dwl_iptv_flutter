@@ -9,6 +9,8 @@ import '../../data/services/stream_account_service.dart';
 import '../search/m3u_filter.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
+import '../search/category_labels.dart';
 
 /// §langFilter — Réglage des langues/régions à MASQUER du catalogue.
 ///
@@ -62,8 +64,8 @@ class _RegionFilterPageState extends State<RegionFilterPage>
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
           content: Text(changed
-              ? '✅ Filtre appliqué — catalogue rechargé'
-              : 'Aucun changement'),
+              ? context.l10n.regionApplied
+              : context.l10n.regionNoChange),
           backgroundColor: kSuccess,
         ));
       if (mounted) setState(() {});
@@ -72,7 +74,7 @@ class _RegionFilterPageState extends State<RegionFilterPage>
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-            content: Text('❌ Échec : ${describeError(e)}'),
+            content: Text(context.l10n.commonFailedWith(describeError(e))),
             backgroundColor: kError));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -113,8 +115,8 @@ class _RegionFilterPageState extends State<RegionFilterPage>
                       }),
               child: Text(
                 _selected.length == kHideableRegionLabels.length
-                    ? 'Tout afficher'
-                    : 'Tout masquer',
+                    ? context.l10n.regionShowAll
+                    : context.l10n.regionHideAll,
                 style: TextStyle(
                     color: kAccentPrimary, fontWeight: FontWeight.w600),
               ),
@@ -139,7 +141,9 @@ class _RegionFilterPageState extends State<RegionFilterPage>
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.black))
                     : const Icon(Icons.check),
-                label: Text(_busy ? 'Application…' : 'Appliquer'),
+                label: Text(_busy
+                    ? context.l10n.commonApplying
+                    : context.l10n.commonApply),
               )
             : null,
         body: Stack(
@@ -159,11 +163,7 @@ class _RegionFilterPageState extends State<RegionFilterPage>
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      'Coche les langues/régions à MASQUER du catalogue. Le contenu '
-                      'français (|FR|), québécois et VOSTFR est toujours conservé.\n'
-                      '• Mémoire allégée immédiatement après « Appliquer ».\n'
-                      '• La taille du catalogue sur disque diminue au prochain '
-                      'rechargement de la playlist (auto 24 h ou bouton ⟳ de l\'accueil).',
+                      context.l10n.regionHelp,
                       style: TextStyle(
                           color: cs.onSurfaceVariant,
                           fontSize: 13,
@@ -202,8 +202,8 @@ class _RegionFilterPageState extends State<RegionFilterPage>
                         children: [
                           const CircularProgressIndicator(),
                           const SizedBox(height: 18),
-                          const Text(
-                            'Application du filtre…',
+                          Text(
+                            context.l10n.regionApplying,
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 16,
@@ -212,8 +212,7 @@ class _RegionFilterPageState extends State<RegionFilterPage>
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Le catalogue est ré-analysé. Cela peut prendre '
-                            'quelques secondes sur une grande liste.',
+                            context.l10n.regionApplyingSub,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.white.withAlpha(200),
@@ -251,13 +250,13 @@ class CheckboxThemeListTile extends StatelessWidget {
       value: hidden,
       onChanged: (v) => onChanged(v ?? false),
       activeColor: kAccentPrimary,
-      title: Text(region),
+      title: Text(regionDisplayLabel(region, context.l10n)),
       secondary: Icon(
         hidden ? Icons.visibility_off_outlined : Icons.visibility_outlined,
         color:
             hidden ? kWarning : Theme.of(context).colorScheme.onSurfaceVariant,
       ),
-      subtitle: Text(hidden ? 'Masqué' : 'Visible',
+      subtitle: Text(hidden ? context.l10n.regionHidden : context.l10n.regionVisible,
           style: TextStyle(
               fontSize: 11,
               color: hidden

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/themes/colors.dart';
 import '../../../widgets/tv/focusable_card.dart';
+import '../../../l10n/l10n_ext.dart';
 
 /// §autoNextEp — Encart affiché quand la lecture atteint sa fin.
 enum EndOfPlaybackKind {
@@ -94,7 +95,7 @@ class NextEpisodeOverlay extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Text('Chargement de l\'épisode suivant…',
+        Text(context.l10n.nextEpLoading,
             textAlign: TextAlign.center,
             style: TextStyle(color: cs.onSurface, fontSize: 15)),
       ];
@@ -110,10 +111,10 @@ class NextEpisodeOverlay extends StatelessWidget {
           _progress(),
           const SizedBox(height: 20),
           _actions(
-            primaryLabel: 'Lire maintenant  ·  ${remainingSeconds}s',
+            primaryLabel: context.l10n.nextEpPlayNow(remainingSeconds),
             primaryIcon: Icons.play_arrow_rounded,
             onPrimary: onPlayNow,
-            secondaryLabel: 'Annuler',
+            secondaryLabel: context.l10n.commonCancel,
             secondaryIcon: Icons.close_rounded,
             onSecondary: onDismiss,
           ),
@@ -126,7 +127,7 @@ class NextEpisodeOverlay extends StatelessWidget {
           if (nextEpisodeTag != null) _subtitle(context, nextEpisodeTag!),
           const SizedBox(height: 20),
           _actions(
-            primaryLabel: 'Lire',
+            primaryLabel: context.l10n.nextEpPlay,
             primaryIcon: Icons.play_arrow_rounded,
             onPrimary: onPlayNow,
             secondaryLabel: 'Rester ici',
@@ -137,12 +138,12 @@ class NextEpisodeOverlay extends StatelessWidget {
 
       case EndOfPlaybackKind.endOfSeason:
         return [
-          _eyebrow('FIN DE LA SAISON'),
+          _eyebrow(context.l10n.nextEpSeasonEnd),
           _title(
             context,
             nextSeason != null
-                ? 'Passer à la saison $nextSeason ?'
-                : 'Passer à la saison suivante ?',
+                ? context.l10n.nextEpGoToSeason(nextSeason!)
+                : context.l10n.nextEpGoToNextSeason,
           ),
           if (nextTitle != null && nextTitle!.isNotEmpty)
             _subtitle(context, nextTitle!),
@@ -151,7 +152,7 @@ class NextEpisodeOverlay extends StatelessWidget {
             primaryLabel: 'Continuer',
             primaryIcon: Icons.skip_next_rounded,
             onPrimary: onPlayNow,
-            secondaryLabel: 'Retour à la fiche',
+            secondaryLabel: context.l10n.nextEpBackToDetails,
             secondaryIcon: Icons.arrow_back_rounded,
             onSecondary: onLeave,
           ),
@@ -159,11 +160,11 @@ class NextEpisodeOverlay extends StatelessWidget {
 
       case EndOfPlaybackKind.endOfSeries:
         return [
-          _eyebrow('SÉRIE TERMINÉE'),
-          _title(context, 'Vous avez vu le dernier épisode disponible.'),
+          _eyebrow(context.l10n.nextEpSeriesOver),
+          _title(context, context.l10n.nextEpSeriesOverSub),
           const SizedBox(height: 20),
           _actions(
-            primaryLabel: 'Retour à la fiche',
+            primaryLabel: context.l10n.nextEpBackToDetails,
             primaryIcon: Icons.arrow_back_rounded,
             onPrimary: onLeave,
             secondaryLabel: 'Rester ici',

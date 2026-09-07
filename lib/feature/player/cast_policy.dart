@@ -13,6 +13,7 @@
 library;
 
 import '../../data/models/stream_account.dart' show XtreamCredentials;
+import '../../l10n/l10n_ext.dart';
 
 // ── URL & format ────────────────────────────────────────────────────────────
 
@@ -201,9 +202,15 @@ String castAudioTrackLabel(CastAudioTrack t) {
     if (t.label.trim().isNotEmpty) t.label.trim(),
     if (castAudioCodecName(t.codec) != null) castAudioCodecName(t.codec)!,
     if (t.channels != null && t.channels! > 0)
-      switch (t.channels!) { 1 => 'mono', 2 => 'stéréo', 6 => '5.1', 8 => '7.1', _ => '${t.channels} canaux' },
+      switch (t.channels!) {
+        1 => L10n.current.castChannelsMono,
+        2 => L10n.current.castChannelsStereo,
+        6 => '5.1',
+        8 => '7.1',
+        _ => L10n.current.castChannelsCount(t.channels!)
+      },
   ];
-  return parts.isEmpty ? 'Piste audio' : parts.join(' · ');
+  return parts.isEmpty ? L10n.current.castAudioTrackFallback : parts.join(' · ');
 }
 
 /// Ce que l'app doit dire du SON avant d'envoyer [tracks] à un récepteur.
@@ -226,9 +233,7 @@ String? castAudioWarningForTracks(List<CastAudioTrack> tracks) {
       for (int i = 0; i < tracks.length; i++)
         if (verdicts[i] == CastAudioSupport.ok) castAudioTrackLabel(tracks[i]),
     ];
-    return 'Le téléviseur ne décodera pas toutes les pistes de ce flux. '
-        "L'app va lui demander : ${ok.first}. Si le son manque quand même, "
-        "c'est que le récepteur a gardé sa piste par défaut.";
+    return L10n.current.castAudioWarnPartial(ok.first);
   }
 
   final names = <String>[
@@ -237,11 +242,8 @@ String? castAudioWarningForTracks(List<CastAudioTrack> tracks) {
   ];
   final String detail = names.length == 1 ? names.first : names.join(', ');
   return tracks.length == 1
-      ? 'Le son de ce flux est en $detail : le récepteur du téléviseur ne sait '
-          "pas le décoder (image sans son). L'app ne peut pas le convertir."
-      : "Aucune piste audio de ce flux n'est décodable par le récepteur du "
-          'téléviseur ($detail) : image sans son. Une autre version du même '
-          'titre, en AAC, passerait.';
+      ? L10n.current.castAudioWarnSingle(detail)
+      : L10n.current.castAudioWarnNone(detail);
 }
 
 /// Repli quand on ne connaît QUE le codec en cours de lecture (pas la liste
@@ -264,17 +266,17 @@ String? castAudioWarning(String? audioCodec) {
 String castReceiverTracksSummary(
   List<({String type, String? language, String? codec})> tracks,
 ) {
-  if (tracks.isEmpty) return 'aucune piste annoncée';
+  if (tracks.isEmpty) return L10n.current.castReceiverNoTracks;
   final audio = tracks.where((t) => t.type.toUpperCase() == 'AUDIO').toList();
   if (audio.isEmpty) {
-    return '${tracks.length} piste(s), aucune audio';
+    return L10n.current.castReceiverNoAudio(tracks.length);
   }
   final labels = audio.map((t) {
     final name = castAudioCodecName(t.codec) ?? t.codec ?? '?';
     final lang = (t.language ?? '').trim();
     return lang.isEmpty ? name : '$lang $name';
   }).join(', ');
-  return '${audio.length} audio : $labels';
+  return L10n.current.castReceiverAudioSummary(audio.length, labels);
 }
 
 /// Index (dans [tracks]) de la piste à demander au récepteur : la première
@@ -302,60 +304,33 @@ CastEligibility castEligibility({
   required CastProbe? probe,
 }) {
   if (isLocalFile && url.isEmpty) {
-    return const CastEligibility.no(
-      "Le téléphone n'est pas sur un réseau Wi-Fi : le Chromecast ne peut "
-      "pas venir chercher le fichier. Connecte-le au même réseau que la télé.",
-    );
+    return CastEligibility.no(L10n.current.castNoWifi);
   }
   final Uri? uri = Uri.tryParse(url);
   if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) {
-    return const CastEligibility.no(
-      "Cette adresse n'est pas diffusable (ni http ni https).",
-    );
+    return CastEligibility.no(L10n.current.castNotStreamable);
   }
   if (probe == null) {
-    return const CastEligibility.no(
-      "Impossible de vérifier le flux depuis ce réseau. Réessaie dans un "
-      'instant.',
-    );
+    return CastEligibility.no(L10n.current.castCannotVerify);
   }
   if (probe.tlsFailed) {
-    return const CastEligibility.no(
-      "Le fournisseur utilise un certificat que le Chromecast refuse (l'app, "
-      "elle, l'accepte). Ce flux ne peut pas être diffusé.",
-    );
+    return CastEligibility.no(L10n.current.castTlsRefused);
   }
   if (probe.unreachable) {
-    return const CastEligibility.no(
-      'Le serveur du fournisseur ne répond pas depuis ce réseau.',
-    );
+    return CastEligibility.no(L10n.current.castUnreachable);
   }
   final int code = probe.statusCode ?? 0;
   if (code == 401 || code == 403) {
-    return const CastEligibility.no(
-      "Ce flux n'est pas diffusable : le fournisseur exige une "
-      'identification que le Chromecast ne peut pas transmettre.',
-    );
+    return CastEligibility.no(L10n.current.castNeedsAuth);
   }
   if (code == 404) {
-    return const CastEligibility.no(
-      "Le fournisseur ne propose pas ce flux dans un format que le Chromecast "
-      'sait lire (HLS).',
-    );
+    return CastEligibility.no(L10n.current.castNotHls);
   }
   if (code >= 400 || code == 0) {
-    return CastEligibility.no(
-      "Ce flux n'est pas diffusable : le fournisseur refuse une requête sans "
-      "le profil IPTV de l'app (réponse HTTP $code), que le Chromecast ne peut "
-      'pas imiter.',
-    );
+    return CastEligibility.no(L10n.current.castHttpRefused(code));
   }
   if (castNeedsCors(url) && !probe.corsAllowed) {
-    return const CastEligibility.no(
-      "Ce flux n'est pas diffusable : le fournisseur n'autorise pas la lecture "
-      "depuis un navigateur (pas d'en-tête CORS), et c'est ainsi que le "
-      'Chromecast lit le HLS.',
-    );
+    return CastEligibility.no(L10n.current.castNoCors);
   }
   return const CastEligibility.ok();
 }
@@ -382,7 +357,9 @@ CastNotice? castNotice({
       mediaTitle.trim().isEmpty ? 'AetherStream' : mediaTitle.trim();
   return (
     title: title,
-    text: '${playing ? 'Diffusion' : 'En pause'} sur $device',
+    text: playing
+        ? L10n.current.castNoticePlaying(device)
+        : L10n.current.castNoticePaused(device),
     playing: playing,
   );
 }
@@ -391,10 +368,9 @@ CastNotice? castNotice({
 /// son vocabulaire (`idleReason`). `null` = rien à dire (arrêt volontaire).
 String? castIdleMessage(String? idleReason) {
   return switch (idleReason) {
-    'FINISHED' => 'Lecture terminée sur le téléviseur.',
-    'ERROR' => "Le téléviseur n'a pas pu lire ce flux (format ou adresse "
-        'refusés par le récepteur).',
-    'INTERRUPTED' => 'Diffusion interrompue par le téléviseur.',
+    'FINISHED' => L10n.current.castIdleFinished,
+    'ERROR' => L10n.current.castIdleError,
+    'INTERRUPTED' => L10n.current.castIdleInterrupted,
     _ => null,
   };
 }

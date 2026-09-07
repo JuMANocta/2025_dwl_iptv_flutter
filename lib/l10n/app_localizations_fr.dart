@@ -1071,4 +1071,2511 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get capsDisplayUiNote =>
       'Ce qu\'Android annonce ici décrit l\'interface, pas forcément la dalle : beaucoup de téléviseurs 4K affichent leurs menus en 1080p et la vidéo en 2160p. Seuls les décodeurs décident de la 4K.';
+
+  @override
+  String get perfPurgeNothing => 'Rien à récupérer — aucun fichier orphelin';
+
+  @override
+  String perfPurgeDone(String size, int count) {
+    return '🧹 $size libérés ($count fichier(s))';
+  }
+
+  @override
+  String get perfResetTitle => 'Réinitialiser les réglages ?';
+
+  @override
+  String get perfResetQuestion =>
+      'Tous les réglages d\'optimisation reviennent aux valeurs par défaut.';
+
+  @override
+  String get perfResetConfirm => 'Réinitialiser';
+
+  @override
+  String get perfResetDone => 'Réglages réinitialisés';
+
+  @override
+  String perfFreeMemoryDone(int count) {
+    return '💤 $count compte(s) secondaire(s) déchargé(s) de la mémoire';
+  }
+
+  @override
+  String get perfFreeMemoryNothing => 'Rien à libérer (un seul compte chargé)';
+
+  @override
+  String get perfImageCacheCleared => '🧹 Cache images vidé';
+
+  @override
+  String get perfSectionProfiles => 'Profils';
+
+  @override
+  String get perfSectionHero => 'Hero banner';
+
+  @override
+  String get perfHeroSub =>
+      'Empilement de cartes en tête de la home (coûteux sur box faible)';
+
+  @override
+  String get perfAutoRotateTitle => 'Rotation automatique';
+
+  @override
+  String get perfAutoRotateSub =>
+      'Fait défiler le hero toutes les 6 s (swipe manuel toujours actif)';
+
+  @override
+  String get perfHeroCardsLabel => 'Cartes';
+
+  @override
+  String get perfSectionRows => 'Rangées de catégories';
+
+  @override
+  String get perfItemsLabel => 'Vignettes';
+
+  @override
+  String get perfItemsSub =>
+      'Vignettes affichées par rangée avant la tuile « Voir tout » (les Favoris ne sont jamais tronqués).';
+
+  @override
+  String get perfSectionPlayback => 'Lecture';
+
+  @override
+  String get perfAutoNextTitle => 'Épisode suivant automatique';
+
+  @override
+  String get perfAutoNextSub =>
+      'Enchaîne l\'épisode suivant en fin de lecture, après un décompte annulable. Un changement de saison demande toujours confirmation.';
+
+  @override
+  String get perfBufferLabel => 'Tampon de lecture';
+
+  @override
+  String get perfBufferSub =>
+      'Secondes de vidéo gardées d\'avance. Monter aide sur un fournisseur qui bride — la lecture puise dans le tampon au lieu de s\'arrêter — mais tient d\'autant plus de flux en mémoire, ce qui compte sur une box. Le compteur « Blocages » de l\'encart Infos vidéo dit si le réglage sert à quelque chose. Prend effet à la lecture suivante.';
+
+  @override
+  String get perfSectionLists => 'Listes';
+
+  @override
+  String get perfKeepListsTitle => 'Garder toutes les listes en mémoire';
+
+  @override
+  String get perfKeepListsSub =>
+      'Chaque compte reste chargé : recherche cross-comptes et changement de liste instantanés. Coûte de la mémoire (~50 à 150 Mo par liste) — à éteindre sur Fire Stick ou box à faible RAM.';
+
+  @override
+  String get perfUnloadAfterLabel => 'Décharger après';
+
+  @override
+  String get perfUnloadNever => 'Jamais';
+
+  @override
+  String perfMinutesShort(int count) {
+    return '$count min';
+  }
+
+  @override
+  String get perfUnloadSub =>
+      'Minutes sans consulter une liste secondaire avant de la sortir de la mémoire. Le cache disque est conservé : elle revient en ~50 ms au prochain accès. « Jamais » (0) équivaut à garder toutes les listes. Les pages qui affichent les listes ou leurs compteurs suspendent le déchargement tant qu\'elles sont ouvertes.';
+
+  @override
+  String get perfSectionMemory => 'Mémoire & usage';
+
+  @override
+  String get perfImageRamLabel => 'Images (RAM)';
+
+  @override
+  String get perfImageRamSub =>
+      'Mémoire vive réservée aux images déjà affichées (défaut Flutter : 100 Mo). ⚠️ Baisser ne rend pas l\'app plus fluide : trop bas, les vignettes sont re-décodées en permanence et l\'affichage se met à saccader. À n\'ajuster que si la mémoire manque vraiment.';
+
+  @override
+  String get perfFreeMemoryButton =>
+      'Libérer la mémoire des comptes secondaires';
+
+  @override
+  String get perfFreeMemoryNote =>
+      'Les caches disque sont conservés : un compte déchargé se recharge en ~50 ms au prochain accès.';
+
+  @override
+  String get perfClearImageCacheButton => 'Vider le cache images';
+
+  @override
+  String get perfClearImageCacheNote =>
+      'Les vignettes sont gardées sur le disque pour éviter de les re-télécharger. À vider si une affiche a changé côté fournisseur ou si le stockage sature.';
+
+  @override
+  String get perfSectionStorage => 'Stockage';
+
+  @override
+  String get perfStorageScanning => 'Analyse du stockage…';
+
+  @override
+  String get perfStorageNothing =>
+      'Rien à récupérer : chaque fichier appartient à un compte existant.';
+
+  @override
+  String perfStorageReclaimable(String size, int count) {
+    return '$size occupés par des fichiers qui n\'appartiennent plus à aucun compte ($count fichier(s)) — playlists et caches laissés derrière eux par des comptes supprimés.';
+  }
+
+  @override
+  String get perfPurging => 'Nettoyage…';
+
+  @override
+  String get perfPurgeButton => 'Nettoyer les fichiers orphelins';
+
+  @override
+  String get perfUnitSeconds => ' s';
+
+  @override
+  String get perfUnitMegabytes => ' Mo';
+
+  @override
+  String get acctAddHowTitle => 'Comment ajouter une playlist ?';
+
+  @override
+  String get acctAddFromPhone => 'Depuis mon téléphone';
+
+  @override
+  String get acctAddFromPhoneSub =>
+      'Recommandé — QR vers le panneau complet (ajout, édition, rechargement)';
+
+  @override
+  String get acctAddWithRemote => 'Avec la télécommande';
+
+  @override
+  String get acctAddWithRemoteSub => 'Saisie touche par touche';
+
+  @override
+  String acctDeleteBody(String label) {
+    return '« $label » et ses identifiants seront effacés définitivement.';
+  }
+
+  @override
+  String acctDeleteListGone(String size) {
+    return 'La liste téléchargée part avec ($size libérés).';
+  }
+
+  @override
+  String get acctDeleteNoList =>
+      'Aucune liste téléchargée à effacer pour ce compte.';
+
+  @override
+  String get acctDeleteKept =>
+      'Favoris, reprises de lecture et téléchargements terminés sont conservés.';
+
+  @override
+  String acctDeletedWithSize(String label, String size) {
+    return '✅ « $label » supprimé — $size libérés';
+  }
+
+  @override
+  String acctDeleted(String label) {
+    return '✅ « $label » supprimé';
+  }
+
+  @override
+  String get acctAdd => 'Ajouter';
+
+  @override
+  String get acctEmptyTitle => 'Aucun compte configuré';
+
+  @override
+  String get acctEmptySubTv =>
+      'Scanne le QR code avec ton téléphone pour configurer ta playlist sans avoir à taper au D-pad.';
+
+  @override
+  String get acctEmptySubPhone =>
+      'Ajoute une URL M3U complète ou un compte Xtream Codes pour commencer à streamer.';
+
+  @override
+  String get acctEmptyCtaTv => 'Configurer depuis mon téléphone';
+
+  @override
+  String get acctEmptyCtaPhone => 'Ajouter une playlist';
+
+  @override
+  String get acctMainAccount => 'COMPTE PRINCIPAL';
+
+  @override
+  String acctListsCount(int count) {
+    return '$count listes';
+  }
+
+  @override
+  String acctStatusInProgress(int loaded, int total, int inProgress) {
+    return '$loaded/$total · $inProgress en cours…';
+  }
+
+  @override
+  String acctStatusWithFailed(String base, int failed) {
+    return '$base · $failed en échec';
+  }
+
+  @override
+  String acctStatusFailed(int loaded, int total, int failed) {
+    return '$loaded/$total · $failed en échec';
+  }
+
+  @override
+  String acctStatusLoaded(int loaded, int total) {
+    return '✓ $loaded/$total chargées';
+  }
+
+  @override
+  String acctReloadedFor(String label) {
+    return '✅ Playlist rechargée pour $label';
+  }
+
+  @override
+  String commonFailedWith(String reason) {
+    return '❌ Échec : $reason';
+  }
+
+  @override
+  String get acctReloadTitle => 'Recharger ?';
+
+  @override
+  String acctReloadBody(String label, String age) {
+    return 'La playlist de « $label » a été téléchargée il y a $age.\nRecharger quand même depuis le serveur ?';
+  }
+
+  @override
+  String get acctReload => 'Recharger';
+
+  @override
+  String get acctDownloading => 'Téléchargement…';
+
+  @override
+  String get acctReloadPlaylist => 'Recharger la playlist';
+
+  @override
+  String get acctChipAvailable => 'DISPONIBLE';
+
+  @override
+  String get acctChipDownloading => 'TÉLÉCHARGEMENT…';
+
+  @override
+  String get acctChipLoading => 'CHARGEMENT…';
+
+  @override
+  String get acctChipError => 'ERREUR';
+
+  @override
+  String get acctChipNotLoaded => 'NON CHARGÉ';
+
+  @override
+  String get acctChipExpired => 'EXPIRÉE';
+
+  @override
+  String get acctChipExpiresToday => 'EXPIRE AUJOURD\'HUI';
+
+  @override
+  String acctChipExpiresIn(int days) {
+    return 'EXPIRE DANS $days J';
+  }
+
+  @override
+  String get acctCountFilms => 'Films';
+
+  @override
+  String get acctCountSeries => 'Séries';
+
+  @override
+  String get acctCountTv => 'Chaînes';
+
+  @override
+  String acctStartupTime(String seconds) {
+    return 'départ $seconds s';
+  }
+
+  @override
+  String get acctM3uSize => 'Taille M3U';
+
+  @override
+  String get acctCacheAge => 'Âge cache';
+
+  @override
+  String get acctNoCache => 'Aucun cache';
+
+  @override
+  String get acctAgeJustNow => 'à l\'instant';
+
+  @override
+  String acctAgeMinutes(int count) {
+    return 'il y a $count min';
+  }
+
+  @override
+  String acctAgeHours(int count) {
+    return 'il y a $count h';
+  }
+
+  @override
+  String acctAgeDays(int count) {
+    return 'il y a $count j';
+  }
+
+  @override
+  String get acctXtreamLoading => 'Lecture des infos Xtream…';
+
+  @override
+  String get acctXtreamUnavailable => 'Infos Xtream indisponibles';
+
+  @override
+  String get acctExpiration => 'Expiration';
+
+  @override
+  String get acctConnections => 'Connexions';
+
+  @override
+  String get acctExpiryUnknown => 'Inconnue';
+
+  @override
+  String acctExpiryPast(int days) {
+    return 'Expirée ($days j)';
+  }
+
+  @override
+  String get acctExpiryToday => 'Expire aujourd\'hui';
+
+  @override
+  String get acctExpiryTomorrow => 'Expire demain';
+
+  @override
+  String acctExpiryInDays(int days) {
+    return 'Dans $days jours';
+  }
+
+  @override
+  String unitBytes(String value) {
+    return '$value o';
+  }
+
+  @override
+  String unitKilobytes(String value) {
+    return '$value ko';
+  }
+
+  @override
+  String unitMegabytes(String value) {
+    return '$value Mo';
+  }
+
+  @override
+  String unitGigabytes(String value) {
+    return '$value Go';
+  }
+
+  @override
+  String acctAgeHoursMinutes(int hours, String minutes) {
+    return '${hours}h$minutes';
+  }
+
+  @override
+  String acctAgeMinutesShort(int count) {
+    return '${count}min';
+  }
+
+  @override
+  String get homeExitSearch => 'Quitter la recherche';
+
+  @override
+  String get homeSearchHint => 'Rechercher dans la playlist…';
+
+  @override
+  String get homeTabSeries => 'Séries';
+
+  @override
+  String get homeTabMovies => 'Films';
+
+  @override
+  String get homeTabTv => 'Chaînes';
+
+  @override
+  String get homeEmptyMovies => 'Aucun film';
+
+  @override
+  String get homeEmptySeries => 'Aucune série';
+
+  @override
+  String get homeEmptyTv => 'Aucune chaîne';
+
+  @override
+  String get homeEmptySub =>
+      'Aucune de tes listes n\'en contient. Recharge une liste ou ajoute un compte.';
+
+  @override
+  String get homeEmptyCta => 'Gérer les comptes';
+
+  @override
+  String get homeSeeAll => 'Voir tout';
+
+  @override
+  String get homeResume => 'REPRENDRE';
+
+  @override
+  String get homeResumeChannel => 'REPRENDRE LA CHAÎNE';
+
+  @override
+  String get searchNoTitleFound => 'Aucun titre trouvé';
+
+  @override
+  String searchNoTitleSub(String query) {
+    return 'Rien dans vos listes pour « $query ». Essaie un autre mot-clé ou vérifie l\'orthographe.';
+  }
+
+  @override
+  String get searchKeepTyping => 'Continue à taper…';
+
+  @override
+  String searchKeepTypingSub(int count) {
+    return 'Au moins $count lettres pour chercher un film ou une série. Les chaînes, elles, se cherchent dès la première lettre.';
+  }
+
+  @override
+  String searchFromPerson(String name) {
+    return 'De $name, dans tes listes';
+  }
+
+  @override
+  String get searchOnTmdbMissing => 'Sur TMDB, absent de tes listes';
+
+  @override
+  String get searchNotAvailable => 'NON DISPO';
+
+  @override
+  String get searchTypeToSearch => 'Tapez pour chercher dans votre playlist';
+
+  @override
+  String get searchTypesLine => 'Films · Séries · Chaînes';
+
+  @override
+  String get searchRecent => 'Recherches récentes';
+
+  @override
+  String get searchClearHistoryTitle => 'Effacer l\'historique ?';
+
+  @override
+  String get searchClearHistoryOne => 'La dernière recherche sera supprimée.';
+
+  @override
+  String searchClearHistoryMany(int count) {
+    return 'Les $count dernières recherches seront supprimées.';
+  }
+
+  @override
+  String get searchClearConfirm => 'Effacer';
+
+  @override
+  String get searchHistoryCleared => 'Historique effacé';
+
+  @override
+  String get cardPlay => 'Lire';
+
+  @override
+  String cardResumeFrom(String position) {
+    return 'Reprendre depuis $position';
+  }
+
+  @override
+  String get cardPlayFromStart => 'Lire depuis le début';
+
+  @override
+  String get cardForgetResume => 'Oublier la reprise';
+
+  @override
+  String get cardForgetResumeTitle => 'Oublier la reprise ?';
+
+  @override
+  String get cardForgetResumeQuestion =>
+      'La position de lecture de ce titre sera oubliée.';
+
+  @override
+  String get cardForgetConfirm => 'Oublier';
+
+  @override
+  String get cardResumeForgotten => 'Reprise oubliée';
+
+  @override
+  String get cardDetails => 'Voir les détails';
+
+  @override
+  String get castChannelsStereo => 'stéréo';
+
+  @override
+  String get castChannelsMono => 'mono';
+
+  @override
+  String castChannelsCount(int count) {
+    return '$count canaux';
+  }
+
+  @override
+  String get castAudioTrackFallback => 'Piste audio';
+
+  @override
+  String castAudioWarnPartial(String track) {
+    return 'Le téléviseur ne décodera pas toutes les pistes de ce flux. L\'app va lui demander : $track. Si le son manque quand même, c\'est que le récepteur a gardé sa piste par défaut.';
+  }
+
+  @override
+  String castAudioWarnSingle(String detail) {
+    return 'Le son de ce flux est en $detail : le récepteur du téléviseur ne sait pas le décoder (image sans son). L\'app ne peut pas le convertir.';
+  }
+
+  @override
+  String castAudioWarnNone(String detail) {
+    return 'Aucune piste audio de ce flux n\'est décodable par le récepteur du téléviseur ($detail) : image sans son. Une autre version du même titre, en AAC, passerait.';
+  }
+
+  @override
+  String get castReceiverNoTracks => 'aucune piste annoncée';
+
+  @override
+  String castReceiverNoAudio(int count) {
+    return '$count piste(s), aucune audio';
+  }
+
+  @override
+  String castReceiverAudioSummary(int count, String labels) {
+    return '$count audio : $labels';
+  }
+
+  @override
+  String get castNoWifi =>
+      'Le téléphone n\'est pas sur un réseau Wi-Fi : le Chromecast ne peut pas venir chercher le fichier. Connecte-le au même réseau que la télé.';
+
+  @override
+  String get castNotStreamable =>
+      'Cette adresse n\'est pas diffusable (ni http ni https).';
+
+  @override
+  String get castCannotVerify =>
+      'Impossible de vérifier le flux depuis ce réseau. Réessaie dans un instant.';
+
+  @override
+  String get castTlsRefused =>
+      'Le fournisseur utilise un certificat que le Chromecast refuse (l\'app, elle, l\'accepte). Ce flux ne peut pas être diffusé.';
+
+  @override
+  String get castUnreachable =>
+      'Le serveur du fournisseur ne répond pas depuis ce réseau.';
+
+  @override
+  String get castNeedsAuth =>
+      'Ce flux n\'est pas diffusable : le fournisseur exige une identification que le Chromecast ne peut pas transmettre.';
+
+  @override
+  String get castNotHls =>
+      'Le fournisseur ne propose pas ce flux dans un format que le Chromecast sait lire (HLS).';
+
+  @override
+  String castHttpRefused(int code) {
+    return 'Ce flux n\'est pas diffusable : le fournisseur refuse une requête sans le profil IPTV de l\'app (réponse HTTP $code), que le Chromecast ne peut pas imiter.';
+  }
+
+  @override
+  String get castNoCors =>
+      'Ce flux n\'est pas diffusable : le fournisseur n\'autorise pas la lecture depuis un navigateur (pas d\'en-tête CORS), et c\'est ainsi que le Chromecast lit le HLS.';
+
+  @override
+  String castNoticePlaying(String device) {
+    return 'Diffusion sur $device';
+  }
+
+  @override
+  String castNoticePaused(String device) {
+    return 'En pause sur $device';
+  }
+
+  @override
+  String get castIdleFinished => 'Lecture terminée sur le téléviseur.';
+
+  @override
+  String get castIdleError =>
+      'Le téléviseur n\'a pas pu lire ce flux (format ou adresse refusés par le récepteur).';
+
+  @override
+  String get castIdleInterrupted => 'Diffusion interrompue par le téléviseur.';
+
+  @override
+  String get perrTimedOut => 'Le flux ne répond plus (délai dépassé).';
+
+  @override
+  String get perrConnectionFailed =>
+      'Connexion au serveur impossible. Vérifie le réseau.';
+
+  @override
+  String get perrConnectionTimeout =>
+      'Le serveur a mis trop de temps à répondre.';
+
+  @override
+  String get perrBadHttpStatus =>
+      'Le serveur a refusé le flux (erreur HTTP). Vérifie le compte ou réessaie plus tard.';
+
+  @override
+  String get perrFileNotFound => 'Flux introuvable sur le serveur.';
+
+  @override
+  String get perrNoPermission => 'Accès au flux refusé.';
+
+  @override
+  String get perrCleartextNotPermitted =>
+      'Connexion non chiffrée refusée par le système.';
+
+  @override
+  String get perrInvalidContentType =>
+      'Le serveur ne renvoie pas une vidéo (type de contenu inattendu).';
+
+  @override
+  String get perrPositionOutOfRange => 'Position de lecture hors du flux.';
+
+  @override
+  String get perrNetwork => 'Erreur de lecture réseau.';
+
+  @override
+  String get perrBehindLiveWindow =>
+      'Trop en retard sur le direct : reprise au direct.';
+
+  @override
+  String get perrPlayerTimeout => 'Le lecteur n\'a pas répondu à temps.';
+
+  @override
+  String get perrMalformed =>
+      'Flux illisible (données corrompues ou inattendues).';
+
+  @override
+  String get perrUnsupportedFormat => 'Format de flux non pris en charge.';
+
+  @override
+  String get perrDecoderInit => 'Impossible d\'initialiser le décodeur vidéo.';
+
+  @override
+  String get perrDecodingFailed =>
+      'Échec du décodage : le flux est peut-être abîmé.';
+
+  @override
+  String get perrExceedsCapabilities =>
+      'Ce flux dépasse les capacités de l\'appareil (définition ou débit).';
+
+  @override
+  String get perrCodecUnsupported =>
+      'Codec non pris en charge par cet appareil.';
+
+  @override
+  String get perrAudioOutput =>
+      'Sortie audio indisponible (piste ou format audio non lisible).';
+
+  @override
+  String get perrRemote => 'Erreur du lecteur distant.';
+
+  @override
+  String get perrUnexpected => 'Le lecteur a rencontré une erreur inattendue.';
+
+  @override
+  String get perrDrm => 'Contenu protégé (DRM) non lisible.';
+
+  @override
+  String get perrDecodeVideo => 'Échec du décodage vidéo.';
+
+  @override
+  String get perrCannotPlay => 'Lecture impossible.';
+
+  @override
+  String perrCannotPlayWith(String detail) {
+    return 'Lecture impossible : $detail';
+  }
+
+  @override
+  String get relayBlockerLive =>
+      'Une chaîne en direct n\'a pas de fin : la conversion non plus. Elle n\'est proposée que sur un film ou un épisode.';
+
+  @override
+  String get relayBlockerLocal =>
+      'Un fichier déjà téléchargé ne peut pas encore être converti pour le téléviseur.';
+
+  @override
+  String get relayBlockerOther =>
+      'Cette source ne peut pas être relayée par le téléphone.';
+
+  @override
+  String get relayBatteryPluggedOk =>
+      'Le téléphone est branché, parfait pour un film.';
+
+  @override
+  String get relayBatteryPlugIfYouCan =>
+      'Branche le téléphone si tu peux : la conversion consomme beaucoup de batterie.';
+
+  @override
+  String relayBatteryLow(int percent) {
+    return 'Batterie à $percent % — branche le téléphone, la diffusion en dépend.';
+  }
+
+  @override
+  String relayBatteryMid(int percent) {
+    return 'Batterie à $percent %. Branche le téléphone si tu peux, la conversion consomme beaucoup de batterie.';
+  }
+
+  @override
+  String get relayScreenOffOk =>
+      'Tu peux éteindre l\'écran : la diffusion continue en arrière-plan.';
+
+  @override
+  String get relayDeviceFallback => 'la télé';
+
+  @override
+  String relayConsentWhat(String device) {
+    return 'Ce téléviseur ne lit pas le son de ce film. Le téléphone peut l\'adapter pendant la diffusion pour $device.';
+  }
+
+  @override
+  String get relayConsentConfirm => 'Adapter et diffuser';
+
+  @override
+  String relayConvertedUpTo(String position) {
+    return 'Converti jusqu\'à $position';
+  }
+
+  @override
+  String relayProgressPaused(String ahead, String percent) {
+    return '$ahead · $percent % · en pause';
+  }
+
+  @override
+  String get playerLastEpisode => 'Dernier épisode disponible.';
+
+  @override
+  String playerAudioTrackSwitched(String track) {
+    return 'Piste audio incompatible — bascule sur $track';
+  }
+
+  @override
+  String get playerNoAudioTrack =>
+      'Aucune piste audio lisible sur ce fichier — lecture sans son';
+
+  @override
+  String get playerResuming => 'Reprise de la lecture…';
+
+  @override
+  String playerReconnecting(int attempt, int max) {
+    return 'Reconnexion dans 5 s… ($attempt/$max)';
+  }
+
+  @override
+  String get playerRetry => 'Réessayer';
+
+  @override
+  String get playerBuffering => 'Mise en mémoire tampon…';
+
+  @override
+  String get castOverlayBack => 'Retour (la diffusion continue)';
+
+  @override
+  String castOverlayCastingOn(String device) {
+    return 'DIFFUSION SUR $device';
+  }
+
+  @override
+  String get castOverlayStarting => 'Démarrage sur le téléviseur…';
+
+  @override
+  String castOverlayPlayingAt(String position) {
+    return 'En lecture · $position';
+  }
+
+  @override
+  String get castOverlayLoading => 'Chargement sur le téléviseur…';
+
+  @override
+  String get castOverlayBack30 => 'Reculer de 30 s';
+
+  @override
+  String get castOverlayPause => 'Pause';
+
+  @override
+  String get castOverlayPlay => 'Lecture';
+
+  @override
+  String get castOverlayForward30 => 'Avancer de 30 s';
+
+  @override
+  String castOverlayReceiver(String detail) {
+    return 'Récepteur · $detail';
+  }
+
+  @override
+  String castOverlayCastTitle(String title) {
+    return 'Diffuser « $title »';
+  }
+
+  @override
+  String get castOverlayResync => 'Resynchroniser l\'image et le son';
+
+  @override
+  String get castOverlayResumeHere => 'Reprendre sur le téléphone';
+
+  @override
+  String get castOverlaySoundConverted => 'Son entièrement converti';
+
+  @override
+  String get castOverlaySoundConverting => 'Conversion du son en cours';
+
+  @override
+  String get castOverlayTvPlaysWhileConverting =>
+      'Le téléviseur lit pendant la conversion. Garder l\'application ouverte.';
+
+  @override
+  String castOverlayPreparingFor(String device) {
+    return 'PRÉPARATION POUR $device';
+  }
+
+  @override
+  String get castOverlayCancelConversion => 'Annuler la conversion';
+
+  @override
+  String get castSheetNotCastable => 'Ce flux n\'est pas diffusable.';
+
+  @override
+  String castSheetOnDevice(String device) {
+    return 'Sur $device';
+  }
+
+  @override
+  String get castSheetTitle => 'Diffuser sur…';
+
+  @override
+  String get castSheetSearching => 'Recherche des appareils sur le réseau…';
+
+  @override
+  String castSheetChecking(String device) {
+    return 'Vérification du flux pour $device…';
+  }
+
+  @override
+  String get castSheetChooseOther => 'Choisir un autre appareil';
+
+  @override
+  String get castSheetConvertSound => 'Convertir le son sur le téléphone';
+
+  @override
+  String get castSheetConvertSoundSub =>
+      'Voir ce que ça implique avant de lancer';
+
+  @override
+  String get castSheetCastAnyway => 'Diffuser quand même';
+
+  @override
+  String castSheetCastAnywaySub(String device) {
+    return 'Sur $device — image sans son';
+  }
+
+  @override
+  String get castSheetStop => 'Arrêter la diffusion';
+
+  @override
+  String castSheetStopSub(String device) {
+    return 'En cours sur $device';
+  }
+
+  @override
+  String get castSheetNothingFound =>
+      'Aucun Chromecast trouvé. Le téléphone doit être sur le même WiFi que le téléviseur, hors réseau invité.';
+
+  @override
+  String get castSheetSearchAgain => 'Rechercher à nouveau';
+
+  @override
+  String get tracksNoAudio => 'Aucune piste audio détectée';
+
+  @override
+  String get tracksNoSubtitles => 'Aucun sous-titre détecté';
+
+  @override
+  String get tracksNone => 'Aucune';
+
+  @override
+  String get tracksDisabled => 'Désactivés';
+
+  @override
+  String get langFrench => 'Français';
+
+  @override
+  String get langEnglish => 'Anglais';
+
+  @override
+  String get langSpanish => 'Espagnol';
+
+  @override
+  String get langGerman => 'Allemand';
+
+  @override
+  String get langItalian => 'Italien';
+
+  @override
+  String get langPortuguese => 'Portugais';
+
+  @override
+  String get langArabic => 'Arabe';
+
+  @override
+  String get langRussian => 'Russe';
+
+  @override
+  String get langDutch => 'Néerlandais';
+
+  @override
+  String get langJapanese => 'Japonais';
+
+  @override
+  String get langChinese => 'Chinois';
+
+  @override
+  String get langKorean => 'Coréen';
+
+  @override
+  String get langTurkish => 'Turc';
+
+  @override
+  String get langPolish => 'Polonais';
+
+  @override
+  String statsRealDefinition(String definition, String resolution) {
+    return 'réel $definition ($resolution)';
+  }
+
+  @override
+  String get statsDecoding => 'Décodage';
+
+  @override
+  String statsHardwareWith(String decoder) {
+    return 'matériel · $decoder';
+  }
+
+  @override
+  String get statsHardware => 'matériel';
+
+  @override
+  String get statsResolution => 'Résolution';
+
+  @override
+  String get statsAnnounced => 'Annoncé';
+
+  @override
+  String statsAnnouncedOversold(String announced) {
+    return '$announced — la liste SURVEND';
+  }
+
+  @override
+  String statsAnnouncedBetter(String announced) {
+    return '$announced · mieux que promis';
+  }
+
+  @override
+  String get statsYes => 'oui';
+
+  @override
+  String get statsNo => 'non';
+
+  @override
+  String get statsDropped => 'Sautées';
+
+  @override
+  String get statsBitrate => 'Débit';
+
+  @override
+  String get statsNetwork => 'Réseau';
+
+  @override
+  String get statsTransferred => 'Transféré';
+
+  @override
+  String get statsStartup => 'Démarrage';
+
+  @override
+  String get statsChannelsStereo => 'stéréo';
+
+  @override
+  String get statsChannelsMono => 'mono';
+
+  @override
+  String statsChannelsCount(int count) {
+    return '$count canaux';
+  }
+
+  @override
+  String get statsStallsNone => 'aucun';
+
+  @override
+  String statsStallsWithTime(int count, int seconds) {
+    return '$count (${seconds}s au total)';
+  }
+
+  @override
+  String get nextEpLoading => 'Chargement de l\'épisode suivant…';
+
+  @override
+  String get nextEpTitle => 'ÉPISODE SUIVANT';
+
+  @override
+  String nextEpPlayNowIn(int seconds) {
+    return 'Lire maintenant  ·  ${seconds}s';
+  }
+
+  @override
+  String get nextEpPlay => 'Lire';
+
+  @override
+  String get nextEpSeasonEnd => 'FIN DE LA SAISON';
+
+  @override
+  String nextEpGoToSeason(int season) {
+    return 'Passer à la saison $season ?';
+  }
+
+  @override
+  String get nextEpGoToNextSeason => 'Passer à la saison suivante ?';
+
+  @override
+  String get nextEpBackToDetails => 'Retour à la fiche';
+
+  @override
+  String get nextEpSeriesOver => 'SÉRIE TERMINÉE';
+
+  @override
+  String get nextEpSeriesOverSub =>
+      'Vous avez vu le dernier épisode disponible.';
+
+  @override
+  String get ctrlCast => 'Diffuser sur un Chromecast';
+
+  @override
+  String get ctrlPip => 'Réduire en fenêtre';
+
+  @override
+  String get ctrlOptions => 'Options de lecture';
+
+  @override
+  String get ctrlTracks => 'Pistes audio et sous-titres';
+
+  @override
+  String get ctrlSpeed => 'Vitesse de lecture';
+
+  @override
+  String get ctrlNextEpisode => 'Épisode suivant';
+
+  @override
+  String get ctrlBadgeMovie => 'FILM';
+
+  @override
+  String get ctrlBadgeSeries => 'SÉRIE';
+
+  @override
+  String get ctrlUnlock => 'Déverrouiller';
+
+  @override
+  String get optNextEpisodeSub => 'Passer à l\'épisode suivant';
+
+  @override
+  String get optTracksSub => 'Langue audio · activer les sous-titres';
+
+  @override
+  String get optVideoInfo => 'Infos vidéo';
+
+  @override
+  String get optVideoInfoOn => 'Affichées · toucher pour masquer';
+
+  @override
+  String get optVideoInfoSub => 'Décodage, résolution, images/s, pertes';
+
+  @override
+  String get fitContainSub => 'Image entière · bandes noires possibles';
+
+  @override
+  String get fitCoverSub => 'Efface les bandes noires · rogne les bords';
+
+  @override
+  String get fitFill => 'Plein écran';
+
+  @override
+  String get fitFillSub => 'Remplit tout · image légèrement déformée';
+
+  @override
+  String relayProgressPlaying(String ahead, String percent) {
+    return '$ahead · $percent %';
+  }
+
+  @override
+  String get ctrlCastActive => 'Diffusion en cours';
+
+  @override
+  String get ctrlLock => 'Verrouiller';
+
+  @override
+  String get ctrlBadgeLive => 'DIRECT';
+
+  @override
+  String get ctrlBadgeReplay => 'REPLAY';
+
+  @override
+  String get optTitle => 'Options';
+
+  @override
+  String get optNextEpisode => 'Épisode suivant';
+
+  @override
+  String get optTracksTitle => 'Pistes audio & sous-titres';
+
+  @override
+  String get optSpeedTitle => 'Vitesse de lecture';
+
+  @override
+  String get optFitTitle => 'Format d\'image';
+
+  @override
+  String get optSpeedNormal => '1.0×  ·  Normal';
+
+  @override
+  String get castSheetDeviceFallback => 'le téléviseur';
+
+  @override
+  String get statsDecodingPending => 'en cours…';
+
+  @override
+  String get statsSoftware => 'LOGICIEL';
+
+  @override
+  String get statsOutput => 'Sortie';
+
+  @override
+  String get statsCodec => 'Codec';
+
+  @override
+  String get statsHdr => 'HDR';
+
+  @override
+  String get statsFps => 'Images/s';
+
+  @override
+  String get statsLost => 'Perdues';
+
+  @override
+  String get statsRendered => 'Rendu';
+
+  @override
+  String get statsBuffer => 'Tampon';
+
+  @override
+  String get statsAudio => 'Audio';
+
+  @override
+  String get statsStalls => 'Blocages';
+
+  @override
+  String statsAnnouncedOk(String announced) {
+    return '$announced · conforme';
+  }
+
+  @override
+  String statsRenderedValue(String fps) {
+    return '$fps img/s';
+  }
+
+  @override
+  String statsRenderedVsAnnounced(String fps, String announced) {
+    return '$fps img/s (annoncé $announced)';
+  }
+
+  @override
+  String statsSecondsValue(String value) {
+    return '$value s';
+  }
+
+  @override
+  String get fitOriginal => 'Original';
+
+  @override
+  String get fitZoom => 'Zoom';
+
+  @override
+  String playerRecovering(int attempt, int max) {
+    return 'Reprise de la lecture… ($attempt/$max)';
+  }
+
+  @override
+  String get playerOtherTrack => 'une autre piste';
+
+  @override
+  String get commonOk => 'OK';
+
+  @override
+  String get commonApply => 'Appliquer';
+
+  @override
+  String get commonApplying => 'Application…';
+
+  @override
+  String get bkPasswordTitle => 'Mot de passe de chiffrement';
+
+  @override
+  String get bkPasswordHelp =>
+      'Choisis un mot de passe — il sera demandé pour restaurer la sauvegarde.';
+
+  @override
+  String get bkPasswordLabel => 'Mot de passe';
+
+  @override
+  String get bkPasswordConfirmLabel => 'Confirmer';
+
+  @override
+  String get bkPasswordEmpty => 'Le mot de passe ne peut pas être vide.';
+
+  @override
+  String get bkPasswordTooShort => 'Au moins 6 caractères.';
+
+  @override
+  String get bkPasswordMismatch => 'Les deux mots de passe diffèrent.';
+
+  @override
+  String get bkSave => 'Sauvegarder';
+
+  @override
+  String get bkCreated => 'Sauvegarde créée';
+
+  @override
+  String get bkRememberPassword =>
+      'N\'oublie pas le mot de passe — il n\'est nulle part stocké.';
+
+  @override
+  String get bkCreateTitle => 'Créer une sauvegarde';
+
+  @override
+  String get bkCreateSub =>
+      'Chiffre tes comptes, clé TMDB, thème, favoris et progression dans un fichier .aether.';
+
+  @override
+  String get bkEncrypting => 'Chiffrement en cours…';
+
+  @override
+  String get bkRestoreTitle => 'Restaurer une sauvegarde';
+
+  @override
+  String get bkRestoreSub =>
+      'Sélectionne un fichier .aether, saisis ton mot de passe, vérifie le résumé, applique.';
+
+  @override
+  String get bkRestoring => 'Restauration en cours…';
+
+  @override
+  String get bkImportFile => 'Importer un fichier .aether';
+
+  @override
+  String get bkHowTitle => 'Comment ça marche';
+
+  @override
+  String get bkHowBody =>
+      '• Fichier `.aether` chiffré AES-256-GCM + PBKDF2 (100k itérations).\n• Mot de passe choisi par toi — l\'app ne le stocke nulle part.\n• Stockage : Download/AetherStream/ (survit à un uninstall).\n• Contenu : comptes IPTV, clé TMDB, thème, favoris, progression.\n• Exclus : téléchargements (trop lourds), historique de recherche.\n• L\'import écrase entièrement la config actuelle (action irréversible).';
+
+  @override
+  String get bkRestorePasswordTitle => 'Mot de passe de la sauvegarde';
+
+  @override
+  String get bkDecrypt => 'Déchiffrer';
+
+  @override
+  String get bkConfirmRestoreTitle => 'Confirmer la restauration';
+
+  @override
+  String get bkConfirmRestoreBody =>
+      'Tout l\'état actuel (comptes, clé TMDB, thème, favoris, progression de lecture) sera ÉCRASÉ par cette sauvegarde.\n\nAction irréversible. Continuer ?';
+
+  @override
+  String get bkRestore => 'Restaurer';
+
+  @override
+  String get bkRestoreDone => 'Restauration réussie';
+
+  @override
+  String get bkRestoreDoneSub =>
+      'Les playlists IPTV seront re-téléchargées au prochain démarrage.';
+
+  @override
+  String get regionApplied => '✅ Filtre appliqué — catalogue rechargé';
+
+  @override
+  String get regionHelp =>
+      'Coche les langues/régions à MASQUER du catalogue. Le contenu français (|FR|), québécois et VOSTFR est toujours conservé.\n• Mémoire allégée immédiatement après « Appliquer ».\n• La taille du catalogue sur disque diminue au prochain rechargement de la playlist (auto 24 h ou bouton ⟳ de l\'accueil).';
+
+  @override
+  String get regionApplying => 'Application du filtre…';
+
+  @override
+  String get regionApplyingSub =>
+      'Le catalogue est ré-analysé. Cela peut prendre quelques secondes.';
+
+  @override
+  String get regionHidden => 'Masqué';
+
+  @override
+  String get regionVisible => 'Visible';
+
+  @override
+  String get bkExportLocation =>
+      'Disponible dans :\n/storage/emulated/0/Download/AetherStream/\n\nCopie ce fichier sur Drive, ton PC, ou un autre appareil pour le restaurer plus tard. N\'oublie pas le mot de passe — il n\'est nulle part stocké.';
+
+  @override
+  String get themeResetTitle => 'Réinitialiser le thème ?';
+
+  @override
+  String get themeResetQuestion =>
+      'Toutes les couleurs et tous les effets reviennent aux valeurs par défaut.';
+
+  @override
+  String get themeSectionPresets => 'Presets';
+
+  @override
+  String get themeSectionColors => 'Couleurs';
+
+  @override
+  String get themeColorPrimary => 'Principale';
+
+  @override
+  String get themeColorAccent => 'Accent';
+
+  @override
+  String get themeColorTertiary => 'Tertiaire';
+
+  @override
+  String get themeSectionStateColors => 'Couleurs d\'état';
+
+  @override
+  String get themeColorFavorite => 'Favori ❤';
+
+  @override
+  String get themeColorWarning => 'Reprise / Alerte';
+
+  @override
+  String get themeColorError => 'Erreur';
+
+  @override
+  String get themeColorSuccess => 'Succès';
+
+  @override
+  String get themeSectionEffects => 'Effets';
+
+  @override
+  String get themeGlow => 'Glow';
+
+  @override
+  String get themeRadius => 'Arrondis';
+
+  @override
+  String get themeSectionMode => 'Mode';
+
+  @override
+  String get themeSectionPreview => 'Aperçu';
+
+  @override
+  String get themeModeDark => 'Sombre';
+
+  @override
+  String get themeModeLight => 'Clair';
+
+  @override
+  String get themeModeSystem => 'Système';
+
+  @override
+  String get themePreviewPlay => '▶  Lire';
+
+  @override
+  String get xmltvUpdated => '✅ Guide des chaînes mis à jour';
+
+  @override
+  String xmltvUpdateFailed(String reason) {
+    return '❌ Échec mise à jour : $reason';
+  }
+
+  @override
+  String get xmltvNeverLoaded => 'Jamais chargé';
+
+  @override
+  String get xmltvJustNow => 'À l\'instant';
+
+  @override
+  String xmltvChannelsAndAge(int count, String age) {
+    return '$count chaînes · $age';
+  }
+
+  @override
+  String get xmltvDownloading => 'Téléchargement en cours…';
+
+  @override
+  String get xmltvForceUpdate => 'Forcer la mise à jour';
+
+  @override
+  String get xmltvHowBody =>
+      '• Source publique : xmltvfr.fr (TNT France)\n• Cache local 24 h — mise à jour silencieuse au démarrage si périmé\n• Couvre les principales chaînes françaises (TF1, France 2, M6, ARTE…)\n• Utilisé pour le bloc « En cours / Ensuite » + la grille replay';
+
+  @override
+  String visualLangApplied(String language) {
+    return 'Visuels en $language — les affiches déjà affichées gardent leur langue jusqu\'au prochain rechargement.';
+  }
+
+  @override
+  String get visualLangUiStaysFrench =>
+      'Affiches, images de fond et textes venus de TMDB. L\'interface de l\'application suit la langue de l\'appareil.';
+
+  @override
+  String get visualLangNote =>
+      'Une affiche fournie par votre liste IPTV n\'est jamais remplacée : ce choix ne s\'applique qu\'aux visuels que l\'application va chercher elle-même.';
+
+  @override
+  String get aboutChecking => '🔍 Vérification des mises à jour…';
+
+  @override
+  String get aboutUpToDate => 'Vous êtes à jour.';
+
+  @override
+  String aboutCheckFailed(String reason) {
+    return '⚠️ Vérification impossible : $reason';
+  }
+
+  @override
+  String get aboutTagline =>
+      'Client IPTV Android — multi-comptes, EPG, replay, TMDB.';
+
+  @override
+  String get aboutCheckingShort => 'Vérification…';
+
+  @override
+  String get aboutCheckUpdates => 'Vérifier les mises à jour';
+
+  @override
+  String get consoleNoNetwork =>
+      'Réseau local introuvable. Connecte la TV au Wi-Fi ou à l\'Ethernet.';
+
+  @override
+  String consoleStartFailed(String reason) {
+    return 'Impossible de démarrer le serveur local : $reason';
+  }
+
+  @override
+  String get consoleOpenAddress =>
+      'Ouvre cette adresse dans un navigateur\nsur un PC ou un téléphone du même réseau :';
+
+  @override
+  String get consoleAddressCopied => 'Adresse copiée';
+
+  @override
+  String get consoleBackgroundNote =>
+      'Le serveur reste actif en arrière-plan tant que tu utilises la télécommande, même après avoir quitté cet écran. Arrête-le ici quand tu as fini (sinon fermeture auto après 30 min).';
+
+  @override
+  String get consoleStopServer => 'Arrêter le serveur';
+
+  @override
+  String get failNotLoaded => 'NON CHARGÉ';
+
+  @override
+  String get failNetwork => 'ÉCHEC RÉSEAU';
+
+  @override
+  String get failPanelBusy => 'PANEL SATURÉ';
+
+  @override
+  String get failIncomplete => 'LISTE INCOMPLÈTE';
+
+  @override
+  String get failParse => 'ANALYSE ÉCHOUÉE';
+
+  @override
+  String get failNoData => 'AUCUNE DONNÉE';
+
+  @override
+  String get failExplainNever => 'Cette liste n\'a pas encore été chargée.';
+
+  @override
+  String get failExplainUnloaded =>
+      'Mémoire libérée ; la liste revient dès qu\'on en a besoin.';
+
+  @override
+  String get failExplainDeferred => 'Mise à jour reportée après le démarrage.';
+
+  @override
+  String get failExplainPanelBusy =>
+      'Le fournisseur a refusé : trop de connexions simultanées.';
+
+  @override
+  String get failExplainIncomplete =>
+      'Le catalogue est arrivé incomplet ; l\'ancien a été conservé.';
+
+  @override
+  String get failExplainParse => 'La liste n\'a pas pu être analysée.';
+
+  @override
+  String get failExplainCacheGone => 'Le cache analysé est illisible.';
+
+  @override
+  String get failExplainNoSource => 'Aucune donnée en cache pour cette liste.';
+
+  @override
+  String reloadBatchAllOk(int count) {
+    return '✅ $count liste(s) rechargée(s)';
+  }
+
+  @override
+  String reloadBatchAllFailed(String names) {
+    return '❌ Aucune liste rechargée — $names';
+  }
+
+  @override
+  String reloadBatchMixed(int ok, int failed, String names) {
+    return '⚠️ $ok rechargée(s), $failed en échec : $names';
+  }
+
+  @override
+  String get reloadDownloadFailed =>
+      'Téléchargement impossible (vérifie l\'URL ou la connexion).';
+
+  @override
+  String get reloadParseFailed => 'L\'analyse de la liste a échoué.';
+
+  @override
+  String get bkPartTmdbKey => 'clé TMDB';
+
+  @override
+  String get bkPartTheme => 'thème';
+
+  @override
+  String bkPartHiddenRegions(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count langues masquées',
+      one: '1 langue masquée',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get bkPasswordEmptyError => 'Le mot de passe ne peut pas être vide.';
+
+  @override
+  String get bkNewerVersion =>
+      'Sauvegarde créée par une version plus récente de l\'app ; mise à jour nécessaire.';
+
+  @override
+  String get bkWrongPassword =>
+      'Mot de passe incorrect, ou fichier de sauvegarde altéré.';
+
+  @override
+  String get castDiscoveryFailed =>
+      'Recherche impossible sur ce réseau. Le téléphone doit être sur le même WiFi que le téléviseur, hors réseau invité.';
+
+  @override
+  String castDeviceNotResponding(String device) {
+    return '$device ne répond pas. Vérifie qu\'il est allumé et sur le même réseau.';
+  }
+
+  @override
+  String castConnectFailed(String device) {
+    return 'Connexion à $device impossible.';
+  }
+
+  @override
+  String get castStreamRefused => 'Le téléviseur n\'a pas accepté ce flux.';
+
+  @override
+  String get castConnectionLost => 'Connexion au téléviseur perdue.';
+
+  @override
+  String get relayNoNetworkAddress =>
+      'Aucune adresse réseau : le téléviseur ne pourrait pas joindre le téléphone.';
+
+  @override
+  String get relayStartFailed => 'La conversion n\'a pas pu démarrer.';
+
+  @override
+  String get relayOpenFailed =>
+      'Impossible d\'ouvrir le relais sur le réseau local.';
+
+  @override
+  String get relayTooSlow =>
+      'Le début du film n\'est pas arrivé à temps : la source est trop lente pour être convertie.';
+
+  @override
+  String get dlQueued => 'En attente…';
+
+  @override
+  String get dlFinalizing => 'Finalisation…';
+
+  @override
+  String dlActiveCount(int count) {
+    return '$count téléchargements';
+  }
+
+  @override
+  String updGithubHttp(int code) {
+    return 'GitHub a répondu HTTP $code.';
+  }
+
+  @override
+  String updNoApk(String tag) {
+    return 'La dernière release ($tag) ne contient pas d\'APK.';
+  }
+
+  @override
+  String get updTimeout => 'GitHub n\'a pas répondu à temps.';
+
+  @override
+  String get updUnreachable =>
+      'Impossible de joindre GitHub. Vérifie la connexion.';
+
+  @override
+  String get updInstallDenied => 'Permission d\'installation refusée';
+
+  @override
+  String get failOnDisk => 'SUR DISQUE';
+
+  @override
+  String get failWaiting => 'EN ATTENTE';
+
+  @override
+  String get failCacheGone => 'CACHE PERDU';
+
+  @override
+  String get failBadAccount => 'COMPTE INVALIDE';
+
+  @override
+  String get failExplainNetwork => 'Serveur injoignable.';
+
+  @override
+  String get failExplainBadAccount => 'Configuration du compte invalide.';
+
+  @override
+  String bkPartAccounts(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count comptes',
+      one: '1 compte',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get bkPartOptimization => 'optimisation';
+
+  @override
+  String bkPartFavorites(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count favoris',
+      one: '1 favori',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String bkPartProgress(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count progressions',
+      one: '1 progression',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get bkEmpty => 'Sauvegarde vide';
+
+  @override
+  String get relayFormatFailed =>
+      'La conversion a échoué : le téléphone ne sait pas relire ce format.';
+
+  @override
+  String get dlFilterAll => 'Tout';
+
+  @override
+  String get dlFilterActive => 'En cours';
+
+  @override
+  String get dlFilterCompleted => 'Terminés';
+
+  @override
+  String get dlFilterErrors => 'Erreurs';
+
+  @override
+  String get dlSearchHint => 'Rechercher un téléchargement';
+
+  @override
+  String get dlSearchOpen => 'Rechercher';
+
+  @override
+  String get dlSearchClose => 'Fermer la recherche';
+
+  @override
+  String get dlEmptyHint =>
+      'Lance un téléchargement depuis la fiche d\'un film ou d\'une série — il apparaîtra ici avec sa progression.';
+
+  @override
+  String get dlNoSearchResult =>
+      'Aucun téléchargement ne correspond à cette recherche.';
+
+  @override
+  String dlNoneInFilter(String filter) {
+    return 'Aucun téléchargement dans « $filter ».';
+  }
+
+  @override
+  String get dlStopTitle => 'Arrêter le téléchargement ?';
+
+  @override
+  String get dlStopBody =>
+      'Ce qui est déjà téléchargé est conservé : tu pourras reprendre là où ça s\'est arrêté.';
+
+  @override
+  String get dlStop => 'Arrêter';
+
+  @override
+  String get dlActionPlay => 'Lire';
+
+  @override
+  String get dlActionMonitor => 'Voir la progression';
+
+  @override
+  String get dlActionCancel => 'Arrêter le téléchargement';
+
+  @override
+  String get dlActionDelete => 'Supprimer';
+
+  @override
+  String dlRetriedTimes(int count) {
+    return 'relancé ×$count';
+  }
+
+  @override
+  String get dlAlreadyDownloaded => 'Déjà téléchargé';
+
+  @override
+  String get dlSee => 'Voir';
+
+  @override
+  String get dlStorageDenied =>
+      'Permission de stockage refusée : le téléchargement ne peut pas démarrer.';
+
+  @override
+  String get dlOpenSettings => 'Ouvrir les réglages';
+
+  @override
+  String get bootFailedTitle => 'Démarrage interrompu';
+
+  @override
+  String get bootFailedBody =>
+      'L\'application n\'a pas réussi à charger ta playlist.';
+
+  @override
+  String get bootCheckAccounts => 'Vérifier les comptes';
+
+  @override
+  String get bootNoAccountTitle => 'Aucun compte configuré';
+
+  @override
+  String get bootNoAccountTv =>
+      'Scanne un QR code avec ton téléphone pour gérer tes playlists sans avoir à taper à la télécommande.';
+
+  @override
+  String get bootNoAccountPhone => 'Ajoute un compte pour commencer.';
+
+  @override
+  String get bootConfigureFromPhone => 'Configurer depuis mon téléphone';
+
+  @override
+  String get bootConfigureAccounts => 'Configurer les comptes';
+
+  @override
+  String get bootRestoreBackup => 'Restaurer une sauvegarde';
+
+  @override
+  String get onbPlaylistSaved => '✅ Playlist enregistrée';
+
+  @override
+  String get onbTmdbSaved => '✅ Clé TMDB enregistrée';
+
+  @override
+  String get onbHasBackup => 'J\'ai déjà une sauvegarde (.aether)';
+
+  @override
+  String get onbAddPlaylistTitle => 'Ajoute une playlist';
+
+  @override
+  String get onbAddPlaylistBody =>
+      'Va dans ⚙️ Paramètres → Comptes IPTV pour saisir une URL M3U complète OU un compte Xtream Codes (serveur + identifiants).';
+
+  @override
+  String get onbTmdbTitle => 'Affiches et synopsis (optionnel)';
+
+  @override
+  String get onbTmdbBody =>
+      'Génère un Bearer Token TMDB gratuit sur themoviedb.org et colle-le dans Paramètres → Clé API TMDB pour enrichir tes films et séries.';
+
+  @override
+  String get onbCardMenuTitle => 'Le menu ⋯ des vignettes';
+
+  @override
+  String get onbCardMenuBody =>
+      'Appuie longuement sur une affiche — ou touche le ⋯ en haut à gauche — pour Lire, Reprendre, ajouter aux favoris, télécharger ou oublier une reprise, sans ouvrir la fiche.';
+
+  @override
+  String get onbWelcomeTitle => 'Bienvenue sur AetherStream';
+
+  @override
+  String get onbWelcomeBody =>
+      'Client IPTV multi-comptes pour regarder films, séries et chaînes en direct depuis vos abonnements.';
+
+  @override
+  String get onbConfigureFromPhone => 'Configure depuis ton téléphone';
+
+  @override
+  String get onbQrBody =>
+      'Scanne ce QR code : tu pourras ajouter ta playlist, ta clé TMDB et régler le reste depuis ton navigateur — la saisie au D-pad serait longue et fastidieuse.';
+
+  @override
+  String get actorNotFound => 'Erreur : fiche introuvable sur TMDB.';
+
+  @override
+  String get actorFilmographyDirecting => 'Filmographie (Réalisation)';
+
+  @override
+  String get actorFilmographyRoles => 'Filmographie (Rôles)';
+
+  @override
+  String get actorDirector => 'Réalisateur';
+
+  @override
+  String actorRole(String character) {
+    return 'Rôle : $character';
+  }
+
+  @override
+  String detActorNotFound(String name) {
+    return 'TMDB n\'a pas trouvé de fiche pour $name.';
+  }
+
+  @override
+  String get detTmdbPitch =>
+      'Affiches, synopsis et casting. Config rapide au QR depuis ton mobile.';
+
+  @override
+  String detSaga(String name) {
+    return 'Saga : $name';
+  }
+
+  @override
+  String get detSameSaga => 'Même saga';
+
+  @override
+  String get detSeasons => 'Saisons';
+
+  @override
+  String detSeasonsCountOne(int seasons, int episodes) {
+    return '$seasons saison · $episodes épisodes';
+  }
+
+  @override
+  String detSeasonsCountMany(int seasons, int episodes) {
+    return '$seasons saisons · $episodes épisodes';
+  }
+
+  @override
+  String get detLoadingEpisodes => 'Chargement des épisodes…';
+
+  @override
+  String detEpisodesError(String reason) {
+    return 'Épisodes non chargés — $reason.';
+  }
+
+  @override
+  String get detNoEpisodes => 'Aucun épisode disponible pour cette série.';
+
+  @override
+  String detSeasonNumber(String number) {
+    return 'Saison $number';
+  }
+
+  @override
+  String detEpisodesShort(int count) {
+    return '$count ép.';
+  }
+
+  @override
+  String detRealOversold(String definition) {
+    return '⚠ réel $definition';
+  }
+
+  @override
+  String detReal(String definition) {
+    return 'réel $definition';
+  }
+
+  @override
+  String detResumeAt(String position) {
+    return 'REPRENDRE · $position';
+  }
+
+  @override
+  String detFavoriteAdded(String title) {
+    return '⭐ « $title » ajouté aux favoris';
+  }
+
+  @override
+  String detFavoriteRemoved(String title) {
+    return '🗑️ « $title » retiré des favoris';
+  }
+
+  @override
+  String get detNotInPlaylists =>
+      'Pas dans vos listes — fiche affichée depuis TMDB.';
+
+  @override
+  String get detSearchInPlaylists => 'CHERCHER DANS MES LISTES';
+
+  @override
+  String get detStatusReleased => 'Sorti';
+
+  @override
+  String get detStatusPostProduction => 'Post-production';
+
+  @override
+  String get detStatusInProduction => 'En production';
+
+  @override
+  String get detStatusPlanned => 'Annoncé';
+
+  @override
+  String get detStatusReturning => 'En cours';
+
+  @override
+  String get detStatusEnded => 'Terminée';
+
+  @override
+  String get detStatusCanceled => 'Annulée';
+
+  @override
+  String get sheetChooseVersion => 'Choisir une version';
+
+  @override
+  String get sheetStandardUnknown => 'Standard / Inconnue';
+
+  @override
+  String get sheetDetails => 'Fiche Détaillée & Infos';
+
+  @override
+  String get sheetReplayUnavailable => 'Replay indisponible pour ce flux';
+
+  @override
+  String get onbSkip => 'Passer';
+
+  @override
+  String get onbNext => 'Suivant';
+
+  @override
+  String get onbStart => 'Commencer';
+
+  @override
+  String termPreviousErrors(int count) {
+    return '$count ERREUR(S) PRÉCÉDENTE(S)';
+  }
+
+  @override
+  String get replayPickTitle => 'Choisir un moment à revoir';
+
+  @override
+  String get replayQuality => 'Qualité';
+
+  @override
+  String get replayDay => 'Jour';
+
+  @override
+  String get replayOrManually => 'OU CHOISIR MANUELLEMENT';
+
+  @override
+  String get replayStartTime => 'Heure de début';
+
+  @override
+  String get replayDuration => 'Durée';
+
+  @override
+  String replayAtWithDuration(String day, String time, String duration) {
+    return '$day à $time ($duration)';
+  }
+
+  @override
+  String get replayNoEpg => 'Aucune donnée EPG disponible';
+
+  @override
+  String get replayNoneTitle => 'Aucun replay disponible';
+
+  @override
+  String get replayNoneBody =>
+      'Cette chaîne n\'expose pas d\'EPG Xtream ou son timeshift est désactivé. Essaie le picker manuel depuis l\'action sheet TV.';
+
+  @override
+  String expExpiredSince(int days, String date) {
+    return 'Expirée depuis $days jours ($date)';
+  }
+
+  @override
+  String expExpiresIn(int days, String date) {
+    return 'Expire dans $days jours ($date)';
+  }
+
+  @override
+  String get expTitleExpired => 'Playlist expirée';
+
+  @override
+  String get expTitleSoon => 'Playlist bientôt expirée';
+
+  @override
+  String get expBodyExpired =>
+      'Cette playlist n\'est plus utilisable. Renouvelle auprès de ton provider pour reprendre l\'accès.';
+
+  @override
+  String get expBodySoon =>
+      'Renouvelle auprès de ton provider pour ne pas perdre l\'accès.';
+
+  @override
+  String get expLater => 'Plus tard';
+
+  @override
+  String get expSeeDetails => 'Voir détails';
+
+  @override
+  String get memTitle => 'MÉMOIRE & STOCKAGE';
+
+  @override
+  String get memRefresh => 'Rafraîchir';
+
+  @override
+  String memParsed(String size) {
+    return 'analysé $size';
+  }
+
+  @override
+  String memEntriesAndSize(String count, String size) {
+    return '$count entrées · $size';
+  }
+
+  @override
+  String memOnDisk(String count, String size) {
+    return 'sur disque · $count entrées · $size';
+  }
+
+  @override
+  String memNoEntry(String size) {
+    return '0 entrée · $size';
+  }
+
+  @override
+  String get searchSheetTitle => 'Chercher dans mes listes';
+
+  @override
+  String get searchSheetFieldLabel => 'Titre à chercher';
+
+  @override
+  String searchSheetOriginalTitle(String title) {
+    return 'Titre original : $title';
+  }
+
+  @override
+  String get searchSheetTooShort => 'Saisis au moins 2 caractères.';
+
+  @override
+  String get searchSheetNoResult => 'Aucun titre trouvé dans vos listes.';
+
+  @override
+  String nextEpPlayNow(int seconds) {
+    return 'Lire maintenant  ·  ${seconds}s';
+  }
+
+  @override
+  String get aboutDiagnosticLog => 'Journal de diagnostic';
+
+  @override
+  String get aboutSourceOnGithub => 'Voir le code sur GitHub';
+
+  @override
+  String get aboutAllReleases => 'Toutes les releases';
+
+  @override
+  String get regionNoChange => 'Aucun changement';
+
+  @override
+  String get regionShowAll => 'Tout afficher';
+
+  @override
+  String get regionHideAll => 'Tout masquer';
+
+  @override
+  String get visualLangTitle => 'Langue des visuels';
+
+  @override
+  String get visualLangAuto => 'Comme le téléphone';
+
+  @override
+  String get visualLangOriginalLabel => 'Version originale (sans texte)';
+
+  @override
+  String get visualLangSubFr =>
+      'Affiches et textes français quand ils existent';
+
+  @override
+  String get visualLangSubEn => 'Affiches et textes anglais';
+
+  @override
+  String get visualLangSubOriginal =>
+      'Affiche sans texte quand elle existe, sinon la version d\'origine';
+
+  @override
+  String visualLangCurrently(String tag) {
+    return 'Actuellement : $tag';
+  }
+
+  @override
+  String get qualityHideVersions => 'Masquer les versions';
+
+  @override
+  String get qualityChangeVersion => 'Changer de version';
+
+  @override
+  String get navExitHint =>
+      '💡 Pour quitter l\'application : appuie 2 fois sur Retour';
+
+  @override
+  String get navExitConfirm => 'Appuie à nouveau sur Retour pour quitter';
+
+  @override
+  String get settingsUsageReset => '🧹 Données d\'usage réinitialisées';
+
+  @override
+  String get updNetworkError => 'Erreur réseau';
+
+  @override
+  String get themePreviewMovieTitle => 'Titre du Film';
+
+  @override
+  String get errUnexpected => 'Une erreur inattendue est survenue.';
+
+  @override
+  String get errUnknown => 'Une erreur inconnue est survenue.';
+
+  @override
+  String get relayNothingReadable =>
+      'La conversion n\'a rien produit de lisible.';
+
+  @override
+  String get healthNoStall => 'aucun blocage';
+
+  @override
+  String get reloadLessThanMinute => 'moins d\'une minute';
+
+  @override
+  String get plNoActiveAccount =>
+      'Aucun compte actif sélectionné. Veuillez en choisir un dans les paramètres.';
+
+  @override
+  String get plNoActiveAccountShort => 'Aucun compte actif sélectionné.';
+
+  @override
+  String plInvalidUrl(String label) {
+    return 'L\'URL de la playlist pour le compte « $label » est invalide. Vérifie sa configuration.';
+  }
+
+  @override
+  String get plEmptyFile =>
+      'Le serveur a renvoyé un fichier vide. Vérifie l\'URL de la playlist.';
+
+  @override
+  String get bkFileTooShort => 'Fichier de sauvegarde trop court ou corrompu.';
+
+  @override
+  String get bkNotAnAetherFile => 'Ce n\'est pas un fichier .aether valide.';
+
+  @override
+  String get acctDefaultLabel => 'Compte par défaut';
+
+  @override
+  String get commonUnknown => 'Inconnu';
+
+  @override
+  String get dlMediaStoreTimeout => 'MediaStore n\'a pas répondu';
+
+  @override
+  String detRuntimePerEpisode(String minutes) {
+    return '${minutes}m/épisode';
+  }
+
+  @override
+  String get detEpisodesBadSeriesId => 'identifiant de série illisible';
+
+  @override
+  String get detEpisodesNoAccount => 'compte introuvable';
+
+  @override
+  String get castOverlayResyncFull => 'Resynchroniser l\'image et le son';
+
+  @override
+  String memSourceAndParsed(String source, String parsed) {
+    return 'source $source · analysé $parsed';
+  }
+
+  @override
+  String expTodayOn(String date) {
+    return 'Expire aujourd\'hui ($date)';
+  }
+
+  @override
+  String expTomorrowOn(String date) {
+    return 'Expire demain ($date)';
+  }
+
+  @override
+  String get catFavorites => 'Favoris';
+
+  @override
+  String get catOthers => 'Autres';
+
+  @override
+  String get catNew => 'New';
+
+  @override
+  String get catStaffPick => 'Coup de cœur';
+
+  @override
+  String get catSelection => 'Sélection';
+
+  @override
+  String get catCult => 'Cultes';
+
+  @override
+  String get catBoxOffice => 'Box Office';
+
+  @override
+  String get catOscar => 'Oscar';
+
+  @override
+  String get catAction => 'Action';
+
+  @override
+  String get catNews => 'Actualités';
+
+  @override
+  String get catAnimation => 'Animation';
+
+  @override
+  String get catMartialArts => 'Arts martiaux';
+
+  @override
+  String get catAdventure => 'Aventure';
+
+  @override
+  String get catBiopic => 'Biopic';
+
+  @override
+  String get catHeist => 'Braquage';
+
+  @override
+  String get catDisaster => 'Catastrophe';
+
+  @override
+  String get catComedy => 'Comédie';
+
+  @override
+  String get catCrime => 'Crime';
+
+  @override
+  String get catDance => 'Danse';
+
+  @override
+  String get catDocumentary => 'Documentaire';
+
+  @override
+  String get catDrama => 'Drame';
+
+  @override
+  String get catSpy => 'Espionnage';
+
+  @override
+  String get catFantasy => 'Fantastique';
+
+  @override
+  String get catHolidays => 'Fêtes';
+
+  @override
+  String get catWar => 'Guerre';
+
+  @override
+  String get catHistory => 'Histoire';
+
+  @override
+  String get catHorror => 'Horreur';
+
+  @override
+  String get catKids => 'Jeunesse';
+
+  @override
+  String get catLegal => 'Juridique';
+
+  @override
+  String get catKaraoke => 'Karaoké';
+
+  @override
+  String get catMafia => 'Mafia';
+
+  @override
+  String get catManga => 'Manga';
+
+  @override
+  String get catMaritime => 'Maritime';
+
+  @override
+  String get catMedical => 'Médecine';
+
+  @override
+  String get catMedieval => 'Médiéval';
+
+  @override
+  String get catMusical => 'Musical';
+
+  @override
+  String get catPolice => 'Policier';
+
+  @override
+  String get catPrison => 'Prison';
+
+  @override
+  String get catRomance => 'Romance';
+
+  @override
+  String get catSciFi => 'Sci-Fi';
+
+  @override
+  String get catStandUp => 'Spectacle';
+
+  @override
+  String get catSport => 'Sport';
+
+  @override
+  String get catSuperheroes => 'Super-Héros';
+
+  @override
+  String get catSurvival => 'Survie';
+
+  @override
+  String get catTvMovie => 'Téléfilm';
+
+  @override
+  String get catRealityTv => 'Téléréalité';
+
+  @override
+  String get catThriller => 'Thriller';
+
+  @override
+  String get catSerialKiller => 'Tueur en série';
+
+  @override
+  String get catRevenge => 'Vengeance';
+
+  @override
+  String get catCars => 'Voitures';
+
+  @override
+  String get catWestern => 'Western';
+
+  @override
+  String get regFrance => 'France';
+
+  @override
+  String get regAlbania => 'Albanie';
+
+  @override
+  String get regAlgeria => 'Algérie';
+
+  @override
+  String get regGermany => 'Allemagne';
+
+  @override
+  String get regArmenia => 'Arménie';
+
+  @override
+  String get regAsia => 'Asie';
+
+  @override
+  String get regBelgium => 'Belgique';
+
+  @override
+  String get regBosnia => 'Bosnie';
+
+  @override
+  String get regBrazil => 'Brésil';
+
+  @override
+  String get regCanada => 'Canada';
+
+  @override
+  String get regCroatia => 'Croatie';
+
+  @override
+  String get regSpain => 'Espagne';
+
+  @override
+  String get regGreece => 'Grèce';
+
+  @override
+  String get regIndian => 'Indien';
+
+  @override
+  String get regItaly => 'Italie';
+
+  @override
+  String get regMaghreb => 'Maghrébin';
+
+  @override
+  String get regNetherlands => 'Pays-Bas';
+
+  @override
+  String get regPoland => 'Pologne';
+
+  @override
+  String get regPortugal => 'Portugal';
+
+  @override
+  String get regRamadan => 'Ramadan';
+
+  @override
+  String get regRomania => 'Roumanie';
+
+  @override
+  String get regRussia => 'Russie';
+
+  @override
+  String get regScandinavia => 'Scandinavie';
+
+  @override
+  String get regSwitzerland => 'Suisse';
+
+  @override
+  String get regCzechia => 'Tchéquie';
+
+  @override
+  String get regExYugoslavia => 'Ex-Yougoslavie';
+
+  @override
+  String get regDominicanRepublic => 'Rép. Dominicaine';
+
+  @override
+  String get regOriginalNonFrench => 'VO (non-FR)';
+
+  @override
+  String get regLegendado => 'Legendado (sous-titré PT)';
 }

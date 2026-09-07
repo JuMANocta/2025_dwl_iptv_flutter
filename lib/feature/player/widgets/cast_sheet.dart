@@ -10,6 +10,7 @@ import '../cast_policy.dart';
 import '../../../core/utils/device_battery.dart';
 import '../cast_relay_policy.dart';
 import 'player_options_sheet.dart' show OptionsSheetBody, OptionSheetRow;
+import '../../../l10n/l10n_ext.dart';
 
 /// §castSend — Feuille « Diffuser sur… » : balayage du réseau, liste des
 /// récepteurs, puis **contrôle d'éligibilité AVANT de proposer la diffusion**.
@@ -125,7 +126,7 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
     if (!mounted) return;
     if (!verdict.castable) {
       setState(() {
-        _message = verdict.reason ?? "Ce flux n'est pas diffusable.";
+        _message = verdict.reason ?? L10n.current.castSheetNotCastable;
         _phase = _Phase.refused;
       });
       return;
@@ -198,7 +199,7 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
         icon: Icons.play_circle_fill_rounded,
         accent: kAccentPrimary,
         title: c.confirmLabel,
-        subtitle: device == null ? null : 'Sur ${device.displayName}',
+        subtitle: device == null ? null : context.l10n.castSheetOnDevice(device.displayName),
         onTap: () {
           if (device != null) _goRelay(device);
         },
@@ -221,20 +222,20 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
       // ⚠️ Aucun titre sur l'écran de consentement : « Diffuser sur… » n'y
       // veut rien dire (on ne choisit plus d'appareil, on répond à une
       // question). La phrase qui suit se suffit.
-      title: consent ? '' : 'Diffuser sur…',
+      title: consent ? '' : context.l10n.castSheetTitle,
       icon: consent ? Icons.graphic_eq_rounded : Icons.cast_rounded,
       children: switch (_phase) {
         _Phase.searching => [
             _StatusLine(
               spinner: true,
-              text: 'Recherche des appareils sur le réseau…',
+              text: context.l10n.castSheetSearching,
             ),
           ],
         _Phase.checking => [
             _StatusLine(
               spinner: true,
-              text: 'Vérification du flux pour '
-                  '${_pending?.displayName ?? 'le téléviseur'}…',
+              text: context.l10n.castSheetChecking(
+                  _pending?.displayName ?? context.l10n.castSheetDeviceFallback),
             ),
           ],
         _Phase.refused => [
@@ -247,7 +248,7 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
             OptionSheetRow(
               icon: Icons.arrow_back_rounded,
               accent: kAccentSecondary,
-              title: 'Choisir un autre appareil',
+              title: context.l10n.castSheetChooseOther,
               subtitle: null,
               onTap: () => setState(() => _phase = _Phase.list),
             ),
@@ -267,17 +268,17 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
               OptionSheetRow(
                 icon: Icons.graphic_eq_rounded,
                 accent: kAccentPrimary,
-                title: 'Convertir le son sur le téléphone',
-                subtitle: 'Voir ce que ça implique avant de lancer',
+                title: context.l10n.castSheetConvertSound,
+                subtitle: context.l10n.castSheetConvertSoundSub,
                 onTap: () => setState(() => _phase = _Phase.consent),
               ),
             OptionSheetRow(
               icon: Icons.cast_rounded,
               accent: kAccentSecondary,
-              title: 'Diffuser quand même',
+              title: context.l10n.castSheetCastAnyway,
               subtitle: _pending == null
                   ? null
-                  : 'Sur ${_pending!.displayName} — image sans son',
+                  : context.l10n.castSheetCastAnywaySub(_pending!.displayName),
               onTap: () {
                 final d = _pending;
                 if (d != null) _go(d);
@@ -286,7 +287,7 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
             OptionSheetRow(
               icon: Icons.arrow_back_rounded,
               accent: kAccentSecondary,
-              title: 'Choisir un autre appareil',
+              title: context.l10n.castSheetChooseOther,
               subtitle: null,
               onTap: () => setState(() => _phase = _Phase.list),
             ),
@@ -301,7 +302,7 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
             OptionSheetRow(
               icon: Icons.refresh_rounded,
               accent: kAccentPrimary,
-              title: 'Réessayer',
+              title: context.l10n.playerRetry,
               subtitle: null,
               onTap: _search,
             ),
@@ -311,8 +312,8 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
               OptionSheetRow(
                 icon: Icons.cast_connected_rounded,
                 accent: kAccentPrimary,
-                title: 'Arrêter la diffusion',
-                subtitle: 'En cours sur ${widget.connected!.displayName}',
+                title: context.l10n.castSheetStop,
+                subtitle: context.l10n.castSheetStopSub(widget.connected!.displayName),
                 selected: true,
                 onTap: () async {
                   Navigator.of(context).pop();
@@ -323,8 +324,7 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
               _StatusLine(
                 icon: Icons.tv_off_rounded,
                 color: cs.onSurfaceVariant,
-                text: 'Aucun Chromecast trouvé. Le téléphone doit être sur le '
-                    'même WiFi que le téléviseur, hors réseau invité.',
+                text: context.l10n.castSheetNothingFound,
               )
             else
               for (final d in _devices)
@@ -342,7 +342,7 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
             OptionSheetRow(
               icon: Icons.refresh_rounded,
               accent: kAccentTertiary,
-              title: 'Rechercher à nouveau',
+              title: context.l10n.castSheetSearchAgain,
               subtitle: null,
               onTap: _search,
             ),

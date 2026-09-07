@@ -6,6 +6,7 @@ import '../../data/models/stream_account.dart';
 import '../../data/services/expiration_alert_service.dart';
 import 'accounts_page.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// AlertDialog §17b — popup au démarrage si au moins un compte expire <30j.
 ///
@@ -39,10 +40,10 @@ class ExpirationAlertDialog extends StatelessWidget {
   String _formatLine(int daysLeft, DateTime expDate) {
     final d = '${expDate.day.toString().padLeft(2, '0')}/'
         '${expDate.month.toString().padLeft(2, '0')}/${expDate.year}';
-    if (daysLeft < 0) return 'Expirée depuis ${-daysLeft} jours ($d)';
-    if (daysLeft == 0) return 'Expire aujourd\'hui ($d)';
-    if (daysLeft == 1) return 'Expire demain ($d)';
-    return 'Expire dans $daysLeft jours ($d)';
+    if (daysLeft < 0) return L10n.current.expExpiredSince(-daysLeft, d);
+    if (daysLeft == 0) return L10n.current.expTodayOn(d);
+    if (daysLeft == 1) return L10n.current.expTomorrowOn(d);
+    return L10n.current.expExpiresIn(daysLeft, d);
   }
 
   Color _lineColor(int daysLeft) {
@@ -70,8 +71,8 @@ class ExpirationAlertDialog extends StatelessWidget {
       ),
       title: Text(
         blocking
-            ? 'Playlist expirée'
-            : 'Playlist bientôt expirée',
+            ? context.l10n.expTitleExpired
+            : context.l10n.expTitleSoon,
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -100,8 +101,8 @@ class ExpirationAlertDialog extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             blocking
-                ? 'Cette playlist n\'est plus utilisable. Renouvelle auprès de ton provider pour reprendre l\'accès.'
-                : 'Renouvelle auprès de ton provider pour ne pas perdre l\'accès.',
+                ? context.l10n.expBodyExpired
+                : context.l10n.expBodySoon,
             style: TextStyle(
               fontSize: 12,
               color: cs.onSurfaceVariant,
@@ -117,7 +118,7 @@ class ExpirationAlertDialog extends StatelessWidget {
               await _ackAll();
               if (context.mounted) Navigator.of(context).pop();
             },
-            child: const Text('Plus tard'),
+            child: Text(context.l10n.expLater),
           ),
         FilledButton.icon(
           onPressed: () async {
@@ -131,7 +132,7 @@ class ExpirationAlertDialog extends StatelessWidget {
             );
           },
           icon: const Icon(Icons.open_in_new, size: 18),
-          label: const Text('Voir détails'),
+          label: Text(context.l10n.expSeeDetails),
           style: FilledButton.styleFrom(
             backgroundColor: kAccentPrimary,
             foregroundColor: Colors.black,

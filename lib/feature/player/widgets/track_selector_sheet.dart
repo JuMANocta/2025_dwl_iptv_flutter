@@ -5,6 +5,7 @@ import '../../../core/themes/colors.dart';
 import '../../../data/services/track_preferences_service.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
+import '../../../l10n/l10n_ext.dart';
 
 /// §5 — Sélecteur de pistes **audio** et **sous-titres** (libmpv expose tout
 /// via `player.state.tracks` / `setAudioTrack` / `setSubtitleTrack`). Ouvert
@@ -84,7 +85,7 @@ class _TrackSelector extends StatelessWidget {
                     accent: kAccentPrimary),
                 const SizedBox(height: 8),
                 if (audio.isEmpty)
-                  _emptyHint('Aucune piste audio détectée', cs)
+                  _emptyHint(context.l10n.tracksNoAudio, cs)
                 else
                   ...audio.map((t) => _audioRow(context, t, curAudio)),
 
@@ -97,7 +98,7 @@ class _TrackSelector extends StatelessWidget {
                     accent: kAccentSecondary),
                 const SizedBox(height: 8),
                 if (subs.isEmpty)
-                  _emptyHint('Aucun sous-titre détecté', cs)
+                  _emptyHint(context.l10n.tracksNoSubtitles, cs)
                 else
                   ...subs.map((t) => _subtitleRow(context, t, curSub)),
               ],
@@ -115,7 +116,7 @@ class _TrackSelector extends StatelessWidget {
     final title = isAuto
         ? 'Auto'
         : isNo
-            ? 'Aucune'
+            ? L10n.current.tracksNone
             : (_langName(t.language) ?? t.title?.trim() ?? 'Piste ${t.id}');
     final sub = (!isAuto &&
             !isNo &&
@@ -147,7 +148,7 @@ class _TrackSelector extends StatelessWidget {
     final isNo = t.id == 'no';
     final isAuto = t.id == 'auto';
     final title = isNo
-        ? 'Désactivés'
+        ? L10n.current.tracksDisabled
         : isAuto
             ? 'Auto'
             : (_langName(t.language) ?? t.title?.trim() ?? 'Piste ${t.id}');
@@ -418,40 +419,24 @@ String _langShort(String? code) {
 String? _langName(String? code) {
   if (code == null || code.trim().isEmpty) return null;
   final c = code.toLowerCase().trim();
-  const map = {
-    'fr': 'Français',
-    'fre': 'Français',
-    'fra': 'Français',
-    'en': 'Anglais',
-    'eng': 'Anglais',
-    'es': 'Espagnol',
-    'spa': 'Espagnol',
-    'de': 'Allemand',
-    'ger': 'Allemand',
-    'deu': 'Allemand',
-    'it': 'Italien',
-    'ita': 'Italien',
-    'pt': 'Portugais',
-    'por': 'Portugais',
-    'ar': 'Arabe',
-    'ara': 'Arabe',
-    'ru': 'Russe',
-    'rus': 'Russe',
-    'nl': 'Néerlandais',
-    'dut': 'Néerlandais',
-    'nld': 'Néerlandais',
-    'ja': 'Japonais',
-    'jpn': 'Japonais',
-    'zh': 'Chinois',
-    'chi': 'Chinois',
-    'zho': 'Chinois',
-    'ko': 'Coréen',
-    'kor': 'Coréen',
-    'tr': 'Turc',
-    'tur': 'Turc',
-    'pl': 'Polonais',
-    'pol': 'Polonais',
-    'vostfr': 'VOSTFR',
+  // §l10nAll — Le CODE reste la clé (stable) ; le nom vient de la l10n.
+  final l10n = L10n.current;
+  return switch (c) {
+    'fr' || 'fre' || 'fra' => l10n.langFrench,
+    'en' || 'eng' => l10n.langEnglish,
+    'es' || 'spa' => l10n.langSpanish,
+    'de' || 'ger' || 'deu' => l10n.langGerman,
+    'it' || 'ita' => l10n.langItalian,
+    'pt' || 'por' => l10n.langPortuguese,
+    'ar' || 'ara' => l10n.langArabic,
+    'ru' || 'rus' => l10n.langRussian,
+    'nl' || 'dut' || 'nld' => l10n.langDutch,
+    'ja' || 'jpn' => l10n.langJapanese,
+    'zh' || 'chi' || 'zho' => l10n.langChinese,
+    'ko' || 'kor' => l10n.langKorean,
+    'tr' || 'tur' => l10n.langTurkish,
+    'pl' || 'pol' => l10n.langPolish,
+    'vostfr' => 'VOSTFR',
+    _ => code.toUpperCase(),
   };
-  return map[c] ?? code.toUpperCase();
 }

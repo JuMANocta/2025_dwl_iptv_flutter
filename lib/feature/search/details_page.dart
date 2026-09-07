@@ -33,6 +33,7 @@ import 'details_facts.dart';
 import 'details_versions.dart';
 import '../../widgets/playback_gate.dart';
 import 'version_dedup.dart';
+import '../../l10n/l10n_ext.dart';
 
 Color _qualityColor(String? quality) {
   return switch (quality) {
@@ -901,7 +902,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
           MaterialPageRoute(builder: (_) => ActorDetailsPage(personId: personId)));
     } else {
       ScaffoldMessenger.of(context)..hideCurrentSnackBar()..showSnackBar(
-        SnackBar(content: Text("TMDB n'a pas trouvé de fiche pour $actorName.")),
+        SnackBar(content: Text(context.l10n.detActorNotFound(actorName))),
       );
     }
   }
@@ -945,7 +946,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                             fontSize: 14)),
                     const SizedBox(height: 2),
                     Text(
-                      'Affiches, synopsis et casting. Config rapide au QR depuis ton mobile.',
+                      context.l10n.detTmdbPitch,
                       style: TextStyle(
                           color: cs.onSurfaceVariant, fontSize: 12, height: 1.3),
                     ),
@@ -1618,8 +1619,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                   if (_collection.isNotEmpty)
                     _relatedRow(
                       _collectionName != null
-                          ? 'Saga : $_collectionName'
-                          : 'Même saga',
+                          ? context.l10n.detSaga(_collectionName!)
+                          : context.l10n.detSameSaga,
                       _collection,
                       cs,
                     ),
@@ -1666,7 +1667,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
           child: Row(
             children: [
               Text(
-                'Saisons',
+                context.l10n.detSeasons,
                 style: Theme.of(context)
                     .textTheme
                     .titleMedium
@@ -1682,8 +1683,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                   ),
                   child: Text(
                     totalSeasons == 1
-                        ? '$totalSeasons saison · $totalEpisodes épisodes'
-                        : '$totalSeasons saisons · $totalEpisodes épisodes',
+                        ? context.l10n.detSeasonsCountOne(totalSeasons, totalEpisodes)
+                        : context.l10n.detSeasonsCountMany(totalSeasons, totalEpisodes),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -1713,7 +1714,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  'Chargement des épisodes…',
+                  context.l10n.detLoadingEpisodes,
                   style: TextStyle(
                       fontSize: 13, color: cs.onSurfaceVariant),
                 ),
@@ -1732,7 +1733,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Épisodes non chargés — ${_episodesError!}.',
+                    context.l10n.detEpisodesError(_episodesError!),
                     style: TextStyle(
                         fontSize: 13, color: cs.onSurfaceVariant),
                   ),
@@ -1754,7 +1755,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                       children: [
                         Icon(Icons.refresh, size: 16, color: kWarning),
                         const SizedBox(width: 6),
-                        Text('Réessayer',
+                        Text(context.l10n.playerRetry,
                             style: TextStyle(
                                 fontSize: 13,
                                 color: kWarning,
@@ -1778,7 +1779,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Aucun épisode disponible pour cette série.',
+                    context.l10n.detNoEpisodes,
                     style: TextStyle(
                         fontSize: 13, color: cs.onSurfaceVariant),
                   ),
@@ -1838,7 +1839,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Saison ${sNum.toString().padLeft(2, '0')}',
+                              context.l10n.detSeasonNumber(
+                                  sNum.toString().padLeft(2, '0')),
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
@@ -1857,7 +1859,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                '$epCount ép.',
+                                context.l10n.detEpisodesShort(epCount),
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
@@ -2156,9 +2158,9 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     final verdict = measured.verdictFor(v.title.quality);
     final (String text, Color tint) = switch (verdict) {
       QualityVerdict.survendu =>
-        ('⚠ réel ${measured.definitionLabel}', kError),
+        (L10n.current.detRealOversold(measured.definitionLabel), kError),
       QualityVerdict.sousEstime =>
-        ('réel ${measured.definitionLabel}', kAccentSecondary),
+        (L10n.current.detReal(measured.definitionLabel), kAccentSecondary),
       QualityVerdict.conforme => ('✓ ${measured.height}p', kSuccess),
       QualityVerdict.unknown => ('${measured.height}p', kQualityUnknown),
     };
@@ -2370,7 +2372,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                     child: _btnContent(
                       Icons.play_arrow_rounded,
                       hasResume
-                          ? 'REPRENDRE · ${_formatResumeShort(progress.position)}'
+                          ? l10n.detResumeAt(
+                              _formatResumeShort(progress.position))
                           : l10n.actionSheetPlay.toUpperCase(),
                     ),
                   ),
@@ -2419,8 +2422,10 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                       AppSnackBar.show(
                         context,
                         added
-                            ? '⭐ "${_selectedEntry.displayName}" ajouté aux favoris'
-                            : '🗑️ "${_selectedEntry.displayName}" retiré des favoris',
+                            ? context.l10n.detFavoriteAdded(
+                                _selectedEntry.displayName)
+                            : context.l10n.detFavoriteRemoved(
+                                _selectedEntry.displayName),
                       );
                     },
                     child: Icon(isFav ? Icons.favorite : Icons.favorite_border),
@@ -2487,10 +2492,10 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   Future<void> _forgetResume(WatchProgress snapshot) async {
     await confirmOrUndo(
       context,
-      title: 'Oublier la reprise ?',
-      question: 'La position de lecture de ce titre sera oubliée.',
-      confirmLabel: 'Oublier',
-      doneMessage: 'Reprise oubliée',
+      title: context.l10n.cardForgetResumeTitle,
+      question: context.l10n.cardForgetResumeQuestion,
+      confirmLabel: context.l10n.cardForgetConfirm,
+      doneMessage: context.l10n.cardResumeForgotten,
       action: () async {
         for (final u in _resumeUrls()) {
           await WatchProgressService.clearProgress(u);
@@ -2662,7 +2667,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Pas dans vos listes — fiche affichée depuis TMDB.',
+                  context.l10n.detNotInPlaylists,
                   style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
                 ),
               ),
@@ -2673,7 +2678,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         _glowButton(
           color: kAccentSecondary,
           onPressed: _searchInPlaylists,
-          child: _btnContent(Icons.search, 'CHERCHER DANS MES LISTES'),
+          child: _btnContent(Icons.search, context.l10n.detSearchInPlaylists),
         ),
       ],
     );
@@ -2854,13 +2859,13 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
 
   /// Traduit le `status` TMDB (anglais) pour l'affichage.
   String _statusLabel(String raw) => switch (raw) {
-        'Released' => 'Sorti',
-        'Post Production' => 'Post-production',
-        'In Production' => 'En production',
-        'Planned' => 'Annoncé',
-        'Returning Series' => 'En cours',
-        'Ended' => 'Terminée',
-        'Canceled' => 'Annulée',
+        'Released' => L10n.current.detStatusReleased,
+        'Post Production' => L10n.current.detStatusPostProduction,
+        'In Production' => L10n.current.detStatusInProduction,
+        'Planned' => L10n.current.detStatusPlanned,
+        'Returning Series' => L10n.current.detStatusReturning,
+        'Ended' => L10n.current.detStatusEnded,
+        'Canceled' => L10n.current.detStatusCanceled,
         _ => raw,
       };
 }

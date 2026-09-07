@@ -4,6 +4,7 @@ import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Sous-page Settings (§1g) : guide des chaînes XMLTV.
 ///
@@ -32,7 +33,7 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: Text('✅ Guide des chaînes mis à jour'),
+          content: Text(context.l10n.xmltvUpdated),
           backgroundColor: kSuccess,
         ),
       );
@@ -40,7 +41,7 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: Text('❌ Échec mise à jour : ${describeError(e)}'),
+          content: Text(context.l10n.xmltvUpdateFailed(describeError(e))),
           backgroundColor: kError,
         ),
       );
@@ -50,12 +51,12 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
   }
 
   String _formatAge(DateTime? loadedAt) {
-    if (loadedAt == null) return 'Jamais chargé';
+    if (loadedAt == null) return L10n.current.xmltvNeverLoaded;
     final age = DateTime.now().difference(loadedAt);
-    if (age.inMinutes < 1) return 'À l\'instant';
-    if (age.inMinutes < 60) return 'il y a ${age.inMinutes} min';
-    if (age.inHours < 24) return 'il y a ${age.inHours} h';
-    return 'il y a ${age.inDays} j';
+    if (age.inMinutes < 1) return L10n.current.xmltvJustNow;
+    if (age.inMinutes < 60) return L10n.current.acctAgeMinutes(age.inMinutes);
+    if (age.inHours < 24) return L10n.current.acctAgeHours(age.inHours);
+    return L10n.current.acctAgeDays(age.inDays);
   }
 
   @override
@@ -137,7 +138,8 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
                           const SizedBox(height: 2),
                           Text(
                             channels > 0
-                                ? '$channels chaînes · ${_formatAge(loadedAt)}'
+                                ? context.l10n.xmltvChannelsAndAge(
+                                    channels, _formatAge(loadedAt))
                                 : 'Cache vide',
                             style: TextStyle(
                               color: cs.onSurfaceVariant,
@@ -170,8 +172,8 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
                       : const Icon(Icons.refresh),
                   label: Text(
                     _refreshing
-                        ? 'Téléchargement en cours…'
-                        : 'Forcer la mise à jour',
+                        ? context.l10n.xmltvDownloading
+                        : context.l10n.xmltvForceUpdate,
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: kAccentSecondary,
@@ -199,7 +201,7 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
                             size: 18, color: kAccentSecondary),
                         const SizedBox(width: 8),
                         Text(
-                          'Comment ça marche',
+                          context.l10n.bkHowTitle,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -210,10 +212,7 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '• Source publique : xmltvfr.fr (TNT France)\n'
-                      '• Cache local 24 h — mise à jour silencieuse au démarrage si périmé\n'
-                      '• Couvre les principales chaînes françaises (TF1, France 2, M6, ARTE…)\n'
-                      '• Utilisé pour le bloc "En cours / Ensuite" + la grille replay',
+                      context.l10n.xmltvHowBody,
                       style: TextStyle(
                         fontSize: 12,
                         color: cs.onSurfaceVariant,

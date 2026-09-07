@@ -262,19 +262,25 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      // §frOnly — La langue est IMPOSÉE, elle ne suit pas l'appareil.
+      // §l10nAll (2026-09-07) — **§frOnly est LEVÉ : la langue suit l'appareil.**
       //
-      // ⚠️ Ne pas « nettoyer » cette ligne. Sans elle, l'app suivait la langue
-      // du téléphone : sur un appareil en anglais, les rares écrans câblés sur
-      // l10n (Téléchargements, Comptes) passaient en anglais pendant que tout
-      // le reste de l'interface — écrit en français directement dans le code —
-      // restait en français. Résultat : une app à moitié traduite, jamais une
-      // app anglaise.
+      // Ce qui justifiait `locale: const Locale('fr')` n'existe plus : la
+      // raison n'était pas un choix de produit mais un CONSTAT — l'interface
+      // était écrite en français DANS LE CODE, donc suivre la langue du
+      // téléphone ne donnait jamais une app anglaise, seulement une app à
+      // moitié traduite. Les écrans passent désormais tous par `context.l10n`
+      // / `L10n.current`, et les catégories par leur couche d'affichage
+      // (`category_labels.dart`) : il n'y a plus de moitié à trahir.
       //
-      // La base bilingue est conservée telle quelle (`app_en.arb` reste le
-      // template et reste complet) : le jour où l'interface entière passera par
-      // l10n, il suffira de retirer cette ligne.
-      locale: const Locale('fr'),
+      // ⚠️ Pas de `locale:` ici = Flutter résout depuis `supportedLocales`.
+      // Un appareil en espagnol tombe donc sur **`fr`**, la PREMIÈRE entrée de
+      // la liste — c'est aussi le repli de `L10n.current` (hors widget), et
+      // les deux doivent rester d'accord.
+      //
+      // ⚠️ Ce qui reste français quoi qu'il arrive : les **valeurs métier**
+      // (clés de catégorie et de région, cf. `m3u_filter.dart`) — elles sont
+      // persistées dans le cache et le `.aether`, seul leur AFFICHAGE est
+      // traduit. Les remplacer casserait le regroupement et le filtre.
       supportedLocales: const [
         Locale('fr'), // Français — en PREMIER : c'est aussi le repli
         Locale('en'), // Anglais

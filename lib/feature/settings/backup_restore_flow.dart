@@ -4,6 +4,7 @@ import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Flux UI complet de restauration d'une sauvegarde `.aether` (§10), extrait
 /// pour être réutilisable depuis `BackupPage` (Paramètres) ET l'onboarding
@@ -55,7 +56,10 @@ Future<bool> runBackupImportFlow(BuildContext context) async {
     debugPrint('🚦 §restoreTrace — flux de restauration terminé (true)');
     return true;
   } catch (e) {
-    if (context.mounted) messenger.showSnackBar(SnackBar(content: Text('❌ Échec : ${describeError(e)}')));
+    if (context.mounted) {
+      messenger.showSnackBar(SnackBar(
+          content: Text(L10n.current.commonFailedWith(describeError(e)))));
+    }
     return false;
   }
 }
@@ -68,14 +72,14 @@ Future<String?> _askImportPassword(BuildContext context) async {
       bool visible = false;
       return StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Mot de passe de la sauvegarde'),
+          title: Text(ctx.l10n.bkRestorePasswordTitle),
           content: TextField(
             controller: ctrl,
             obscureText: !visible,
             autofocus: true,
             textInputAction: TextInputAction.done,
             decoration: InputDecoration(
-              labelText: 'Mot de passe',
+              labelText: ctx.l10n.bkPasswordLabel,
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
                 icon: Icon(visible ? Icons.visibility_off : Icons.visibility),
@@ -87,7 +91,7 @@ Future<String?> _askImportPassword(BuildContext context) async {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, null),
-              child: const Text('Annuler'),
+              child: Text(ctx.l10n.commonCancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text),
@@ -95,7 +99,7 @@ Future<String?> _askImportPassword(BuildContext context) async {
                 backgroundColor: kAccentPrimary,
                 foregroundColor: Colors.black,
               ),
-              child: const Text('Déchiffrer'),
+              child: Text(ctx.l10n.bkDecrypt),
             ),
           ],
         ),
@@ -125,7 +129,7 @@ Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {
         children: [
           Icon(Icons.warning_amber, color: kWarning, size: 22),
           const SizedBox(width: 8),
-          const Expanded(child: Text('Confirmer la restauration')),
+          Expanded(child: Text(ctx.l10n.bkConfirmRestoreTitle)),
         ],
       ),
       content: Column(
@@ -155,9 +159,7 @@ Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {
           ),
           const SizedBox(height: 16),
           Text(
-            'Tout l\'état actuel (comptes, clé TMDB, thème, favoris, '
-            'progression de lecture) sera ÉCRASÉ par cette sauvegarde.\n\n'
-            'Action irréversible. Continuer ?',
+            ctx.l10n.bkConfirmRestoreBody,
             style: TextStyle(
               fontSize: 12,
               color: Theme.of(ctx).colorScheme.onSurfaceVariant,
@@ -172,7 +174,7 @@ Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {
           // sur « Annuler », sur TV OK est le geste réflexe.
           autofocus: true,
           onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Annuler'),
+          child: Text(ctx.l10n.commonCancel),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, true),
@@ -180,7 +182,7 @@ Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {
             backgroundColor: kWarning,
             foregroundColor: Colors.black,
           ),
-          child: const Text('Restaurer'),
+          child: Text(ctx.l10n.bkRestore),
         ),
       ],
     ),
@@ -197,12 +199,11 @@ Future<void> _showImportSuccessDialog(
           Icon(Icons.check_circle, color: kAccentPrimary, size: 22),
           const SizedBox(width: 8),
           // Même garde que le dialogue de confirmation ci-dessus.
-          const Expanded(child: Text('Restauration réussie')),
+          Expanded(child: Text(ctx.l10n.bkRestoreDone)),
         ],
       ),
       content: Text(
-        '${content.summary()}\n\n'
-        'Les playlists IPTV seront re-téléchargées au prochain démarrage.',
+        '${content.summary()}\n\n${ctx.l10n.bkRestoreDoneSub}',
         style: TextStyle(
           fontSize: 13,
           color: Theme.of(ctx).colorScheme.onSurfaceVariant,
@@ -216,7 +217,7 @@ Future<void> _showImportSuccessDialog(
             backgroundColor: kAccentPrimary,
             foregroundColor: Colors.black,
           ),
-          child: const Text('OK'),
+          child: Text(ctx.l10n.commonOk),
         ),
       ],
     ),

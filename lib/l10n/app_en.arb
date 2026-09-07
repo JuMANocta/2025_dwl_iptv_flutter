@@ -963,6 +963,1674 @@
   "offlineBannerRetry": "Retry",
   "offlineBootMessage": "No network to load your lists. Your downloaded files are still here; the app will resume on its own as soon as the connection is back.",
   "capsDisplayModesNote": "The screen reports up to {w}×{h}. Android renders the UI smaller; video plays at native size.",
-  "@capsDisplayModesNote": {"placeholders": {"w": {"type": "int"}, "h": {"type": "int"}}},
-  "capsDisplayUiNote": "What Android reports here describes the UI, not necessarily the panel: many 4K TVs render menus at 1080p and video at 2160p. Only the decoders decide about 4K."
+  "@capsDisplayModesNote": {
+    "placeholders": {
+      "w": {
+        "type": "int"
+      },
+      "h": {
+        "type": "int"
+      }
+    }
+  },
+  "capsDisplayUiNote": "What Android reports here describes the UI, not necessarily the panel: many 4K TVs render menus at 1080p and video at 2160p. Only the decoders decide about 4K.",
+  "perfPurgeNothing": "Nothing to reclaim — no orphan files",
+  "perfPurgeDone": "🧹 {size} freed ({count} file(s))",
+  "@perfPurgeDone": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "perfResetTitle": "Reset settings?",
+  "perfResetQuestion": "All optimization settings return to their default values.",
+  "perfResetConfirm": "Reset",
+  "perfResetDone": "Settings reset",
+  "perfFreeMemoryDone": "💤 {count} secondary account(s) unloaded from memory",
+  "@perfFreeMemoryDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "perfFreeMemoryNothing": "Nothing to free (only one account loaded)",
+  "perfImageCacheCleared": "🧹 Image cache cleared",
+  "perfSectionProfiles": "Profiles",
+  "perfSectionHero": "Hero banner",
+  "perfHeroSub": "Stack of cards at the top of the home screen (costly on low-end boxes)",
+  "perfAutoRotateTitle": "Automatic rotation",
+  "perfAutoRotateSub": "Rotates the hero every 6 s (manual swipe still works)",
+  "perfHeroCardsLabel": "Cards",
+  "perfSectionRows": "Category rows",
+  "perfItemsLabel": "Thumbnails",
+  "perfItemsSub": "Thumbnails shown per row before the “See all” tile (Favorites are never truncated).",
+  "perfSectionPlayback": "Playback",
+  "perfAutoNextTitle": "Automatic next episode",
+  "perfAutoNextSub": "Plays the next episode at the end, after a countdown you can cancel. A season change always asks for confirmation.",
+  "perfBufferLabel": "Playback buffer",
+  "perfBufferSub": "Seconds of video kept ahead. Raising it helps with a throttling provider — playback draws from the buffer instead of stalling — but holds that much more stream in memory, which matters on a set-top box. The “Stalls” counter in the Video info panel tells you whether the setting helps. Takes effect on the next playback.",
+  "perfSectionLists": "Playlists",
+  "perfKeepListsTitle": "Keep every playlist in memory",
+  "perfKeepListsSub": "Every account stays loaded: cross-account search and instant playlist switching. Costs memory (~50 to 150 MB per playlist) — turn it off on a Fire Stick or a low-RAM box.",
+  "perfUnloadAfterLabel": "Unload after",
+  "perfUnloadNever": "Never",
+  "perfMinutesShort": "{count} min",
+  "@perfMinutesShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "perfUnloadSub": "Minutes without opening a secondary playlist before it leaves memory. The disk cache is kept: it comes back in ~50 ms on the next access. “Never” (0) is the same as keeping every playlist. Pages that show playlists or their counters suspend unloading while they are open.",
+  "perfSectionMemory": "Memory & usage",
+  "perfImageRamLabel": "Images (RAM)",
+  "perfImageRamSub": "RAM reserved for images already displayed (Flutter default: 100 MB). ⚠️ Lowering it does not make the app smoother: too low and thumbnails are decoded over and over, and the display starts to stutter. Only adjust it if memory is genuinely short.",
+  "perfFreeMemoryButton": "Free memory from secondary accounts",
+  "perfFreeMemoryNote": "Disk caches are kept: an unloaded account reloads in ~50 ms on the next access.",
+  "perfClearImageCacheButton": "Clear the image cache",
+  "perfClearImageCacheNote": "Thumbnails are kept on disk to avoid downloading them again. Clear it if a poster changed on the provider side or if storage is running out.",
+  "perfSectionStorage": "Storage",
+  "perfStorageScanning": "Scanning storage…",
+  "perfStorageNothing": "Nothing to reclaim: every file belongs to an existing account.",
+  "perfStorageReclaimable": "{size} taken by files that no longer belong to any account ({count} file(s)) — playlists and caches left behind by deleted accounts.",
+  "@perfStorageReclaimable": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "perfPurging": "Cleaning…",
+  "perfPurgeButton": "Clean up orphan files",
+  "perfUnitSeconds": " s",
+  "perfUnitMegabytes": " MB",
+  "acctAddHowTitle": "How do you want to add a playlist?",
+  "acctAddFromPhone": "From my phone",
+  "acctAddFromPhoneSub": "Recommended — QR code to the full panel (add, edit, reload)",
+  "acctAddWithRemote": "With the remote",
+  "acctAddWithRemoteSub": "Key-by-key typing",
+  "acctDeleteBody": "“{label}” and its credentials will be erased permanently.",
+  "@acctDeleteBody": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "acctDeleteListGone": "The downloaded playlist goes with it ({size} freed).",
+  "@acctDeleteListGone": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "acctDeleteNoList": "No downloaded playlist to erase for this account.",
+  "acctDeleteKept": "Favorites, resume points and finished downloads are kept.",
+  "acctDeletedWithSize": "✅ “{label}” deleted — {size} freed",
+  "@acctDeletedWithSize": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "acctDeleted": "✅ “{label}” deleted",
+  "@acctDeleted": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "acctAdd": "Add",
+  "acctEmptyTitle": "No account set up",
+  "acctEmptySubTv": "Scan the QR code with your phone to set up your playlist without typing on the D-pad.",
+  "acctEmptySubPhone": "Add a full M3U URL or an Xtream Codes account to start streaming.",
+  "acctEmptyCtaTv": "Set up from my phone",
+  "acctEmptyCtaPhone": "Add a playlist",
+  "acctMainAccount": "MAIN ACCOUNT",
+  "acctListsCount": "{count} playlists",
+  "@acctListsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "acctStatusInProgress": "{loaded}/{total} · {inProgress} in progress…",
+  "@acctStatusInProgress": {
+    "placeholders": {
+      "loaded": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "inProgress": {
+        "type": "int"
+      }
+    }
+  },
+  "acctStatusWithFailed": "{base} · {failed} failed",
+  "@acctStatusWithFailed": {
+    "placeholders": {
+      "base": {
+        "type": "String"
+      },
+      "failed": {
+        "type": "int"
+      }
+    }
+  },
+  "acctStatusFailed": "{loaded}/{total} · {failed} failed",
+  "@acctStatusFailed": {
+    "placeholders": {
+      "loaded": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      }
+    }
+  },
+  "acctStatusLoaded": "✓ {loaded}/{total} loaded",
+  "@acctStatusLoaded": {
+    "placeholders": {
+      "loaded": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "acctReloadedFor": "✅ Playlist reloaded for {label}",
+  "@acctReloadedFor": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "commonFailedWith": "❌ Failed: {reason}",
+  "@commonFailedWith": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "acctReloadTitle": "Reload?",
+  "acctReloadBody": "The playlist for “{label}” was downloaded {age} ago.\nReload it from the server anyway?",
+  "@acctReloadBody": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "age": {
+        "type": "String"
+      }
+    }
+  },
+  "acctReload": "Reload",
+  "acctDownloading": "Downloading…",
+  "acctReloadPlaylist": "Reload the playlist",
+  "acctChipAvailable": "AVAILABLE",
+  "acctChipDownloading": "DOWNLOADING…",
+  "acctChipLoading": "LOADING…",
+  "acctChipError": "ERROR",
+  "acctChipNotLoaded": "NOT LOADED",
+  "acctChipExpired": "EXPIRED",
+  "acctChipExpiresToday": "EXPIRES TODAY",
+  "acctChipExpiresIn": "EXPIRES IN {days} D",
+  "@acctChipExpiresIn": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "acctCountFilms": "Movies",
+  "acctCountSeries": "Series",
+  "acctCountTv": "Channels",
+  "acctStartupTime": "start {seconds} s",
+  "@acctStartupTime": {
+    "placeholders": {
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
+  "acctM3uSize": "M3U size",
+  "acctCacheAge": "Cache age",
+  "acctNoCache": "No cache",
+  "acctAgeJustNow": "just now",
+  "acctAgeMinutes": "{count} min ago",
+  "@acctAgeMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "acctAgeHours": "{count} h ago",
+  "@acctAgeHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "acctAgeDays": "{count} d ago",
+  "@acctAgeDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "acctXtreamLoading": "Reading Xtream info…",
+  "acctXtreamUnavailable": "Xtream info unavailable",
+  "acctExpiration": "Expiry",
+  "acctConnections": "Connections",
+  "acctExpiryUnknown": "Unknown",
+  "acctExpiryPast": "Expired ({days} d)",
+  "@acctExpiryPast": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "acctExpiryToday": "Expires today",
+  "acctExpiryTomorrow": "Expires tomorrow",
+  "acctExpiryInDays": "In {days} days",
+  "@acctExpiryInDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "unitBytes": "{value} B",
+  "@unitBytes": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "unitKilobytes": "{value} kB",
+  "@unitKilobytes": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "unitMegabytes": "{value} MB",
+  "@unitMegabytes": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "unitGigabytes": "{value} GB",
+  "@unitGigabytes": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "acctAgeHoursMinutes": "{hours}h{minutes}",
+  "@acctAgeHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "acctAgeMinutesShort": "{count}min",
+  "@acctAgeMinutesShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeExitSearch": "Leave search",
+  "homeSearchHint": "Search the playlist…",
+  "homeTabSeries": "Series",
+  "homeTabMovies": "Movies",
+  "homeTabTv": "Channels",
+  "homeEmptyMovies": "No movies",
+  "homeEmptySeries": "No series",
+  "homeEmptyTv": "No channels",
+  "homeEmptySub": "None of your playlists contains any. Reload a playlist or add an account.",
+  "homeEmptyCta": "Manage accounts",
+  "homeSeeAll": "See all",
+  "homeResume": "RESUME",
+  "homeResumeChannel": "RESUME CHANNEL",
+  "searchNoTitleFound": "No title found",
+  "searchNoTitleSub": "Nothing in your playlists for “{query}”. Try another keyword or check the spelling.",
+  "@searchNoTitleSub": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "searchKeepTyping": "Keep typing…",
+  "searchKeepTypingSub": "At least {count} letters to search a movie or a series. Channels can be searched from the very first letter.",
+  "@searchKeepTypingSub": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "searchFromPerson": "By {name}, in your playlists",
+  "@searchFromPerson": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "searchOnTmdbMissing": "On TMDB, missing from your playlists",
+  "searchNotAvailable": "NOT AVAILABLE",
+  "searchTypeToSearch": "Type to search your playlist",
+  "searchTypesLine": "Movies · Series · Channels",
+  "searchRecent": "Recent searches",
+  "searchClearHistoryTitle": "Clear history?",
+  "searchClearHistoryOne": "The last search will be removed.",
+  "searchClearHistoryMany": "The last {count} searches will be removed.",
+  "@searchClearHistoryMany": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "searchClearConfirm": "Clear",
+  "searchHistoryCleared": "History cleared",
+  "cardPlay": "Play",
+  "cardResumeFrom": "Resume from {position}",
+  "@cardResumeFrom": {
+    "placeholders": {
+      "position": {
+        "type": "String"
+      }
+    }
+  },
+  "cardPlayFromStart": "Play from the start",
+  "cardForgetResume": "Forget the resume point",
+  "cardForgetResumeTitle": "Forget the resume point?",
+  "cardForgetResumeQuestion": "The playback position for this title will be forgotten.",
+  "cardForgetConfirm": "Forget",
+  "cardResumeForgotten": "Resume point forgotten",
+  "cardDetails": "See details",
+  "castChannelsStereo": "stereo",
+  "castChannelsMono": "mono",
+  "castChannelsCount": "{count} channels",
+  "@castChannelsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "castAudioTrackFallback": "Audio track",
+  "castAudioWarnPartial": "The TV will not decode every track of this stream. The app will ask it for: {track}. If the sound is still missing, the receiver kept its default track.",
+  "@castAudioWarnPartial": {
+    "placeholders": {
+      "track": {
+        "type": "String"
+      }
+    }
+  },
+  "castAudioWarnSingle": "The sound of this stream is {detail}: the TV receiver cannot decode it (picture without sound). The app cannot convert it.",
+  "@castAudioWarnSingle": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "castAudioWarnNone": "No audio track of this stream can be decoded by the TV receiver ({detail}): picture without sound. Another version of the same title, in AAC, would work.",
+  "@castAudioWarnNone": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "castReceiverNoTracks": "no track announced",
+  "castReceiverNoAudio": "{count} track(s), no audio",
+  "@castReceiverNoAudio": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "castReceiverAudioSummary": "{count} audio: {labels}",
+  "@castReceiverAudioSummary": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "labels": {
+        "type": "String"
+      }
+    }
+  },
+  "castNoWifi": "The phone is not on a Wi-Fi network: the Chromecast cannot fetch the file. Connect it to the same network as the TV.",
+  "castNotStreamable": "This address cannot be cast (neither http nor https).",
+  "castCannotVerify": "The stream cannot be checked from this network. Try again in a moment.",
+  "castTlsRefused": "The provider uses a certificate the Chromecast refuses (the app accepts it). This stream cannot be cast.",
+  "castUnreachable": "The provider's server does not answer from this network.",
+  "castNeedsAuth": "This stream cannot be cast: the provider requires an identification the Chromecast cannot pass on.",
+  "castNotHls": "The provider does not offer this stream in a format the Chromecast can read (HLS).",
+  "castHttpRefused": "This stream cannot be cast: the provider refuses a request without the app's IPTV profile (HTTP response {code}), which the Chromecast cannot imitate.",
+  "@castHttpRefused": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "castNoCors": "This stream cannot be cast: the provider does not allow playback from a browser (no CORS header), and that is how the Chromecast reads HLS.",
+  "castNoticePlaying": "Casting to {device}",
+  "@castNoticePlaying": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castNoticePaused": "Paused on {device}",
+  "@castNoticePaused": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castIdleFinished": "Playback finished on the TV.",
+  "castIdleError": "The TV could not play this stream (format or address refused by the receiver).",
+  "castIdleInterrupted": "Casting interrupted by the TV.",
+  "perrTimedOut": "The stream stopped responding (timed out).",
+  "perrConnectionFailed": "Cannot connect to the server. Check your network.",
+  "perrConnectionTimeout": "The server took too long to answer.",
+  "perrBadHttpStatus": "The server refused the stream (HTTP error). Check the account or try again later.",
+  "perrFileNotFound": "Stream not found on the server.",
+  "perrNoPermission": "Access to the stream refused.",
+  "perrCleartextNotPermitted": "Unencrypted connection refused by the system.",
+  "perrInvalidContentType": "The server is not returning a video (unexpected content type).",
+  "perrPositionOutOfRange": "Playback position outside the stream.",
+  "perrNetwork": "Network playback error.",
+  "perrBehindLiveWindow": "Too far behind the live edge: jumping back to live.",
+  "perrPlayerTimeout": "The player did not answer in time.",
+  "perrMalformed": "Unreadable stream (corrupted or unexpected data).",
+  "perrUnsupportedFormat": "Stream format not supported.",
+  "perrDecoderInit": "Cannot initialize the video decoder.",
+  "perrDecodingFailed": "Decoding failed: the stream may be damaged.",
+  "perrExceedsCapabilities": "This stream exceeds the device capabilities (resolution or bitrate).",
+  "perrCodecUnsupported": "Codec not supported by this device.",
+  "perrAudioOutput": "Audio output unavailable (track or audio format not playable).",
+  "perrRemote": "Remote player error.",
+  "perrUnexpected": "The player hit an unexpected error.",
+  "perrDrm": "Protected content (DRM) cannot be played.",
+  "perrDecodeVideo": "Video decoding failed.",
+  "perrCannotPlay": "Playback failed.",
+  "perrCannotPlayWith": "Playback failed: {detail}",
+  "@perrCannotPlayWith": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "relayBlockerLive": "A live channel has no end, and neither would the conversion. It is only offered on a movie or an episode.",
+  "relayBlockerLocal": "A file that is already downloaded cannot be converted for the TV yet.",
+  "relayBlockerOther": "This source cannot be relayed by the phone.",
+  "relayBatteryPluggedOk": "The phone is plugged in, perfect for a movie.",
+  "relayBatteryPlugIfYouCan": "Plug the phone in if you can: converting uses a lot of battery.",
+  "relayBatteryLow": "Battery at {percent}% — plug the phone in, casting depends on it.",
+  "@relayBatteryLow": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "relayBatteryMid": "Battery at {percent}%. Plug the phone in if you can, converting uses a lot of battery.",
+  "@relayBatteryMid": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "relayScreenOffOk": "You can turn the screen off: casting continues in the background.",
+  "relayDeviceFallback": "the TV",
+  "relayConsentWhat": "This TV cannot play the sound of this movie. The phone can adapt it while casting to {device}.",
+  "@relayConsentWhat": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "relayConsentConfirm": "Adapt and cast",
+  "relayConvertedUpTo": "Converted up to {position}",
+  "@relayConvertedUpTo": {
+    "placeholders": {
+      "position": {
+        "type": "String"
+      }
+    }
+  },
+  "relayProgressPaused": "{ahead} · {percent}% · paused",
+  "@relayProgressPaused": {
+    "placeholders": {
+      "ahead": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "playerLastEpisode": "Last available episode.",
+  "playerAudioTrackSwitched": "Incompatible audio track — switching to {track}",
+  "@playerAudioTrackSwitched": {
+    "placeholders": {
+      "track": {
+        "type": "String"
+      }
+    }
+  },
+  "playerNoAudioTrack": "No playable audio track in this file — playing without sound",
+  "playerResuming": "Resuming playback…",
+  "playerReconnecting": "Reconnecting in 5 s… ({attempt}/{max})",
+  "@playerReconnecting": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "playerRetry": "Try again",
+  "playerBuffering": "Buffering…",
+  "castOverlayBack": "Back (casting continues)",
+  "castOverlayCastingOn": "CASTING TO {device}",
+  "@castOverlayCastingOn": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castOverlayStarting": "Starting on the TV…",
+  "castOverlayPlayingAt": "Playing · {position}",
+  "@castOverlayPlayingAt": {
+    "placeholders": {
+      "position": {
+        "type": "String"
+      }
+    }
+  },
+  "castOverlayLoading": "Loading on the TV…",
+  "castOverlayBack30": "Back 30 s",
+  "castOverlayPause": "Pause",
+  "castOverlayPlay": "Play",
+  "castOverlayForward30": "Forward 30 s",
+  "castOverlayReceiver": "Receiver · {detail}",
+  "@castOverlayReceiver": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "castOverlayCastTitle": "Cast “{title}”",
+  "@castOverlayCastTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "castOverlayResync": "Resynchronize picture and sound",
+  "castOverlayResumeHere": "Resume on the phone",
+  "castOverlaySoundConverted": "Sound fully converted",
+  "castOverlaySoundConverting": "Converting the sound",
+  "castOverlayTvPlaysWhileConverting": "The TV plays while converting. Keep the app open.",
+  "castOverlayPreparingFor": "PREPARING FOR {device}",
+  "@castOverlayPreparingFor": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castOverlayCancelConversion": "Cancel the conversion",
+  "castSheetNotCastable": "This stream cannot be cast.",
+  "castSheetOnDevice": "On {device}",
+  "@castSheetOnDevice": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castSheetTitle": "Cast to…",
+  "castSheetSearching": "Looking for devices on the network…",
+  "castSheetChecking": "Checking the stream for {device}…",
+  "@castSheetChecking": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castSheetChooseOther": "Choose another device",
+  "castSheetConvertSound": "Convert the sound on the phone",
+  "castSheetConvertSoundSub": "See what it involves before starting",
+  "castSheetCastAnyway": "Cast anyway",
+  "castSheetCastAnywaySub": "On {device} — picture without sound",
+  "@castSheetCastAnywaySub": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castSheetStop": "Stop casting",
+  "castSheetStopSub": "Running on {device}",
+  "@castSheetStopSub": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castSheetNothingFound": "No Chromecast found. The phone must be on the same Wi-Fi as the TV, outside a guest network.",
+  "castSheetSearchAgain": "Search again",
+  "tracksNoAudio": "No audio track detected",
+  "tracksNoSubtitles": "No subtitle detected",
+  "tracksNone": "None",
+  "tracksDisabled": "Disabled",
+  "langFrench": "French",
+  "langEnglish": "English",
+  "langSpanish": "Spanish",
+  "langGerman": "German",
+  "langItalian": "Italian",
+  "langPortuguese": "Portuguese",
+  "langArabic": "Arabic",
+  "langRussian": "Russian",
+  "langDutch": "Dutch",
+  "langJapanese": "Japanese",
+  "langChinese": "Chinese",
+  "langKorean": "Korean",
+  "langTurkish": "Turkish",
+  "langPolish": "Polish",
+  "statsRealDefinition": "actual {definition} ({resolution})",
+  "@statsRealDefinition": {
+    "placeholders": {
+      "definition": {
+        "type": "String"
+      },
+      "resolution": {
+        "type": "String"
+      }
+    }
+  },
+  "statsDecoding": "Decoding",
+  "statsHardwareWith": "hardware · {decoder}",
+  "@statsHardwareWith": {
+    "placeholders": {
+      "decoder": {
+        "type": "String"
+      }
+    }
+  },
+  "statsHardware": "hardware",
+  "statsResolution": "Resolution",
+  "statsAnnounced": "Announced",
+  "statsAnnouncedOversold": "{announced} — the playlist OVERSELLS",
+  "@statsAnnouncedOversold": {
+    "placeholders": {
+      "announced": {
+        "type": "String"
+      }
+    }
+  },
+  "statsAnnouncedBetter": "{announced} · better than promised",
+  "@statsAnnouncedBetter": {
+    "placeholders": {
+      "announced": {
+        "type": "String"
+      }
+    }
+  },
+  "statsYes": "yes",
+  "statsNo": "no",
+  "statsDropped": "Dropped",
+  "statsBitrate": "Bitrate",
+  "statsNetwork": "Network",
+  "statsTransferred": "Transferred",
+  "statsStartup": "Startup",
+  "statsChannelsStereo": "stereo",
+  "statsChannelsMono": "mono",
+  "statsChannelsCount": "{count} channels",
+  "@statsChannelsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "statsStallsNone": "none",
+  "statsStallsWithTime": "{count} ({seconds}s in total)",
+  "@statsStallsWithTime": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "nextEpLoading": "Loading the next episode…",
+  "nextEpTitle": "NEXT EPISODE",
+  "nextEpPlayNowIn": "Play now  ·  {seconds}s",
+  "@nextEpPlayNowIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "nextEpPlay": "Play",
+  "nextEpSeasonEnd": "END OF SEASON",
+  "nextEpGoToSeason": "Go to season {season}?",
+  "@nextEpGoToSeason": {
+    "placeholders": {
+      "season": {
+        "type": "int"
+      }
+    }
+  },
+  "nextEpGoToNextSeason": "Go to the next season?",
+  "nextEpBackToDetails": "Back to the details",
+  "nextEpSeriesOver": "SERIES FINISHED",
+  "nextEpSeriesOverSub": "You have watched the last available episode.",
+  "ctrlCast": "Cast to a Chromecast",
+  "ctrlPip": "Shrink to a window",
+  "ctrlOptions": "Playback options",
+  "ctrlTracks": "Audio and subtitle tracks",
+  "ctrlSpeed": "Playback speed",
+  "ctrlNextEpisode": "Next episode",
+  "ctrlBadgeMovie": "MOVIE",
+  "ctrlBadgeSeries": "SERIES",
+  "ctrlUnlock": "Unlock",
+  "optNextEpisodeSub": "Skip to the next episode",
+  "optTracksSub": "Audio language · turn subtitles on",
+  "optVideoInfo": "Video info",
+  "optVideoInfoOn": "Shown · tap to hide",
+  "optVideoInfoSub": "Decoding, resolution, frames/s, drops",
+  "fitContainSub": "Whole picture · black bars possible",
+  "fitCoverSub": "Removes black bars · crops the edges",
+  "fitFill": "Full screen",
+  "fitFillSub": "Fills everything · slightly distorted picture",
+  "relayProgressPlaying": "{ahead} · {percent}%",
+  "@relayProgressPlaying": {
+    "placeholders": {
+      "ahead": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlCastActive": "Casting",
+  "ctrlLock": "Lock",
+  "ctrlBadgeLive": "LIVE",
+  "ctrlBadgeReplay": "REPLAY",
+  "optTitle": "Options",
+  "optNextEpisode": "Next episode",
+  "optTracksTitle": "Audio & subtitle tracks",
+  "optSpeedTitle": "Playback speed",
+  "optFitTitle": "Picture format",
+  "optSpeedNormal": "1.0×  ·  Normal",
+  "castSheetDeviceFallback": "the TV",
+  "statsDecodingPending": "in progress…",
+  "statsSoftware": "SOFTWARE",
+  "statsOutput": "Output",
+  "statsCodec": "Codec",
+  "statsHdr": "HDR",
+  "statsFps": "Frames/s",
+  "statsLost": "Dropped",
+  "statsRendered": "Rendered",
+  "statsBuffer": "Buffer",
+  "statsAudio": "Audio",
+  "statsStalls": "Stalls",
+  "statsAnnouncedOk": "{announced} · as promised",
+  "@statsAnnouncedOk": {
+    "placeholders": {
+      "announced": {
+        "type": "String"
+      }
+    }
+  },
+  "statsRenderedValue": "{fps} fps",
+  "@statsRenderedValue": {
+    "placeholders": {
+      "fps": {
+        "type": "String"
+      }
+    }
+  },
+  "statsRenderedVsAnnounced": "{fps} fps (announced {announced})",
+  "@statsRenderedVsAnnounced": {
+    "placeholders": {
+      "fps": {
+        "type": "String"
+      },
+      "announced": {
+        "type": "String"
+      }
+    }
+  },
+  "statsSecondsValue": "{value} s",
+  "@statsSecondsValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "fitOriginal": "Original",
+  "fitZoom": "Zoom",
+  "playerRecovering": "Resuming playback… ({attempt}/{max})",
+  "@playerRecovering": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "playerOtherTrack": "another track",
+  "commonOk": "OK",
+  "commonApply": "Apply",
+  "commonApplying": "Applying…",
+  "bkPasswordTitle": "Encryption password",
+  "bkPasswordHelp": "Choose a password — it will be asked for to restore the backup.",
+  "bkPasswordLabel": "Password",
+  "bkPasswordConfirmLabel": "Confirm",
+  "bkPasswordEmpty": "The password cannot be empty.",
+  "bkPasswordTooShort": "At least 6 characters.",
+  "bkPasswordMismatch": "The two passwords differ.",
+  "bkSave": "Back up",
+  "bkCreated": "Backup created",
+  "bkRememberPassword": "Do not forget the password — it is stored nowhere.",
+  "bkCreateTitle": "Create a backup",
+  "bkCreateSub": "Encrypts your accounts, TMDB key, theme, favorites and progress into a .aether file.",
+  "bkEncrypting": "Encrypting…",
+  "bkRestoreTitle": "Restore a backup",
+  "bkRestoreSub": "Pick a .aether file, enter your password, check the summary, apply.",
+  "bkRestoring": "Restoring…",
+  "bkImportFile": "Import a .aether file",
+  "bkHowTitle": "How it works",
+  "bkHowBody": "• `.aether` file encrypted with AES-256-GCM + PBKDF2 (100k iterations).\n• Password chosen by you — the app stores it nowhere.\n• Location: Download/AetherStream/ (survives an uninstall).\n• Contents: IPTV accounts, TMDB key, theme, favorites, progress.\n• Excluded: downloads (too heavy), search history.\n• Importing overwrites the whole current configuration (irreversible).",
+  "bkRestorePasswordTitle": "Backup password",
+  "bkDecrypt": "Decrypt",
+  "bkConfirmRestoreTitle": "Confirm the restore",
+  "bkConfirmRestoreBody": "Your whole current state (accounts, TMDB key, theme, favorites, playback progress) will be OVERWRITTEN by this backup.\n\nThis cannot be undone. Continue?",
+  "bkRestore": "Restore",
+  "bkRestoreDone": "Restore succeeded",
+  "bkRestoreDoneSub": "The IPTV playlists will be downloaded again on the next start.",
+  "regionApplied": "✅ Filter applied — catalog reloaded",
+  "regionHelp": "Tick the languages/regions to HIDE from the catalog. French (|FR|), Québécois and VOSTFR content is always kept.\n• Memory is freed right after “Apply”.\n• The catalog size on disk shrinks on the next playlist reload (automatic after 24 h, or the ⟳ button on the home screen).",
+  "regionApplying": "Applying the filter…",
+  "regionApplyingSub": "The catalog is being re-parsed. This may take a few seconds.",
+  "regionHidden": "Hidden",
+  "regionVisible": "Visible",
+  "bkExportLocation": "Available in:\n/storage/emulated/0/Download/AetherStream/\n\nCopy this file to Drive, your PC, or another device to restore it later. Do not forget the password — it is stored nowhere.",
+  "themeResetTitle": "Reset the theme?",
+  "themeResetQuestion": "Every color and effect returns to its default value.",
+  "themeSectionPresets": "Presets",
+  "themeSectionColors": "Colors",
+  "themeColorPrimary": "Primary",
+  "themeColorAccent": "Accent",
+  "themeColorTertiary": "Tertiary",
+  "themeSectionStateColors": "State colors",
+  "themeColorFavorite": "Favorite ❤",
+  "themeColorWarning": "Resume / Alert",
+  "themeColorError": "Error",
+  "themeColorSuccess": "Success",
+  "themeSectionEffects": "Effects",
+  "themeGlow": "Glow",
+  "themeRadius": "Corner radius",
+  "themeSectionMode": "Mode",
+  "themeSectionPreview": "Preview",
+  "themeModeDark": "Dark",
+  "themeModeLight": "Light",
+  "themeModeSystem": "System",
+  "themePreviewPlay": "▶  Play",
+  "xmltvUpdated": "✅ Channel guide updated",
+  "xmltvUpdateFailed": "❌ Update failed: {reason}",
+  "@xmltvUpdateFailed": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "xmltvNeverLoaded": "Never loaded",
+  "xmltvJustNow": "Just now",
+  "xmltvChannelsAndAge": "{count} channels · {age}",
+  "@xmltvChannelsAndAge": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "age": {
+        "type": "String"
+      }
+    }
+  },
+  "xmltvDownloading": "Downloading…",
+  "xmltvForceUpdate": "Force an update",
+  "xmltvHowBody": "• Public source: xmltvfr.fr (French DTT)\n• 24 h local cache — silent update at start-up when stale\n• Covers the main French channels (TF1, France 2, M6, ARTE…)\n• Used for the “Now / Next” block and the replay grid",
+  "visualLangApplied": "Artwork in {language} — posters already on screen keep their language until the next reload.",
+  "@visualLangApplied": {
+    "placeholders": {
+      "language": {
+        "type": "String"
+      }
+    }
+  },
+  "visualLangUiStaysFrench": "Posters, backdrops and texts coming from TMDB. The app interface follows the device language.",
+  "visualLangNote": "A poster provided by your IPTV playlist is never replaced: this choice only applies to artwork the app fetches itself.",
+  "aboutChecking": "🔍 Checking for updates…",
+  "aboutUpToDate": "You are up to date.",
+  "aboutCheckFailed": "⚠️ Cannot check: {reason}",
+  "@aboutCheckFailed": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutTagline": "Android IPTV client — multi-account, EPG, replay, TMDB.",
+  "aboutCheckingShort": "Checking…",
+  "aboutCheckUpdates": "Check for updates",
+  "consoleNoNetwork": "No local network found. Connect the TV to Wi-Fi or Ethernet.",
+  "consoleStartFailed": "Cannot start the local server: {reason}",
+  "@consoleStartFailed": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "consoleOpenAddress": "Open this address in a browser\non a PC or a phone on the same network:",
+  "consoleAddressCopied": "Address copied",
+  "consoleBackgroundNote": "The server stays alive in the background as long as you use the remote, even after leaving this screen. Stop it here when you are done (otherwise it closes automatically after 30 min).",
+  "consoleStopServer": "Stop the server",
+  "failNotLoaded": "NOT LOADED",
+  "failNetwork": "NETWORK FAILED",
+  "failPanelBusy": "PANEL BUSY",
+  "failIncomplete": "INCOMPLETE LIST",
+  "failParse": "PARSING FAILED",
+  "failNoData": "NO DATA",
+  "failExplainNever": "This playlist has not been loaded yet.",
+  "failExplainUnloaded": "Memory freed; the playlist comes back as soon as it is needed.",
+  "failExplainDeferred": "Update postponed until after start-up.",
+  "failExplainPanelBusy": "The provider refused: too many simultaneous connections.",
+  "failExplainIncomplete": "The catalog arrived incomplete; the previous one was kept.",
+  "failExplainParse": "The playlist could not be parsed.",
+  "failExplainCacheGone": "The parsed cache is unreadable.",
+  "failExplainNoSource": "No cached data for this playlist.",
+  "reloadBatchAllOk": "✅ {count} playlist(s) reloaded",
+  "@reloadBatchAllOk": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reloadBatchAllFailed": "❌ No playlist reloaded — {names}",
+  "@reloadBatchAllFailed": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "reloadBatchMixed": "⚠️ {ok} reloaded, {failed} failed: {names}",
+  "@reloadBatchMixed": {
+    "placeholders": {
+      "ok": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      },
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "reloadDownloadFailed": "Download failed (check the URL or the connection).",
+  "reloadParseFailed": "Parsing the playlist failed.",
+  "bkPartTmdbKey": "TMDB key",
+  "bkPartTheme": "theme",
+  "bkPartHiddenRegions": "{count, plural, =1{1 hidden language} other{{count} hidden languages}}",
+  "@bkPartHiddenRegions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bkPasswordEmptyError": "The password cannot be empty.",
+  "bkNewerVersion": "Backup created by a newer version of the app; an update is required.",
+  "bkWrongPassword": "Wrong password, or the backup file is corrupted.",
+  "castDiscoveryFailed": "Discovery failed on this network. The phone must be on the same Wi-Fi as the TV, outside a guest network.",
+  "castDeviceNotResponding": "{device} is not answering. Check that it is on and on the same network.",
+  "@castDeviceNotResponding": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castConnectFailed": "Cannot connect to {device}.",
+  "@castConnectFailed": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castStreamRefused": "The TV did not accept this stream.",
+  "castConnectionLost": "Connection to the TV lost.",
+  "relayNoNetworkAddress": "No network address: the TV could not reach the phone.",
+  "relayStartFailed": "The conversion could not start.",
+  "relayOpenFailed": "Cannot open the relay on the local network.",
+  "relayTooSlow": "The beginning of the movie did not arrive in time: the source is too slow to be converted.",
+  "dlQueued": "Queued…",
+  "dlFinalizing": "Finalizing…",
+  "dlActiveCount": "{count} downloads",
+  "@dlActiveCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "updGithubHttp": "GitHub answered HTTP {code}.",
+  "@updGithubHttp": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "updNoApk": "The latest release ({tag}) contains no APK.",
+  "@updNoApk": {
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  },
+  "updTimeout": "GitHub did not answer in time.",
+  "updUnreachable": "Cannot reach GitHub. Check your connection.",
+  "updInstallDenied": "Installation permission denied",
+  "failOnDisk": "ON DISK",
+  "failWaiting": "WAITING",
+  "failCacheGone": "CACHE LOST",
+  "failBadAccount": "INVALID ACCOUNT",
+  "failExplainNetwork": "Server unreachable.",
+  "failExplainBadAccount": "Invalid account configuration.",
+  "bkPartAccounts": "{count, plural, =1{1 account} other{{count} accounts}}",
+  "@bkPartAccounts": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bkPartOptimization": "optimization",
+  "bkPartFavorites": "{count, plural, =1{1 favorite} other{{count} favorites}}",
+  "@bkPartFavorites": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bkPartProgress": "{count, plural, =1{1 resume point} other{{count} resume points}}",
+  "@bkPartProgress": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bkEmpty": "Empty backup",
+  "relayFormatFailed": "The conversion failed: the phone cannot read this format back.",
+  "dlFilterAll": "All",
+  "dlFilterActive": "In progress",
+  "dlFilterCompleted": "Finished",
+  "dlFilterErrors": "Errors",
+  "dlSearchHint": "Search a download",
+  "dlSearchOpen": "Search",
+  "dlSearchClose": "Close search",
+  "dlEmptyHint": "Start a download from a movie or series page — it will show up here with its progress.",
+  "dlNoSearchResult": "No download matches this search.",
+  "dlNoneInFilter": "No download in “{filter}”.",
+  "@dlNoneInFilter": {
+    "placeholders": {
+      "filter": {
+        "type": "String"
+      }
+    }
+  },
+  "dlStopTitle": "Stop the download?",
+  "dlStopBody": "What is already downloaded is kept: you will be able to resume where it stopped.",
+  "dlStop": "Stop",
+  "dlActionPlay": "Play",
+  "dlActionMonitor": "See the progress",
+  "dlActionCancel": "Stop the download",
+  "dlActionDelete": "Delete",
+  "dlRetriedTimes": "restarted ×{count}",
+  "@dlRetriedTimes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dlAlreadyDownloaded": "Already downloaded",
+  "dlSee": "See",
+  "dlStorageDenied": "Storage permission denied: the download cannot start.",
+  "dlOpenSettings": "Open settings",
+  "bootFailedTitle": "Start-up interrupted",
+  "bootFailedBody": "The app could not load your playlist.",
+  "bootCheckAccounts": "Check the accounts",
+  "bootNoAccountTitle": "No account set up",
+  "bootNoAccountTv": "Scan a QR code with your phone to manage your playlists without typing on the remote.",
+  "bootNoAccountPhone": "Add an account to get started.",
+  "bootConfigureFromPhone": "Set up from my phone",
+  "bootConfigureAccounts": "Set up the accounts",
+  "bootRestoreBackup": "Restore a backup",
+  "onbPlaylistSaved": "✅ Playlist saved",
+  "onbTmdbSaved": "✅ TMDB key saved",
+  "onbHasBackup": "I already have a backup (.aether)",
+  "onbAddPlaylistTitle": "Add a playlist",
+  "onbAddPlaylistBody": "Go to ⚙️ Settings → IPTV accounts to enter a full M3U URL OR an Xtream Codes account (server + credentials).",
+  "onbTmdbTitle": "Posters and synopses (optional)",
+  "onbTmdbBody": "Generate a free TMDB Bearer Token on themoviedb.org and paste it into Settings → TMDB API key to enrich your movies and series.",
+  "onbCardMenuTitle": "The ⋯ menu on thumbnails",
+  "onbCardMenuBody": "Long-press a poster — or tap the ⋯ at the top left — to Play, Resume, add to favorites, download or forget a resume point, without opening the details page.",
+  "onbWelcomeTitle": "Welcome to AetherStream",
+  "onbWelcomeBody": "Multi-account IPTV client to watch movies, series and live channels from your subscriptions.",
+  "onbConfigureFromPhone": "Set it up from your phone",
+  "onbQrBody": "Scan this QR code: you can add your playlist, your TMDB key and set up the rest from your browser — typing on the D-pad would be long and tedious.",
+  "actorNotFound": "Error: profile not found on TMDB.",
+  "actorFilmographyDirecting": "Filmography (Directing)",
+  "actorFilmographyRoles": "Filmography (Roles)",
+  "actorDirector": "Director",
+  "actorRole": "Role: {character}",
+  "@actorRole": {
+    "placeholders": {
+      "character": {
+        "type": "String"
+      }
+    }
+  },
+  "detActorNotFound": "TMDB found no profile for {name}.",
+  "@detActorNotFound": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "detTmdbPitch": "Posters, synopses and cast. Quick setup by QR code from your phone.",
+  "detSaga": "Saga: {name}",
+  "@detSaga": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "detSameSaga": "Same saga",
+  "detSeasons": "Seasons",
+  "detSeasonsCountOne": "{seasons} season · {episodes} episodes",
+  "@detSeasonsCountOne": {
+    "placeholders": {
+      "seasons": {
+        "type": "int"
+      },
+      "episodes": {
+        "type": "int"
+      }
+    }
+  },
+  "detSeasonsCountMany": "{seasons} seasons · {episodes} episodes",
+  "@detSeasonsCountMany": {
+    "placeholders": {
+      "seasons": {
+        "type": "int"
+      },
+      "episodes": {
+        "type": "int"
+      }
+    }
+  },
+  "detLoadingEpisodes": "Loading episodes…",
+  "detEpisodesError": "Episodes not loaded — {reason}.",
+  "@detEpisodesError": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "detNoEpisodes": "No episode available for this series.",
+  "detSeasonNumber": "Season {number}",
+  "@detSeasonNumber": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "detEpisodesShort": "{count} ep.",
+  "@detEpisodesShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "detRealOversold": "⚠ actual {definition}",
+  "@detRealOversold": {
+    "placeholders": {
+      "definition": {
+        "type": "String"
+      }
+    }
+  },
+  "detReal": "actual {definition}",
+  "@detReal": {
+    "placeholders": {
+      "definition": {
+        "type": "String"
+      }
+    }
+  },
+  "detResumeAt": "RESUME · {position}",
+  "@detResumeAt": {
+    "placeholders": {
+      "position": {
+        "type": "String"
+      }
+    }
+  },
+  "detFavoriteAdded": "⭐ “{title}” added to favorites",
+  "@detFavoriteAdded": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "detFavoriteRemoved": "🗑️ “{title}” removed from favorites",
+  "@detFavoriteRemoved": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "detNotInPlaylists": "Not in your playlists — page shown from TMDB.",
+  "detSearchInPlaylists": "SEARCH MY PLAYLISTS",
+  "detStatusReleased": "Released",
+  "detStatusPostProduction": "Post-production",
+  "detStatusInProduction": "In production",
+  "detStatusPlanned": "Planned",
+  "detStatusReturning": "Returning",
+  "detStatusEnded": "Ended",
+  "detStatusCanceled": "Canceled",
+  "sheetChooseVersion": "Choose a version",
+  "sheetStandardUnknown": "Standard / Unknown",
+  "sheetDetails": "Details & info",
+  "sheetReplayUnavailable": "Replay unavailable for this stream",
+  "onbSkip": "Skip",
+  "onbNext": "Next",
+  "onbStart": "Get started",
+  "termPreviousErrors": "{count} PREVIOUS ERROR(S)",
+  "@termPreviousErrors": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "replayPickTitle": "Pick a moment to replay",
+  "replayQuality": "Quality",
+  "replayDay": "Day",
+  "replayOrManually": "OR CHOOSE MANUALLY",
+  "replayStartTime": "Start time",
+  "replayDuration": "Duration",
+  "replayAtWithDuration": "{day} at {time} ({duration})",
+  "@replayAtWithDuration": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "replayNoEpg": "No EPG data available",
+  "replayNoneTitle": "No replay available",
+  "replayNoneBody": "This channel exposes no Xtream EPG, or its timeshift is disabled. Try the manual picker from the TV action sheet.",
+  "expExpiredSince": "Expired {days} days ago ({date})",
+  "@expExpiredSince": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "expExpiresIn": "Expires in {days} days ({date})",
+  "@expExpiresIn": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "expTitleExpired": "Playlist expired",
+  "expTitleSoon": "Playlist expiring soon",
+  "expBodyExpired": "This playlist can no longer be used. Renew with your provider to regain access.",
+  "expBodySoon": "Renew with your provider so you do not lose access.",
+  "expLater": "Later",
+  "expSeeDetails": "See details",
+  "memTitle": "MEMORY & STORAGE",
+  "memRefresh": "Refresh",
+  "memParsed": "parsed {size}",
+  "@memParsed": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "memEntriesAndSize": "{count} entries · {size}",
+  "@memEntriesAndSize": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "memOnDisk": "on disk · {count} entries · {size}",
+  "@memOnDisk": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "memNoEntry": "0 entries · {size}",
+  "@memNoEntry": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "searchSheetTitle": "Search my playlists",
+  "searchSheetFieldLabel": "Title to search",
+  "searchSheetOriginalTitle": "Original title: {title}",
+  "@searchSheetOriginalTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "searchSheetTooShort": "Type at least 2 characters.",
+  "searchSheetNoResult": "No title found in your playlists.",
+  "nextEpPlayNow": "Play now  ·  {seconds}s",
+  "@nextEpPlayNow": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "aboutDiagnosticLog": "Diagnostic log",
+  "aboutSourceOnGithub": "See the code on GitHub",
+  "aboutAllReleases": "All releases",
+  "regionNoChange": "No change",
+  "regionShowAll": "Show all",
+  "regionHideAll": "Hide all",
+  "visualLangTitle": "Artwork language",
+  "visualLangAuto": "Same as the device",
+  "visualLangOriginalLabel": "Original version (no text)",
+  "visualLangSubFr": "French posters and texts when they exist",
+  "visualLangSubEn": "English posters and texts",
+  "visualLangSubOriginal": "Poster without text when it exists, otherwise the original version",
+  "visualLangCurrently": "Currently: {tag}",
+  "@visualLangCurrently": {
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  },
+  "qualityHideVersions": "Hide the versions",
+  "qualityChangeVersion": "Change version",
+  "navExitHint": "💡 To leave the app: press Back twice",
+  "navExitConfirm": "Press Back again to leave",
+  "settingsUsageReset": "🧹 Usage data reset",
+  "updNetworkError": "Network error",
+  "themePreviewMovieTitle": "Movie Title",
+  "errUnexpected": "An unexpected error occurred.",
+  "errUnknown": "An unknown error occurred.",
+  "relayNothingReadable": "The conversion produced nothing playable.",
+  "healthNoStall": "no stall",
+  "reloadLessThanMinute": "less than a minute",
+  "plNoActiveAccount": "No active account selected. Please choose one in the settings.",
+  "plNoActiveAccountShort": "No active account selected.",
+  "plInvalidUrl": "The playlist URL for the account “{label}” is invalid. Check its configuration.",
+  "@plInvalidUrl": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "plEmptyFile": "The server returned an empty file. Check the playlist URL.",
+  "bkFileTooShort": "Backup file too short or corrupted.",
+  "bkNotAnAetherFile": "This is not a valid .aether file.",
+  "acctDefaultLabel": "Default account",
+  "commonUnknown": "Unknown",
+  "dlMediaStoreTimeout": "MediaStore did not answer",
+  "detRuntimePerEpisode": "{minutes}m/episode",
+  "@detRuntimePerEpisode": {
+    "placeholders": {
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "detEpisodesBadSeriesId": "unreadable series identifier",
+  "detEpisodesNoAccount": "account not found",
+  "castOverlayResyncFull": "Resynchronize picture and sound",
+  "memSourceAndParsed": "source {source} · parsed {parsed}",
+  "@memSourceAndParsed": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "parsed": {
+        "type": "String"
+      }
+    }
+  },
+  "expTodayOn": "Expires today ({date})",
+  "@expTodayOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "expTomorrowOn": "Expires tomorrow ({date})",
+  "@expTomorrowOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "catFavorites": "Favorites",
+  "catOthers": "Other",
+  "catNew": "New",
+  "catStaffPick": "Staff picks",
+  "catSelection": "Selection",
+  "catCult": "Cult classics",
+  "catBoxOffice": "Box office",
+  "catOscar": "Oscars",
+  "catAction": "Action",
+  "catNews": "News",
+  "catAnimation": "Animation",
+  "catMartialArts": "Martial arts",
+  "catAdventure": "Adventure",
+  "catBiopic": "Biopic",
+  "catHeist": "Heist",
+  "catDisaster": "Disaster",
+  "catComedy": "Comedy",
+  "catCrime": "Crime",
+  "catDance": "Dance",
+  "catDocumentary": "Documentary",
+  "catDrama": "Drama",
+  "catSpy": "Spy",
+  "catFantasy": "Fantasy",
+  "catHolidays": "Holidays",
+  "catWar": "War",
+  "catHistory": "History",
+  "catHorror": "Horror",
+  "catKids": "Kids",
+  "catLegal": "Legal",
+  "catKaraoke": "Karaoke",
+  "catMafia": "Mafia",
+  "catManga": "Anime",
+  "catMaritime": "Maritime",
+  "catMedical": "Medical",
+  "catMedieval": "Medieval",
+  "catMusical": "Musical",
+  "catPolice": "Crime drama",
+  "catPrison": "Prison",
+  "catRomance": "Romance",
+  "catSciFi": "Sci-Fi",
+  "catStandUp": "Stand-up",
+  "catSport": "Sports",
+  "catSuperheroes": "Superheroes",
+  "catSurvival": "Survival",
+  "catTvMovie": "TV movie",
+  "catRealityTv": "Reality TV",
+  "catThriller": "Thriller",
+  "catSerialKiller": "Serial killer",
+  "catRevenge": "Revenge",
+  "catCars": "Cars",
+  "catWestern": "Western",
+  "regFrance": "France",
+  "regAlbania": "Albania",
+  "regAlgeria": "Algeria",
+  "regGermany": "Germany",
+  "regArmenia": "Armenia",
+  "regAsia": "Asia",
+  "regBelgium": "Belgium",
+  "regBosnia": "Bosnia",
+  "regBrazil": "Brazil",
+  "regCanada": "Canada",
+  "regCroatia": "Croatia",
+  "regSpain": "Spain",
+  "regGreece": "Greece",
+  "regIndian": "Indian",
+  "regItaly": "Italy",
+  "regMaghreb": "Maghreb",
+  "regNetherlands": "Netherlands",
+  "regPoland": "Poland",
+  "regPortugal": "Portugal",
+  "regRamadan": "Ramadan",
+  "regRomania": "Romania",
+  "regRussia": "Russia",
+  "regScandinavia": "Scandinavia",
+  "regSwitzerland": "Switzerland",
+  "regCzechia": "Czechia",
+  "regExYugoslavia": "Former Yugoslavia",
+  "regDominicanRepublic": "Dominican Republic",
+  "regOriginalNonFrench": "Original (non-French)",
+  "regLegendado": "Legendado (PT subtitles)"
 }

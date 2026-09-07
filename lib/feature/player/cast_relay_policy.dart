@@ -11,6 +11,7 @@
 library;
 
 import 'cast_policy.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Pourquoi un relais n'est PAS proposé. `null` ⇒ il l'est.
 enum CastRelayBlocker {
@@ -107,13 +108,11 @@ String? castRelayBlockerMessage(CastRelayBlocker blocker) {
   return switch (blocker) {
     CastRelayBlocker.notNeeded => null,
     CastRelayBlocker.liveStream =>
-      "Une chaîne en direct n'a pas de fin : la conversion non plus. Elle "
-          "n'est proposée que sur un film ou un épisode.",
+      L10n.current.relayBlockerLive,
     CastRelayBlocker.localFile =>
-      "Un fichier déjà téléchargé ne peut pas encore être converti pour le "
-          'téléviseur.',
+      L10n.current.relayBlockerLocal,
     CastRelayBlocker.unsupportedSource =>
-      "Cette source ne peut pas être relayée par le téléphone.",
+      L10n.current.relayBlockerOther,
   };
 }
 
@@ -149,18 +148,15 @@ const int kCastLowBatteryPercent = 15;
 /// tient, l'**alerte** (« la diffusion en dépend ») sous le seuil.
 String castRelayBatteryNote({int? percent, bool? charging}) {
   if (charging == true) {
-    return 'Le téléphone est branché, parfait pour un film.';
+    return L10n.current.relayBatteryPluggedOk;
   }
   if (percent == null) {
-    return 'Branche le téléphone si tu peux : la conversion consomme beaucoup '
-        'de batterie.';
+    return L10n.current.relayBatteryPlugIfYouCan;
   }
   if (percent < kCastLowBatteryPercent) {
-    return 'Batterie à $percent % — branche le téléphone, la diffusion en '
-        'dépend.';
+    return L10n.current.relayBatteryLow(percent);
   }
-  return 'Batterie à $percent %. Branche le téléphone si tu peux, la '
-      'conversion consomme beaucoup.';
+  return L10n.current.relayBatteryMid(percent);
 }
 
 /// §castAwake — L'écran peut s'éteindre : le service de premier plan tient un
@@ -169,8 +165,7 @@ String castRelayBatteryNote({int? percent, bool? charging}) {
 /// la diffusion (constaté le 2026-09-05). Le dire, c'est aussi permettre à
 /// l'utilisateur de poser son téléphone au lieu de le tenir allumé deux
 /// heures.
-const String kCastRelayAwakeNote =
-    "Tu peux éteindre l'écran : la diffusion continue en arrière-plan.";
+String get kCastRelayAwakeNote => L10n.current.relayScreenOffOk;
 
 /// §castBattery — L'ALERTE pendant la diffusion : `null` tant que tout va
 /// bien ; un texte (à afficher en rouge, écran ET notification) sous
@@ -178,8 +173,7 @@ const String kCastRelayAwakeNote =
 String? castBatteryWarning({int? percent, bool? charging}) {
   if (percent == null || charging == true) return null;
   if (percent >= kCastLowBatteryPercent) return null;
-  return 'Batterie à $percent % — branche le téléphone, la diffusion en '
-      'dépend.';
+  return L10n.current.relayBatteryLow(percent);
 }
 
 /// ⚠️ Volontairement COURT (décision utilisateur 2026-09-04) : une phrase,
@@ -194,19 +188,18 @@ CastRelayConsent castRelayConsent({
   bool? charging,
 }) {
   final String device =
-      deviceName.trim().isEmpty ? 'la télé' : deviceName.trim();
+      deviceName.trim().isEmpty ? L10n.current.relayDeviceFallback : deviceName.trim();
   return (
     // La phrase se suffit à elle-même : elle nomme l'appareil et dit ce qui
     // sera fait. Un titre par-dessus ne ferait que la répéter.
-    what: 'Ce téléviseur ne lit pas le son de ce film. Le téléphone peut '
-        "l'adapter pendant la diffusion pour $device.",
+    what: L10n.current.relayConsentWhat(device),
     costs: [castRelayBatteryNote(percent: batteryPercent, charging: charging)],
     awake: kCastRelayAwakeNote,
     // §castResume — La conversion part désormais de la position courante :
     // il n'y a plus de « toujours depuis le début » à annoncer.
     limits: const [],
-    confirmLabel: 'Adapter et diffuser',
-    cancelLabel: 'Annuler',
+    confirmLabel: L10n.current.relayConsentConfirm,
+    cancelLabel: L10n.current.commonCancel,
   );
 }
 
@@ -224,10 +217,12 @@ String castRelayProgressLabel({
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
 
-  final String avance = 'Converti jusqu\'à ${mmss(ready)}';
+  final String avance = L10n.current.relayConvertedUpTo(mmss(ready));
   if (total == null || total <= Duration.zero) return avance;
   final int pct = ((ready.inMilliseconds / total.inMilliseconds) * 100)
       .clamp(0, 100)
       .round();
-  return playing ? '$avance · $pct %' : '$avance · $pct % · en pause';
+  return playing
+      ? L10n.current.relayProgressPlaying(avance, '$pct')
+      : L10n.current.relayProgressPaused(avance, '$pct');
 }

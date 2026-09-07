@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'cast_service.dart';
 import 'fmp4_index.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §castRelay — Le téléphone au milieu : il convertit le son du film en AAC
 /// (côté natif, `AetherCastRelay.kt`) et **sert le résultat au téléviseur**
@@ -152,9 +153,8 @@ abstract final class CastRelayService {
     final String? ip = await _detectLocalIp();
     if (gen != _generation) throw const CastRelayCancelled();
     if (ip == null) {
-      throw const CastRelayException(
-        'Aucune adresse réseau : le téléviseur ne pourrait pas joindre le '
-        'téléphone.',
+      throw CastRelayException(
+        L10n.current.relayNoNetworkAddress,
       );
     }
 
@@ -175,7 +175,7 @@ abstract final class CastRelayService {
       throw const CastRelayCancelled();
     }
     if (path == null || path.isEmpty) {
-      throw const CastRelayException("La conversion n'a pas pu démarrer.");
+      throw CastRelayException(L10n.current.relayStartFailed);
     }
     _filePath = path;
     _converting = true;
@@ -191,8 +191,8 @@ abstract final class CastRelayService {
       // `_converting` restaient posés et un `onRelayProgress` tardif
       // travaillait sur un fichier fantôme.
       await stop();
-      throw const CastRelayException(
-        'Impossible d\'ouvrir le relais sur le réseau local.',
+      throw CastRelayException(
+        L10n.current.relayOpenFailed,
       );
     }
     if (gen != _generation) {
@@ -277,15 +277,14 @@ abstract final class CastRelayService {
       if (!_converting && state.value != null) {
         // Conversion finie sans un seul segment : fichier vide ou illisible.
         await stop();
-        throw const CastRelayException(
-          "La conversion n'a rien produit de lisible.",
+        throw CastRelayException(
+          L10n.current.relayNothingReadable,
         );
       }
       if (DateTime.now().isAfter(deadline)) {
         await stop();
-        throw const CastRelayException(
-          "Le début du film n'est pas arrivé à temps : la source est trop "
-          'lente pour être convertie.',
+        throw CastRelayException(
+          L10n.current.relayTooSlow,
         );
       }
       await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -621,8 +620,7 @@ abstract final class CastRelayService {
           state.value = current.copyWith(
             error: userFacing
                 ? msg
-                : 'La conversion a échoué : le téléphone ne sait pas relire '
-                    'ce format.',
+                : L10n.current.relayFormatFailed,
           );
       }
     });

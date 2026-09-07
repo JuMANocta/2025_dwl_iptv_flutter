@@ -8,6 +8,7 @@ import '../../widgets/matrix_rain.dart';
 import 'version_diff_line.dart';
 import '../../data/services/update_service.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §updateGreen — Vert vif du dialog de MAJ (style « Matrix terminal », figé,
 /// indépendant du thème). Remplace `kSuccess` (#4CAF50, trop terne sur fond
@@ -87,7 +88,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
         if (mounted) {
           setState(() {
             _state = _DownloadState.error;
-            _errorMessage = e.message ?? 'Erreur réseau';
+            _errorMessage = e.message ?? L10n.current.updNetworkError;
           });
         }
       }

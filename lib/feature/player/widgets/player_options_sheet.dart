@@ -4,6 +4,7 @@ import '../../../core/themes/colors.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
 import '../video_fit.dart';
+import '../../../l10n/l10n_ext.dart';
 
 /// §tourFix — LA liste des vitesses de lecture, unique pour toute l'app.
 ///
@@ -34,7 +35,7 @@ Future<void> showPlayerOptions(
     context: context,
     scrollable: false,
     builder: (_) => OptionsSheetBody(
-      title: 'Options',
+      title: context.l10n.optTitle,
       icon: Icons.tune_rounded,
       children: [
         // §tvOptionsOrder — « Épisode suivant » EN PREMIER (série en cours) :
@@ -44,21 +45,21 @@ Future<void> showPlayerOptions(
           OptionSheetRow(
             icon: Icons.skip_next_rounded,
             accent: kAccentTertiary,
-            title: 'Épisode suivant',
-            subtitle: "Passer à l'épisode suivant",
+            title: context.l10n.optNextEpisode,
+            subtitle: context.l10n.optNextEpisodeSub,
             onTap: onNext,
           ),
         OptionSheetRow(
           icon: Icons.subtitles_rounded,
           accent: kAccentSecondary,
-          title: 'Pistes audio & sous-titres',
-          subtitle: 'Langue audio · activer les sous-titres',
+          title: context.l10n.optTracksTitle,
+          subtitle: context.l10n.optTracksSub,
           onTap: onTracks,
         ),
         OptionSheetRow(
           icon: Icons.speed_rounded,
           accent: kAccentPrimary,
-          title: 'Vitesse de lecture',
+          title: context.l10n.optSpeedTitle,
           subtitle: speedLabel,
           onTap: onSpeed,
         ),
@@ -68,7 +69,7 @@ Future<void> showPlayerOptions(
         OptionSheetRow(
           icon: fitMode.icon,
           accent: kAccentSecondary,
-          title: "Format d'image",
+          title: context.l10n.optFitTitle,
           subtitle: '${fitMode.label} · ${fitMode.description}',
           onTap: onFit,
         ),
@@ -78,10 +79,10 @@ Future<void> showPlayerOptions(
         OptionSheetRow(
           icon: statsEnabled ? Icons.speed_outlined : Icons.query_stats_rounded,
           accent: kAccentTertiary,
-          title: 'Infos vidéo',
+          title: context.l10n.optVideoInfo,
           subtitle: statsEnabled
-              ? 'Affichées · toucher pour masquer'
-              : 'Décodage, résolution, images/s, pertes',
+              ? context.l10n.optVideoInfoOn
+              : context.l10n.optVideoInfoSub,
           selected: statsEnabled,
           onTap: onToggleStats,
         ),
@@ -136,7 +137,7 @@ Future<void> showSpeedMenu(
                 ? Icons.check_circle_rounded
                 : Icons.play_arrow_rounded,
             accent: kAccentPrimary,
-            title: s == 1.0 ? '1.0×  ·  Normal' : '$s×',
+            title: s == 1.0 ? context.l10n.optSpeedNormal : '$s×',
             subtitle: null,
             selected: s == current,
             onTap: () => onSelect(s),

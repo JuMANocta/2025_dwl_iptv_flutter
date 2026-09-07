@@ -4,6 +4,7 @@ import '../../../core/themes/colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/services/cast_relay_service.dart';
 import '../../../data/services/cast_service.dart';
+import '../../../l10n/l10n_ext.dart';
 
 /// §castSend — Panneau affiché DANS le lecteur pendant une diffusion : l'image
 /// est sur le téléviseur, le téléphone devient la télécommande.
@@ -81,7 +82,7 @@ class CastOverlay extends StatelessWidget {
                 top: 4,
                 left: 4,
                 child: IconButton(
-                  tooltip: 'Retour (la diffusion continue)',
+                  tooltip: context.l10n.castOverlayBack,
                   onPressed: onBack,
                   icon:
                       const Icon(Icons.arrow_back_rounded, color: Colors.white),
@@ -115,7 +116,7 @@ class CastOverlay extends StatelessWidget {
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            'DIFFUSION SUR ${state.device.displayName.toUpperCase()}',
+                            context.l10n.castOverlayCastingOn(state.device.displayName.toUpperCase()),
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: kAccentPrimary,
@@ -179,11 +180,12 @@ class CastOverlay extends StatelessWidget {
                           ] else if (isRelay)
                             Text(
                               state.buffering
-                                  ? 'Démarrage sur le téléviseur…'
+                                  ? context.l10n.castOverlayStarting
                                   // §castResume — Position DU FILM : le flux
                                   // converti repart à zéro, le décalage la
                                   // remet à sa vraie valeur.
-                                  : 'En lecture · ${formatDuration(CastRelayService.filmPosition(state.position).inSeconds)}',
+                                  : context.l10n.castOverlayPlayingAt(formatDuration(
+                                      CastRelayService.filmPosition(state.position).inSeconds)),
                               style: TextStyle(
                                 color: Colors.white.withAlpha(180),
                                 fontSize: 12,
@@ -196,7 +198,7 @@ class CastOverlay extends StatelessWidget {
                               state.live
                                   ? 'EN DIRECT'
                                   : (state.buffering
-                                      ? 'Chargement sur le téléviseur…'
+                                      ? context.l10n.castOverlayLoading
                                       : ''),
                               style: TextStyle(
                                 color: state.live
@@ -239,7 +241,7 @@ class CastOverlay extends StatelessWidget {
                               if (showTime)
                                 _RoundButton(
                                   icon: Icons.replay_30_rounded,
-                                  tooltip: 'Reculer de 30 s',
+                                  tooltip: context.l10n.castOverlayBack30,
                                   onTap: () =>
                                       onSeekBy(const Duration(seconds: -30)),
                                 ),
@@ -248,7 +250,9 @@ class CastOverlay extends StatelessWidget {
                                 icon: state.playing
                                     ? Icons.pause_rounded
                                     : Icons.play_arrow_rounded,
-                                tooltip: state.playing ? 'Pause' : 'Lecture',
+                                tooltip: state.playing
+                                    ? context.l10n.castOverlayPause
+                                    : context.l10n.castOverlayPlay,
                                 size: 64,
                                 accent: true,
                                 onTap: onToggle,
@@ -257,7 +261,7 @@ class CastOverlay extends StatelessWidget {
                               if (showTime)
                                 _RoundButton(
                                   icon: Icons.forward_30_rounded,
-                                  tooltip: 'Avancer de 30 s',
+                                  tooltip: context.l10n.castOverlayForward30,
                                   onTap: () =>
                                       onSeekBy(const Duration(seconds: 30)),
                                 ),
@@ -266,7 +270,7 @@ class CastOverlay extends StatelessWidget {
                           if (diagnostics != null) ...[
                             const SizedBox(height: 14),
                             Text(
-                              'Récepteur · ${diagnostics!}',
+                              context.l10n.castOverlayReceiver(diagnostics!),
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: kAccentSecondary.withAlpha(210),
@@ -283,7 +287,7 @@ class CastOverlay extends StatelessWidget {
                                 onPressed: onCastThis,
                                 icon: const Icon(Icons.cast_rounded),
                                 label: Text(
-                                  'Diffuser « $castThisTitle »',
+                                  context.l10n.castOverlayCastTitle(castThisTitle!),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -321,8 +325,8 @@ class CastOverlay extends StatelessWidget {
                                 child: OutlinedButton.icon(
                                   onPressed: onStop,
                                   icon: const Icon(Icons.phone_android_rounded),
-                                  label: const Text(
-                                    'Reprendre sur le téléphone',
+                                  label: Text(
+                                    context.l10n.castOverlayResumeHere,
                                     maxLines: 2,
                                     textAlign: TextAlign.center,
                                   ),
@@ -430,8 +434,8 @@ class _RelayStatus extends StatelessWidget {
             children: [
               Text(
                 relay.done
-                    ? 'Son entièrement converti'
-                    : 'Conversion du son en cours',
+                    ? context.l10n.castOverlaySoundConverted
+                    : context.l10n.castOverlaySoundConverting,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white.withAlpha(200),
@@ -454,8 +458,7 @@ class _RelayStatus extends StatelessWidget {
               if (!relay.done) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'Le téléviseur lit pendant la conversion. '
-                  "Garder l'application ouverte.",
+                  context.l10n.castOverlayTvPlaysWhileConverting,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withAlpha(120),
@@ -509,7 +512,7 @@ class CastPreparingOverlay extends StatelessWidget {
                       Icon(Icons.cast_rounded, color: kAccentPrimary, size: 44),
                       const SizedBox(height: 10),
                       Text(
-                        'PRÉPARATION POUR ${deviceName.toUpperCase()}',
+                        context.l10n.castOverlayPreparingFor(deviceName.toUpperCase()),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: kAccentPrimary,
@@ -535,7 +538,7 @@ class CastPreparingOverlay extends StatelessWidget {
                       OutlinedButton.icon(
                         onPressed: onCancel,
                         icon: const Icon(Icons.close_rounded),
-                        label: const Text('Annuler la conversion'),
+                        label: Text(context.l10n.castOverlayCancelConversion),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                           side: BorderSide(color: Colors.white.withAlpha(120)),

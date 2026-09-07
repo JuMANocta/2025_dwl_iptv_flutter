@@ -9,6 +9,7 @@ import '../../../core/themes/theme_service.dart';
 import '../../../core/utils/platform_tv.dart';
 import '../../../data/services/web_console_service.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../l10n/l10n_ext.dart';
 
 /// §webConsole (Phase 1) — Écran "Console web".
 ///
@@ -93,14 +94,14 @@ class _WebConsolePageState extends State<WebConsolePage> {
         _port = WebConsoleService.instance.port;
         _token = WebConsoleService.instance.token;
         if (_url == null) {
-          _error = 'Réseau local introuvable. Connecte la TV au Wi-Fi ou à l\'Ethernet.';
+          _error = L10n.current.consoleNoNetwork;
         }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _starting = false;
-        _error = 'Impossible de démarrer le serveur local : ${describeError(e)}';
+        _error = L10n.current.consoleStartFailed(describeError(e));
       });
     }
   }
@@ -153,7 +154,7 @@ class _WebConsolePageState extends State<WebConsolePage> {
           FilledButton.icon(
             onPressed: () => setState(() { _starting = true; _error = null; _start(); }),
             icon: const Icon(Icons.refresh),
-            label: const Text('Réessayer'),
+            label: Text(context.l10n.playerRetry),
           ),
         ],
       );
@@ -205,7 +206,7 @@ class _WebConsolePageState extends State<WebConsolePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Ouvre cette adresse dans un navigateur\nsur un PC ou un téléphone du même réseau :',
+                    context.l10n.consoleOpenAddress,
                     style: TextStyle(color: cs.onSurfaceVariant, fontSize: 16),
                   ),
                   const SizedBox(height: 16),
@@ -227,7 +228,7 @@ class _WebConsolePageState extends State<WebConsolePage> {
       children: [
         if (!compact) ...[
           Text(
-            'Ouvre cette adresse dans un navigateur\nsur un PC ou un téléphone du même réseau :',
+            context.l10n.consoleOpenAddress,
             textAlign: TextAlign.center,
             style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
           ),
@@ -277,7 +278,7 @@ class _WebConsolePageState extends State<WebConsolePage> {
             onPressed: () {
               Clipboard.setData(ClipboardData(text: _url ?? ''));
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Adresse copiée')),
+                SnackBar(content: Text(context.l10n.consoleAddressCopied)),
               );
             },
           ),
@@ -298,9 +299,7 @@ class _WebConsolePageState extends State<WebConsolePage> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Le serveur reste actif en arrière-plan tant que tu utilises la '
-                'télécommande, même après avoir quitté cet écran. Arrête-le ici '
-                'quand tu as fini (sinon fermeture auto après 30 min).',
+                context.l10n.consoleBackgroundNote,
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
               ),
             ),
@@ -315,7 +314,7 @@ class _WebConsolePageState extends State<WebConsolePage> {
           foregroundColor: Colors.black,
         ),
         icon: const Icon(Icons.power_settings_new),
-        label: const Text('Arrêter le serveur'),
+        label: Text(context.l10n.consoleStopServer),
       );
 }
 

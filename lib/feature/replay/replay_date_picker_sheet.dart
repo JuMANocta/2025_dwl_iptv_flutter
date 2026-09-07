@@ -6,6 +6,7 @@ import '../../data/services/xmltv_service.dart';
 import '../../data/models/xmltv_program.dart';
 import '../../widgets/tv/focusable_card.dart';
 import '../../widgets/tv/focusable_chip.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Sheet permettant à l'utilisateur de choisir manuellement
 /// un jour, une heure et une durée pour lancer un replay.
@@ -147,7 +148,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
                       color: kAccentSecondary, size: 22),
                   const SizedBox(width: 10),
                   Text(
-                    'Choisir un moment à revoir',
+                    context.l10n.replayPickTitle,
                     style: Theme.of(context)
                         .textTheme
                         .titleMedium
@@ -161,7 +162,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
 
             // ---- Sélecteur de qualité (si plusieurs flux disponibles) ----
             if (widget.streams.length > 1) ...[
-              _sectionLabel(context, 'Qualité', Icons.hd_outlined),
+              _sectionLabel(context, context.l10n.replayQuality, Icons.hd_outlined),
               const SizedBox(height: 10),
               _ChipRow<int>(
                 items: List.generate(widget.streams.length, (i) => i),
@@ -173,7 +174,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
             ],
 
             // ---- Sélecteur de jour (partagé) ----
-            _sectionLabel(context, 'Jour', Icons.calendar_today_outlined),
+            _sectionLabel(context, context.l10n.replayDay, Icons.calendar_today_outlined),
             const SizedBox(height: 10),
             _DaySelector(
               maxDays: maxDays,
@@ -200,7 +201,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: Text(
-                      'OU CHOISIR MANUELLEMENT',
+                      context.l10n.replayOrManually,
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
@@ -219,7 +220,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
             ],
 
             // ---- Sélecteur d'heure ----
-            _sectionLabel(context, 'Heure de début', Icons.schedule_outlined),
+            _sectionLabel(context, context.l10n.replayStartTime, Icons.schedule_outlined),
             const SizedBox(height: 10),
             _TimeSelector(
               time: _selectedTime,
@@ -229,7 +230,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
             const SizedBox(height: 20),
 
             // ---- Sélecteur de durée ----
-            _sectionLabel(context, 'Durée', Icons.timelapse_outlined),
+            _sectionLabel(context, context.l10n.replayDuration, Icons.timelapse_outlined),
             const SizedBox(height: 10),
             _ChipRow<int>(
               items: _durations,
@@ -317,7 +318,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
         : (_durationMinutes % 60 == 0
             ? '${_durationMinutes ~/ 60}h'
             : '${_durationMinutes ~/ 60}h${(_durationMinutes % 60).toString().padLeft(2, '0')}');
-    return '$dayFmt à $timeFmt ($dur)';
+    return L10n.current.replayAtWithDuration(dayFmt, timeFmt, dur);
   }
 
   void _confirm() {
@@ -390,7 +391,7 @@ class _XmltvProgramList extends StatelessWidget {
                     .withValues(alpha: 0.35)),
             const SizedBox(width: 8),
             Text(
-              'Aucune donnée EPG disponible',
+              context.l10n.replayNoEpg,
               style: TextStyle(
                 fontSize: 13,
                 color: Theme.of(context)

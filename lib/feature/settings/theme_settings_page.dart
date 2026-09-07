@@ -6,6 +6,7 @@ import '../../widgets/confirm_or_undo.dart';
 import '../../widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 
 class ThemeSettingsPage extends StatefulWidget {
   const ThemeSettingsPage({super.key});
@@ -60,11 +61,11 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
     final AppThemeConfig old = _config;
     await confirmOrUndo(
       context,
-      title: 'Réinitialiser le thème ?',
+      title: context.l10n.themeResetTitle,
       question:
-          'Toutes les couleurs et tous les effets reviennent aux valeurs par défaut.',
-      confirmLabel: 'Réinitialiser',
-      doneMessage: 'Réglages réinitialisés',
+          context.l10n.themeResetQuestion,
+      confirmLabel: context.l10n.perfResetConfirm,
+      doneMessage: context.l10n.perfResetDone,
       action: () async => _apply(AppThemeConfig.defaults),
       onUndo: () {
         if (mounted) {
@@ -89,7 +90,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
         actions: [
           IconButton(
             icon: const Icon(Icons.restart_alt),
-            tooltip: 'Réinitialiser',
+            tooltip: context.l10n.perfResetConfirm,
             onPressed: _resetWithUndo,
           ),
         ],
@@ -117,28 +118,28 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionLabel('Presets', cs),
+              _sectionLabel(context.l10n.themeSectionPresets, cs),
               _buildPresetsRow(cs),
-              _sectionLabel('Couleurs', cs),
-              _buildColorRow('Principale',  _config.primaryColor,
+              _sectionLabel(context.l10n.themeSectionColors, cs),
+              _buildColorRow(context.l10n.themeColorPrimary, _config.primaryColor,
                   (c) => _apply(_config.copyWith(primaryColor: c))),
-              _buildColorRow('Accent',      _config.accentColor,
+              _buildColorRow(context.l10n.themeColorAccent, _config.accentColor,
                   (c) => _apply(_config.copyWith(accentColor: c))),
-              _buildColorRow('Tertiaire',   _config.tertiaryColor,
+              _buildColorRow(context.l10n.themeColorTertiary, _config.tertiaryColor,
                   (c) => _apply(_config.copyWith(tertiaryColor: c))),
               // §themePlus — couleurs d'état (favori / reprise / erreur / succès)
-              _sectionLabel('Couleurs d\'état', cs),
-              _buildColorRow('Favori ❤',     _config.favoriteColor,
+              _sectionLabel(context.l10n.themeSectionStateColors, cs),
+              _buildColorRow(context.l10n.themeColorFavorite, _config.favoriteColor,
                   (c) => _apply(_config.copyWith(favoriteColor: c))),
-              _buildColorRow('Reprise / Alerte', _config.warningColor,
+              _buildColorRow(context.l10n.themeColorWarning, _config.warningColor,
                   (c) => _apply(_config.copyWith(warningColor: c))),
-              _buildColorRow('Erreur',       _config.errorColor,
+              _buildColorRow(context.l10n.themeColorError, _config.errorColor,
                   (c) => _apply(_config.copyWith(errorColor: c))),
-              _buildColorRow('Succès',       _config.successColor,
+              _buildColorRow(context.l10n.themeColorSuccess, _config.successColor,
                   (c) => _apply(_config.copyWith(successColor: c))),
-              _sectionLabel('Effets', cs),
+              _sectionLabel(context.l10n.themeSectionEffects, cs),
               _buildSlider(
-                label:     'Glow',
+                label:     context.l10n.themeGlow,
                 value:     _config.glowIntensity,
                 min:       0.0,
                 max:       1.0,
@@ -147,7 +148,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
                 onChanged: (v) => _apply(_config.copyWith(glowIntensity: v)),
               ),
               _buildSlider(
-                label:     'Arrondis',
+                label:     context.l10n.themeRadius,
                 value:     _config.borderRadius,
                 min:       0.0,
                 max:       16.0,
@@ -155,9 +156,9 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
                 display:   '${_config.borderRadius.toStringAsFixed(0)}px',
                 onChanged: (v) => _apply(_config.copyWith(borderRadius: v)),
               ),
-              _sectionLabel('Mode', cs),
+              _sectionLabel(context.l10n.themeSectionMode, cs),
               _buildThemeModeRow(cs),
-              _sectionLabel('Aperçu', cs),
+              _sectionLabel(context.l10n.themeSectionPreview, cs),
               _buildPreviewCard(),
               const SizedBox(height: 8),
             ],
@@ -422,10 +423,10 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
   // ── Mode sombre/clair/système ────────────────────────────────────────────────
 
   Widget _buildThemeModeRow(ColorScheme cs) {
-    const modes = [
-      (ThemeMode.dark,   'Sombre',  Icons.dark_mode_outlined),
-      (ThemeMode.light,  'Clair',   Icons.light_mode_outlined),
-      (ThemeMode.system, 'Système', Icons.brightness_auto),
+    final modes = [
+      (ThemeMode.dark, context.l10n.themeModeDark, Icons.dark_mode_outlined),
+      (ThemeMode.light, context.l10n.themeModeLight, Icons.light_mode_outlined),
+      (ThemeMode.system, context.l10n.themeModeSystem, Icons.brightness_auto),
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -576,8 +577,8 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
                             ? [BoxShadow(color: p.withAlpha((255 * 0.4 * gl).round()), blurRadius: 6)]
                             : null,
                       ),
-                      child: const Center(
-                        child: Text('▶  Lire',
+                      child: Center(
+                        child: Text(context.l10n.themePreviewPlay,
                             style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
                       ),
                     ),

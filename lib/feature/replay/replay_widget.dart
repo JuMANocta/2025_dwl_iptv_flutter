@@ -5,6 +5,7 @@ import '../../core/utils/user_error.dart';
 import '../../data/services/replay_service.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/tv/focusable_card.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Feuille affichant les programmes en replay pour un stream donné.
 class ReplaySheet extends StatelessWidget {
@@ -42,11 +43,11 @@ class ReplaySheet extends StatelessWidget {
           debugPrint('ReplaySheet FutureBuilder: Nombre de programmes reçus: ${programs.length}');
           if (programs.isEmpty) {
             // §12-b — Empty state unifié.
-            return const EmptyState(
+            return EmptyState(
               icon: Icons.replay_circle_filled,
-              title: 'Aucun replay disponible',
+              title: context.l10n.replayNoneTitle,
               subtitle:
-                  'Cette chaîne n\'expose pas d\'EPG Xtream ou son timeshift est désactivé. Essaie le picker manuel depuis l\'action sheet TV.',
+                  context.l10n.replayNoneBody,
             );
           }
           return ListView.separated(

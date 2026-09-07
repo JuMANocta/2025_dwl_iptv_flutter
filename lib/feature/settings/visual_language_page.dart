@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/themes/colors.dart';
 import '../../data/services/visual_language_service.dart';
 import '../../widgets/tv/focusable_card.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §posterLang (2026-09-05) — « Langue des visuels ».
 ///
@@ -40,9 +41,8 @@ class _VisualLanguagePageState extends State<VisualLanguagePage> {
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(
       content: Text(
-        'Visuels en ${VisualLanguageService.labelOf(v).toLowerCase()} — '
-        'les affiches déjà affichées gardent leur langue jusqu\'au prochain '
-        'chargement.',
+        context.l10n.visualLangApplied(
+            VisualLanguageService.labelOf(v).toLowerCase()),
       ),
       duration: const Duration(seconds: 4),
     ));
@@ -52,13 +52,12 @@ class _VisualLanguagePageState extends State<VisualLanguagePage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Langue des visuels')),
+      appBar: AppBar(title: Text(context.l10n.visualLangTitle)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
           Text(
-            'Affiches, images de fond et textes venus de TMDB. '
-            'L\'interface de l\'application reste en français.',
+            context.l10n.visualLangUiStaysFrench,
             style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
           ),
           const SizedBox(height: 16),
@@ -90,9 +89,7 @@ class _VisualLanguagePageState extends State<VisualLanguagePage> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Une affiche fournie par votre liste IPTV n\'est jamais '
-                  'remplacée : ce choix ne s\'applique qu\'aux visuels que '
-                  'l\'application va chercher elle-même.',
+                  context.l10n.visualLangNote,
                   style: TextStyle(
                       color: cs.onSurfaceVariant, fontSize: 12, height: 1.4),
                 ),
@@ -106,10 +103,10 @@ class _VisualLanguagePageState extends State<VisualLanguagePage> {
 
   String _subtitleOf(VisualLanguage v) => switch (v) {
         VisualLanguage.auto =>
-          'Actuellement : ${VisualLanguageService.resolvedTag}',
-        VisualLanguage.fr => 'Affiches et textes français quand ils existent',
-        VisualLanguage.en => 'Affiches et textes anglais',
+          context.l10n.visualLangCurrently(VisualLanguageService.resolvedTag),
+        VisualLanguage.fr => context.l10n.visualLangSubFr,
+        VisualLanguage.en => context.l10n.visualLangSubEn,
         VisualLanguage.original =>
-          'Affiche sans texte quand elle existe, sinon la version d\'origine',
+          context.l10n.visualLangSubOriginal,
       };
 }

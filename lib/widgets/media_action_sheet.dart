@@ -24,6 +24,7 @@ import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/quality_buttons.dart';
 import 'package:aetherStream/widgets/epg_block.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import '../l10n/l10n_ext.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sélecteur de version (films/séries avec plusieurs variantes)
@@ -40,7 +41,7 @@ Future<M3uEntry?> showVersionSelector(BuildContext context, List<M3uEntry> versi
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text("Choisir une version", style: Theme.of(context).textTheme.titleLarge),
+          child: Text(context.l10n.sheetChooseVersion, style: Theme.of(context).textTheme.titleLarge),
         ),
         const Divider(height: 1),
         Flexible(
@@ -51,7 +52,7 @@ Future<M3uEntry?> showVersionSelector(BuildContext context, List<M3uEntry> versi
             itemBuilder: (ctx, i) {
               final v          = versions[i];
               final year       = v.title.year;
-              final extraInfo  = v.title.versionLabel ?? "Standard / Inconnue";
+              final extraInfo  = v.title.versionLabel ?? L10n.current.sheetStandardUnknown;
               final qChip      = qualityChip(v.title);
               final langChips  = languageChips(v.title);
               final allChips   = <Widget>[];
@@ -71,7 +72,7 @@ Future<M3uEntry?> showVersionSelector(BuildContext context, List<M3uEntry> versi
 
               if (allChips.isNotEmpty) {
                 titleWidget = Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: allChips);
-                if (extraInfo.isNotEmpty && extraInfo != "Standard / Inconnue") {
+                if (extraInfo.isNotEmpty && extraInfo != L10n.current.sheetStandardUnknown) {
                   subtitleWidget = Text(extraInfo, style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant));
                 }
               } else {
@@ -300,7 +301,7 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => DetailsPage(entry: entry)));
                     },
                     icon: const Icon(Icons.info_outline),
-                    label: const Text("Fiche Détaillée & Infos"),
+                    label: Text(L10n.current.sheetDetails),
                     style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
                   ),
                 ),
@@ -502,7 +503,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                         );
                       } else {
                         ScaffoldMessenger.of(navigatorKey.currentContext!)..hideCurrentSnackBar()..showSnackBar(
-                          const SnackBar(content: Text("Replay indisponible pour ce flux")),
+                          SnackBar(content: Text(L10n.current.sheetReplayUnavailable)),
                         );
                       }
                     }
@@ -596,7 +597,7 @@ class _PlayResumeTiles extends StatelessWidget {
             ListTile(
               leading: Icon(Icons.play_arrow, color: kAccentSecondary),
               title: Text(
-                'Reprendre depuis ${_formatResumeLabel(p.position)}',
+                context.l10n.cardResumeFrom(_formatResumeLabel(p.position)),
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   color: kAccentSecondary,
@@ -613,7 +614,7 @@ class _PlayResumeTiles extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.restart_alt),
               title: Text(
-                'Lire depuis le début',
+                context.l10n.cardPlayFromStart,
                 style: TextStyle(
                   fontSize: 13,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -630,7 +631,7 @@ class _PlayResumeTiles extends StatelessWidget {
             ListTile(
               leading: Icon(Icons.history_toggle_off, color: kWarning),
               title: Text(
-                'Oublier la reprise',
+                context.l10n.cardForgetResume,
                 style: TextStyle(fontSize: 13, color: kWarning),
               ),
               dense: true,
@@ -643,10 +644,10 @@ class _PlayResumeTiles extends StatelessWidget {
                 final snapshot = p;
                 final done = await confirmOrUndo(
                   context,
-                  title: 'Oublier la reprise ?',
-                  question: 'La position de lecture de ce titre sera oubliée.',
-                  confirmLabel: 'Oublier',
-                  doneMessage: 'Reprise oubliée',
+                  title: context.l10n.cardForgetResumeTitle,
+                  question: context.l10n.cardForgetResumeQuestion,
+                  confirmLabel: context.l10n.cardForgetConfirm,
+                  doneMessage: context.l10n.cardResumeForgotten,
                   action: () => WatchProgressService.clearProgress(entry.url),
                   onUndo: () {
                     WatchProgressService.saveProgress(
@@ -703,8 +704,8 @@ class _FavoriteToggleTile extends StatelessWidget {
             if (!context.mounted) return;
             messenger..hideCurrentSnackBar()..showSnackBar(SnackBar(
               content: Text(added
-                  ? '⭐ "${entry.displayName}" ajouté aux favoris'
-                  : '🗑️ "${entry.displayName}" retiré des favoris'),
+                  ? L10n.current.detFavoriteAdded(entry.displayName)
+                  : L10n.current.detFavoriteRemoved(entry.displayName)),
               duration: const Duration(seconds: 2),
             ));
           },
