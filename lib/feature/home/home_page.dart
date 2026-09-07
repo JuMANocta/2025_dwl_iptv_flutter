@@ -41,6 +41,7 @@ import 'package:aetherStream/widgets/measured_quality_badge.dart';
 import 'package:aetherStream/data/services/inferred_category_service.dart';
 import 'package:aetherStream/feature/home/inferred_delta.dart';
 import 'package:aetherStream/feature/home/home_row_index.dart';
+import 'package:aetherStream/feature/home/deferred_refresh.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -119,6 +120,22 @@ class _HomePageState extends State<HomePage> with RouteAware {
   /// 3 pages, 9 rangées, 49 à 110 cartes.
   final ValueNotifier<int> _tabIndex = ValueNotifier<int>(_initialPageIndex);
   static const int _initialPageIndex = 1; // Films par défaut
+
+  /// §pageTick (2026-09-07) — Le SIGNAL DE CONTENU des trois pages.
+  ///
+  /// Depuis §tabPageKeep, un `setState` de cette page ne reconstruit plus les
+  /// `_TypePage` (instances stables, sautées par `identical`). Tout ce que
+  /// `_homeListenable` relayait aux pages sans changer leurs entrées — un cœur
+  /// (rangée ⭐), une reprise (hero « Reprendre »), une catégorie apprise, une
+  /// fusion TMDB, un réglage d'Optimisation — restait donc FIGÉ jusqu'à la
+  /// prochaine reconstruction fortuite (signalé : un favori retiré restait
+  /// dans la rangée jusqu'au redémarrage). Ce compteur est bumpé à chaque
+  /// notification en avant-plan, et au retour du lecteur ; chaque page
+  /// l'écoute et ne se reconstruit que si elle est l'onglet VISIBLE (sinon
+  /// elle se note périmée et rattrape à son retour à l'écran —
+  /// `DeferredRefresh`). Objet stable : il n'entre pas dans la clé de
+  /// `_typePages`.
+  final ValueNotifier<int> _contentTick = ValueNotifier<int>(0);
 
   late final PageController _pageController;
   int get _currentIndex => _tabIndex.value;
@@ -309,6 +326,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // Rejouer une éventuelle notification ignorée pendant l'arrière-plan.
     if (_pendingRefresh && mounted) {
       _pendingRefresh = false;
+      _contentTick.value++; // §pageTick — le hero doit voir la reprise
       setState(() {});
     }
   }
@@ -342,7 +360,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
       _pendingRefresh = true;
       return;
     }
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    _contentTick.value++; // §pageTick — les pages stables l'écoutent
+    setState(() {});
   }
 
   @override
@@ -356,6 +376,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
     _searchFocus.dispose();
     _pageController.dispose();
     _tabIndex.dispose();
+    _contentTick.dispose();
     StreamAccountService.currentAccountIdNotifier
         .removeListener(_onCurrentAccountChanged);
     super.dispose();
@@ -576,6 +597,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
         entries: series,
         topInset: liftedTopInset,
         tabsBuilder: _buildTabs,
+        contentTick: _contentTick,
       ),
       _TypePage(
         key: ValueKey('movie_$_activeAccountId'),
@@ -583,6 +605,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
         entries: movies,
         topInset: liftedTopInset,
         tabsBuilder: _buildTabs,
+        contentTick: _contentTick,
       ),
       _TypePage(
         key: ValueKey('tv_$_activeAccountId'),
@@ -592,6 +615,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
         // Chaînes démarre à la même hauteur (plus de saut vertical au swipe).
         topInset: liftedTopInset,
         tabsBuilder: _buildTabs,
+        contentTick: _contentTick,
       ),
     ];
     _pagesCache = pages;
@@ -1283,10 +1307,14 @@ class _TypePage extends StatefulWidget {
   /// pour que l'underline reste cohérent au swipe.
   final WidgetBuilder? tabsBuilder;
 
+  /// §pageTick — Signal de contenu émis par la HomePage (cf. `_contentTick`).
+  final ValueListenable<int> contentTick;
+
   const _TypePage({
     super.key,
     required this.type,
     required this.entries,
+    required this.contentTick,
     this.topInset = 0,
     this.tabsBuilder,
   });
@@ -1729,14 +1757,82 @@ class _TypePageState extends State<_TypePage>
   // reconstruite les retrouve immédiatement (cf. `_sharedTrending`).
   List<TrendingTitle>? get _trendingTitles => _sharedTrending[widget.type];
 
+  // §pageTick — Le gardien : un signal reconstruit la page si elle est
+  // l'onglet visible, sinon elle se note périmée et rattrape à son retour.
+  late final DeferredRefresh _refresh =
+      DeferredRefresh(apply: _rebuildOnTick);
+
+  /// Le notifieur de visibilité de l'onglet, pris SANS dépendance (cf.
+  /// `didChangeDependencies`).
+  ValueListenable<TickerModeData>? _tickerMode;
+
   @override
   void initState() {
     super.initState();
+    widget.contentTick.addListener(_onContentTick);
     // Tendances seulement pour films/séries (pas de matching TMDB sur le live TV).
     if (widget.type != M3uContentType.tv) {
       _loadTrending();
       _loadTmdbRows();
     }
+  }
+
+  @override
+  void didUpdateWidget(covariant _TypePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.contentTick, widget.contentTick)) {
+      oldWidget.contentTick.removeListener(_onContentTick);
+      widget.contentTick.addListener(_onContentTick);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // §pageTick — ⚠️ `getValuesNotifier`, PAS `TickerMode.of` : `of` créerait
+    // une dépendance et cette page se reconstruirait à CHAQUE bascule
+    // d'onglet — exactement ce que §tabPageKeep a retiré (0 page par
+    // bascule). Le notifieur, lui, ne coûte qu'un rappel quand la visibilité
+    // change ; c'est le `TickerMode(enabled: index == courant)` posé par
+    // `_pageFocusWrap` qui dit si cette page est l'onglet visible.
+    final ValueListenable<TickerModeData> n =
+        TickerMode.getValuesNotifier(context);
+    if (!identical(n, _tickerMode)) {
+      _tickerMode?.removeListener(_onVisibilityChanged);
+      _tickerMode = n..addListener(_onVisibilityChanged);
+      _refresh.visible = n.value.enabled;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.contentTick.removeListener(_onContentTick);
+    _tickerMode?.removeListener(_onVisibilityChanged);
+    super.dispose();
+  }
+
+  void _onContentTick() {
+    if (!mounted) return;
+    _refresh.signal();
+    if (_refresh.stale) {
+      debugPrint('🔔 §pageTick (${widget.type.name}) : différée (page cachée)');
+    }
+  }
+
+  /// Appelé de façon synchrone par `_TickerModeState.didUpdateWidget`, donc
+  /// PENDANT le build de la HomePage : marquer un descendant de l'élément en
+  /// cours de build est permis, et la page est reconstruite dans la même
+  /// frame — elle arrive à l'écran déjà à jour.
+  void _onVisibilityChanged() {
+    final ValueListenable<TickerModeData>? n = _tickerMode;
+    if (n == null || !mounted) return;
+    _refresh.visible = n.value.enabled;
+  }
+
+  void _rebuildOnTick() {
+    if (!mounted) return;
+    debugPrint('🔔 §pageTick (${widget.type.name}) : reconstruite');
+    setState(() {});
   }
 
   /// §tmdbRows — Charge les deux rangées TMDB du type courant, puis force le
