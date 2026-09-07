@@ -10,6 +10,8 @@
 /// les 5 valeurs de l'enum pilotent déjà les chips à quatre endroits, et une
 /// migration complète coûterait plus cher qu'elle ne rapporte.
 library;
+import '../../l10n/l10n_ext.dart';
+
 
 /// Ce qui empêche une liste d'être en mémoire.
 ///
@@ -79,44 +81,44 @@ class LoadFailure {
 String labelForFailure(LoadFailureKind kind) {
   switch (kind) {
     case LoadFailureKind.never:
-      return 'NON CHARGÉ';
+      return L10n.current.failNotLoaded;
     case LoadFailureKind.unloadedIdle:
-      return 'SUR DISQUE';
+      return L10n.current.failOnDisk;
     case LoadFailureKind.deferred:
-      return 'EN ATTENTE';
+      return L10n.current.failWaiting;
     case LoadFailureKind.network:
-      return 'ÉCHEC RÉSEAU';
+      return L10n.current.failNetwork;
     case LoadFailureKind.busy:
-      return 'PANEL SATURÉ';
+      return L10n.current.failPanelBusy;
     case LoadFailureKind.amputated:
-      return 'LISTE INCOMPLÈTE';
+      return L10n.current.failIncomplete;
     case LoadFailureKind.parse:
-      return 'ANALYSE ÉCHOUÉE';
+      return L10n.current.failParse;
     case LoadFailureKind.cacheGone:
-      return 'CACHE PERDU';
+      return L10n.current.failCacheGone;
     case LoadFailureKind.noSource:
-      return 'AUCUNE DONNÉE';
+      return L10n.current.failNoData;
     case LoadFailureKind.badAccount:
-      return 'COMPTE INVALIDE';
+      return L10n.current.failBadAccount;
   }
 }
 
 /// Phrase complète pour l'utilisateur, sous la chip.
 String describeFailure(LoadFailure f) {
   final String base = switch (f.kind) {
-    LoadFailureKind.never => 'Cette liste n\'a pas encore été chargée.',
+    LoadFailureKind.never => L10n.current.failExplainNever,
     LoadFailureKind.unloadedIdle =>
-      'Mémoire libérée ; la liste revient dès qu\'on en a besoin.',
-    LoadFailureKind.deferred => 'Mise à jour reportée après le démarrage.',
-    LoadFailureKind.network => 'Serveur injoignable.',
+        L10n.current.failExplainUnloaded,
+    LoadFailureKind.deferred => L10n.current.failExplainDeferred,
+    LoadFailureKind.network => L10n.current.failExplainNetwork,
     LoadFailureKind.busy =>
-      'Le fournisseur a refusé : trop de connexions simultanées.',
+        L10n.current.failExplainPanelBusy,
     LoadFailureKind.amputated =>
-      'Le catalogue est arrivé incomplet ; l\'ancien a été conservé.',
-    LoadFailureKind.parse => 'La liste n\'a pas pu être analysée.',
-    LoadFailureKind.cacheGone => 'Le cache analysé est illisible.',
-    LoadFailureKind.noSource => 'Aucune donnée en cache pour cette liste.',
-    LoadFailureKind.badAccount => 'Configuration du compte invalide.',
+        L10n.current.failExplainIncomplete,
+    LoadFailureKind.parse => L10n.current.failExplainParse,
+    LoadFailureKind.cacheGone => L10n.current.failExplainCacheGone,
+    LoadFailureKind.noSource => L10n.current.failExplainNoSource,
+    LoadFailureKind.badAccount => L10n.current.failExplainBadAccount,
   };
   final String? d = f.detail;
   return (d == null || d.isEmpty) ? base : '$base $d';

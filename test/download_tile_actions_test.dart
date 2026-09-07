@@ -71,8 +71,15 @@ void main() {
     // existe. Deux exceptions, où il n'y a rien à reprendre :
     //   - `finalizing` : le transfert réseau est déjà terminé ;
     //   - `completed`  : le `.part` a été renommé en fichier final → relancer
-    //     repartirait de zéro.
-    const noRestart = {DownloadStatus.finalizing, DownloadStatus.completed};
+    //     repartirait de zéro ;
+    //   - `queued` (§dlQueue, 2026-09-06) : rien n'a commencé, et « forcer le
+    //     départ » ouvrirait une seconde connexion sur le même abonnement
+    //     (403 chez les panels). La file la fera partir d'elle-même.
+    const noRestart = {
+      DownloadStatus.finalizing,
+      DownloadStatus.completed,
+      DownloadStatus.queued,
+    };
     for (final s in DownloadStatus.values) {
       final a = downloadTileActions(s);
       final hasRestart = a.primary == DownloadAction.restart ||

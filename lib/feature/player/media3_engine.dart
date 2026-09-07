@@ -8,6 +8,7 @@ import '../../core/settings/performance_settings_service.dart';
 import 'playback_engine.dart';
 import 'playback_error_message.dart';
 import 'video_stats.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §engineVendor étape 4 — Implémentation **Media3/ExoPlayer** de
 /// [AetherPlaybackEngine], sur le paquet vendoré `packages/aether_video/`.
@@ -504,7 +505,7 @@ class Media3Engine implements AetherPlaybackEngine {
       height: _positive(m['height']),
       // `hwdec` est un mot mpv. On y remet une valeur LISIBLE plutôt que rien,
       // pour que l'encart continue de dire « matériel · <décodeur> ».
-      hwdec: hw == null ? null : (hw ? (m['decoder'] as String? ?? 'matériel') : 'no'),
+      hwdec: hw == null ? null : (hw ? (m['decoder'] as String? ?? L10n.current.statsHardware) : 'no'),
       codec: m['codec'] as String?,
       decoder: m['decoder'] as String?,
       containerFps: _positiveDouble(m['frameRate']),

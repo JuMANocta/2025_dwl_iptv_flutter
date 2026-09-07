@@ -41,7 +41,16 @@ import 'package:flutter_test/flutter_test.dart';
 const List<String> kExcludedPaths = [
   'lib/l10n/',
   'lib/feature/search/m3u_filter.dart',
+  // §l10nAll tranche 9 — la couche d'AFFICHAGE des catégories : ses chaînes
+  // françaises sont les CLÉS métier de `m3u_filter.dart` (`case 'Comédie':`),
+  // pas des textes d'interface. Le texte affiché, lui, sort de la l10n.
+  'lib/feature/search/category_labels.dart',
+  // La console web est servie à un NAVIGATEUR : ni son HTML ni les réponses
+  // JSON de son serveur ne passent par `Localizations` (surface séparée,
+  // hors du système l10n de Flutter).
   'lib/feature/settings/web_console/web_console_html.dart',
+  'lib/data/services/web_console_service.dart',
+  'lib/data/services/remote_control_service.dart',
 ];
 
 /// Marqueurs de ligne de diagnostic : jamais montré à l'utilisateur.
@@ -204,5 +213,10 @@ void main() {
     expect(File('lib/feature/search/m3u_filter.dart').existsSync(), isTrue,
         reason: 'm3u_filter.dart exclu du scan : ses chaînes sont des valeurs '
             'métier persistées. Si le fichier bouge, revoir kExcludedPaths.');
+    expect(File('lib/feature/search/category_labels.dart').existsSync(), isTrue,
+        reason: 'category_labels.dart exclu du scan : ses chaînes sont les CLÉS '
+            'de m3u_filter.dart, pas des textes. Si le fichier bouge, revoir '
+            'kExcludedPaths — et verifier que les rangees de la home '
+            'passent toujours par categoryDisplayLabel().');
   });
 }

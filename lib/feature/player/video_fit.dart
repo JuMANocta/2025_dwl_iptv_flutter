@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §videoFit — Format d'image du lecteur.
 ///
@@ -9,38 +10,35 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// on ne perd rien, on rogne, on déforme.
 enum VideoFitMode {
   /// Image entière, proportions respectées. Bandes noires possibles.
-  original(
-    BoxFit.contain,
-    'Original',
-    'Image entière · bandes noires possibles',
-    Icons.fit_screen_rounded,
-  ),
+  original(BoxFit.contain, Icons.fit_screen_rounded),
 
   /// Agrandit jusqu'à remplir l'écran **sans déformer** : les bandes noires
   /// disparaissent, mais les bords de l'image sortent du cadre.
-  zoom(
-    BoxFit.cover,
-    'Zoom',
-    'Efface les bandes noires · rogne les bords',
-    Icons.zoom_out_map_rounded,
-  ),
+  zoom(BoxFit.cover, Icons.zoom_out_map_rounded),
 
   /// Remplit l'écran en **déformant** l'image. Aucune perte de contenu, mais
   /// les proportions sont fausses.
-  stretch(
-    BoxFit.fill,
-    'Plein écran',
-    'Remplit tout · image légèrement déformée',
-    Icons.aspect_ratio_rounded,
-  );
+  stretch(BoxFit.fill, Icons.aspect_ratio_rounded);
 
-  const VideoFitMode(this.boxFit, this.label, this.description, this.icon);
+  const VideoFitMode(this.boxFit, this.icon);
 
   /// Ce qui est réellement passé à `Video(fit:)`.
   final BoxFit boxFit;
-  final String label;
-  final String description;
   final IconData icon;
+
+  /// §l10nAll — Libellé et description viennent de la l10n : une valeur
+  /// d'enum ne peut pas porter un texte traduit (elle est `const`).
+  String get label => switch (this) {
+        VideoFitMode.original => L10n.current.fitOriginal,
+        VideoFitMode.zoom => L10n.current.fitZoom,
+        VideoFitMode.stretch => L10n.current.fitFill,
+      };
+
+  String get description => switch (this) {
+        VideoFitMode.original => L10n.current.fitContainSub,
+        VideoFitMode.zoom => L10n.current.fitCoverSub,
+        VideoFitMode.stretch => L10n.current.fitFillSub,
+      };
 
   /// Mode suivant dans le cycle (bouton inline du lecteur).
   VideoFitMode get next => values[(index + 1) % values.length];

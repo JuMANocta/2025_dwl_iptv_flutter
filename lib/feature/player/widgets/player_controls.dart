@@ -4,6 +4,7 @@ import '../playback_engine.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'player_options_sheet.dart' show kPlaybackSpeeds;
+import '../../../l10n/l10n_ext.dart';
 
 /// Overlay de contrôles du player.
 ///
@@ -361,8 +362,8 @@ class _PlayerControlsState extends State<PlayerControls> {
                     padding: const EdgeInsets.only(right: 4),
                     child: _TapTarget(
                       tooltip: widget.castActive
-                          ? 'Diffusion en cours'
-                          : 'Diffuser sur un Chromecast',
+                          ? context.l10n.ctrlCastActive
+                          : context.l10n.ctrlCast,
                       onTap: widget.onCast!,
                       child: Icon(
                         widget.castActive
@@ -380,7 +381,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: _TapTarget(
-                      tooltip: 'Réduire en fenêtre',
+                      tooltip: context.l10n.ctrlPip,
                       onTap: widget.onEnterPip!,
                       child: const Icon(
                         Icons.picture_in_picture_alt_rounded,
@@ -491,7 +492,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                       // d'options (format d'image, infos vidéo…).
                       if (widget.onShowOptions != null) ...[
                         _TapTarget(
-                          tooltip: 'Options de lecture',
+                          tooltip: context.l10n.ctrlOptions,
                           onTap: () {
                             widget.onShowOptions?.call();
                             widget.onInteraction();
@@ -508,7 +509,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                       // sous-titres (PlayerPage suspend l'auto-hide pendant).
                       if (widget.onShowTracks != null) ...[
                         _TapTarget(
-                          tooltip: 'Pistes audio et sous-titres',
+                          tooltip: context.l10n.ctrlTracks,
                           onTap: () {
                             widget.onShowTracks?.call();
                             widget.onInteraction();
@@ -523,7 +524,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                       ],
                       // Sélecteur de vitesse.
                       _TapTarget(
-                        tooltip: 'Vitesse de lecture',
+                        tooltip: context.l10n.ctrlSpeed,
                         onTap: _cycleSpeed,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -557,7 +558,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                       if (widget.onNextEpisode != null) ...[
                         const SizedBox(width: 4),
                         _TapTarget(
-                          tooltip: 'Episode suivant',
+                          tooltip: context.l10n.ctrlNextEpisode,
                           onTap: () {
                             widget.onNextEpisode?.call();
                             widget.onInteraction();
@@ -657,10 +658,10 @@ class _ContentBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (Color color, String label, bool showDot) = switch (type) {
-      PlayerBadgeType.live   => (kBadgeLive,        'DIRECT', true),
-      PlayerBadgeType.replay => (kBadgeReplay,      'REPLAY', false),
-      PlayerBadgeType.movie  => (kBadgeMovie,       'FILM',   false),
-      PlayerBadgeType.series => (kBadgeSeries,      'SÉRIE',  false),
+      PlayerBadgeType.live   => (kBadgeLive, context.l10n.ctrlBadgeLive, true),
+      PlayerBadgeType.replay => (kBadgeReplay, context.l10n.ctrlBadgeReplay, false),
+      PlayerBadgeType.movie  => (kBadgeMovie, context.l10n.ctrlBadgeMovie, false),
+      PlayerBadgeType.series => (kBadgeSeries, context.l10n.ctrlBadgeSeries, false),
       PlayerBadgeType.none   => (Colors.transparent, '',      false),
     };
 
@@ -750,7 +751,7 @@ class _LockButton extends StatelessWidget {
         color: Colors.white70,
         size: 22,
       ),
-      tooltip: locked ? 'Déverrouiller' : 'Verrouiller',
+      tooltip: locked ? context.l10n.ctrlUnlock : context.l10n.ctrlLock,
       onPressed: onTap,
     );
   }

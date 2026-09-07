@@ -363,13 +363,61 @@ class ParsedPlaylistService {
   /// chargement est fait **pendant le démarrage**, où il devient une étape
   /// annoncée. En arrière-plan (le cas historique), les deux restent nuls et
   /// la méthode est silencieuse comme avant.
+  /// §fleetSingle (2026-09-06) — UNE analyse à la fois par compte.
+  ///
+  /// **Le doublon constaté.** Le démarrage attend les listes secondaires dans
+  /// un budget ; ce qui déborde « continue en arrière-plan ». Quatre secondes
+  /// après l'accueil, le réconciliateur (§fleetLoad) voyait cette liste « pas
+  /// en mémoire » — elle était encore en ANALYSE — et relançait la même
+  /// analyse : deux parsings du même catalogue en parallèle, des centaines de
+  /// Mo, sur un téléviseur. Un second appel pour un compte déjà en cours rend
+  /// désormais LE MÊME futur : il attend, il ne refait pas.
+  static final Map<String, Future<void>> _loadsInFlight =
+      <String, Future<void>>{};
+
+  static Future<T> _singleFlight<T>(
+      String accountId, Future<T> Function() body) {
+    final Future<void>? running = _loadsInFlight[accountId];
+    if (running != null) {
+      debugPrint('⏸️ §fleetSingle : $accountId — analyse déjà en cours, on l\'attend');
+      return running.then((_) => null as T);
+    }
+    final Future<T> f = body();
+    _loadsInFlight[accountId] = f.then((_) {}, onError: (_) {});
+    return f.whenComplete(() => _loadsInFlight.remove(accountId));
+  }
+
   static Future<void> loadSecondary(
     String accountId,
     String accountName,
     String m3uPath, {
     void Function(double)? onProgress,
     void Function(String)? onDetail,
+  }) {
+    if (_memory.containsKey(accountId) && !isStale(accountId)) {
+      _accountNames[accountId] = accountName;
+      setLoadState(accountId, AccountLoadState.loaded);
+      return Future<void>.value();
+    }
+    return _singleFlight<void>(
+      accountId,
+      () => _loadSecondaryImpl(accountId, accountName, m3uPath,
+          onProgress: onProgress, onDetail: onDetail),
+    );
+  }
+
+  /// §fleetSingle — Nombre de chargements RÉELLEMENT démarrés (test).
+  @visibleForTesting
+  static int loadStartsForTest = 0;
+
+  static Future<void> _loadSecondaryImpl(
+    String accountId,
+    String accountName,
+    String m3uPath, {
+    void Function(double)? onProgress,
+    void Function(String)? onDetail,
   }) async {
+    loadStartsForTest++;
     if (_memory.containsKey(accountId) && !isStale(accountId)) {
       _accountNames[accountId] = accountName;
       setLoadState(accountId, AccountLoadState.loaded);
@@ -693,6 +741,22 @@ class ParsedPlaylistService {
   ///   3. Bumpe `version` UNIQUEMENT à la fin → la home rebuild sur le nouvel état
   /// Le cache disque est régénéré à la suite (fire & forget).
   static Future<ParsedPlaylist?> reloadFromDisk(
+    String accountId,
+    String accountName,
+    String m3uPath, {
+    void Function(double)? onProgress,
+    void Function(String)? onDetail,
+  }) {
+    // §fleetSingle — même verrou que `loadSecondary` : un rechargement en
+    // cours n'est jamais doublé.
+    return _singleFlight<ParsedPlaylist?>(
+      accountId,
+      () => _reloadFromDiskImpl(accountId, accountName, m3uPath,
+          onProgress: onProgress, onDetail: onDetail),
+    );
+  }
+
+  static Future<ParsedPlaylist?> _reloadFromDiskImpl(
     String accountId,
     String accountName,
     String m3uPath, {

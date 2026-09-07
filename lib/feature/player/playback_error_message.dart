@@ -1,4 +1,5 @@
 import '../../core/diagnostics/log_buffer.dart' show sanitizeForLog;
+import '../../l10n/l10n_ext.dart';
 
 /// §userError — Traduit une erreur Media3 en phrase française affichable.
 ///
@@ -25,82 +26,81 @@ String playbackErrorMessage({
   // Erreurs synthétiques du paquet Dart (pas de code) : `Buffering timed out
   // after 30s` / `Load timed out after …`.
   if (name.isEmpty && raw.toLowerCase().contains('timed out')) {
-    return 'Le flux ne répond plus (délai dépassé).';
+    return L10n.current.perrTimedOut;
   }
 
   switch (name) {
     // --- Réseau / E-S -------------------------------------------------------
     case 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED':
-      return 'Connexion au serveur impossible. Vérifie le réseau.';
+      return L10n.current.perrConnectionFailed;
     case 'ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT':
-      return 'Le serveur a mis trop de temps à répondre.';
+      return L10n.current.perrConnectionTimeout;
     case 'ERROR_CODE_IO_BAD_HTTP_STATUS':
-      return 'Le serveur a refusé le flux (erreur HTTP). '
-          'Vérifie le compte ou réessaie plus tard.';
+      return L10n.current.perrBadHttpStatus;
     case 'ERROR_CODE_IO_FILE_NOT_FOUND':
-      return 'Flux introuvable sur le serveur.';
+      return L10n.current.perrFileNotFound;
     case 'ERROR_CODE_IO_NO_PERMISSION':
-      return 'Accès au flux refusé.';
+      return L10n.current.perrNoPermission;
     case 'ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED':
-      return 'Connexion non chiffrée refusée par le système.';
+      return L10n.current.perrCleartextNotPermitted;
     case 'ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE':
-      return 'Le serveur ne renvoie pas une vidéo (type de contenu inattendu).';
+      return L10n.current.perrInvalidContentType;
     case 'ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE':
-      return 'Position de lecture hors du flux.';
+      return L10n.current.perrPositionOutOfRange;
     case 'ERROR_CODE_IO_UNSPECIFIED':
-      return 'Erreur de lecture réseau.';
+      return L10n.current.perrNetwork;
     case 'ERROR_CODE_BEHIND_LIVE_WINDOW':
-      return 'Trop en retard sur le direct : reprise au direct.';
+      return L10n.current.perrBehindLiveWindow;
     case 'ERROR_CODE_TIMEOUT':
-      return 'Le lecteur n\'a pas répondu à temps.';
+      return L10n.current.perrPlayerTimeout;
 
     // --- Format / analyse ---------------------------------------------------
     case 'ERROR_CODE_PARSING_CONTAINER_MALFORMED':
     case 'ERROR_CODE_PARSING_MANIFEST_MALFORMED':
-      return 'Flux illisible (données corrompues ou inattendues).';
+      return L10n.current.perrMalformed;
     case 'ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED':
     case 'ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED':
-      return 'Format de flux non pris en charge.';
+      return L10n.current.perrUnsupportedFormat;
 
     // --- Décodage -----------------------------------------------------------
     case 'ERROR_CODE_DECODER_INIT_FAILED':
     case 'ERROR_CODE_DECODER_QUERY_FAILED':
-      return 'Impossible d\'initialiser le décodeur vidéo.';
+      return L10n.current.perrDecoderInit;
     case 'ERROR_CODE_DECODING_FAILED':
-      return 'Échec du décodage : le flux est peut-être abîmé.';
+      return L10n.current.perrDecodingFailed;
     case 'ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES':
-      return 'Ce flux dépasse les capacités de l\'appareil (définition ou débit).';
+      return L10n.current.perrExceedsCapabilities;
     case 'ERROR_CODE_DECODING_FORMAT_UNSUPPORTED':
-      return 'Codec non pris en charge par cet appareil.';
+      return L10n.current.perrCodecUnsupported;
     case 'ERROR_CODE_AUDIO_TRACK_INIT_FAILED':
     case 'ERROR_CODE_AUDIO_TRACK_WRITE_FAILED':
     case 'ERROR_CODE_AUDIO_TRACK_OFFLOAD_INIT_FAILED':
     case 'ERROR_CODE_AUDIO_TRACK_OFFLOAD_WRITE_FAILED':
-      return 'Sortie audio indisponible (piste ou format audio non lisible).';
+      return L10n.current.perrAudioOutput;
 
     // --- Divers -------------------------------------------------------------
     case 'ERROR_CODE_REMOTE_ERROR':
-      return 'Erreur du lecteur distant.';
+      return L10n.current.perrRemote;
     case 'ERROR_CODE_FAILED_RUNTIME_CHECK':
     case 'ERROR_CODE_UNSPECIFIED':
-      return 'Le lecteur a rencontré une erreur inattendue.';
+      return L10n.current.perrUnexpected;
   }
 
   if (name.startsWith('ERROR_CODE_DRM_')) {
-    return 'Contenu protégé (DRM) non lisible.';
+    return L10n.current.perrDrm;
   }
   if (name.startsWith('ERROR_CODE_IO_')) {
-    return 'Erreur de lecture réseau.';
+    return L10n.current.perrNetwork;
   }
   if (name.startsWith('ERROR_CODE_DECOD')) {
-    return 'Échec du décodage vidéo.';
+    return L10n.current.perrDecodeVideo;
   }
 
   // Repli : message brut du moteur, expurgé. « Unknown error » et « Source
   // error » ne disent rien à personne → phrase générique.
   final String lower = raw.toLowerCase();
   if (raw.isEmpty || lower == 'unknown error' || lower == 'source error') {
-    return 'Lecture impossible.';
+    return L10n.current.perrCannotPlay;
   }
-  return 'Lecture impossible : ${sanitizeForLog(raw)}';
+  return L10n.current.perrCannotPlayWith(sanitizeForLog(raw));
 }

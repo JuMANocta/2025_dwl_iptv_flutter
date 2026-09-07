@@ -19,6 +19,8 @@ import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/main.dart' show checkForUpdate;
 import '../../l10n/app_localizations.dart';
 import '../themes/colors.dart';
+import 'package:aetherStream/widgets/offline_banner.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
 ///
@@ -53,11 +55,7 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
   bool _isFullScreen = false;
 
   bool get _searchMode => _navIndex == 1;
-  int  get _stackIndex {
-    if (_navIndex == 2) return 1; // Downloads
-    if (_navIndex == 3) return 2; // Settings
-    return 0; // Home (mode browse ou search)
-  }
+  int  get _stackIndex => _navIndex == 2 ? 1 : 0;
 
   /// §backExit — Horodatage du dernier Back sur l'onglet Accueil (double-back).
   DateTime? _lastBackPress;
@@ -196,10 +194,9 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          content: Text(
-              '💡 Pour quitter l\'application : appuie 2 fois sur Retour'),
-          duration: Duration(seconds: 6),
+        ..showSnackBar(SnackBar(
+          content: Text(L10n.current.navExitHint),
+          duration: const Duration(seconds: 6),
         ));
       await prefs.setBool(key, true);
     } catch (_) {/* silent */}
@@ -237,16 +234,24 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
     final isTv = PlatformTv.isTv;
     final bool isWide = MediaQuery.of(context).size.width > 700;
     final bool useRail = isTv || isWide;
-    final stack = IndexedStack(
-      index: _stackIndex,
+    // §offlineBoot — Le bandeau hors ligne coiffe le contenu (accueil en
+    // cache, rien ne se lit en flux) ; absent, il ne prend aucune place.
+    final stack = Column(
       children: [
-        HomePage(
-          initialData: widget.initialData,
-          searchMode: _searchMode,
-          onExitSearch: () => setState(() => _navIndex = 0),
+        const OfflineBanner(),
+        Expanded(
+          child: IndexedStack(
+            index: _stackIndex,
+            children: [
+              HomePage(
+                initialData: widget.initialData,
+                searchMode: _searchMode,
+                onExitSearch: () => setState(() => _navIndex = 0),
+              ),
+              const DownloadsPage(),
+            ],
+          ),
         ),
-        const DownloadsPage(),
-        const SettingsPage(),
       ],
     );
 
@@ -384,9 +389,9 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(
-              content: Text('Appuie à nouveau sur Retour pour quitter'),
-              duration: Duration(seconds: 2),
+            SnackBar(
+              content: Text(L10n.current.navExitConfirm),
+              duration: const Duration(seconds: 2),
             ),
           );
       },
@@ -450,7 +455,7 @@ class _AppNavigationRail extends StatelessWidget {
         selectedLabelTextStyle:
             TextStyle(color: cs.primary, fontWeight: FontWeight.bold),
         onDestinationSelected: (i) {
-          if (i == 3 && isTv) {
+          if (i == 3) {
             onOpenSettings();
             return;
           }

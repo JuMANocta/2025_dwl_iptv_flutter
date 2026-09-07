@@ -16,7 +16,9 @@ import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:aetherStream/core/utils/network_kind.dart';
 import 'package:media_store_plus/media_store_plus.dart';
+import '../../../l10n/l10n_ext.dart';
 
 class DownloadTaskTile extends StatelessWidget {
   final DownloadTask task;
@@ -79,7 +81,7 @@ class DownloadTaskTile extends StatelessWidget {
           children: [
             Icon(Icons.stop_circle_outlined, color: kWarning),
             const SizedBox(width: 12),
-            const Expanded(child: Text('Arrêter le téléchargement ?')),
+            Expanded(child: Text(ctx.l10n.dlStopTitle)),
           ],
         ),
         content: Column(
@@ -96,10 +98,7 @@ class DownloadTaskTile extends StatelessWidget {
                   ?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            const Text(
-              'Ce qui est déjà téléchargé est conservé : tu pourras reprendre '
-              'là où ça s\'est arrêté.',
-            ),
+            Text(ctx.l10n.dlStopBody),
           ],
         ),
         actions: [
@@ -116,7 +115,7 @@ class DownloadTaskTile extends StatelessWidget {
               foregroundColor: kBlack,
             ),
             icon: const Icon(Icons.stop_rounded),
-            label: const Text('Arrêter'),
+            label: Text(ctx.l10n.dlStop),
             onPressed: () => Navigator.of(ctx).pop(true),
           ),
         ],
@@ -210,11 +209,11 @@ class DownloadTaskTile extends StatelessWidget {
       };
 
   static String _actionLabel(DownloadAction a) => switch (a) {
-        DownloadAction.play => 'Lire',
-        DownloadAction.monitor => 'Voir la progression',
+        DownloadAction.play => L10n.current.dlActionPlay,
+        DownloadAction.monitor => L10n.current.dlActionMonitor,
         DownloadAction.restart => 'Relancer',
-        DownloadAction.cancel => 'Arrêter le téléchargement',
-        DownloadAction.delete => 'Supprimer',
+        DownloadAction.cancel => L10n.current.dlActionCancel,
+        DownloadAction.delete => L10n.current.dlActionDelete,
       };
 
   Future<void> _deleteTask(BuildContext context) async {
@@ -405,7 +404,7 @@ class DownloadTaskTile extends StatelessWidget {
               Icon(Icons.refresh, size: 12, color: kWarning),
               const SizedBox(width: 3),
               Text(
-                'relancé ×${task.retryCount}',
+                L10n.current.dlRetriedTimes(task.retryCount),
                 style: TextStyle(
                   fontSize: 11,
                   color: kWarning,
@@ -490,6 +489,20 @@ class DownloadTaskTile extends StatelessWidget {
         return Text(
           "${l10n.terminalFinalizingMessage.trim()}...",
           style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant));
+      case DownloadStatus.queued:
+        // §dlQueue / §dlWifi — dire POURQUOI ça attend : le réseau d'abord
+        // (rien ne partira, quel que soit l'abonnement), sinon la place.
+        return ValueListenableBuilder<DownloadHold?>(
+          valueListenable: DownloadManagerService().hold,
+          builder: (context, h, _) => Text(
+            switch (h) {
+              DownloadHold.wifi => l10n.taskStatusWaitWifi,
+              DownloadHold.offline => l10n.taskStatusWaitNetwork,
+              null => l10n.taskStatusQueuedWhy,
+            },
+            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
+        );
       default:
         return Text(
           l10n.taskStatusPending(formattedDate),

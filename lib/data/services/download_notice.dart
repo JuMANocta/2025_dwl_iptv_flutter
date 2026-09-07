@@ -1,4 +1,5 @@
 import '../models/download_task.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §dlNotif — Décisions PURES pour la notification de téléchargement. Rien
 /// ici ne touche à une plateforme : c'est ce qui les rend testables sous
@@ -54,8 +55,8 @@ DownloadNotice? downloadNotice(
           text: '${(t.progress.clamp(0.0, 1.0) * 100).round()} %',
           progress: t.progress.clamp(0.0, 1.0),
         ),
-      DownloadStatus.queued => (text: 'En attente…', progress: null),
-      DownloadStatus.finalizing => (text: 'Finalisation…', progress: null),
+      DownloadStatus.queued => (text: L10n.current.dlQueued, progress: null),
+      DownloadStatus.finalizing => (text: L10n.current.dlFinalizing, progress: null),
       DownloadStatus.paused => (
           text: 'En pause',
           progress: t.progress.clamp(0.0, 1.0),
@@ -76,7 +77,7 @@ DownloadNotice? downloadNotice(
           .fold<double>(0, (a, b) => a + b) /
       active.length;
   return (
-    title: '${active.length} téléchargements',
+    title: L10n.current.dlActiveCount(active.length),
     text: '${(avg * 100).round()} % en moyenne',
     progress: avg,
     activeCount: active.length,

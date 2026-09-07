@@ -8,6 +8,7 @@ import '../../core/utils/user_error.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'boot_log.dart';
 import 'boot_shell.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §bootStates — Les états de démarrage, tous rendus dans le même décor.
 ///
@@ -48,8 +49,8 @@ class BootErrorScreen extends StatelessWidget {
       stateKey: 'error',
       child: _BootPanel(
         accent: kError,
-        title: 'Démarrage interrompu',
-        message: 'L\'application n\'a pas réussi à charger ta playlist.',
+        title: context.l10n.bootFailedTitle,
+        message: context.l10n.bootFailedBody,
         // §userError — `error.toString()` d'origine affichait le préfixe
         // Dart natif (« HttpException: … ») et, pour tout ce qui n'a pas déjà
         // été mis en français par `playlist_service.dart`, le message brut
@@ -57,10 +58,10 @@ class BootErrorScreen extends StatelessWidget {
         // technique reste consultable mais ne domine pas : il s'adresse au
         // diagnostic, pas à l'utilisateur qui veut juste relancer.
         detail: describeError(error),
-        primaryLabel: 'Réessayer',
+        primaryLabel: context.l10n.playerRetry,
         primaryIcon: Icons.refresh_rounded,
         onPrimary: onRetry,
-        secondaryLabel: 'Vérifier les comptes',
+        secondaryLabel: context.l10n.bootCheckAccounts,
         secondaryIcon: Icons.manage_accounts_outlined,
         onSecondary: onOpenAccounts,
       ),
@@ -92,16 +93,17 @@ class BootNoAccountScreen extends StatelessWidget {
       stateKey: 'noAccount',
       child: _BootPanel(
         accent: kAccentSecondary,
-        title: 'Aucun compte configuré',
+        title: context.l10n.bootNoAccountTitle,
         message: isTv
-            ? 'Scanne un QR code avec ton téléphone pour gérer tes playlists '
-                'sans avoir à taper à la télécommande.'
-            : 'Ajoute un compte pour commencer.',
+            ? context.l10n.bootNoAccountTv
+            : context.l10n.bootNoAccountPhone,
         // §webConsoleOnly — Sur TV, la Console web est l'action PRINCIPALE,
         // donc celle qui prend le focus D-pad : depuis une télécommande, la
         // saisie manuelle n'est pas une option raisonnable.
         primaryLabel:
-            isTv ? 'Configurer depuis mon téléphone' : 'Configurer les comptes',
+            isTv
+                ? context.l10n.bootConfigureFromPhone
+                : context.l10n.bootConfigureAccounts,
         primaryIcon: isTv ? Icons.phone_iphone : Icons.settings,
         onPrimary: isTv ? onOpenWebConsole : onOpenAccounts,
         // Sur mobile la Console web reste proposée en second (clavier de PC
@@ -110,7 +112,7 @@ class BootNoAccountScreen extends StatelessWidget {
             isTv ? 'Saisir manuellement' : 'Configurer via Console web',
         secondaryIcon: isTv ? Icons.keyboard_alt_outlined : Icons.language,
         onSecondary: isTv ? onOpenAccounts : onOpenWebConsole,
-        tertiaryLabel: 'Restaurer une sauvegarde',
+        tertiaryLabel: context.l10n.bootRestoreBackup,
         tertiaryIcon: Icons.cloud_download_outlined,
         onTertiary: onRestoreBackup,
       ),

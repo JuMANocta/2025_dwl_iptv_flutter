@@ -44,6 +44,7 @@ import '../../data/services/cast_service.dart';
 import '../../data/services/cast_relay_service.dart';
 import 'widgets/cast_sheet.dart';
 import 'widgets/cast_overlay.dart';
+import '../../l10n/l10n_ext.dart';
 
 enum VideoSourceType {
   network, // live / VOD réseau (et timeshift simple)
@@ -961,7 +962,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     final next = await _resolveNext();
     if (!mounted) return;
     if (next == null) {
-      AppSnackBar.show(context, 'Dernier épisode disponible.');
+      AppSnackBar.show(context, context.l10n.playerLastEpisode);
       return;
     }
     await _switchTo(next);
@@ -1282,8 +1283,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       if (mounted) {
         AppSnackBar.show(
           context,
-          'Piste audio incompatible — bascule sur '
-          '${next.title ?? next.language ?? "une autre piste"}',
+          context.l10n.playerAudioTrackSwitched(
+              next.title ?? next.language ?? context.l10n.playerOtherTrack),
           duration: const Duration(seconds: 3),
         );
       }
@@ -1299,7 +1300,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (mounted) {
       AppSnackBar.show(
         context,
-        'Aucune piste audio lisible sur ce fichier — lecture sans son',
+        context.l10n.playerNoAudioTrack,
         duration: const Duration(seconds: 4),
       );
     }
@@ -1363,8 +1364,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (_inPlaceRecoveries < _maxInPlaceRecoveries) {
       _inPlaceRecoveries++;
       _recovering = true;
-      _recoveryLabel.value = 'Reprise de la lecture… '
-          '($_inPlaceRecoveries/$_maxInPlaceRecoveries)';
+      _recoveryLabel.value =
+          L10n.current.playerRecovering(_inPlaceRecoveries, _maxInPlaceRecoveries);
       debugPrint('🔁 §liveRecover — tentative de reprise en place '
           '$_inPlaceRecoveries/$_maxInPlaceRecoveries');
       _ctrl.recoverInPlace().then((ok) {
@@ -1397,7 +1398,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       debugPrint(
           '⚠️ PlayerPage: erreur stream — retry $_retryCount/$_maxRetries dans 5s\n$error');
       _recoveryLabel.value =
-          'Reconnexion dans 5 s… ($_retryCount/$_maxRetries)';
+          L10n.current.playerReconnecting(_retryCount, _maxRetries);
       // Timer trackable → on peut l'annuler quand l'app passe en arrière-plan.
       _pendingRetryTimer?.cancel();
       _pendingRetryTimer = Timer(const Duration(seconds: 5), () {
@@ -1813,7 +1814,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // sur le film en pause.
             if (_cast == null && _relay != null)
               CastPreparingOverlay(
-                deviceName: _relayTarget?.displayName ?? 'le téléviseur',
+                deviceName: _relayTarget?.displayName ??
+                    context.l10n.castSheetDeviceFallback,
                 title: _media.title,
                 onCancel: _cancelRelay,
               ),
@@ -1942,7 +1944,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                   FilledButton.icon(
                     onPressed: _retry,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Réessayer'),
+                    label: Text(context.l10n.playerRetry),
                   ),
                   const SizedBox(width: 12),
                   TextButton(
@@ -2043,7 +2045,7 @@ class _BufferingOverlayState extends State<_BufferingOverlay> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  label ?? "Mise en mémoire tampon…",
+                  label ?? context.l10n.playerBuffering,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 12,

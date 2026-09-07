@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/platform/installer_service.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Informations sur une release disponible.
 class UpdateInfo {
@@ -101,7 +102,7 @@ class UpdateService {
       if (response.statusCode != 200) {
         debugPrint('⚠️ UpdateService: HTTP ${response.statusCode}');
         return UpdateUnavailable(
-            'GitHub a répondu HTTP ${response.statusCode}.');
+            L10n.current.updGithubHttp(response.statusCode));
       }
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -119,7 +120,9 @@ class UpdateService {
       if (asset == null) {
         debugPrint('⚠️ UpdateService: aucun $extension dans la release $tagName');
         return UpdateUnavailable(
-            "La dernière release ($tagName) ne contient pas de fichier $extension.");
+            Platform.isWindows
+                ? 'No .exe installer found in release $tagName'
+                : L10n.current.updNoApk(tagName));
       }
 
       final downloadUrl = asset['browser_download_url'] as String? ?? '';
@@ -149,11 +152,10 @@ class UpdateService {
       ));
     } on TimeoutException {
       debugPrint('⚠️ UpdateService: vérification échouée → délai dépassé');
-      return const UpdateUnavailable("GitHub n'a pas répondu à temps.");
+      return UpdateUnavailable(L10n.current.updTimeout);
     } catch (e) {
       debugPrint('⚠️ UpdateService: vérification échouée → $e');
-      return const UpdateUnavailable(
-          'Impossible de joindre GitHub. Vérifie la connexion.');
+      return UpdateUnavailable(L10n.current.updUnreachable);
     }
   }
 
@@ -168,7 +170,7 @@ class UpdateService {
     final hasPermission = await InstallerService.ensurePermission();
     if (!hasPermission) {
       debugPrint('❌ UpdateService: permission d\'installation refusée');
-      throw Exception('Permission d\'installation refusée');
+      throw Exception(L10n.current.updInstallDenied);
     }
 
     final cacheDir = await getTemporaryDirectory();

@@ -6,6 +6,7 @@ import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
+import '../l10n/l10n_ext.dart';
 
 /// §memStats — Carte de diagnostic mémoire & stockage.
 ///
@@ -151,7 +152,7 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
               Icon(Icons.memory, size: 16, color: kAccentPrimary),
               const SizedBox(width: 8),
               Text(
-                'MÉMOIRE & STOCKAGE',
+                context.l10n.memTitle,
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -169,7 +170,7 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
                       )
                     : const Icon(Icons.refresh, size: 16),
                 onPressed: _busy ? null : _refresh,
-                tooltip: 'Rafraîchir',
+                tooltip: context.l10n.memRefresh,
                 // §touchTarget — La cible faisait 24x24. L'icône reste à 16 px
                 // (l'encart est dense), seule la zone tactile passe à 48.
                 padding: EdgeInsets.zero,
@@ -213,8 +214,8 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
                     Padding(
                       padding: const EdgeInsets.only(top: 1),
                       child: Text(
-                        'source ${_fmtBytes(a.sourceBytes)} · '
-                        'analysé ${_fmtBytes(a.cacheBytes)}',
+                        L10n.current.memSourceAndParsed(
+                            _fmtBytes(a.sourceBytes), _fmtBytes(a.cacheBytes)),
                         style: TextStyle(
                           fontSize: 10,
                           color: cs.onSurfaceVariant.withAlpha(160),
@@ -245,14 +246,14 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
       }) a) {
     final total = a.sourceBytes + a.cacheBytes;
     if (a.entries > 0) {
-      return '${_fmtCount(a.entries)} entrées · ${_fmtBytes(total)}';
+      return L10n.current.memEntriesAndSize(_fmtCount(a.entries), _fmtBytes(total));
     }
     final d = a.diskEntries;
     if (d != null && d > 0) {
-      return 'sur disque · ${_fmtCount(d)} entrées · ${_fmtBytes(total)}';
+      return L10n.current.memOnDisk(_fmtCount(d), _fmtBytes(total));
     }
     // Ni mémoire ni cache lisible : là, « 0 entrées » est la vérité.
-    return '0 entrée · ${_fmtBytes(total)}';
+    return L10n.current.memNoEntry(_fmtBytes(total));
   }
 
   /// Espace fine tous les 3 chiffres (18 133) — la carte se lit à 3 m sur TV.

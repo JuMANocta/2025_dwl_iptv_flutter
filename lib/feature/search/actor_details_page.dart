@@ -10,6 +10,7 @@ import '../../widgets/aether_image.dart';
 import '../../widgets/tv/focusable_card.dart';
 import 'details_page.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import '../../l10n/l10n_ext.dart';
 
 class ActorDetailsPage extends StatefulWidget {
   final int personId;
@@ -150,7 +151,7 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus
           }
           if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
             return Center(
-              child: Text('Erreur : fiche introuvable sur TMDB.',
+              child: Text(context.l10n.actorNotFound,
                   style: TextStyle(color: kError)),
             );
           }
@@ -237,8 +238,8 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus
                         // réalisateurs depuis la recherche par personne).
                         Text(
                             person.isDirector
-                                ? 'Filmographie (Réalisation)'
-                                : 'Filmographie (Rôles)',
+                                ? context.l10n.actorFilmographyDirecting
+                                : context.l10n.actorFilmographyRoles,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleLarge
@@ -310,14 +311,14 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus
                                 if (credit.job != null)
                                   Text(
                                     credit.job == 'Director'
-                                        ? 'Réalisateur'
+                                        ? context.l10n.actorDirector
                                         : credit.job!,
                                     style: TextStyle(color: kAccentSecondary),
                                   )
                                 else if (credit.character?.trim().isNotEmpty ==
                                     true)
                                   Text(
-                                    'Rôle : ${credit.character}',
+                                    context.l10n.actorRole(credit.character!),
                                     style:
                                         TextStyle(color: cs.onSurfaceVariant),
                                   ),
@@ -377,7 +378,7 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus
         border: Border.all(color: color.withAlpha(80)),
       ),
       child: Text(
-        isMovie ? 'FILM' : 'SÉRIE',
+        isMovie ? context.l10n.ctrlBadgeMovie : context.l10n.ctrlBadgeSeries,
         style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
       ),
     );

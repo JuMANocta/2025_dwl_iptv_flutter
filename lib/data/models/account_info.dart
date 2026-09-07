@@ -1,3 +1,4 @@
+import '../../l10n/l10n_ext.dart';
 class AccountInfo {
   final String username;
   final String status;
@@ -31,8 +32,8 @@ class AccountInfo {
     }
 
     return AccountInfo(
-      username: userInfo['username']?.toString() ?? 'Inconnu',
-      status: userInfo['status']?.toString() ?? 'Inconnu',
+      username: userInfo['username']?.toString() ?? L10n.current.commonUnknown,
+      status: userInfo['status']?.toString() ?? L10n.current.commonUnknown,
       expirationDate: expDate,
       activeConnections: int.tryParse(userInfo['active_cons']?.toString() ?? '0') ?? 0,
       maxConnections: int.tryParse(userInfo['max_connections']?.toString() ?? '0') ?? 0,

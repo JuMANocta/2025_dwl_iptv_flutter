@@ -5,6 +5,7 @@ import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/data/models/quality_scale.dart';
 import 'package:aetherStream/data/services/measured_quality_service.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
+import '../l10n/l10n_ext.dart';
 
 /// Trie les versions par qualité décroissante et génère un label lisible.
 ///
@@ -161,8 +162,8 @@ class _QualityButtonsRowState extends State<QualityButtonsRow> {
                       const SizedBox(width: 4),
                       Text(
                         _expanded
-                            ? 'Masquer les versions'
-                            : 'Changer de version',
+                            ? context.l10n.qualityHideVersions
+                            : context.l10n.qualityChangeVersion,
                         style: TextStyle(
                             color: cs.onSurfaceVariant,
                             fontSize: 13,
@@ -252,8 +253,8 @@ class _QualityButtonsRowState extends State<QualityButtonsRow> {
       const SizedBox(width: 6),
       Text(
         survendu
-            ? '⚠ réel ${measured.definitionLabel}'
-            : 'réel ${measured.definitionLabel}',
+            ? L10n.current.detRealOversold(measured.definitionLabel)
+            : L10n.current.detReal(measured.definitionLabel),
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.bold,

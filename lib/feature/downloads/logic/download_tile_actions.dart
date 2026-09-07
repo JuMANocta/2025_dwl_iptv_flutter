@@ -58,9 +58,22 @@ DownloadTileActions downloadTileActions(DownloadStatus status) {
       );
 
     case DownloadStatus.queued:
+      // §dlQueue (2026-09-06) — Plus de « forcer le démarrage » : la tâche
+      // attend qu'une place se libère sur son abonnement (un transfert à la
+      // fois par hôte, §hostGate). La pousser à la main ouvrirait une seconde
+      // connexion sur le même compte → `403 Too many connections`, que le
+      // gardien lirait comme une panne. Elle partira d'elle-même.
+      return (
+        primary: DownloadAction.monitor,
+        menu: const [
+          DownloadAction.cancel,
+          DownloadAction.delete,
+        ],
+      );
+
     case DownloadStatus.paused:
-      // `restart` sert ici de « forcer le démarrage » : une tâche restée en
-      // file doit pouvoir être poussée sans passer par une annulation.
+      // `restart` sert ici de « forcer le démarrage » : une tâche en pause
+      // doit pouvoir être poussée sans passer par une annulation.
       return (
         primary: DownloadAction.monitor,
         menu: const [

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/themes/colors.dart';
 import '../data/services/playlist_reload_service.dart';
 import 'tv/tv_adaptive_modal.dart';
+import '../l10n/l10n_ext.dart';
 
 /// §reloadKeep — Dialogue « Recharger ? » pour une liste encore fraîche.
 ///
@@ -22,21 +23,20 @@ Future<bool?> showConfirmReloadDialog(
   return showAppDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Recharger ?'),
+      title: Text(ctx.l10n.acctReloadTitle),
       content: Text(
-        'La playlist de "$accountLabel" a été téléchargée il y a $ageStr.\n'
-        'Recharger quand même depuis le serveur ?',
+        ctx.l10n.acctReloadBody(accountLabel, ageStr),
       ),
       actions: [
         TextButton(
           autofocus: true,
           onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Annuler'),
+          child: Text(ctx.l10n.commonCancel),
         ),
         TextButton(
           onPressed: () => Navigator.pop(ctx, true),
           child: Text(
-            'Recharger',
+            ctx.l10n.acctReload,
             style: TextStyle(color: kWarning, fontWeight: FontWeight.bold),
           ),
         ),

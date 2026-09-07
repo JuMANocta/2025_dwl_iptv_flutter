@@ -23,6 +23,7 @@ import 'stream_account_service.dart';
 import 'tmdb_api_service.dart';
 import 'tmdb_service.dart';
 import 'watch_progress_service.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Sauvegarde / restauration de la configuration (§10).
 ///
@@ -129,24 +130,22 @@ class BackupContent {
   String summary() {
     final parts = <String>[];
     if (accounts.isNotEmpty) {
-      parts.add('${accounts.length} compte${accounts.length > 1 ? 's' : ''}');
+      parts.add(L10n.current.bkPartAccounts(accounts.length));
     }
-    if ((tmdbKey ?? '').isNotEmpty) parts.add('clé TMDB');
-    if (theme != null) parts.add('thème');
-    if (perf != null) parts.add('optimisation');
+    if ((tmdbKey ?? '').isNotEmpty) parts.add(L10n.current.bkPartTmdbKey);
+    if (theme != null) parts.add(L10n.current.bkPartTheme);
+    if (perf != null) parts.add(L10n.current.bkPartOptimization);
     final int regions = hiddenRegions?.length ?? 0;
     if (regions > 0) {
-      parts.add('$regions langue${regions > 1 ? 's' : ''} masquée'
-          '${regions > 1 ? 's' : ''}');
+      parts.add(L10n.current.bkPartHiddenRegions(regions));
     }
     if (favorites.isNotEmpty) {
-      parts.add('${favorites.length} favori${favorites.length > 1 ? 's' : ''}');
+      parts.add(L10n.current.bkPartFavorites(favorites.length));
     }
     if (watchProgress.isNotEmpty) {
-      parts.add(
-          '${watchProgress.length} progression${watchProgress.length > 1 ? 's' : ''}');
+      parts.add(L10n.current.bkPartProgress(watchProgress.length));
     }
-    if (parts.isEmpty) return 'Sauvegarde vide';
+    if (parts.isEmpty) return L10n.current.bkEmpty;
     return parts.join(' · ');
   }
 }
@@ -172,7 +171,7 @@ class BackupService {
   /// fichier généré (le chemin complet dépend du device).
   static Future<String> exportAll(String password) async {
     if (password.isEmpty) {
-      throw ArgumentError('Le mot de passe ne peut pas être vide.');
+      throw ArgumentError(L10n.current.bkPasswordEmptyError);
     }
     debugPrint('📤 BackupService: collecte des données…');
     final content = await _collectAll();
@@ -218,7 +217,7 @@ class BackupService {
   static Future<({String fileName, Uint8List bytes})> exportToBytes(
       String password) async {
     if (password.isEmpty) {
-      throw ArgumentError('Le mot de passe ne peut pas être vide.');
+      throw ArgumentError(L10n.current.bkPasswordEmptyError);
     }
     final content = await _collectAll();
     final jsonStr = jsonEncode(content.toJson());
@@ -413,20 +412,19 @@ class BackupService {
     // inattendu) » — une phrase qui parle d'un SERVEUR alors qu'il s'agit
     // d'un fichier local et, le plus souvent, d'un mot de passe mal tapé.
     if (bytes.length < _headerLen + _macLen) {
-      throw const UserFacingException(
-          'Fichier de sauvegarde trop court ou corrompu.');
+      throw UserFacingException(
+          L10n.current.bkFileTooShort);
     }
     for (int i = 0; i < _magic.length; i++) {
       if (bytes[i] != _magic[i]) {
-        throw const UserFacingException(
-            'Ce n\'est pas un fichier .aether valide.');
+        throw UserFacingException(
+            L10n.current.bkNotAnAetherFile);
       }
     }
     final version = bytes[4];
     if (version != _formatVersion) {
       throw UserFacingException(
-          'Sauvegarde créée par une version plus récente de l\'app '
-          '(format $version).');
+          L10n.current.bkNewerVersion);
     }
     final salt = bytes.sublist(5, 5 + _saltLen);
     final nonce = bytes.sublist(5 + _saltLen, 5 + _saltLen + _nonceLen);
@@ -444,8 +442,8 @@ class BackupService {
     } on SecretBoxAuthenticationError {
       // Le cas de LOIN le plus fréquent : le MAC GCM ne valide pas parce que
       // le mot de passe est faux. Le dire en premier, et sans jargon.
-      throw const UserFacingException(
-          'Mot de passe incorrect, ou fichier de sauvegarde altéré.');
+      throw UserFacingException(
+          L10n.current.bkWrongPassword);
     }
   }
 

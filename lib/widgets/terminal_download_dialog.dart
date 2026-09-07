@@ -7,6 +7,8 @@ import '../data/models/download_task.dart';
 import '../data/services/download_manager_service.dart';
 import '../core/utils/formatters.dart';
 import '../l10n/app_localizations.dart';
+import 'package:aetherStream/core/utils/network_kind.dart';
+import '../l10n/l10n_ext.dart';
 
 // Pool de messages de boot Matrix (1 tiré au sort)
 const List<String> _kBootPool = [
@@ -129,6 +131,19 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       if (task.totalSize > 0) {
         _logs.add({'message': l10n.terminalFileSizeMessage(formatFileSize(task.totalSize)), 'type': 'log'});
       }
+    }
+
+    // §dlQueue — En attente d'une place sur son abonnement : le dire, sinon
+    // le moniteur reste muet (« scanning… ») sans qu'on sache pourquoi.
+    if (task.status == DownloadStatus.queued &&
+        _lastTaskState?.status != DownloadStatus.queued) {
+      final DownloadHold? h = DownloadManagerService().hold.value;
+      final String why = switch (h) {
+        DownloadHold.wifi => l10n.taskStatusWaitWifi,
+        DownloadHold.offline => l10n.taskStatusWaitNetwork,
+        null => l10n.taskStatusQueuedWhy,
+      };
+      _logs.add({'message': '⏳ $why', 'type': 'log'});
     }
 
     if (task.status == DownloadStatus.downloading) {
@@ -425,7 +440,8 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '> [!] ${messages.length} ERREUR(S) PRÉCÉDENTE(S)  ${isExpanded ? '▲ MASQUER' : '▼ AFFICHER'}',
+                                  '> [!] ${context.l10n.termPreviousErrors(messages.length)}'
+                                  '  ${isExpanded ? '▲ MASQUER' : '▼ AFFICHER'}',
                                   style: GoogleFonts.sourceCodePro(
                                     color: kWarning.withAlpha(200),
                                     fontSize: 12,

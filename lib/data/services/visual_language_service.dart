@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §posterLang (2026-09-05) — **Dans quelle langue on veut les visuels et les
 /// textes venus de TMDB.**
@@ -130,10 +131,10 @@ abstract final class VisualLanguageService {
 
   /// Libellé pour l'écran de réglages.
   static String labelOf(VisualLanguage v) => switch (v) {
-        VisualLanguage.auto => 'Comme le téléphone',
-        VisualLanguage.fr => 'Français',
-        VisualLanguage.en => 'Anglais',
-        VisualLanguage.original => 'Version originale (sans texte)',
+        VisualLanguage.auto => L10n.current.visualLangAuto,
+        VisualLanguage.fr => L10n.current.langFrench,
+        VisualLanguage.en => L10n.current.langEnglish,
+        VisualLanguage.original => L10n.current.visualLangOriginalLabel,
       };
 
   /// Tests uniquement.

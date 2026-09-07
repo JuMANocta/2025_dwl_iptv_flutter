@@ -17,6 +17,7 @@ import '../../../widgets/terminal_download_dialog.dart';
 import '../../../widgets/info_row.dart';
 import '../../../l10n/app_localizations.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import '../../../l10n/l10n_ext.dart';
 
 /// §dlDirectWrite — Dossier de repli pour le fichier partiel.
 ///
@@ -111,10 +112,10 @@ Future<void> verifierEtTelecharger({
         debugPrint("✅ Ce fichier est déjà sauvegardé.");
         AppSnackBar.show(
           context,
-          'Déjà téléchargé',
+          L10n.current.dlAlreadyDownloaded,
           duration: const Duration(seconds: 4),
           action: SnackBarAction(
-            label: 'Voir',
+            label: L10n.current.dlSee,
             onPressed: () {
               navigatorKey.currentState?.push(
                 MaterialPageRoute(builder: (_) => const DownloadsPage()),
@@ -142,8 +143,8 @@ Future<void> verifierEtTelecharger({
       case DownloadStatus.canceled:
         debugPrint("🔄 Tâche existante trouvée (état: ${existingTask.status}). Reprise du téléchargement...");
 
-        // On demande simplement au manager de relancer CETTE tâche existante.
-        downloadManager.startDownloadTask(existingTask);
+        // §dlQueue — par la file : elle repart dès qu'une place est libre.
+        downloadManager.enqueue(existingTask);
 
         // On affiche le moniteur pour que l'utilisateur voie la reprise.
         final rootContext = navigatorKey.currentContext;
@@ -312,10 +313,10 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
     if (context.mounted) {
       AppSnackBar.show(
         context,
-        'Permission de stockage refusée : le téléchargement ne peut pas démarrer.',
+        L10n.current.dlStorageDenied,
         duration: const Duration(seconds: 6),
         action: SnackBarAction(
-          label: 'Ouvrir les réglages',
+          label: L10n.current.dlOpenSettings,
           onPressed: () => openAppSettings(),
         ),
       );
@@ -354,7 +355,8 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
 
   // 7. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN
   await downloadManager.addTask(newTask);
-  downloadManager.startDownloadTask(newTask);
+  // §dlQueue — la file décide du départ (un transfert par abonnement).
+  downloadManager.enqueue(newTask);
 
   // 8. AFFICHAGE DU DIALOGUE "MONITEUR"
   final rootContext = navigatorKey.currentContext;

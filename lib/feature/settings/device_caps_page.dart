@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../core/themes/colors.dart';
-import '../../core/utils/platform_tv.dart';
 import '../../data/models/device_caps.dart';
 import '../../data/services/device_caps_service.dart';
 import '../../l10n/app_localizations.dart';
@@ -97,6 +96,21 @@ class _DeviceCapsPageState extends State<DeviceCapsPage> {
                         caps.display!.height, caps.display!.refreshHz.round()),
                     caps.display!.hdr.isEmpty ? '—' : caps.display!.hdr.join(', '),
                   ),
+                // §caps4kDisplay — ce qu'Android dit de l'écran décrit
+                // l'interface, pas la dalle : on l'écrit pour ne pas inquiéter.
+                if (caps.display != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(0, 4, 0, 0),
+                    child: Text(
+                      caps.display!.announcesMoreThanShown
+                          ? l10n.capsDisplayModesNote(
+                              caps.display!.maxModeWidth,
+                              caps.display!.maxModeHeight)
+                          : l10n.capsDisplayUiNote,
+                      style:
+                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 _section(l10n.capsMemory, cs),
                 if (caps.memory != null)
@@ -119,8 +133,7 @@ class _DeviceCapsPageState extends State<DeviceCapsPage> {
   }
 
   Widget _verdict4k(AppLocalizations l10n, ColorScheme cs, DeviceCaps caps) {
-    final PlayVerdict v =
-        caps.verdictFor('4K', requireDisplay: PlatformTv.isTv);
+    final PlayVerdict v = caps.verdictFor('4K');
     final (String text, Color color) = switch (v) {
       PlayVerdict.ok => (l10n.capsYes, kSuccess),
       PlayVerdict.decoderTooSmall => (l10n.capsNoDecoder4k, kError),

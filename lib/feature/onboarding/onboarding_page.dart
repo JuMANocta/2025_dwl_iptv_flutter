@@ -8,6 +8,7 @@ import 'package:aetherStream/data/services/web_console_service.dart';
 import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Onboarding affiché une seule fois (§1i + §3c-8 TV + §webConsoleOnly).
 ///
@@ -163,14 +164,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
   /// la TV bascule sur l'accueil.
   void _onConsoleEvent(WebConsoleEvent event) {
     if (event.isAccountChange) {
-      setState(() => _consoleStatus = '✅ Playlist enregistrée');
+      setState(() => _consoleStatus = L10n.current.onbPlaylistSaved);
       Future.delayed(const Duration(milliseconds: 1200), () {
         if (mounted) _finish();
       });
       return;
     }
     if (event.isTmdbChange) {
-      setState(() => _consoleStatus = '✅ Clé TMDB enregistrée');
+      setState(() => _consoleStatus = L10n.current.onbTmdbSaved);
     }
   }
 
@@ -211,7 +212,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   child: TextButton(
                     onPressed: _finish,
                     child: Text(
-                      'Passer',
+                      context.l10n.onbSkip,
                       style: TextStyle(
                           color: cs.onSurfaceVariant,
                           fontWeight: FontWeight.w600),
@@ -282,7 +283,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       // retrouvera la console dans les Paramètres) au lieu d'être
                       // coincé à attendre un scan, comme c'était le cas avec le
                       // pairing en auto-advance seul.
-                      child: Text(isLast ? 'Commencer' : 'Suivant'),
+                      child: Text(isLast
+                          ? context.l10n.onbStart
+                          : context.l10n.onbNext),
                     ),
                   ),
                 ),
@@ -297,7 +300,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                     child: TextButton.icon(
                       onPressed: _onRestoreTap,
                       icon: const Icon(Icons.cloud_download_outlined, size: 18),
-                      label: const Text('J\'ai déjà une sauvegarde (.aether)'),
+                      label: Text(context.l10n.onbHasBackup),
                       style: TextButton.styleFrom(
                         foregroundColor: kAccentSecondary,
                       ),
@@ -327,27 +330,27 @@ class _OnboardingPageState extends State<OnboardingPage> {
     if (i == 1) {
       return _InfoSlide(
         icon: Icons.link,
-        title: 'Ajoute une playlist',
+        title: context.l10n.onbAddPlaylistTitle,
         body:
-            'Va dans ⚙️ Paramètres → Comptes IPTV pour saisir une URL M3U complète OU un compte Xtream Codes (serveur + identifiants).',
+            context.l10n.onbAddPlaylistBody,
         accent: kAccentSecondary,
       );
     }
     if (i == 2) {
       return _InfoSlide(
         icon: Icons.movie_creation_outlined,
-        title: 'Affiches et synopsis (optionnel)',
+        title: context.l10n.onbTmdbTitle,
         body:
-            'Génère un Bearer Token TMDB gratuit sur themoviedb.org et colle-le dans Paramètres → Clé API TMDB pour enrichir tes films et séries.',
+            context.l10n.onbTmdbBody,
         accent: kAccentTertiary,
       );
     }
     // §menuHint — i == 3 : le raccourci que personne ne trouvait.
     return _InfoSlide(
       icon: Icons.more_horiz,
-      title: 'Le menu ⋯ des vignettes',
+      title: context.l10n.onbCardMenuTitle,
       body:
-          'Appuie longuement sur une affiche — ou touche le ⋯ en haut à gauche — pour Lire, Reprendre, ajouter aux favoris, télécharger ou oublier une reprise, sans ouvrir la fiche.',
+          context.l10n.onbCardMenuBody,
       accent: kAccentPrimary,
     );
   }
@@ -362,9 +365,9 @@ class _WelcomeSlide extends StatelessWidget {
   Widget build(BuildContext context) {
     return _InfoSlide(
       icon: Icons.live_tv,
-      title: 'Bienvenue sur AetherStream',
+      title: context.l10n.onbWelcomeTitle,
       body:
-          'Client IPTV multi-comptes pour regarder films, séries et chaînes en direct depuis vos abonnements.',
+          context.l10n.onbWelcomeBody,
       accent: kAccentPrimary,
     );
   }
@@ -453,7 +456,7 @@ class _TvConsoleSlide extends StatelessWidget {
         children: [
           const SizedBox(height: 8),
           Text(
-            'Configure depuis ton téléphone',
+            context.l10n.onbConfigureFromPhone,
             textAlign: TextAlign.center,
             style: TextStyle(
               color: cs.onSurface,
@@ -465,10 +468,7 @@ class _TvConsoleSlide extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              'Scanne ce QR code : tu pourras ajouter ta playlist, ta clé TMDB '
-              'et régler le reste depuis ton navigateur — la saisie au D-pad '
-              'serait longue et fastidieuse.',
-              textAlign: TextAlign.center,
+              context.l10n.onbQrBody,
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: 13,

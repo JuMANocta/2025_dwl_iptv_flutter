@@ -62,6 +62,7 @@ File _source(String accountId) =>
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  singleFlightTests();
 
   group('§reloadScope — dédoublonnage des versions d\'une fiche', () {
     // La règle : la LISTE D'ORIGINE fait toujours partie de la clé. Avant, elle
@@ -179,6 +180,51 @@ void main() {
       ParsedPlaylistService.markStale('compte1');
       ParsedPlaylistService.forget('compte1');
       expect(ParsedPlaylistService.isStale('compte1'), isFalse);
+    });
+  });
+}
+
+// §fleetSingle (2026-09-06) — Deux demandes de chargement du MÊME compte en
+// même temps (le boot qui a débordé et le réconciliateur 4 s plus tard) ne
+// doivent produire qu'UNE analyse : la seconde attend la première.
+void singleFlightTests() {
+  group('§fleetSingle — une analyse à la fois par compte', () {
+    setUp(() async {
+      _root = await Directory.systemTemp.createTemp('aether_single_flight');
+      _docs = Directory('${_root.path}/docs')..createSync(recursive: true);
+      _support = Directory('${_root.path}/support')..createSync(recursive: true);
+      _mockPathProvider();
+      ParsedPlaylistService.clear();
+      ParsedPlaylistService.loadStartsForTest = 0;
+    });
+
+    tearDown(() {
+      ParsedPlaylistService.clear();
+      if (_root.existsSync()) _root.deleteSync(recursive: true);
+    });
+
+    test('deux loadSecondary concurrents → un seul chargement démarré', () async {
+      final src = _source('compte2');
+      await ParsedPlaylistService.saveToDiskForTest('compte2', _playlist('compte2', 4));
+
+      final f1 = ParsedPlaylistService.loadSecondary('compte2', 'Compte 2', src.path);
+      final f2 = ParsedPlaylistService.loadSecondary('compte2', 'Compte 2', src.path);
+      await Future.wait([f1, f2]);
+
+      expect(ParsedPlaylistService.loadStartsForTest, 1,
+          reason: 'le second appel devait ATTENDRE le premier, pas relancer');
+      expect(ParsedPlaylistService.entriesCountOf('compte2'), 4);
+    });
+
+    test('après la fin, un nouvel appel peut repartir (verrou libéré)', () async {
+      final src = _source('compte2');
+      await ParsedPlaylistService.saveToDiskForTest('compte2', _playlist('compte2', 2));
+      await ParsedPlaylistService.loadSecondary('compte2', 'Compte 2', src.path);
+      ParsedPlaylistService.markStale('compte2');
+      await ParsedPlaylistService.saveToDiskForTest('compte2', _playlist('compte2', 6));
+      await ParsedPlaylistService.loadSecondary('compte2', 'Compte 2', src.path);
+      expect(ParsedPlaylistService.loadStartsForTest, 2);
+      expect(ParsedPlaylistService.entriesCountOf('compte2'), 6);
     });
   });
 }

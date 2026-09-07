@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../l10n/l10n_ext.dart';
 
 enum DownloadStatus {
   queued,      // En attente de démarrage
@@ -61,7 +62,7 @@ class DownloadTask {
   }) {
     String? finalErrorMessage = errorMessage;
     if (status == DownloadStatus.failed && errorMessage == null) {
-      finalErrorMessage = "Une erreur inconnue est survenue.";
+      finalErrorMessage = L10n.current.errUnknown;
     }
 
     return DownloadTask(

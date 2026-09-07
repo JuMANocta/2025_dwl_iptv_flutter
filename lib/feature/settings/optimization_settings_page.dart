@@ -91,8 +91,8 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
     });
     messenger.showSnackBar(SnackBar(
       content: Text(res.isEmpty
-          ? 'Rien à récupérer — aucun fichier orphelin'
-          : '🧹 ${res.label} libérés (${res.fileCount} fichier(s))'),
+          ? context.l10n.perfPurgeNothing
+          : context.l10n.perfPurgeDone(res.label, res.fileCount)),
     ));
   }
 
@@ -116,11 +116,10 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
     if (old == PerfConfig.defaults) return; // rien à réinitialiser
     await confirmOrUndo(
       context,
-      title: 'Réinitialiser les réglages ?',
-      question:
-          'Tous les réglages d\'optimisation reviennent aux valeurs par défaut.',
-      confirmLabel: 'Réinitialiser',
-      doneMessage: 'Réglages réinitialisés',
+      title: context.l10n.perfResetTitle,
+      question: context.l10n.perfResetQuestion,
+      confirmLabel: context.l10n.perfResetConfirm,
+      doneMessage: context.l10n.perfResetDone,
       action: () async => _apply(PerfConfig.defaults),
       onUndo: () {
         if (mounted) {
@@ -145,8 +144,8 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
     setState(() => _memCardEpoch++);
     messenger.showSnackBar(SnackBar(
       content: Text(n > 0
-          ? '💤 $n compte(s) secondaire(s) déchargé(s) de la mémoire'
-          : 'Rien à libérer (un seul compte chargé)'),
+          ? context.l10n.perfFreeMemoryDone(n)
+          : context.l10n.perfFreeMemoryNothing),
     ));
   }
 
@@ -158,8 +157,8 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
     await AetherImageCache.emptyAll();
     if (!mounted) return;
     setState(() => _memCardEpoch++);
-    messenger.showSnackBar(const SnackBar(
-      content: Text('🧹 Cache images vidé'),
+    messenger.showSnackBar(SnackBar(
+      content: Text(context.l10n.perfImageCacheCleared),
     ));
   }
 
@@ -176,7 +175,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
         actions: [
           IconButton(
             icon: const Icon(Icons.restart_alt),
-            tooltip: 'Réinitialiser',
+            tooltip: context.l10n.perfResetConfirm,
             onPressed: _resetWithUndo,
           ),
         ],
@@ -200,7 +199,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
         // §navBlind — La page la plus longue de l'app : sept sections, aucun
         // repere. Le bandeau nomme celle qu'on regarde (TV uniquement).
         child: SectionBeacon(
-          pageTitle: 'Optimisation',
+          pageTitle: context.l10n.optimizationTitle,
           // Repli tactile : au doigt rien n'a le focus, on lit au tiers haut.
           thresholdFraction: 0.3,
           child: SingleChildScrollView(
@@ -211,27 +210,26 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               // §deviceCaps — La sonde d'abord : c'est elle qui explique le
               // profil choisi, et ce que l'appareil peut lire.
               _capsTile(cs),
-              const SectionMark('Profils'),
+              SectionMark(context.l10n.perfSectionProfiles),
               _buildProfilesRow(cs),
-              const SectionMark('Hero banner'),
+              SectionMark(context.l10n.perfSectionHero),
               _switchTile(
                 icon: Icons.style_outlined,
-                title: 'Hero banner',
-                subtitle:
-                    'Empilement de cartes en tête de la home (coûteux sur box faible)',
+                title: context.l10n.perfSectionHero,
+                subtitle: context.l10n.perfHeroSub,
                 value: _config.heroEnabled,
                 onChanged: (v) => _apply(_config.copyWith(heroEnabled: v)),
               ),
               _switchTile(
                 icon: Icons.autorenew,
-                title: 'Rotation automatique',
-                subtitle: 'Fait défiler le hero toutes les 6 s (swipe manuel toujours actif)',
+                title: context.l10n.perfAutoRotateTitle,
+                subtitle: context.l10n.perfAutoRotateSub,
                 value: _config.heroAutoRotate,
                 enabled: _config.heroEnabled,
                 onChanged: (v) => _apply(_config.copyWith(heroAutoRotate: v)),
               ),
               _buildStepper(
-                label: 'Cartes',
+                label: context.l10n.perfHeroCardsLabel,
                 value: _config.heroCardCount,
                 min: PerfConfig.minHeroCards,
                 max: PerfConfig.maxHeroCards,
@@ -239,9 +237,9 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                 enabled: _config.heroEnabled,
                 onChanged: (v) => _apply(_config.copyWith(heroCardCount: v)),
               ),
-              const SectionMark('Rangées de catégories'),
+              SectionMark(context.l10n.perfSectionRows),
               _buildStepper(
-                label: 'Vignettes',
+                label: context.l10n.perfItemsLabel,
                 value: _config.maxItemsPerRow,
                 min: PerfConfig.minItemsPerRow,
                 max: PerfConfig.maxItemsPerRowLimit,
@@ -251,8 +249,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                 child: Text(
-                  'Vignettes affichées par rangée avant la tuile « Voir tout » '
-                  '(les Favoris ne sont jamais tronqués).',
+                  context.l10n.perfItemsSub,
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
@@ -276,36 +273,57 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               ),
               // §autoNextEp — Réglage de CONFORT, volontairement hors des
               // profils de performance (les 3 presets le laissent intact).
-              const SectionMark('Lecture'),
+              // §dlQueue (2026-09-06, lot 6) — Plafond global des transferts ;
+              // la limite par abonnement (un seul) n'est pas réglable, elle
+              // vient des panels eux-mêmes (§hostGate).
+              SectionMark(context.l10n.perfDownloadsSection),
+              _buildStepper(
+                label: context.l10n.perfParallelDownloadsTitle,
+                value: _config.maxParallelDownloads,
+                min: PerfConfig.minParallelDownloads,
+                max: PerfConfig.maxParallelDownloadsLimit,
+                step: 1,
+                onChanged: (v) =>
+                    _apply(_config.copyWith(maxParallelDownloads: v)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Text(
+                  context.l10n.perfParallelDownloadsSub,
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+              ),
+              // §dlWifi — « Wi-Fi seulement » = pas sur un réseau facturé.
+              _switchTile(
+                icon: Icons.wifi_rounded,
+                title: context.l10n.perfWifiOnlyTitle,
+                subtitle: context.l10n.perfWifiOnlySub,
+                value: _config.downloadsWifiOnly,
+                onChanged: (v) =>
+                    _apply(_config.copyWith(downloadsWifiOnly: v)),
+              ),
+              SectionMark(context.l10n.perfSectionPlayback),
               _switchTile(
                 icon: Icons.skip_next_rounded,
-                title: 'Épisode suivant automatique',
-                subtitle:
-                    'Enchaîne l\'épisode suivant en fin de lecture, après un '
-                    'décompte annulable. Un changement de saison demande '
-                    'toujours confirmation.',
+                title: context.l10n.perfAutoNextTitle,
+                subtitle: context.l10n.perfAutoNextSub,
                 value: _config.autoNextEpisode,
                 onChanged: (v) => _apply(_config.copyWith(autoNextEpisode: v)),
               ),
               // §playerBuffer — Le `LoadControl` d'ExoPlayer, enfin réglé.
               _buildStepper(
-                label: 'Tampon de lecture',
+                label: context.l10n.perfBufferLabel,
                 value: _config.bufferSeconds,
                 min: PerfConfig.minBufferSeconds,
                 max: PerfConfig.maxBufferSeconds,
                 step: 10,
-                suffix: ' s',
+                suffix: context.l10n.perfUnitSeconds,
                 onChanged: (v) => _apply(_config.copyWith(bufferSeconds: v)),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Text(
-                  'Secondes de vidéo gardées d\'avance. Monter aide sur un '
-                  'fournisseur qui bride — la lecture puise dans le tampon au '
-                  'lieu de s\'arrêter — mais tient d\'autant plus de flux en '
-                  'mémoire, ce qui compte sur une box. Le compteur '
-                  '« Blocages » de l\'encart Infos vidéo dit si le réglage '
-                  'sert à quelque chose. Prend effet à la lecture suivante.',
+                  context.l10n.perfBufferSub,
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
@@ -315,21 +333,17 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               // était codé en dur (5 min) et invisible : l'utilisateur voyait
               // ses listes passer à « NON CHARGÉ » sans rien avoir demandé, et
               // n'avait aucun moyen de l'éteindre.
-              const SectionMark('Listes'),
+              SectionMark(context.l10n.perfSectionLists),
               _switchTile(
                 icon: Icons.playlist_add_check_circle_outlined,
-                title: 'Garder toutes les listes en mémoire',
-                subtitle:
-                    'Chaque compte reste chargé : recherche cross-comptes et '
-                    'changement de liste instantanés. Coûte de la mémoire '
-                    '(~50 à 150 Mo par liste) — à éteindre sur Fire Stick ou '
-                    'box à faible RAM.',
+                title: context.l10n.perfKeepListsTitle,
+                subtitle: context.l10n.perfKeepListsSub,
                 value: _config.keepAllListsInMemory,
                 onChanged: (v) =>
                     _apply(_config.copyWith(keepAllListsInMemory: v)),
               ),
               _buildStepper(
-                label: 'Décharger après',
+                label: context.l10n.perfUnloadAfterLabel,
                 value: _config.idleUnloadMinutes,
                 min: PerfConfig.minIdleUnloadMinutes,
                 max: PerfConfig.maxIdleUnloadMinutes,
@@ -338,41 +352,34 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                 // que l'interrupteur ci-dessus est allumé, mais la valeur est
                 // conservée pour le jour où on l'éteint.
                 enabled: !_config.keepAllListsInMemory,
-                valueLabel: (v) => v <= 0 ? 'Jamais' : '$v min',
+                valueLabel: (v) => v <= 0
+                    ? context.l10n.perfUnloadNever
+                    : context.l10n.perfMinutesShort(v),
                 onChanged: (v) =>
                     _apply(_config.copyWith(idleUnloadMinutes: v)),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Text(
-                  'Minutes sans consulter une liste secondaire avant de la '
-                  'sortir de la mémoire. Le cache disque est conservé : elle '
-                  'revient en ~50 ms au prochain accès. « Jamais » (0) équivaut '
-                  'à garder toutes les listes. Les pages qui affichent les '
-                  'listes ou leurs compteurs suspendent le déchargement tant '
-                  'qu\'elles sont ouvertes.',
+                  context.l10n.perfUnloadSub,
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
-              const SectionMark('Mémoire & usage'),
+              SectionMark(context.l10n.perfSectionMemory),
               // §imgMemCache — plafond du cache image EN RAM.
               _buildStepper(
-                label: 'Images (RAM)',
+                label: context.l10n.perfImageRamLabel,
                 value: _config.imageCacheMb,
                 min: PerfConfig.minImageCacheMb,
                 max: PerfConfig.maxImageCacheMb,
                 step: 10,
-                suffix: ' Mo',
+                suffix: context.l10n.perfUnitMegabytes,
                 onChanged: (v) => _apply(_config.copyWith(imageCacheMb: v)),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Text(
-                  'Mémoire vive réservée aux images déjà affichées (défaut '
-                  'Flutter : 100 Mo). ⚠️ Baisser ne rend pas l\'app plus '
-                  'fluide : trop bas, les vignettes sont re-décodées en '
-                  'permanence et l\'affichage se met à saccader. À n\'ajuster '
-                  'que si la mémoire manque vraiment.',
+                  context.l10n.perfImageRamSub,
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
@@ -397,8 +404,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                       onPressed: _freeMemory,
                       icon:
                           const Icon(Icons.cleaning_services_outlined, size: 18),
-                      label: const Text(
-                          'Libérer la mémoire des comptes secondaires'),
+                      label: Text(context.l10n.perfFreeMemoryButton),
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(44),
                       ),
@@ -409,8 +415,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                 child: Text(
-                  'Les caches disque sont conservés : un compte déchargé se '
-                  'recharge en ~50 ms au prochain accès.',
+                  context.l10n.perfFreeMemoryNote,
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
@@ -429,7 +434,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                       onPressed: _clearImageCache,
                       icon: const Icon(Icons.image_not_supported_outlined,
                           size: 18),
-                      label: const Text('Vider le cache images'),
+                      label: Text(context.l10n.perfClearImageCacheButton),
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(44),
                       ),
@@ -440,28 +445,22 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                 child: Text(
-                  'Les vignettes sont gardées sur le disque pour éviter de les '
-                  're-télécharger. À vider si une affiche a changé côté '
-                  'fournisseur ou si le stockage sature.',
+                  context.l10n.perfClearImageCacheNote,
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
 
               // §acctPurge — Fichiers sans propriétaire.
-              const SectionMark('Stockage'),
+              SectionMark(context.l10n.perfSectionStorage),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Text(
                   _reclaimable == null
-                      ? 'Analyse du stockage…'
+                      ? context.l10n.perfStorageScanning
                       : _reclaimable!.isEmpty
-                          ? 'Rien à récupérer : chaque fichier appartient à un '
-                              'compte existant.'
-                          : '${_reclaimable!.label} occupés par des fichiers '
-                              'qui n\'appartiennent plus à aucun compte '
-                              '(${_reclaimable!.fileCount} fichier(s)) — '
-                              'playlists et caches laissés derrière eux par des '
-                              'comptes supprimés.',
+                          ? context.l10n.perfStorageNothing
+                          : context.l10n.perfStorageReclaimable(
+                              _reclaimable!.label, _reclaimable!.fileCount),
                   style: TextStyle(
                     fontSize: 11,
                     color: (_reclaimable?.isEmpty ?? true)
@@ -483,8 +482,8 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                       onPressed: _purging ? null : _purgeOrphans,
                       icon: const Icon(Icons.folder_delete_outlined, size: 18),
                       label: Text(_purging
-                          ? 'Nettoyage…'
-                          : 'Nettoyer les fichiers orphelins'),
+                          ? context.l10n.perfPurging
+                          : context.l10n.perfPurgeButton),
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(44),
                       ),
@@ -492,17 +491,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
-                child: Text(
-                  'Supprimer un compte ne supprimait pas ses fichiers : ils '
-                  'restaient sur l\'appareil, sans propriétaire et sans que '
-                  'rien ne les compte. C\'est corrigé à la source, ce bouton '
-                  'rattrape ce qui traîne déjà. Sans effet sur les comptes '
-                  'actuels, leurs listes ni tes favoris.',
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-                ),
-              ),
+              const SizedBox(height: 24),
             ],
           ),
           ),

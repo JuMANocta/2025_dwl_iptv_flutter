@@ -5,6 +5,7 @@ import '../data/models/m3u_entry.dart';
 import '../data/services/parsed_playlist_service.dart';
 import '../feature/search/m3u_filter.dart';
 import 'tv/tv_adaptive_modal.dart';
+import '../l10n/l10n_ext.dart';
 
 /// §tmdbOnlyDetails — Recherche MANUELLE d'un titre dans les listes.
 ///
@@ -122,7 +123,7 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Chercher dans mes listes',
+            context.l10n.searchSheetTitle,
             style: Theme.of(context)
                 .textTheme
                 .titleMedium
@@ -142,7 +143,7 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
-              hintText: 'Titre à chercher',
+              hintText: context.l10n.searchSheetFieldLabel,
             ),
           ),
           if (showOriginalToggle) ...[
@@ -153,7 +154,7 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
               alignment: Alignment.centerLeft,
               child: ActionChip(
                 avatar: const Icon(Icons.translate, size: 16),
-                label: Text('Titre original : $original'),
+                label: Text(context.l10n.searchSheetOriginalTitle(original)),
                 onPressed: () {
                   _ctrl.text = original;
                   _ctrl.selection =
@@ -171,8 +172,8 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
                     child: Center(
                       child: Text(
                         _ctrl.text.trim().length < 2
-                            ? 'Saisis au moins 2 caractères.'
-                            : 'Aucun titre trouvé dans vos listes.',
+                            ? context.l10n.searchSheetTooShort
+                            : context.l10n.searchSheetNoResult,
                         textAlign: TextAlign.center,
                         style: TextStyle(color: cs.onSurfaceVariant),
                       ),

@@ -8,6 +8,7 @@ import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/core/utils/host_gate.dart';
 import 'package:aetherStream/core/utils/network.dart';
 import 'package:aetherStream/data/services/storage_janitor.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Service de gestion **multi-comptes**
 /// Stockage : `flutter_secure_storage` (mêmes fondations que ton SecureStorageService)
@@ -178,7 +179,7 @@ class StreamAccountService {
 
     final acc = StreamAccount(
       id: "acc_${DateTime.now().millisecondsSinceEpoch}",
-      label: "Compte par défaut",
+      label: L10n.current.acctDefaultLabel,
       mode: hasComplete ? StreamAuthMode.completeUrl : StreamAuthMode.separate,
       completeUrl: (legacy['completeUrl'] ?? '').toString().trim().isNotEmpty
           ? (legacy['completeUrl'] as String)

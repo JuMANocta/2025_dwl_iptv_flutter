@@ -29,6 +29,15 @@ class M3uParser {
   /// entrées. On parse donc dans des listes locales et on ne les publie qu'une
   /// fois le fichier entièrement lu ; si l'UTF-8 casse, on jette et on relit
   /// tout en Latin-1. Le coût de la relecture ne se paie que dans ce cas rare.
+  /// ⛔ §m3uIsolate — ESSAYÉ ET RETIRÉ le 2026-09-06 : ce parseur a tourné
+  /// dans un isolate (comme le JSON) le temps d'une mesure. Sur l'émulateur
+  /// TV en release, l'analyse de la liste « Ultimate » (153 000 entrées) est
+  /// passée de 57 s à **72 s dans l'isolate** (chrono à l'intérieur, transfert
+  /// du résultat gratuit) alors que le banc JIT disait l'inverse. Le thread
+  /// principal d'une app Android est prioritaire ; un thread de travail ne
+  /// l'est pas — et sur un téléphone il peut atterrir sur un petit cœur. Le
+  /// streaming en tranches de 8 ms laisse l'interface vivre : il reste ICI.
+  /// Ne réessayer qu'avec une mesure sur le téléviseur réel.
   static Future<void> parseFile(
     String filePath,
     List<M3uEntry> filmsList,

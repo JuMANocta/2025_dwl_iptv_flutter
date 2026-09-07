@@ -34,6 +34,10 @@ class _HomeCard extends StatefulWidget {
 }
 
 class _HomeCardState extends State<_HomeCard> {
+  /// §tabMeter — nombre de builds de cartes depuis le lancement (sonde du
+  /// changement d'onglet, relevée par différence dans `_goToPage`).
+  static int buildCount = 0;
+
   bool _pressed = false;
 
   /// §Ultimate — affiche TMDB résolue à la volée quand le M3U ne fournit aucun
@@ -233,7 +237,7 @@ class _HomeCardState extends State<_HomeCard> {
                 if (!hasResume) {
                   return ListTile(
                     leading: const Icon(Icons.play_arrow),
-                    title: const Text('Lire'),
+                    title: Text(sheetCtx.l10n.cardPlay),
                     onTap: () => play(),
                   );
                 }
@@ -250,7 +254,7 @@ class _HomeCardState extends State<_HomeCard> {
                     ListTile(
                       leading: Icon(Icons.play_arrow, color: kAccentSecondary),
                       title: Text(
-                        'Reprendre depuis $label',
+                        sheetCtx.l10n.cardResumeFrom(label),
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           color: kAccentSecondary,
@@ -266,7 +270,7 @@ class _HomeCardState extends State<_HomeCard> {
                     ),
                     ListTile(
                       leading: const Icon(Icons.restart_alt),
-                      title: const Text('Lire depuis le début'),
+                      title: Text(sheetCtx.l10n.cardPlayFromStart),
                       dense: true,
                       onTap: () {
                         // §resumeUnify — clear sur toutes les versions.
@@ -282,7 +286,7 @@ class _HomeCardState extends State<_HomeCard> {
                     ListTile(
                       leading: Icon(Icons.history_toggle_off, color: kWarning),
                       title: Text(
-                        'Oublier la reprise',
+                        sheetCtx.l10n.cardForgetResume,
                         style: TextStyle(fontSize: 13, color: kWarning),
                       ),
                       dense: true,
@@ -295,11 +299,11 @@ class _HomeCardState extends State<_HomeCard> {
                         final clearedUrl = entry.url;
                         final done = await confirmOrUndo(
                           sheetCtx,
-                          title: 'Oublier la reprise ?',
+                          title: sheetCtx.l10n.cardForgetResumeTitle,
                           question:
-                              'La position de lecture de ce titre sera oubliée.',
-                          confirmLabel: 'Oublier',
-                          doneMessage: 'Reprise oubliée',
+                              sheetCtx.l10n.cardForgetResumeQuestion,
+                          confirmLabel: sheetCtx.l10n.cardForgetConfirm,
+                          doneMessage: sheetCtx.l10n.cardResumeForgotten,
                           action: () async {
                             for (final v in widget.versions) {
                               await WatchProgressService.clearProgress(v.url);
@@ -323,7 +327,7 @@ class _HomeCardState extends State<_HomeCard> {
             // ── Voir les détails (action sheet ou fiche TMDB) ─────────────
             ListTile(
               leading: const Icon(Icons.info_outline),
-              title: const Text('Voir les détails'),
+              title: Text(sheetCtx.l10n.cardDetails),
               onTap: () {
                 Navigator.pop(sheetCtx);
                 _onTap();
@@ -333,7 +337,7 @@ class _HomeCardState extends State<_HomeCard> {
             if (widget.type != M3uContentType.tv)
               ListTile(
                 leading: const Icon(Icons.download),
-                title: const Text('Télécharger'),
+                title: Text(sheetCtx.l10n.download),
                 onTap: () {
                   Navigator.pop(sheetCtx);
                   final releaseYear = widget.type == M3uContentType.movie ? entry.title.year : null;
@@ -357,7 +361,9 @@ class _HomeCardState extends State<_HomeCard> {
                     color: isFav ? kFavorite : null,
                   ),
                   title: Text(
-                    isFav ? 'Retirer des favoris' : 'Ajouter aux favoris',
+                    isFav
+                        ? sheetCtx.l10n.favoriteRemove
+                        : sheetCtx.l10n.favoriteAdd,
                     style: TextStyle(color: isFav ? kFavorite : null),
                   ),
                   onTap: () async {
@@ -376,6 +382,7 @@ class _HomeCardState extends State<_HomeCard> {
 
   @override
   Widget build(BuildContext context) {
+    buildCount++;
     final cs = Theme.of(context).colorScheme;
     final entry = widget.versions.first;
     // §23 — politique image « plus grosse liste ».

@@ -56,16 +56,32 @@ void main() {
           PlayVerdict.decoderTooSmall);
     });
 
-    test('⚠️ décodeur 4K mais box branchée en 1080p → displayTooSmall', () {
+    test('§caps4kDisplay — un écran annoncé en 1080p ne refuse PLUS la 4K', () {
+      // Le téléviseur 4K de l'utilisateur : Android rend 1920×1080 pour
+      // l'interface, la vidéo sort en 2160p. Tous les décodeurs présents →
+      // la 4K passe. L'écran n'est qu'une information.
       expect(_caps(hevc: _hw4k, display: _box1080).verdictFor('4K'),
-          PlayVerdict.displayTooSmall);
+          PlayVerdict.ok);
+      expect(_caps(hevc: _hw4k, display: _phone).verdictFor('4K'),
+          PlayVerdict.ok);
     });
 
-    test('un téléphone 1080×2340 n affiche pas de 2160p — mais on ne l exige'
-        ' que sur téléviseur', () {
-      final c = _caps(hevc: _hw4k, display: _phone);
-      expect(c.verdictFor('4K'), PlayVerdict.displayTooSmall);
-      expect(c.verdictFor('4K', requireDisplay: false), PlayVerdict.ok);
+    test('les modes annoncés remontent le plus grand, à titre informatif', () {
+      final d = DisplayCaps.fromMap({
+        'width': 1920,
+        'height': 1080,
+        'refreshHz': 60.0,
+        'modes': [
+          {'width': 1920, 'height': 1080, 'refreshHz': 60.0},
+          {'width': 3840, 'height': 2160, 'refreshHz': 60.0},
+        ],
+      })!;
+      expect((d.maxModeWidth, d.maxModeHeight), (3840, 2160));
+      expect(d.is2160, isTrue);
+      expect(d.announcesMoreThanShown, isTrue);
+      // Persisté puis relu : le plus grand mode survit sans la liste.
+      final again = DisplayCaps.fromMap(d.toMap())!;
+      expect((again.maxModeWidth, again.maxModeHeight), (3840, 2160));
     });
 
     test('la FHD, la HD et une définition inconnue passent toujours', () {

@@ -65,6 +65,23 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     super.didChangeDependencies();
     final route = ModalRoute.of(context);
     if (route is PageRoute) appRouteObserver.subscribe(this, route);
+    // §tabPageKeep — Page hors écran (les trois restent vivantes) : la
+    // rotation s'arrête, sinon un `setState` de 21 cartes toutes les 6 s sur
+    // une page que personne ne voit. `TickerMode.of` enregistre la
+    // dépendance : ce callback revient quand l'onglet change.
+    _setHiddenPaused(!TickerMode.valuesOf(context).enabled);
+  }
+
+  bool _hiddenPaused = false;
+  void _setHiddenPaused(bool paused) {
+    if (_hiddenPaused == paused) return;
+    _hiddenPaused = paused;
+    if (paused) {
+      _timer?.cancel();
+      if (_animCtrl.isAnimating) _animCtrl.stop();
+    } else {
+      _scheduleNext();
+    }
   }
 
   @override
@@ -110,6 +127,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     if (widget.featured.length <= 1 ||
         _focusPaused ||
         _bgPaused ||
+        _hiddenPaused ||
         !PerformanceSettingsService.config.value.heroAutoRotate) {
       return;
     }
@@ -678,11 +696,11 @@ class _HeroFanCardState extends State<_HeroFanCard> {
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.play_arrow, size: 14, color: Colors.black),
-                      SizedBox(width: 2),
+                    children: [
+                      const Icon(Icons.play_arrow, size: 14, color: Colors.black),
+                      const SizedBox(width: 2),
                       Text(
-                        'REPRENDRE',
+                        context.l10n.homeResume,
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,

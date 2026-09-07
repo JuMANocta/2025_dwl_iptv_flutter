@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../core/themes/colors.dart';
-import '../core/utils/platform_tv.dart';
 import '../data/models/device_caps.dart';
 import '../data/models/m3u_entry.dart';
 import '../data/services/device_caps_service.dart';
@@ -24,9 +23,9 @@ abstract final class PlaybackGate {
   static Future<bool> allow(BuildContext context, M3uEntry entry) async {
     final DeviceCaps? caps = DeviceCapsService.caps.value;
     if (caps == null) return true;
-    // L'écran ne compte que sur téléviseur (cf. `DeviceCaps.verdictFor`).
+    // §caps4kDisplay — seul le décodeur décide (cf. `DeviceCaps.verdictFor`).
     final PlayVerdict v = caps.verdictFor(entry.title.quality,
-        requireDisplay: PlatformTv.isTv);
+        );
     if (v == PlayVerdict.ok || v == PlayVerdict.unknown) return true;
 
     final l10n = context.l10n;

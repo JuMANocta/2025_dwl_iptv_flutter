@@ -53,7 +53,7 @@ class UserFacingException implements Exception {
 }
 
 String describeError(Object? error) {
-  if (error == null) return 'Une erreur inattendue est survenue.';
+  if (error == null) return L10n.current.errUnexpected;
   final String raw = _describe(error);
   return _cap(sanitizeForLog(raw));
 }
@@ -162,7 +162,7 @@ String _stripPrefix(String s) {
     out = out.substring(m.end).trim();
     m = prefix.firstMatch(out);
   }
-  return out.isEmpty ? 'Une erreur inattendue est survenue.' : out;
+  return out.isEmpty ? L10n.current.errUnexpected : out;
 }
 
 /// Motifs typiques d'une erreur socket **native** (anglais, jamais écrite par

@@ -176,11 +176,10 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text("✅ Données d'usage réinitialisées"),
-        ),
-      );
+      ..showSnackBar(SnackBar(
+        content: Text(context.l10n.settingsUsageReset),
+        backgroundColor: kSuccess,
+      ));
   }
 
   @override
