@@ -1027,12 +1027,11 @@
       }
     }
   },
-  "perfUnloadSub": "Minutes without opening a secondary playlist before it leaves memory. The disk cache is kept: it comes back in ~50 ms on the next access. “Never” (0) is the same as keeping every playlist. Pages that show playlists or their counters suspend unloading while they are open.",
+  "perfUnloadSub": "Minutes without opening a secondary playlist before it leaves memory. “Never” (0) is the same as keeping every playlist.",
   "perfSectionMemory": "Memory & usage",
   "perfImageRamLabel": "Images (RAM)",
-  "perfImageRamSub": "RAM reserved for images already displayed (Flutter default: 100 MB). ⚠️ Lowering it does not make the app smoother: too low and thumbnails are decoded over and over, and the display starts to stutter. Only adjust it if memory is genuinely short.",
+  "perfImageRamSub": "RAM reserved for images already displayed. Only adjust it if memory is genuinely short.",
   "perfFreeMemoryButton": "Free memory from secondary accounts",
-  "perfFreeMemoryNote": "Disk caches are kept: an unloaded account reloads in ~50 ms on the next access.",
   "perfClearImageCacheButton": "Clear the image cache",
   "perfClearImageCacheNote": "Thumbnails are kept on disk to avoid downloading them again. Clear it if a poster changed on the provider side or if storage is running out.",
   "perfSectionStorage": "Storage",
@@ -1514,7 +1513,7 @@
     }
   },
   "relayBlockerLive": "A live channel has no end, and neither would the conversion. It is only offered on a movie or an episode.",
-  "relayBlockerLocal": "A file that is already downloaded cannot be converted for the TV yet.",
+  "relayBlockerLocal": "A file that is already downloaded cannot be converted for the TV.",
   "relayBlockerOther": "This source cannot be relayed by the phone.",
   "relayBatteryPluggedOk": "The phone is plugged in, perfect for a movie.",
   "relayBatteryPlugIfYouCan": "Plug the phone in if you can: converting uses a lot of battery.",
@@ -1923,7 +1922,7 @@
   "bkRestoreDone": "Restore succeeded",
   "bkRestoreDoneSub": "The IPTV playlists will be downloaded again on the next start.",
   "regionApplied": "✅ Filter applied — catalog reloaded",
-  "regionHelp": "Tick the languages/regions to HIDE from the catalog. French (|FR|), Québécois and VOSTFR content is always kept.\n• Memory is freed right after “Apply”.\n• The catalog size on disk shrinks on the next playlist reload (automatic after 24 h, or the ⟳ button on the home screen).",
+  "regionHelp": "Tick the languages/regions to HIDE from the catalog. French (|FR|), Québécois and VOSTFR content is always kept.",
   "regionApplying": "Applying the filter…",
   "regionApplyingSub": "The catalog is being re-parsed. This may take a few seconds.",
   "regionHidden": "Hidden",
@@ -1974,7 +1973,7 @@
   },
   "xmltvDownloading": "Downloading…",
   "xmltvForceUpdate": "Force an update",
-  "xmltvHowBody": "• Public source: xmltvfr.fr (French DTT)\n• 24 h local cache — silent update at start-up when stale\n• Covers the main French channels (TF1, France 2, M6, ARTE…)\n• Used for the “Now / Next” block and the replay grid",
+  "xmltvHowBody": "• Public source: xmltvfr.fr (French DTT)\n• Covers the main French channels (TF1, France 2, M6, ARTE…)\n• Used for the “Now / Next” block and the replay grid",
   "visualLangApplied": "Artwork in {language} — posters already on screen keep their language until the next reload.",
   "@visualLangApplied": {
     "placeholders": {

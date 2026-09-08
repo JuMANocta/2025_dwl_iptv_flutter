@@ -14,6 +14,7 @@ import '../../../core/utils/network.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/platform/storage_service.dart';
 import '../../../widgets/terminal_download_dialog.dart';
+import 'download_naming.dart';
 import '../../../widgets/info_row.dart';
 import '../../../l10n/app_localizations.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
@@ -81,6 +82,30 @@ Future<String> _resolvePartPath(String finalDirectory, String fileName) async {
 }
 
 String sanitizeFilename(String filename) => filename.replaceAll(RegExp(r'[\\/*?:"<>|]'), "_");
+
+/// §dlEpisode — Premier nom LIBRE dans [directory], en évitant [takenPaths]
+/// (les chemins finaux des tâches déjà connues) et les fichiers réellement
+/// présents.
+///
+/// ⚠️ L'existence est lue en **asynchrone**, candidat par candidat : le cas
+/// normal coûte un seul `exists()` et n'énumère jamais le dossier — qui peut
+/// contenir plusieurs dizaines de gigaoctets.
+Future<String> _freeFileName({
+  required String directory,
+  required String fileName,
+  required Set<String> takenPaths,
+}) async {
+  for (int i = 0; i < 99; i++) {
+    final String candidate = downloadNameCandidate(fileName, i);
+    if (takenPaths.contains('$directory/$candidate')) continue;
+    if (await File('$directory/$candidate').exists()) continue;
+    if (i > 0) {
+      debugPrint('📄 §dlEpisode — « $fileName » deja pris, ecrit sous « $candidate »');
+    }
+    return candidate;
+  }
+  return downloadNameCandidate(fileName, 99);
+}
 
 String _ext(String name) {
   final i = name.lastIndexOf('.');
@@ -333,6 +358,20 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
 
   final fileExt = extension.isNotEmpty ? extension.toLowerCase() : 'mp4';
   if (_ext(baseFileName).isEmpty) baseFileName = '$baseFileName.$fileExt';
+
+  // §dlEpisode — Le nom ne doit heurter NI une autre tâche, NI un fichier déjà
+  // posé dans le dossier public (il est partagé : l'utilisateur y met ce qu'il
+  // veut, et §dlOrphans montre justement des fichiers qu'aucune tâche ne
+  // connaît). Sans ça, deux épisodes d'une même série se renommaient sur le
+  // même chemin et le second effaçait le premier, en silence.
+  final Set<String> takenByTasks = downloadManager.tasksNotifier.value
+      .map((t) => t.finalPath)
+      .toSet();
+  baseFileName = await _freeFileName(
+    directory: finalSaveDirectory,
+    fileName: baseFileName,
+    takenPaths: takenByTasks,
+  );
 
   // On construit le chemin final en utilisant le dossier obtenu par notre service.
   final finalPath = "$finalSaveDirectory/$baseFileName";

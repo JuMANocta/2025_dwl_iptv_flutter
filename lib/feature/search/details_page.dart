@@ -32,6 +32,7 @@ import 'm3u_filter.dart';
 import 'details_facts.dart';
 import 'details_versions.dart';
 import '../../widgets/playback_gate.dart';
+import '../../widgets/media_chips.dart' show buildDownloadName;
 import 'version_dedup.dart';
 import '../../l10n/l10n_ext.dart';
 
@@ -2401,9 +2402,22 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                   flex: 3,
                   child: _glowButton(
                     color: kAccentSecondary,
+                    // §dlEpisode — `buildDownloadName`, comme les TROIS autres
+                    // points de téléchargement (feuille d'action, carte de
+                    // l'accueil). Celui-ci passait `displayName`, c'est-à-dire
+                    // `title.baseTitle` : le seul nom de la SÉRIE, sans saison
+                    // ni épisode. Or c'est LE chemin par lequel on télécharge un
+                    // épisode. Ce nom devient la notification, la tuile de la
+                    // liste ET le nom de fichier : tous les épisodes visaient
+                    // donc le même `finalPath` et s'écrasaient l'un l'autre
+                    // (`_finalizeDownload` fait un `rename`, qui remplace sa
+                    // cible en silence).
                     onPressed: () => verifierEtTelecharger(
                         url: _selectedEntry.url,
-                        nom: _selectedEntry.displayName,
+                        nom: buildDownloadName(_selectedEntry),
+                        releaseYear: _selectedEntry.type == M3uContentType.movie
+                            ? _selectedEntry.title.year
+                            : null,
                         context: context),
                     child: _btnContent(
                         Icons.download_rounded, l10n.download.toUpperCase()),
