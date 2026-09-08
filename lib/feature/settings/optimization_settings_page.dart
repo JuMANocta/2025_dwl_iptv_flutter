@@ -412,13 +412,6 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                child: Text(
-                  context.l10n.perfFreeMemoryNote,
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
-                ),
-              ),
               const SizedBox(height: 10),
               // §imgDiskCache — purge manuelle du cache des vignettes.
               Padding(

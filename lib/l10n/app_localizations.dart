@@ -2069,7 +2069,7 @@ abstract class AppLocalizations {
   /// No description provided for @perfUnloadSub.
   ///
   /// In en, this message translates to:
-  /// **'Minutes without opening a secondary playlist before it leaves memory. The disk cache is kept: it comes back in ~50 ms on the next access. “Never” (0) is the same as keeping every playlist. Pages that show playlists or their counters suspend unloading while they are open.'**
+  /// **'Minutes without opening a secondary playlist before it leaves memory. “Never” (0) is the same as keeping every playlist.'**
   String get perfUnloadSub;
 
   /// No description provided for @perfSectionMemory.
@@ -2087,7 +2087,7 @@ abstract class AppLocalizations {
   /// No description provided for @perfImageRamSub.
   ///
   /// In en, this message translates to:
-  /// **'RAM reserved for images already displayed (Flutter default: 100 MB). ⚠️ Lowering it does not make the app smoother: too low and thumbnails are decoded over and over, and the display starts to stutter. Only adjust it if memory is genuinely short.'**
+  /// **'RAM reserved for images already displayed. Only adjust it if memory is genuinely short.'**
   String get perfImageRamSub;
 
   /// No description provided for @perfFreeMemoryButton.
@@ -2095,12 +2095,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Free memory from secondary accounts'**
   String get perfFreeMemoryButton;
-
-  /// No description provided for @perfFreeMemoryNote.
-  ///
-  /// In en, this message translates to:
-  /// **'Disk caches are kept: an unloaded account reloads in ~50 ms on the next access.'**
-  String get perfFreeMemoryNote;
 
   /// No description provided for @perfClearImageCacheButton.
   ///
@@ -3071,7 +3065,7 @@ abstract class AppLocalizations {
   /// No description provided for @relayBlockerLocal.
   ///
   /// In en, this message translates to:
-  /// **'A file that is already downloaded cannot be converted for the TV yet.'**
+  /// **'A file that is already downloaded cannot be converted for the TV.'**
   String get relayBlockerLocal;
 
   /// No description provided for @relayBlockerOther.
@@ -4139,7 +4133,7 @@ abstract class AppLocalizations {
   /// No description provided for @regionHelp.
   ///
   /// In en, this message translates to:
-  /// **'Tick the languages/regions to HIDE from the catalog. French (|FR|), Québécois and VOSTFR content is always kept.\n• Memory is freed right after “Apply”.\n• The catalog size on disk shrinks on the next playlist reload (automatic after 24 h, or the ⟳ button on the home screen).'**
+  /// **'Tick the languages/regions to HIDE from the catalog. French (|FR|), Québécois and VOSTFR content is always kept.'**
   String get regionHelp;
 
   /// No description provided for @regionApplying.
@@ -4343,7 +4337,7 @@ abstract class AppLocalizations {
   /// No description provided for @xmltvHowBody.
   ///
   /// In en, this message translates to:
-  /// **'• Public source: xmltvfr.fr (French DTT)\n• 24 h local cache — silent update at start-up when stale\n• Covers the main French channels (TF1, France 2, M6, ARTE…)\n• Used for the “Now / Next” block and the replay grid'**
+  /// **'• Public source: xmltvfr.fr (French DTT)\n• Covers the main French channels (TF1, France 2, M6, ARTE…)\n• Used for the “Now / Next” block and the replay grid'**
   String get xmltvHowBody;
 
   /// No description provided for @visualLangApplied.

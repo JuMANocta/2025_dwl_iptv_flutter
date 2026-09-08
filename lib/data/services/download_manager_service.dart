@@ -7,6 +7,7 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
 import 'download_stall_policy.dart';
+import '../../feature/downloads/logic/download_naming.dart';
 import '../../core/settings/performance_settings_service.dart';
 import '../../core/utils/network_kind.dart';
 import '../../feature/downloads/logic/download_scheduler.dart';
@@ -324,13 +325,14 @@ class DownloadManagerService {
     if (task.totalSize > 0 && resumedBytes >= task.totalSize) {
       debugPrint("✅ Fichier déjà complet dans le cache, finalisation via MediaStore...");
       // On appelle directement la fonction de déplacement
-      final success = await _finalizeDownload(
+      final written = await _finalizeDownload(
         tempPath: task.tempPath,
         finalPath: task.finalPath,
         expectedSize: task.totalSize,
       );
-      if (success) {
-        await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
+      if (written != null) {
+        await updateTask(task.id,
+            status: DownloadStatus.completed, progress: 1.0, finalPath: written);
       } else {
         await updateTask(task.id, status: DownloadStatus.failed);
       }
@@ -414,15 +416,18 @@ class DownloadManagerService {
           debugPrint("✅ Téléchargement vers le cache terminé. Déplacement vers le stockage public...");
           await updateTask(task.id, status: DownloadStatus.finalizing);
 
-          final bool success = await _finalizeDownload(
+          final String? written = await _finalizeDownload(
             tempPath: task.tempPath,
             finalPath: task.finalPath,
             expectedSize: definitiveTotal,
           );
 
-          if (success) {
-            await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
-            debugPrint("💾 Fichier finalisé avec succès dans Movies : ${task.finalPath}");
+          if (written != null) {
+            await updateTask(task.id,
+                status: DownloadStatus.completed,
+                progress: 1.0,
+                finalPath: written);
+            debugPrint("💾 Fichier finalisé avec succès dans Movies : $written");
           } else {
             debugPrint("❌ Erreur lors du déplacement du fichier vers MediaStore.");
             await updateTask(task.id, status: DownloadStatus.failed);
@@ -464,13 +469,14 @@ class DownloadManagerService {
     } on DioException catch (e) {
       if (e.response?.statusCode == 416) {
         debugPrint("⚠️ Erreur 416 (Range) -> Fichier considéré comme déjà complet. Forçage de la finalisation...");
-        final success = await _finalizeDownload(
+        final String? written = await _finalizeDownload(
           tempPath: task.tempPath,
           finalPath: task.finalPath,
           expectedSize: task.totalSize,
         );
-        if (success) {
-          await updateTask(task.id, status: DownloadStatus.completed, progress: 1.0);
+        if (written != null) {
+          await updateTask(task.id,
+              status: DownloadStatus.completed, progress: 1.0, finalPath: written);
           debugPrint("💾 Fichier finalisé avec succès (via erreur 416).");
         } else {
           debugPrint("❌ Erreur lors du déplacement du fichier après une erreur 416.");
@@ -644,20 +650,84 @@ class DownloadManagerService {
   /// SINGLETON, son état statique survit d'un test à l'autre : à appeler en
   /// `setUp` sous peine de faux échecs.
   @visibleForTesting
-  void resetProgressThrottle(String taskId) => _clearProgressThrottle(taskId);
+  void resetProgressThrottle(String taskId) {
+    _clearProgressThrottle(taskId);
+    _clearRestartPolicy(taskId);
+  }
+
+  /// §dlLoop — Ce que la politique anti-boucle a retenu d'une tâche : date de
+  /// la dernière relance automatique et octets reçus à cet instant. `null` =
+  /// aucune relance automatique connue, donc la prochaine est autorisée.
+  ///
+  /// Exposé pour le test de non-régression : le défaut n'était pas dans la
+  /// règle (pure et déjà testée) mais dans le fait que ses ENTRÉES étaient
+  /// effacées entre deux tentatives.
+  @visibleForTesting
+  ({DateTime? at, int? bytes}) restartPolicyStateForTest(String taskId) =>
+      (at: _lastAutoRestart[taskId], bytes: _bytesAtLastAutoRestart[taskId]);
+
+  /// Simule ce que fait la fin d'un transfert (le `finally` de `_runDownload`),
+  /// sans réseau ni fichier.
+  @visibleForTesting
+  void endOfTransferCleanupForTest(String taskId) =>
+      _clearProgressThrottle(taskId);
+
+  /// Inscrit une relance automatique, comme le fait `_maybeAutoRestart`.
+  @visibleForTesting
+  void noteAutoRestartForTest(String taskId, DateTime at, int bytes) {
+    _lastAutoRestart[taskId] = at;
+    _bytesAtLastAutoRestart[taskId] = bytes;
+  }
 
   /// Libère les compteurs de throttle d'une tâche terminée/supprimée.
+  ///
+  /// ⚠️ **Appelée à la fin de CHAQUE transfert**, donc aussi entre les deux
+  /// moitiés d'une relance (`restartTask` coupe le flux, attend sa fin, puis
+  /// repart). Elle ne doit donc contenir que des états de FLUX — ceux qui
+  /// meurent avec la connexion. Les états de POLITIQUE (§dlLoop) vivent dans
+  /// [_clearRestartPolicy] : les mettre ici revenait à effacer le garde-fou
+  /// anti-boucle juste avant qu'il ait à servir.
   void _clearProgressThrottle(String taskId) {
     _lastNotifiedPct.remove(taskId);
     _lastNotifiedAt.remove(taskId);
     _lastPersistedAt.remove(taskId);
-    _throughput.remove(taskId); // §dlWatchdog
+    // §dlWatchdog — le débit se mesure PAR CONNEXION : le pic de la précédente
+    // ne dit rien de la nouvelle (cf. la remise à zéro dans `_maybeAutoRestart`).
+    _throughput.remove(taskId);
+  }
+
+  /// §dlLoop — Oublie l'historique des relances AUTOMATIQUES d'une tâche.
+  ///
+  /// **Le défaut corrigé (2026-09-08, signalé par l'utilisateur : « si on sort
+  /// de l'application la relance se lance en boucle »).** `shouldAutoRestart`
+  /// refuse une relance à moins de 30 s de la précédente, ou si celle-ci n'a
+  /// pas rapporté 1 Mo. Ses deux entrées sont précisément ces deux tables — et
+  /// elles étaient vidées par `_clearProgressThrottle`, appelée à la fin du
+  /// transfert que la relance venait d'interrompre. Les deux valeurs étaient
+  /// donc `null` au tour suivant, `shouldAutoRestart(null, null)` rendait
+  /// `true`, et ni le délai ni le gain minimal ne s'appliquaient JAMAIS d'une
+  /// relance à la suivante. En arrière-plan, où le débit s'effondre face au pic
+  /// mesuré au premier plan, le décrochage se déclenche à chaque fenêtre de
+  /// 5 s : la boucle était armée.
+  ///
+  /// Ces compteurs ne s'effacent donc qu'avec la tâche elle-même, ou quand elle
+  /// aboutit — jamais entre deux tentatives de la MÊME tâche.
+  void _clearRestartPolicy(String taskId) {
     _lastAutoRestart.remove(taskId);
     _bytesAtLastAutoRestart.remove(taskId);
   }
 
   /// Met à jour une tâche existante et notifie l'UI.
-  Future<void> updateTask(String taskId, {DownloadStatus? status, double? progress, int? totalSize, String? errorMessage}) async {
+  Future<void> updateTask(String taskId,
+      {DownloadStatus? status,
+      double? progress,
+      int? totalSize,
+      String? errorMessage,
+      // §dlEpisode — La finalisation peut avoir dû se pousser d'un cran
+      // (« nom (2).mp4 ») pour ne pas écraser un fichier existant : la tâche
+      // doit alors porter le chemin RÉEL, sinon « Lire » et « Supprimer »
+      // viseraient un fichier qui n'est pas le sien.
+      String? finalPath}) async {
     // 1. On crée une NOUVELLE liste (une copie) IMMÉDIATEMENT.
     final currentTasks = List<DownloadTask>.from(tasksNotifier.value);
     final index = currentTasks.indexWhere((t) => t.id == taskId);
@@ -672,7 +742,14 @@ class DownloadManagerService {
         progress: progress,
         totalSize: totalSize,
         errorMessage: errorMessage,
+        finalPath: finalPath,
       );
+
+      // §dlLoop — Une tâche ABOUTIE n'a plus d'historique de relance à
+      // défendre. ⚠️ `canceled` n'est PAS un état final ici : une relance y
+      // passe techniquement (couper le flux, puis reprendre au même octet) —
+      // l'y inclure remettrait exactement la boucle qu'on vient de retirer.
+      if (status == DownloadStatus.completed) _clearRestartPolicy(taskId);
 
       // 4. On assigne notre copie modifiée au notifier.
       // L'UI est maintenant garantie de se mettre à jour.
@@ -687,6 +764,7 @@ class DownloadManagerService {
     await cancelTask(taskId);
     // Supprimer de la liste
     _clearProgressThrottle(taskId);
+    _clearRestartPolicy(taskId); // §dlLoop — la tâche disparaît, son historique aussi
     final currentTasks = List<DownloadTask>.from(tasksNotifier.value);
     currentTasks.removeWhere((t) => t.id == taskId);
     tasksNotifier.value = currentTasks;
@@ -717,7 +795,22 @@ class DownloadManagerService {
 /// taille simplement sondée à la création de la tâche) ne doit PAS faire passer
 /// en échec un téléchargement complet. Le repli MediaStore, lui, n'est pas
 /// vérifiable ainsi : il peut renommer le fichier en cas de doublon.
-Future<bool> _finalizeDownload({
+///
+/// Rend le chemin **réellement utilisé** (`null` en cas d'échec) : il peut
+/// différer de [finalPath] — voir §dlEpisode ci-dessous.
+@visibleForTesting
+Future<String?> finalizeDownloadForTest({
+  required String tempPath,
+  required String finalPath,
+  int expectedSize = 0,
+}) =>
+    _finalizeDownload(
+      tempPath: tempPath,
+      finalPath: finalPath,
+      expectedSize: expectedSize,
+    );
+
+Future<String?> _finalizeDownload({
   required String tempPath,
   required String finalPath,
   int expectedSize = 0,
@@ -725,7 +818,7 @@ Future<bool> _finalizeDownload({
   final file = File(tempPath);
   if (!await file.exists()) {
     debugPrint("Erreur de finalisation : le fichier source n'existe pas à $tempPath");
-    return false;
+    return null;
   }
 
   // Le partiel est-il déjà dans le dossier de destination ? On le déduit des
@@ -734,20 +827,47 @@ Future<bool> _finalizeDownload({
   // sans migration.
   if (file.parent.path == File(finalPath).parent.path) {
     try {
-      final renamed = await file.rename(finalPath);
+      // §dlEpisode — ⚠️ **DERNIER garde-fou avant un écrasement silencieux.**
+      // `rename()` remplace sa cible sans lever : c'est ainsi que les épisodes
+      // d'une même série se sont effacés les uns les autres. Le nom est déjà
+      // rendu unique à la création de la tâche, mais le dossier public est
+      // PARTAGÉ — un fichier a pu y apparaître entre-temps (autre tâche,
+      // copie manuelle, §dlOrphans). On ne remplace donc jamais : on se pousse.
+      final String target = await _freeFinalPath(finalPath);
+      final renamed = await file.rename(target);
       final size = await renamed.length();
       if (expectedSize > 0 && size < expectedSize) {
         debugPrint("⚠️ Fichier tronqué : $size / $expectedSize octets");
-        return false;
+        return null;
       }
-      debugPrint("⚡ Finalisation instantanée (rename) — $finalPath");
-      return true;
+      debugPrint("⚡ Finalisation instantanée (rename) — $target");
+      return target;
     } catch (e) {
       debugPrint("⚠️ Rename impossible ($e) → repli MediaStore");
     }
   }
 
-  return _copyToMediaStore(tempPath);
+  // ⚠️ Le repli MediaStore choisit lui-même le nom en cas de doublon : on ne
+  // peut que rendre le chemin attendu.
+  return await _copyToMediaStore(tempPath) ? finalPath : null;
+}
+
+/// §dlEpisode — [finalPath] s'il est libre, sinon le premier « nom (N).ext »
+/// qui l'est.
+Future<String> _freeFinalPath(String finalPath) async {
+  final int slash = finalPath.lastIndexOf('/');
+  final String dir = slash >= 0 ? finalPath.substring(0, slash) : '';
+  final String name = slash >= 0 ? finalPath.substring(slash + 1) : finalPath;
+  for (int i = 0; i < 99; i++) {
+    final String candidate = downloadNameCandidate(name, i);
+    final String path = dir.isEmpty ? candidate : '$dir/$candidate';
+    if (await File(path).exists()) continue;
+    if (i > 0) {
+      debugPrint('📄 §dlEpisode — « $name » existe deja, ecrit sous « $candidate »');
+    }
+    return path;
+  }
+  return finalPath;
 }
 
 /// Repli historique : copie du cache privé vers le stockage public via

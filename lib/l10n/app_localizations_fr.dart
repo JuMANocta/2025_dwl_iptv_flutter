@@ -1174,7 +1174,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get perfUnloadSub =>
-      'Minutes sans consulter une liste secondaire avant de la sortir de la mémoire. Le cache disque est conservé : elle revient en ~50 ms au prochain accès. « Jamais » (0) équivaut à garder toutes les listes. Les pages qui affichent les listes ou leurs compteurs suspendent le déchargement tant qu\'elles sont ouvertes.';
+      'Minutes sans consulter une liste secondaire avant de la sortir de la mémoire. « Jamais » (0) équivaut à garder toutes les listes.';
 
   @override
   String get perfSectionMemory => 'Mémoire & usage';
@@ -1184,15 +1184,11 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get perfImageRamSub =>
-      'Mémoire vive réservée aux images déjà affichées (défaut Flutter : 100 Mo). ⚠️ Baisser ne rend pas l\'app plus fluide : trop bas, les vignettes sont re-décodées en permanence et l\'affichage se met à saccader. À n\'ajuster que si la mémoire manque vraiment.';
+      'Mémoire vive réservée aux images déjà affichées. À n\'ajuster que si la mémoire manque vraiment.';
 
   @override
   String get perfFreeMemoryButton =>
       'Libérer la mémoire des comptes secondaires';
-
-  @override
-  String get perfFreeMemoryNote =>
-      'Les caches disque sont conservés : un compte déchargé se recharge en ~50 ms au prochain accès.';
 
   @override
   String get perfClearImageCacheButton => 'Vider le cache images';
@@ -1791,7 +1787,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get relayBlockerLocal =>
-      'Un fichier déjà téléchargé ne peut pas encore être converti pour le téléviseur.';
+      'Un fichier déjà téléchargé ne peut pas être converti pour le téléviseur.';
 
   @override
   String get relayBlockerOther =>
@@ -2402,7 +2398,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get regionHelp =>
-      'Coche les langues/régions à MASQUER du catalogue. Le contenu français (|FR|), québécois et VOSTFR est toujours conservé.\n• Mémoire allégée immédiatement après « Appliquer ».\n• La taille du catalogue sur disque diminue au prochain rechargement de la playlist (auto 24 h ou bouton ⟳ de l\'accueil).';
+      'Coche les langues/régions à MASQUER du catalogue. Le contenu français (|FR|), québécois et VOSTFR est toujours conservé.';
 
   @override
   String get regionApplying => 'Application du filtre…';
@@ -2512,7 +2508,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get xmltvHowBody =>
-      '• Source publique : xmltvfr.fr (TNT France)\n• Cache local 24 h — mise à jour silencieuse au démarrage si périmé\n• Couvre les principales chaînes françaises (TF1, France 2, M6, ARTE…)\n• Utilisé pour le bloc « En cours / Ensuite » + la grille replay';
+      '• Source publique : xmltvfr.fr (TNT France)\n• Couvre les principales chaînes françaises (TF1, France 2, M6, ARTE…)\n• Utilisé pour le bloc « En cours / Ensuite » et la grille replay';
 
   @override
   String visualLangApplied(String language) {

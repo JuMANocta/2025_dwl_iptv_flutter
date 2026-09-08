@@ -1027,12 +1027,11 @@
       }
     }
   },
-  "perfUnloadSub": "Minutes sans consulter une liste secondaire avant de la sortir de la mémoire. Le cache disque est conservé : elle revient en ~50 ms au prochain accès. « Jamais » (0) équivaut à garder toutes les listes. Les pages qui affichent les listes ou leurs compteurs suspendent le déchargement tant qu'elles sont ouvertes.",
+  "perfUnloadSub": "Minutes sans consulter une liste secondaire avant de la sortir de la mémoire. « Jamais » (0) équivaut à garder toutes les listes.",
   "perfSectionMemory": "Mémoire & usage",
   "perfImageRamLabel": "Images (RAM)",
-  "perfImageRamSub": "Mémoire vive réservée aux images déjà affichées (défaut Flutter : 100 Mo). ⚠️ Baisser ne rend pas l'app plus fluide : trop bas, les vignettes sont re-décodées en permanence et l'affichage se met à saccader. À n'ajuster que si la mémoire manque vraiment.",
+  "perfImageRamSub": "Mémoire vive réservée aux images déjà affichées. À n'ajuster que si la mémoire manque vraiment.",
   "perfFreeMemoryButton": "Libérer la mémoire des comptes secondaires",
-  "perfFreeMemoryNote": "Les caches disque sont conservés : un compte déchargé se recharge en ~50 ms au prochain accès.",
   "perfClearImageCacheButton": "Vider le cache images",
   "perfClearImageCacheNote": "Les vignettes sont gardées sur le disque pour éviter de les re-télécharger. À vider si une affiche a changé côté fournisseur ou si le stockage sature.",
   "perfSectionStorage": "Stockage",
@@ -1514,7 +1513,7 @@
     }
   },
   "relayBlockerLive": "Une chaîne en direct n'a pas de fin : la conversion non plus. Elle n'est proposée que sur un film ou un épisode.",
-  "relayBlockerLocal": "Un fichier déjà téléchargé ne peut pas encore être converti pour le téléviseur.",
+  "relayBlockerLocal": "Un fichier déjà téléchargé ne peut pas être converti pour le téléviseur.",
   "relayBlockerOther": "Cette source ne peut pas être relayée par le téléphone.",
   "relayBatteryPluggedOk": "Le téléphone est branché, parfait pour un film.",
   "relayBatteryPlugIfYouCan": "Branche le téléphone si tu peux : la conversion consomme beaucoup de batterie.",
@@ -1923,7 +1922,7 @@
   "bkRestoreDone": "Restauration réussie",
   "bkRestoreDoneSub": "Les playlists IPTV seront re-téléchargées au prochain démarrage.",
   "regionApplied": "✅ Filtre appliqué — catalogue rechargé",
-  "regionHelp": "Coche les langues/régions à MASQUER du catalogue. Le contenu français (|FR|), québécois et VOSTFR est toujours conservé.\n• Mémoire allégée immédiatement après « Appliquer ».\n• La taille du catalogue sur disque diminue au prochain rechargement de la playlist (auto 24 h ou bouton ⟳ de l'accueil).",
+  "regionHelp": "Coche les langues/régions à MASQUER du catalogue. Le contenu français (|FR|), québécois et VOSTFR est toujours conservé.",
   "regionApplying": "Application du filtre…",
   "regionApplyingSub": "Le catalogue est ré-analysé. Cela peut prendre quelques secondes.",
   "regionHidden": "Masqué",
@@ -1974,7 +1973,7 @@
   },
   "xmltvDownloading": "Téléchargement en cours…",
   "xmltvForceUpdate": "Forcer la mise à jour",
-  "xmltvHowBody": "• Source publique : xmltvfr.fr (TNT France)\n• Cache local 24 h — mise à jour silencieuse au démarrage si périmé\n• Couvre les principales chaînes françaises (TF1, France 2, M6, ARTE…)\n• Utilisé pour le bloc « En cours / Ensuite » + la grille replay",
+  "xmltvHowBody": "• Source publique : xmltvfr.fr (TNT France)\n• Couvre les principales chaînes françaises (TF1, France 2, M6, ARTE…)\n• Utilisé pour le bloc « En cours / Ensuite » et la grille replay",
   "visualLangApplied": "Visuels en {language} — les affiches déjà affichées gardent leur langue jusqu'au prochain rechargement.",
   "@visualLangApplied": {
     "placeholders": {
