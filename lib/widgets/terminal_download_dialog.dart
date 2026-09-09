@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
@@ -52,6 +53,22 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   AppLocalizations? _cachedL10n;
 
   Stopwatch? _stopwatch;
+
+  /// §dlElapsed — Temps écoulé du transfert, affiché à la seconde.
+  ///
+  /// ⚠️ **`_stopwatch` NE PEUT PAS servir** : il est `reset()` toutes les
+  /// 500 ms pour calculer le débit instantané. Il en faut un second, qui ne
+  /// repart qu'au démarrage d'un nouveau transfert.
+  final Stopwatch _elapsed = Stopwatch();
+
+  /// §dlElapsed — ⚠️ Un `Timer`, **jamais un ticker ni une animation** : le
+  /// journal n'est repeint que sur notification de tâche (throttlée à 250 ms,
+  /// et MUETTE quand le transfert est bloqué — précisément le moment où l'on
+  /// regarde ce compteur). §bootCursorTimer (2026-09-06) a déjà payé la leçon
+  /// inverse : un curseur clignotant en `AnimationController` forçait 60
+  /// images/s et volait les deux tiers du CPU de l'analyse.
+  Timer? _elapsedTimer;
+
   int _lastReceivedBytes = 0;
   double _speed = 0;
   int _eta = 0;
@@ -159,9 +176,19 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       if (_isDownloadComplete) {
         _isDownloadComplete = false;
         _stopwatch = null; // vitesse/ETA recalculés pour la nouvelle session
+        _elapsed
+          ..reset()
+          ..start(); // §dlElapsed — nouveau transfert, nouveau chrono
         _pushRetryLine('> RESTART — NEW TRANSFER INITIATED...');
       }
       _stopwatch ??= Stopwatch()..start();
+      if (!_elapsed.isRunning) _elapsed.start();
+      _elapsedTimer ??= Timer.periodic(
+        const Duration(seconds: 1),
+        (_) {
+          if (mounted) setState(() {});
+        },
+      );
       const barLength = 20;
       final filled = (task.progress * barLength).clamp(0, barLength).toInt();
       final bar = '█' * filled + '▒' * (barLength - filled);
@@ -181,12 +208,16 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
 
       final speedInfo = _speed > 0 ? '\n🚀 ${l10n.terminalSpeedMessage} : ${formatFileSize(_speed.toInt())}/s' : '';
       final etaInfo = _eta > 0 ? '\n⏳ ${l10n.terminalEtaMessage} : ${formatDuration(_eta)}' : '';
-      // §dlWatchdog — Le nombre de relances s'affiche DANS le bloc stats,
-      // qui est remplacé à chaque rafraîchissement : il ne s'empile jamais.
-      final retryInfo = _retryCount > 0
-          ? '\n🔁 ${l10n.terminalRetryCountMessage} : $_retryCount'
-          : '';
-      final formatted = '\n[$bar] ${(task.progress * 100).toStringAsFixed(1)}%$speedInfo$etaInfo$retryInfo';
+      // §dlElapsed — Le temps écoulé remplace le compteur de relances
+      // (signalement du 2026-09-08 : « vu que la relance fonctionne
+      // correctement, supprimer la partie relance et mettre à la place le
+      // temps réel du téléchargement qui incrémente de secondes »).
+      // ⚠️ Le compteur « relancé ×N » de la TUILE, lui, RESTE : c'est là qu'il
+      // distingue « source lente » de « source qui bride », et il survit à la
+      // fermeture de ce moniteur — ce que ce dialogue ne peut pas faire.
+      final elapsedInfo = '\n⏱️ ${l10n.terminalElapsedMessage} : '
+          '${formatDuration(_elapsed.elapsed.inSeconds)}';
+      final formatted = '\n[$bar] ${(task.progress * 100).toStringAsFixed(1)}%$speedInfo$etaInfo$elapsedInfo';
 
       _writeStats(formatted);
     } else if (task.status == DownloadStatus.finalizing &&
@@ -310,6 +341,8 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   @override
   void dispose() {
     _downloadManager.tasksNotifier.removeListener(_onTaskUpdated);
+    _elapsedTimer?.cancel(); // §dlElapsed
+    _elapsed.stop();
     _scrollController.dispose();
     super.dispose();
   }

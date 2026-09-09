@@ -218,6 +218,12 @@ abstract class AppLocalizations {
   /// **'ETA'**
   String get terminalEtaMessage;
 
+  /// No description provided for @terminalElapsedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Elapsed'**
+  String get terminalElapsedMessage;
+
   /// No description provided for @terminalCancelMessage.
   ///
   /// In en, this message translates to:
@@ -3799,6 +3805,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Options'**
   String get optTitle;
+
+  /// No description provided for @optBackToVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to video'**
+  String get optBackToVideo;
+
+  /// No description provided for @sheetClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get sheetClose;
+
+  /// No description provided for @bootSlowHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading is taking longer than usual. You can go in now: your lists will finish loading in the background.'**
+  String get bootSlowHint;
+
+  /// No description provided for @bootContinueAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Go in without waiting'**
+  String get bootContinueAnyway;
+
+  /// No description provided for @bootStalledBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The main list has stopped making progress. It keeps loading in the background: try again in a moment, or check the account.'**
+  String get bootStalledBody;
+
+  /// No description provided for @sheetCloseSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Closes without changing anything'**
+  String get sheetCloseSub;
+
+  /// No description provided for @optBackToVideoSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Closes this panel, playback continues'**
+  String get optBackToVideoSub;
 
   /// No description provided for @optNextEpisode.
   ///

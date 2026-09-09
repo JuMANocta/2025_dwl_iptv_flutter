@@ -5,6 +5,7 @@ import '../data/models/m3u_entry.dart';
 import '../data/services/parsed_playlist_service.dart';
 import '../feature/search/m3u_filter.dart';
 import 'tv/tv_adaptive_modal.dart';
+import 'sheet_close_tile.dart';
 import '../l10n/l10n_ext.dart';
 
 /// §tmdbOnlyDetails — Recherche MANUELLE d'un titre dans les listes.
@@ -206,6 +207,18 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
                     },
                   ),
           ),
+          // §tvOptionsBack — la feuille n'offrait AUCUNE sortie neutre : le
+          // champ de recherche et chaque résultat déclenchent tous quelque
+          // chose (bascule VO ou choix d'un groupe), il ne restait que la
+          // touche Retour, qui referme aussi une vidéo en cours ailleurs
+          // dans l'app. `show()` documente déjà `null` = « fermé sans
+          // choisir », c'est exactement ce que fait `SheetCloseTile`.
+          //
+          // ⚠️ En DERNIER, jamais en premier : `TvAutofocusFirst` focus le
+          // premier élément focusable du modal — ici le champ de recherche
+          // (déjà `autofocus: true`), qui doit rester l'action par défaut à
+          // l'ouverture, pas « Fermer ».
+          const SheetCloseTile(),
         ],
       ),
     );

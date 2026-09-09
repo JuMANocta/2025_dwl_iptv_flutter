@@ -292,10 +292,38 @@ abstract final class AppBack {
   static bool pop() {
     final NavigatorState? nav = navigatorKey.currentState;
     if (nav == null || !nav.canPop()) return false;
-    if (_throttled()) return true;
+    if (_throttled()) {
+      _trace('touche', consomme: true, throttle: true);
+      return true;
+    }
+    _trace('touche', consomme: true);
     nav.maybePop();
     return true;
   }
+
+  /// §tvOptionsBack — Journalise CHAQUE Retour, avec sa voie d'arrivée.
+  ///
+  /// **Ce qu'on cherche** (signalement du 2026-09-08 : sur téléviseur, Retour
+  /// depuis le panneau d'options ferme le FILM au lieu du panneau). Hypothèse :
+  /// sur Android le Retour arrive par DEUX voies — l'événement clavier, capté
+  /// par `dpad` et routé ici, **et** le message de plateforme `popRoute`, qui
+  /// ne passe pas par ce debounce. Un appui = deux dépilements.
+  ///
+  /// ⚠️ C'est une SONDE, pas un correctif : deux lignes pour un seul appui
+  /// confirmeraient l'hypothèse ; une seule la démentiraient, et il faudrait
+  /// chercher ailleurs. La recette appareil tranche — le journal interne
+  /// (§tvLogs) la rend lisible sur TV, où logcat est muet en release.
+  static void _trace(String voie, {bool consomme = false, bool throttle = false}) {
+    final NavigatorState? nav = navigatorKey.currentState;
+    debugPrint('⬅️ §tvOptionsBack — Retour par « $voie » '
+        '(consomme=$consomme, avale=$throttle, depilable=${nav?.canPop()})');
+  }
+
+  /// §tvOptionsBack — À appeler depuis la voie PLATEFORME (`popRoute`) si on
+  /// veut la voir dans le journal. Laissée non branchée volontairement : la
+  /// brancher changerait le comportement, et on veut d'abord MESURER.
+  @visibleForTesting
+  static void tracePlatformPop() => _trace('plateforme');
 
   /// Retour déclenché depuis l'**interface** (bouton retour du player,
   /// télécommande web). Ne quitte jamais l'application : un bouton à l'écran ne

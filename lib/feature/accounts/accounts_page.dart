@@ -26,6 +26,7 @@ import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import 'package:aetherStream/widgets/sheet_close_tile.dart';
 
 /// Page de gestion des comptes IPTV (§1g — refonte).
 ///
@@ -350,6 +351,9 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                   _delete(acc);
                 },
               ),
+              // §tvOptionsBack — une feuille dont la dernière ligne est
+              // DESTRUCTIVE doit d'autant plus offrir de n'en choisir aucune.
+              SheetCloseTile(onTap: () => Navigator.pop(ctx)),
               const SizedBox(height: 8),
             ],
           ),

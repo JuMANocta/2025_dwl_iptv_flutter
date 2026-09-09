@@ -6,6 +6,7 @@ import '../../data/services/xmltv_service.dart';
 import '../../data/models/xmltv_program.dart';
 import '../../widgets/tv/focusable_card.dart';
 import '../../widgets/tv/focusable_chip.dart';
+import '../../widgets/sheet_close_tile.dart';
 import '../../l10n/l10n_ext.dart';
 
 /// Sheet permettant à l'utilisateur de choisir manuellement
@@ -284,6 +285,19 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+            // §tvOptionsBack — la feuille n'offrait aucune sortie neutre :
+            // la grille XMLTV lance directement un replay au tap, et le
+            // picker manuel ne mène qu'au bouton « Regarder » — il ne
+            // restait que la touche Retour (buguée : elle referme aussi une
+            // vidéo en cours ailleurs dans l'app, §dpadBack).
+            //
+            // ⚠️ En DERNIER, jamais en premier : `TvAutofocusFirst` focus le
+            // premier élément focusable du modal (le premier chip de la
+            // grille ou du sélecteur de jour) — « Fermer » en tête ferait de
+            // la fermeture l'action par défaut de la feuille qu'on vient
+            // d'ouvrir.
+            const SheetCloseTile(),
           ],
         ),
       ),

@@ -105,7 +105,34 @@ class PlaylistService {
   /// réseau va réellement démarrer (cache absent ou périmé). L'appelant peut
   /// ainsi afficher « téléchargement… » au lieu de « lecture du cache… » sans
   /// que ce service connaisse l'UI.
+  /// §bootActiveCap (2026-09-09) — Le téléchargement en vol, partagé.
+  ///
+  /// ⚠️ **Sans lui, « Réessayer » lançait un SECOND téléchargement** du même
+  /// fichier, au même endroit, pendant que le premier écrivait encore son
+  /// `.part` — deux handles sur le même fichier partiel. Le défaut existait
+  /// déjà avant l'écran de démarrage interruptible : il suffisait d'appuyer
+  /// sur « Réessayer » depuis l'écran d'erreur pendant qu'un téléchargement
+  /// lent tournait encore. Un second appel attend désormais le premier.
+  static Future<String>? _inFlight;
+
   static Future<String> getOrDownloadPlaylist({
+    void Function()? onDownloadStart,
+  }) {
+    final Future<String>? running = _inFlight;
+    if (running != null) {
+      debugPrint('⏳ Telechargement de la playlist deja en cours : on attend le meme.');
+      return running;
+    }
+    final Future<String> started = _getOrDownloadPlaylist(
+      onDownloadStart: onDownloadStart,
+    );
+    _inFlight = started;
+    return started.whenComplete(() {
+      if (identical(_inFlight, started)) _inFlight = null;
+    });
+  }
+
+  static Future<String> _getOrDownloadPlaylist({
     void Function()? onDownloadStart,
   }) async {
     final path = await playlistPath();

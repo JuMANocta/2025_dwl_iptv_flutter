@@ -192,9 +192,18 @@ class WebConsoleService {
 
       // §tvLogs — Export texte du journal (téléchargeable, et rechargé toutes
       // les 2 s par la vue « Journal » pour un suivi en direct).
+      //
+      // §tvLogsPersist — `?session=previous` sert le journal de la session
+      // D'AVANT ce lancement (survivant à un kill), lu depuis le fichier de
+      // rotation plutôt que depuis le tampon mémoire courant. `await` reste
+      // sûr même si la console s'ouvre très tôt après le boot : l'amorçage
+      // disque (async) n'a peut-être pas encore fini.
       if (req.method == 'GET' && uri.path == '/logs.txt') {
+        final bool wantPrevious = uri.queryParameters['session'] == 'previous';
         res.headers.contentType = ContentType.text;
-        res.write(DiagnosticLog.dump());
+        res.write(wantPrevious
+            ? (await DiagnosticLog.awaitPreviousSession() ?? '')
+            : DiagnosticLog.dump());
         await res.close();
         return;
       }
@@ -271,8 +280,13 @@ class WebConsoleService {
         page = html.buildAbout(_theme, tk, '${info.version}+${info.buildNumber}');
         break;
       case 'logs':
+        // §tvLogsPersist — `awaitPreviousSession` peut être en cours (console
+        // ouverte très tôt après le boot) : on attend ici, une fois, pour que
+        // le compteur affiché soit juste dès le premier rendu de la page.
+        await DiagnosticLog.awaitPreviousSession();
         page = html.buildLogs(_theme, tk, DiagnosticLog.dump(),
-            DiagnosticLog.keyTrace, DiagnosticLog.lineCount);
+            DiagnosticLog.keyTrace, DiagnosticLog.lineCount,
+            DiagnosticLog.previousSessionLineCount);
         break;
       // §fleetState — Vue « État des listes » : le rendu lisible de
       // `/fleet.json`, rafraîchi côté navigateur. La page elle-même est vide de

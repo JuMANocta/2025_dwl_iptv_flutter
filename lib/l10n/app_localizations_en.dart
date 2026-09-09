@@ -76,6 +76,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalEtaMessage => 'ETA';
 
   @override
+  String get terminalElapsedMessage => 'Elapsed';
+
+  @override
   String get terminalCancelMessage => '\nℹ️ ABORT: Download cancelled by user';
 
   @override
@@ -2197,6 +2200,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get optTitle => 'Options';
+
+  @override
+  String get optBackToVideo => 'Back to video';
+
+  @override
+  String get sheetClose => 'Close';
+
+  @override
+  String get bootSlowHint =>
+      'Loading is taking longer than usual. You can go in now: your lists will finish loading in the background.';
+
+  @override
+  String get bootContinueAnyway => 'Go in without waiting';
+
+  @override
+  String get bootStalledBody =>
+      'The main list has stopped making progress. It keeps loading in the background: try again in a moment, or check the account.';
+
+  @override
+  String get sheetCloseSub => 'Closes without changing anything';
+
+  @override
+  String get optBackToVideoSub => 'Closes this panel, playback continues';
 
   @override
   String get optNextEpisode => 'Next episode';

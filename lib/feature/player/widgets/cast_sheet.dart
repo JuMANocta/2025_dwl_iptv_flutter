@@ -9,7 +9,8 @@ import '../../../widgets/tv/tv_adaptive_modal.dart';
 import '../cast_policy.dart';
 import '../../../core/utils/device_battery.dart';
 import '../cast_relay_policy.dart';
-import 'player_options_sheet.dart' show OptionsSheetBody, OptionSheetRow;
+import 'player_options_sheet.dart'
+    show OptionsSheetBody, OptionSheetRow, BackToVideoRow;
 import '../../../l10n/l10n_ext.dart';
 
 /// §castSend — Feuille « Diffuser sur… » : balayage du réseau, liste des
@@ -224,7 +225,14 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
       // question). La phrase qui suit se suffit.
       title: consent ? '' : context.l10n.castSheetTitle,
       icon: consent ? Icons.graphic_eq_rounded : Icons.cast_rounded,
-      children: switch (_phase) {
+      // §tvOptionsBack — ⚠️ La sortie est ajoutée APRÈS le `switch`, donc
+      // présente dans TOUTES les phases. Aucune n'en avait : « refusé »,
+      // « réserve » et « consentement » ne proposaient que de revenir à la
+      // liste, et la liste elle-même n'offrait rien pour quitter. À la
+      // télécommande, cette feuille du lecteur était une impasse — le même
+      // défaut que le panneau d'options, signalé les 8 et 9 septembre.
+      children: [
+        ...switch (_phase) {
         _Phase.searching => [
             _StatusLine(
               spinner: true,
@@ -347,7 +355,11 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
               onTap: _search,
             ),
           ],
-      },
+        },
+        // ⚠️ En DERNIER : `TvAutofocusFirst` focalise le premier élément du
+        // modal — « fermer » en tête deviendrait l'action par défaut.
+        BackToVideoRow(onTap: () => Navigator.of(context).pop()),
+      ],
     );
   }
 }

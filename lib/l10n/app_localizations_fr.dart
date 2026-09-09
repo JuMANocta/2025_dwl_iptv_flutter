@@ -78,6 +78,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get terminalEtaMessage => 'Temps restant';
 
   @override
+  String get terminalElapsedMessage => 'Temps écoulé';
+
+  @override
   String get terminalCancelMessage =>
       '\nℹ️ ABANDON : Téléchargement annulé par l\'utilisateur';
 
@@ -2213,6 +2216,29 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get optTitle => 'Options';
+
+  @override
+  String get optBackToVideo => 'Revenir à la vidéo';
+
+  @override
+  String get sheetClose => 'Fermer';
+
+  @override
+  String get bootSlowHint =>
+      'Le chargement est plus long que d\'habitude. Tu peux entrer dans l\'application : les listes finissent de se charger en arrière-plan.';
+
+  @override
+  String get bootContinueAnyway => 'Entrer sans attendre';
+
+  @override
+  String get bootStalledBody =>
+      'Le chargement de la liste principale n\'avance plus. Il continue en arrière-plan : réessaie dans un instant, ou vérifie le compte.';
+
+  @override
+  String get sheetCloseSub => 'Referme sans rien changer';
+
+  @override
+  String get optBackToVideoSub => 'Ferme ce panneau, la lecture continue';
 
   @override
   String get optNextEpisode => 'Épisode suivant';

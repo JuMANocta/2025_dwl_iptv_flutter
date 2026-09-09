@@ -36,6 +36,7 @@ import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/confirm_or_undo.dart';
 import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
+import 'package:aetherStream/widgets/sheet_close_tile.dart';
 import 'package:aetherStream/widgets/playback_gate.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/measured_quality_badge.dart';
@@ -405,7 +406,13 @@ class _HomePageState extends State<HomePage> with RouteAware {
       if (ParsedPlaylistService.getAccount(id) == null) {
         // Sans chemin connu (changement de compte runtime) → s'appuyer sur
         // PlaylistService pour résoudre/télécharger le M3U du compte courant.
-        final path = initialPath ?? await PlaylistService.getOrDownloadPlaylist();
+        // ⚠️ §bootEscape — Un chemin VIDE veut dire « inconnu », pas « ce
+        // fichier-là » : c'est ce que passe le démarrage quand l'utilisateur
+        // est entré sans attendre la fin du téléchargement. `??` seul ne
+        // suffirait pas ('' n'est pas `null`) et `loadActive('')` échouerait.
+        final path = (initialPath == null || initialPath.isEmpty)
+            ? await PlaylistService.getOrDownloadPlaylist()
+            : initialPath;
         await ParsedPlaylistService.loadActive(id, _activeAccountName, path);
       }
     } catch (e) {

@@ -404,7 +404,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _pipDismissSub = PlatformPip.dismissed.listen((_) {
       // La fenêtre PiP a été FERMÉE (croix) : mettre en pause plutôt que de
       // laisser un son sans image derrière une activité qui se termine.
-      if (mounted) _ctrl.pause();
+      if (!mounted) return;
+      debugPrint('⏸️ §pipStuck — fenetre PiP fermee : mise en pause.');
+      _ctrl.pause();
+      // §pipStuck (2026-09-08) — ⚠️ Et DÉSARMER l'auto-PiP. Sans ça, la tâche
+      // gardait le PiP comme dernier mode de fenêtre et l'app rouvrait
+      // dedans (« quand je relance l'application je suis dans le pip »). Le
+      // natif le désarme déjà de son côté ; ce second appel garde les deux
+      // moitiés d'accord, y compris si l'activité survit à la fermeture.
+      unawaited(PlatformPip.setAutoEnter(enabled: false));
     });
 
     // §castSend — Le lecteur ne fait que LIRE l'état de diffusion : une
@@ -1428,9 +1436,22 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _startHideTimer();
   }
 
+  /// §ctrlBlink (2026-09-09) — Délai avant que les contrôles ne se masquent.
+  ///
+  /// **Le défaut corrigé** (signalé pendant la recette) : « il clignote quand
+  /// je glisse dessus ». Trois secondes, c'est plus court qu'un geste — et
+  /// SURTOUT, ni le glissement de la barre de lecture, ni le volume, ni la
+  /// luminosité ne relançaient cette minuterie : elle n'était réarmée qu'à la
+  /// FIN du geste. Les contrôles disparaissaient donc EN COURS d'utilisation,
+  /// puis revenaient au relâchement — d'où le clignotement.
+  ///
+  /// ⚠️ Les deux moitiés comptent : allonger le délai sans réarmer pendant le
+  /// geste ne ferait que rendre le clignotement plus rare, pas l'éliminer.
+  static const Duration _controlsHideDelay = Duration(seconds: 5);
+
   void _startHideTimer() {
     _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 3), () {
+    _hideTimer = Timer(_controlsHideDelay, () {
       if (mounted) setState(() => _controlsVisible = false);
     });
   }
@@ -1470,6 +1491,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   void _handleVolumeChange(double delta) {
     _volume = (_volume + delta).clamp(0.0, AetherVolume.max);
     _ctrl.setVolume(_volume);
+    // §ctrlBlink — un geste EN COURS repousse le masquage.
+    _showControls();
   }
 
   // §3c-5 — Helpers consommés par TvPlayerShortcuts pour la nav télécommande.
@@ -1517,6 +1540,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _brightness = (_brightness + delta).clamp(0.0, 1.0);
     // fire-and-forget : dispose() restore de toute façon la luminosité d'origine.
     ScreenBrightness().setScreenBrightness(_brightness).catchError((_) {});
+    // §ctrlBlink — idem volume : tant que le doigt travaille, on ne masque pas.
+    _showControls();
   }
 
   void _retry() {

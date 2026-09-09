@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/themes/colors.dart';
+import '../../../core/utils/platform_tv.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
 import '../video_fit.dart';
@@ -34,7 +35,7 @@ Future<void> showPlayerOptions(
   return showAdaptiveActionSheet<void>(
     context: context,
     scrollable: false,
-    builder: (_) => OptionsSheetBody(
+    builder: (sheetCtx) => OptionsSheetBody(
       title: context.l10n.optTitle,
       icon: Icons.tune_rounded,
       children: [
@@ -86,6 +87,16 @@ Future<void> showPlayerOptions(
           selected: statsEnabled,
           onTap: onToggleStats,
         ),
+        // §tvOptionsBack — La SORTIE du panneau, signalée le 2026-09-08 :
+        // « il faut un bouton pour annuler et revenir sur la vidéo car sinon
+        // on fait retour et ça sort de la vidéo ». À la télécommande, le
+        // panneau n'offrait AUCUNE issue : la seule était la touche Retour.
+        //
+        // ⚠️ **En DERNIER, jamais en premier.** `TvAutofocusFirst` donne le
+        // focus au premier élément focusable du modal : mettre « fermer » en
+        // tête ferait de la fermeture l'action par défaut du panneau qu'on
+        // vient d'ouvrir — un appui sur OK et il disparaît.
+        BackToVideoRow(onTap: () => Navigator.of(sheetCtx).pop()),
       ],
     ),
   );
@@ -100,7 +111,7 @@ Future<void> showVideoFitMenu(
   return showAdaptiveActionSheet<void>(
     context: context,
     scrollable: false,
-    builder: (_) => OptionsSheetBody(
+    builder: (sheetCtx) => OptionsSheetBody(
       title: "Format d'image",
       icon: Icons.aspect_ratio_rounded,
       children: [
@@ -113,6 +124,13 @@ Future<void> showVideoFitMenu(
             selected: mode == current,
             onTap: () => onSelect(mode),
           ),
+        // §tvOptionsBack — ⚠️ Les SOUS-MENUS en avaient autant besoin que le
+        // panneau : y entrer sans vouloir rien changer laissait sans issue
+        // (signalé le 2026-09-09 : « dans la partie TV des les options j'ai
+        // pas genre revenir ou annuler si je choisi aucune option »).
+        // Le panneau d'options se ferme AVANT d'ouvrir ce sous-menu
+        // (`player_page._showFitMenu`), donc fermer ici rend bien la vidéo.
+        BackToVideoRow(onTap: () => Navigator.of(sheetCtx).pop()),
       ],
     ),
   );
@@ -127,7 +145,7 @@ Future<void> showSpeedMenu(
   return showAdaptiveActionSheet<void>(
     context: context,
     scrollable: false,
-    builder: (_) => OptionsSheetBody(
+    builder: (sheetCtx) => OptionsSheetBody(
       title: 'Vitesse',
       icon: Icons.speed_rounded,
       children: [
@@ -142,9 +160,49 @@ Future<void> showSpeedMenu(
             selected: s == current,
             onTap: () => onSelect(s),
           ),
+        // §tvOptionsBack — voir le sous-menu Format d'image.
+        BackToVideoRow(onTap: () => Navigator.of(sheetCtx).pop()),
       ],
     ),
   );
+}
+
+/// §tvOptionsBack — « Revenir à la vidéo », la sortie explicite d'une feuille
+/// du lecteur.
+///
+/// **Pourquoi elle existe** : à la télécommande, un modal sans bouton de
+/// fermeture n'a d'autre issue que la touche Retour — et c'est précisément ce
+/// qui faisait sortir du FILM (signalement du 2026-09-08). ⚠️ Les SOUS-MENUS
+/// (Vitesse, Format d'image) sont dans le même cas dès qu'on y entre sans
+/// vouloir changer de valeur : c'est le second signalement, du 2026-09-09.
+///
+/// ⚠️ **À poser en DERNIER, jamais en premier.** `TvAutofocusFirst` donne le
+/// focus au premier élément focusable du modal : « fermer » en tête ferait de
+/// la fermeture l'action par défaut du panneau qu'on vient d'ouvrir.
+///
+/// ⚠️ **TÉLÉVISEUR UNIQUEMENT** (signalé pendant la recette du 2026-09-09 :
+/// « c'est pas pour la version téléphone, seulement pour la version PC, car
+/// sur téléphone un clic sur l'écran fait un pseudo retour »). Au doigt,
+/// taper hors du cadre referme déjà la feuille : la ligne n'y serait que du
+/// bruit, une entrée de plus à lire dans un menu. **À la télécommande, il
+/// n'y a pas de « hors du cadre »** — le curseur ne peut atteindre que des
+/// éléments focusables. C'est la même famille de décision que §pipPhone et
+/// §nowPlaying : une affordance qui n'a de sens que sur une seule surface.
+class BackToVideoRow extends StatelessWidget {
+  const BackToVideoRow({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => !PlatformTv.isTv
+      ? const SizedBox.shrink()
+      : OptionSheetRow(
+        icon: Icons.keyboard_return_rounded,
+        accent: kAccentSecondary,
+        title: context.l10n.optBackToVideo,
+        subtitle: context.l10n.optBackToVideoSub,
+        onTap: onTap,
+      );
 }
 
 class OptionsSheetBody extends StatelessWidget {

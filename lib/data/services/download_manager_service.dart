@@ -7,12 +7,14 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
 import 'download_stall_policy.dart';
+import 'download_retry_policy.dart';
 import '../../feature/downloads/logic/download_naming.dart';
 import '../../core/settings/performance_settings_service.dart';
 import '../../core/utils/network_kind.dart';
 import '../../feature/downloads/logic/download_scheduler.dart';
 import '../../core/utils/log_sanitizer.dart';
 import '../../core/utils/network.dart';
+import 'network_status_service.dart';
 
 /// Service pour gérer la liste des tâches de téléchargement.
 /// Il utilise SharedPreferences pour la persistance et un ValueNotifier
@@ -441,7 +443,8 @@ class DownloadManagerService {
           if (e is DioException && e.type == DioExceptionType.cancel) {
             debugPrint("🛑 Flux annulé par l'utilisateur : ${task.id}");
           } else {
-            await updateTask(task.id, status: DownloadStatus.failed);
+            // §dlNetRetry — une coupure réseau repart en file, pas en échec.
+            await _failOrRequeue(task.id, e);
           }
           if (!completer.isCompleted) completer.completeError(e);
         },
@@ -484,11 +487,11 @@ class DownloadManagerService {
         }
       } else if (e.type != DioExceptionType.cancel) {
         debugPrint("💀 Erreur Dio initiale: ${e.message}");
-        await updateTask(task.id, status: DownloadStatus.failed, errorMessage: e.message);
+        await _failOrRequeue(task.id, e, message: e.message);
       }
     } catch (e) {
       debugPrint("💀 Erreur Système non gérée : $e");
-      await updateTask(task.id, status: DownloadStatus.failed, errorMessage: e.toString());
+      await _failOrRequeue(task.id, e, message: e.toString());
     } finally {
       _cancelTokens.remove(task.id);
       _clearProgressThrottle(task.id);
@@ -615,6 +618,46 @@ class DownloadManagerService {
   final Map<String, DateTime> _lastAutoRestart = {};
   final Map<String, int> _bytesAtLastAutoRestart = {};
 
+  /// §dlNetRetry — Remises en file déjà accordées à chaque tâche.
+  ///
+  /// En mémoire seulement, et c'est assez : au redémarrage de l'app la tâche
+  /// est de toute façon reconciliée (`_reconcileTasksOnStartup`), et un
+  /// compteur qui repart de zéro une fois par lancement ne fait pas une boucle.
+  final Map<String, int> _networkRequeues = {};
+
+  /// §dlNetRetry — Aiguille une tâche interrompue : remise en FILE si le
+  /// réseau a lâché, échec sinon.
+  ///
+  /// **Le défaut corrigé** : toute erreur de flux tombait en `failed`, et la
+  /// file ne regarde que les `queued` — une coupure d'une minute condamnait
+  /// donc un transfert déjà à 90 %. La reprise `Range` existait déjà ; il ne
+  /// manquait que de ne pas fermer la porte.
+  ///
+  /// ⚠️ Le plafond (`kMaxNetworkRequeues`) n'est pas décoratif : une source qui
+  /// coupe la connexion à chaque tentative RESSEMBLE à une panne réseau vue de
+  /// l'app. Sans lui, elle serait martelée toute la nuit.
+  Future<void> _failOrRequeue(String taskId, Object error,
+      {String? message}) async {
+    final DownloadFailureKind kind = classifyDownloadFailure(error);
+    if (kind == DownloadFailureKind.canceled) return;
+
+    final int already = _networkRequeues[taskId] ?? 0;
+    if (shouldRequeueAfterFailure(kind: kind, requeues: already)) {
+      _networkRequeues[taskId] = already + 1;
+      debugPrint('🔌 §dlNetRetry — reseau perdu, tache remise en file '
+          '(${already + 1}/$kMaxNetworkRequeues) : $taskId');
+      // ⚠️ `updateTask` et non `enqueue` : `enqueue` refuse une tâche encore
+      // en vol (`_inFlight`), et nous sommes précisément en train d'en sortir.
+      // Le `pump()` du `whenComplete` de `startDownloadTask` la fera partir.
+      await updateTask(taskId, status: DownloadStatus.queued);
+      // Le réseau est peut-être déjà revenu : que la file le constate.
+      unawaited(NetworkStatusService.refresh());
+      return;
+    }
+    await updateTask(taskId,
+        status: DownloadStatus.failed, errorMessage: message);
+  }
+
   /// §dlWatchdog — Relance automatiquement un transfert qui décroche.
   ///
   /// C'est ce qui rend le bouton « Relancer » inutile : l'utilisateur n'a plus
@@ -715,6 +758,7 @@ class DownloadManagerService {
   void _clearRestartPolicy(String taskId) {
     _lastAutoRestart.remove(taskId);
     _bytesAtLastAutoRestart.remove(taskId);
+    _networkRequeues.remove(taskId); // §dlNetRetry
   }
 
   /// Met à jour une tâche existante et notifie l'UI.

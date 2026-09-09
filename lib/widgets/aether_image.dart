@@ -199,6 +199,18 @@ class _AetherImageState extends State<AetherImage> {
     } else {
       final u = candidates[_index.clamp(0, candidates.length - 1)];
       child = CachedNetworkImage(
+        // §posterFlash (2026-09-08) — ⚠️ **La clé n'est pas décorative.**
+        // Signalement : « les images au chargement de la série sont pas la
+        // bonne pendant une seconde ». Sans clé, changer `imageUrl` réutilise
+        // l'élément et son image DÉJÀ DÉCODÉE : la vignette continue d'afficher
+        // le titre précédent le temps que la nouvelle arrive (lecture sans
+        // coupure d'`Image`). Deux chemins y mènent : le recyclage des cartes
+        // dans les rangées de l'accueil, et le remplacement affiche
+        // fournisseur → TMDB sur la fiche, une fois la recherche résolue.
+        // ⚠️ Le prix assumé : un bref vide (ou le repli) au lieu d'une image
+        // qui n'est pas la bonne. Montrer le mauvais titre est pire que ne
+        // rien montrer — c'est ce que dit le signalement.
+        key: ValueKey<String>(u),
         imageUrl: u,
         cacheManager: AetherImageCache.forUrl(u),
         width: widget.width,

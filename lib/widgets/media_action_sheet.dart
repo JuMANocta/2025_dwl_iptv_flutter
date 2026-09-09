@@ -25,6 +25,7 @@ import 'package:aetherStream/widgets/quality_buttons.dart';
 import 'package:aetherStream/widgets/epg_block.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import '../l10n/l10n_ext.dart';
+import 'sheet_close_tile.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sélecteur de version (films/séries avec plusieurs variantes)
@@ -367,6 +368,8 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
               );
             },
           ),
+          // §tvOptionsBack — la feuille doit offrir de NE RIEN choisir.
+          const SheetCloseTile(),
           const SizedBox(height: 16),
         ]),
       ),
@@ -509,6 +512,8 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                     }
                   },
                 ),
+              // §tvOptionsBack — la feuille doit offrir de NE RIEN choisir.
+              const SheetCloseTile(),
               const SizedBox(height: 8),
             ],
           ),

@@ -373,6 +373,10 @@ class _HomeCardState extends State<_HomeCard> {
                 );
               },
             ),
+            // §tvOptionsBack — le menu d'appui long est le raccourci PRINCIPAL
+            // de l'app : sans ligne neutre, en sortir demandait la touche
+            // Retour, qui est justement le geste en défaut sur TV.
+            const SheetCloseTile(),
             const SizedBox(height: 8),
           ],
         ),

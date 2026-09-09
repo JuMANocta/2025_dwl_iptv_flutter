@@ -186,11 +186,41 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
                 else
                   _buildSeparateModeFields(l10n),
                 const SizedBox(height: 32),
-                FilledButton.icon(
-                  onPressed: _save,
-                  icon: const Icon(Icons.save),
-                  label: Text(l10n.editAccountSaveButton),
-                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                // §tvOptionsBack — ce formulaire n'avait qu'UN bouton : à la
+                // télécommande, la seule façon de renoncer était la touche
+                // Retour (buguée ailleurs dans l'app : elle ferme un film en
+                // cours, §dpadBack). Ce n'est pas une liste de choix — donc
+                // pas de `SheetCloseTile` en queue, mais un vrai bouton
+                // « Annuler » À CÔTÉ d'« Enregistrer ».
+                //
+                // ⚠️ Volontairement SANS autofocus, à l'inverse des dialogues
+                // de confirmation destructifs du projet (où le bouton sûr
+                // reçoit le focus par défaut) : ici on vient de SAISIR du
+                // texte, donner le focus par défaut à Annuler serait un
+                // piège — un simple appui sur OK jetterait la saisie. Le
+                // focus initial TV (`TvAutofocusFirst`) tombe donc sur le
+                // premier champ du formulaire, pas sur ce bouton.
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: Text(l10n.cancel),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _save,
+                        icon: const Icon(Icons.save),
+                        label: Text(l10n.editAccountSaveButton),
+                        style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

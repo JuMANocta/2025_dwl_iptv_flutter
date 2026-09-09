@@ -6,6 +6,7 @@ import '../../../data/services/track_preferences_service.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
 import '../../../l10n/l10n_ext.dart';
+import 'player_options_sheet.dart' show BackToVideoRow;
 
 /// §5 — Sélecteur de pistes **audio** et **sous-titres** (libmpv expose tout
 /// via `player.state.tracks` / `setAudioTrack` / `setSubtitleTrack`). Ouvert
@@ -24,13 +25,21 @@ Future<void> showTrackSelector(
     // sans ça, beaucoup de pistes faisaient déborder la Column (RenderFlex
     // overflow sur mobile, où showAdaptiveActionSheet n'ajoute pas de scroll).
     scrollable: false,
-    builder: (_) => _TrackSelector(player: player),
+    builder: (sheetCtx) => _TrackSelector(
+      player: player,
+      onClose: () => Navigator.of(sheetCtx).pop(),
+    ),
   );
 }
 
 class _TrackSelector extends StatelessWidget {
   final AetherPlaybackEngine player;
-  const _TrackSelector({required this.player});
+
+  /// §tvOptionsBack — Ferme la feuille. Sans elle, la seule sortie à la
+  /// télécommande était la touche Retour.
+  final VoidCallback onClose;
+
+  const _TrackSelector({required this.player, required this.onClose});
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +110,13 @@ class _TrackSelector extends StatelessWidget {
                   _emptyHint(context.l10n.tracksNoSubtitles, cs)
                 else
                   ...subs.map((t) => _subtitleRow(context, t, curSub)),
+
+                // §tvOptionsBack — Même manque que le panneau d'options : à la
+                // télécommande, rien ne permettait de refermer cette feuille.
+                // ⚠️ En DERNIER (`TvAutofocusFirst` focalise le premier
+                // élément : « fermer » ne doit pas être l'action par défaut).
+                const SizedBox(height: 18),
+                BackToVideoRow(onTap: onClose),
               ],
             ),
           ),

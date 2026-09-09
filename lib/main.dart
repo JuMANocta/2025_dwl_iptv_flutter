@@ -6,6 +6,7 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'l10n/l10n_ext.dart';
+import 'core/utils/user_error.dart';
 import 'data/services/download_manager_service.dart';
 import 'data/models/download_task.dart';
 import 'data/services/transfer_notification_bridge.dart';
@@ -492,15 +493,65 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       knownAccountIds: accounts.map((a) => a.id).toSet(),
     ));
 
-    // Téléchargement / vérification cache M3U du compte actif.
+    // §bootActiveCap (2026-09-09) — ⚠️ **Le compte PRINCIPAL n'avait AUCUNE
+    // borne.** Le filet de §bootProgress (attendre tant que ça bouge, plafond
+    // absolu) n'avait été câblé que sur `_hydrateInBoot`, c'est-à-dire les
+    // comptes SECONDAIRES. Sur ce chemin-ci, rien : ni délai, ni budget, ni
+    // plafond — alors que les délais internes s'additionnent (jusqu'à 6
+    // actions catalogue à 5 min de file + 2 min de réception chacune avant le
+    // repli `get.php`). Un panel lent pouvait donc retenir l'écran de
+    // démarrage plusieurs minutes, sans qu'aucun bouton ne permette d'en
+    // sortir : le seul recours était de tuer l'app.
+    //
+    // ⚠️ Ce qui déborde n'est PAS annulé — même règle que pour les secondaires.
+    // On cesse de l'attendre, l'app démarre, et le réconciliateur §fleetLoad
+    // (4 s après l'accueil) reprend le travail là où il en est. Annuler
+    // laisserait un `.part` orphelin ; relancer téléchargerait deux fois.
+    final DateTime activeDeadline = DateTime.now().add(_bootHydrateHardCap);
+    final acc = await StreamAccountService.getCurrentAccount();
+
     BootStatus.set('// lecture de la playlist…');
-    final path = await PlaylistService.getOrDownloadPlaylist(
+    final Future<String> pathFuture = PlaylistService.getOrDownloadPlaylist(
       // Appelé seulement si le cache est absent/périmé → on distingue une
       // lecture disque instantanée d'un vrai téléchargement réseau.
       onDownloadStart: () =>
           BootStatus.set('// téléchargement de la playlist…'),
     );
-    final acc  = await StreamAccountService.getCurrentAccount();
+    // ⚠️ `catchError` posé TOUT DE SUITE : si on cesse d'attendre ce futur et
+    // qu'il échoue plus tard, une erreur non capturée ferait tomber la zone.
+    // L'erreur reste levée à l'`await` ci-dessous quand on l'attend vraiment.
+    final Future<void> pathWatch =
+        pathFuture.then<void>((_) {}).catchError((Object _) {});
+    if (acc != null &&
+        !await _awaitWhileProgressing(pathWatch, acc, activeDeadline)) {
+      debugPrint("⏳ §bootActiveCap — la liste principale n'avance plus.");
+      unawaited(pathFuture.catchError((Object e) {
+        debugPrint('⚠️ §bootActiveCap — la liste principale a fini par echouer : $e');
+        return '';
+      }));
+      // §bootEscape — ⚠️ Deux sorties, deux issues DIFFÉRENTES, et les
+      // confondre serait mentir à l'utilisateur :
+      //   • il a appuyé sur « Entrer sans attendre » → on l'y fait ENTRER. Le
+      //     chemin est laissé vide : `HomePage._ensureLoaded` résout alors la
+      //     playlist lui-même, et comme le téléchargement en vol est PARTAGÉ
+      //     (§bootActiveCap), il attend celui qui tourne déjà.
+      //   • personne n'a rien demandé, c'est le plafond qui a parlé → écran
+      //     d'erreur : quelque chose ne va pas, on ne fait pas semblant.
+      // (`acc` est non nul : la garde de ce bloc l'exige.)
+      if (_bootSkipRequested) {
+        return (path: '', accountId: acc.id, accountName: acc.label);
+      }
+      // ⚠️ **Surtout PAS `return null`** : le décideur en fait l'écran « aucun
+      // compte configuré », ce qui serait un MENSONGE — le compte existe, sa
+      // liste met simplement du temps. On lève un message déjà écrit pour
+      // l'utilisateur (§userError : `UserFacingException` n'est jamais
+      // retraduite), qui mène à l'écran d'erreur avec « Réessayer ».
+      // ⚠️ Ce « Réessayer » est sûr depuis §bootActiveCap : le téléchargement
+      // en vol est PARTAGÉ (`PlaylistService._inFlight`), un second appel
+      // attend le premier au lieu d'en lancer un autre sur le même `.part`.
+      throw UserFacingException(L10n.current.bootStalledBody);
+    }
+    final path = await pathFuture;
 
     // §initBoot — Parsing du M3U actif AWAITED ici (au lieu de le faire dans
     // `HomePage._ensureLoaded` plus tard) : la home se montait avec
@@ -522,7 +573,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
           othersEarly.isEmpty ? null : _downloadPhase(othersEarly.first);
       _prestartedDlId = othersEarly.isEmpty ? null : othersEarly.first.id;
       BootStatus.set('// analyse du catalogue…', progress: 0);
-      await ParsedPlaylistService.loadActive(
+      // §bootActiveCap — même filet sur l'ANALYSE : c'est l'étape la plus
+      // longue (46 s par grosse liste, mesuré), et jusqu'ici la seule issue
+      // si elle se figeait était de tuer l'app. ⚠️ Elle publie sa progression
+      // ET son détail, donc `_awaitWhileProgressing` la voit vivre : une
+      // analyse longue mais qui AVANCE n'est jamais interrompue.
+      final Future<void> parseFuture = ParsedPlaylistService.loadActive(
         acc.id,
         acc.label,
         path,
@@ -530,7 +586,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         // §bootPercent — Le compteur d'entrées PROUVE que ça travaille, là où
         // un pourcentage se contente de l'affirmer.
         onDetail: BootStatus.setDetail,
-      );
+      ).then<void>((_) {}).catchError((Object _) {});
+      if (!await _awaitWhileProgressing(parseFuture, acc, activeDeadline)) {
+        debugPrint("⏳ §bootActiveCap — l'analyse de la liste principale "
+            "n'avance plus : on demarre, elle se termine en arriere-plan.");
+        return null;
+      }
     }
 
     // Multi-comptes : charger les autres playlists pour que la recherche et la
@@ -676,6 +737,28 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   /// réseau sont bornés à 30 + 60 s) — ou au plafond absolu de 5 min. Un
   /// panel mort ne retient donc plus le démarrage que le temps de son délai
   /// réseau, une analyse longue mais vivante reste sur le boot principal.
+  /// §bootEscape (2026-09-09) — L'utilisateur a demandé à ne plus attendre.
+  ///
+  /// **Le défaut corrigé** (signalé le 2026-09-08, instruit le 09) : l'écran de
+  /// chargement n'offrait AUCUN moyen d'interrompre. Le bouton « Réessayer »
+  /// n'apparaît que sur l'écran d'ERREUR, donc seulement après qu'une exception
+  /// a été levée — tant que le réseau ne répond ni ne tombe en erreur, la seule
+  /// issue était de tuer l'application. C'est exactement ce que l'utilisateur a
+  /// fait, en pensant à un blocage.
+  ///
+  /// ⚠️ Ce drapeau ne CANCELLE rien : comme pour le débordement de budget, le
+  /// travail continue en arrière-plan et le réconciliateur §fleetLoad le
+  /// rattrape. On cesse simplement de l'attendre. L'annuler laisserait un
+  /// `.part` orphelin, le relancer téléchargerait deux fois le même fichier.
+  static bool _bootSkipRequested = false;
+
+  static void requestBootSkip() {
+    if (_bootSkipRequested) return;
+    _bootSkipRequested = true;
+    debugPrint("⏭️ §bootEscape — l'utilisateur ne veut plus attendre : "
+        "on passe a l'app, le chargement continue en arriere-plan.");
+  }
+
   static const Duration _bootStallLimit = Duration(seconds: 20);
   static const Duration _bootDownloadStallLimit = Duration(seconds: 95);
   static const Duration _bootHydrateHardCap = Duration(minutes: 5);
@@ -699,6 +782,8 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     while (!done) {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       if (done) break;
+      // §bootEscape — la sortie manuelle prime sur tous les seuils.
+      if (_bootSkipRequested) return false;
       final String now = _bootSignature();
       if (now != sig) {
         sig = now;
@@ -934,6 +1019,17 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   }
 
   /// Permet de relancer la validation, typiquement après une action de l'utilisateur.
+  /// §bootEscape — L'utilisateur ne veut plus attendre le démarrage.
+  ///
+  /// ⚠️ On ne CANCELLE aucun téléchargement ni aucune analyse : les futurs en
+  /// cours continuent, et §fleetLoad les rattrape 4 s après l'accueil. Annuler
+  /// laisserait un `.part` orphelin ; relancer téléchargerait deux fois le
+  /// même fichier au même endroit.
+  void _skipBootWait() {
+    _LaunchDeciderState.requestBootSkip();
+    if (mounted) setState(() {});
+  }
+
   void _retryInitialization() {
     debugPrint('🚦 §restoreTrace — retryInitialization → ré-initialisation');
     setState(() {
@@ -991,7 +1087,10 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         // §bootExit — fondu court vers l'accueil, au lieu du remplacement sec.
         final Widget screen;
         if (snapshot.connectionState == ConnectionState.waiting) {
-          screen = const BootLoadingScreen();
+          // §bootEscape — une sortie, révélée après un délai. Elle n'annule
+          // rien : elle relâche l'attente, l'app démarre et le réconciliateur
+          // §fleetLoad reprend le chargement là où il en est.
+          screen = BootLoadingScreen(onSkip: _skipBootWait);
         } else if (snapshot.hasError && _offlineWithFiles) {
           // §offlineBoot — hors ligne + des fichiers : on les montre.
           _showingOffline = true;

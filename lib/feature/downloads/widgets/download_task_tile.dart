@@ -19,6 +19,7 @@ import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/core/utils/network_kind.dart';
 import '../../../l10n/l10n_ext.dart';
+import 'package:aetherStream/widgets/sheet_close_tile.dart';
 
 class DownloadTaskTile extends StatelessWidget {
   final DownloadTask task;
@@ -145,6 +146,10 @@ class DownloadTaskTile extends StatelessWidget {
                 ),
                 onTap: () => Navigator.of(sheetCtx).pop(a),
               ),
+            // §tvOptionsBack — refermer sans rien déclencher. ⚠️ `pop()` SANS
+            // valeur : l'appelant teste `choice != null`, une valeur ici
+            // exécuterait une action.
+            SheetCloseTile(onTap: () => Navigator.of(sheetCtx).pop()),
           ],
         ),
       ),
