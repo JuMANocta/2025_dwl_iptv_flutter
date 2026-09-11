@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../l10n/app_localizations.dart';
+
 /// Membre du casting TMDB (acteur + rôle + photo). Utilisé pour afficher les
 /// vignettes d'acteurs sur la fiche détail (mobile + TV).
 class CastMember {
@@ -70,7 +72,12 @@ class Media {
   final double voteAverage;
   final String? releaseDate;
   final List<String> genres;
-  final String? runtimeOrEpisodeLength;
+  /// Revue 2026-09-11, D1A-10 — La durée en MINUTES (film : durée totale ;
+  /// série : durée d'un épisode, cf. [runtimePerEpisode]), formatée à
+  /// l'affichage par [runtimeLabel]. Le modèle écrivait « 45m/épisode » en
+  /// français, quelle que soit la langue de l'écran.
+  final int? runtimeMinutes;
+  final bool runtimePerEpisode;
   final String? productionCompanies;
   final List<String> cast;
   /// Casting enrichi (id + rôle + photo) pour les vignettes d'acteurs.
@@ -149,6 +156,18 @@ class Media {
   final String? theatricalDate;
   final String? digitalDate;
 
+  /// Revue 2026-09-11, D1A-10 — la durée, dans la langue de l'écran
+  /// (« 2h 15m », « 45m/episode »), ou `null` si TMDB ne la donne pas.
+  /// Relecture : un film de moins d'une heure s'écrit « 45 min », plus
+  /// « 0h 45m ».
+  String? runtimeLabel(AppLocalizations l) {
+    final int? m = runtimeMinutes;
+    if (m == null || m <= 0) return null;
+    if (runtimePerEpisode) return l.detRuntimePerEpisode('$m');
+    if (m < 60) return l.durationMinutes(m);
+    return l.detRuntimeHoursMinutes(m ~/ 60, m % 60);
+  }
+
   Media({
     required this.id,
     required this.title,
@@ -158,7 +177,8 @@ class Media {
     required this.voteAverage,
     this.releaseDate,
     required this.genres,
-    this.runtimeOrEpisodeLength,
+    this.runtimeMinutes,
+    this.runtimePerEpisode = false,
     this.productionCompanies,
     required this.cast,
     this.castMembers = const [],
@@ -264,16 +284,16 @@ class Media {
         .toList() ?? [];
 
     // Extraction des durées (Movie: runtime, TV: episode_run_time)
-    String? runtime;
+    // Revue 2026-09-11, D1A-10 — des MINUTES, pas un texte : la langue se
+    // décide à l'affichage (`runtimeLabel`).
+    int? runtimeMinutes;
     if (isMovie) {
       final rt = json['runtime'] as int?;
-      if (rt != null && rt > 0) {
-        runtime = '${rt ~/ 60}h ${rt % 60}m';
-      }
+      if (rt != null && rt > 0) runtimeMinutes = rt;
     } else {
       final epTimes = json['episode_run_time'] as List<dynamic>?;
       if (epTimes != null && epTimes.isNotEmpty) {
-        runtime = '${epTimes[0]}m/épisode';
+        runtimeMinutes = (epTimes[0] as num?)?.toInt();
       }
     }
 
@@ -394,11 +414,14 @@ class Media {
       title: (isMovie ? json['title'] : json['name']) as String,
       posterPath: json['poster_path'] as String?,
       backdropPath: json['backdrop_path'] as String?,
-      overview: json['overview'] as String? ?? 'N/A',
+      // Revue 2026-09-11, D1A-10 — vide plutôt que « N/A » : la fiche ne
+      // montre un synopsis que s'il en existe un (`isNotEmpty`).
+      overview: json['overview'] as String? ?? '',
       voteAverage: (json['vote_average'] as num?)?.toDouble() ?? 0.0,
       releaseDate: (isMovie ? json['release_date'] : json['first_air_date']) as String?,
       genres: genresList,
-      runtimeOrEpisodeLength: runtime,
+      runtimeMinutes: runtimeMinutes,
+      runtimePerEpisode: !isMovie,
       productionCompanies: companies,
       cast: castList,
       castMembers: castMembersList,

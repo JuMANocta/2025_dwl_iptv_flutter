@@ -7,6 +7,32 @@ import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/core/utils/string_pool.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
+import 'package:aetherStream/l10n/l10n_ext.dart';
+
+/// Revue 2026-09-11, D1A-08 — Ce que l'isolate annonce, en NOMBRES : la
+/// section en cours (ou [_kSectionTotal] pour l'ampleur du travail), ce qui
+/// est fait, le total. Le texte (« films · 24 100/53 781 ») se compose sur
+/// l'isolate principal, dans la langue de l'écran — ⚠️ jamais `L10n` dans
+/// l'isolate (§isolateLeak).
+const int _kSectionTotal = 0;
+const int _kSectionLive = 1;
+const int _kSectionVod = 2;
+const int _kSectionSeries = 3;
+
+/// Le compteur de l'écran de démarrage. Isolate PRINCIPAL uniquement.
+String _catalogDetailText(int section, int done, int total) {
+  final l = L10n.current;
+  final String? name = section == _kSectionLive
+      ? l.bootSectionLive
+      : section == _kSectionVod
+          ? l.bootSectionMovies
+          : section == _kSectionSeries
+              ? l.bootSectionSeries
+              : null;
+  if (name == null) return l.bootDetailEntries(total, formatCountFor(total, l));
+  return l.bootDetailSection(
+      name, formatCountFor(done, l), formatCountFor(total, l));
+}
 
 /// §23 — Parse un **catalogue JSON brut** (`playlist_<id>.json`, produit par
 /// `XtreamCatalogService`) directement en `M3uEntry`, **sans round-trip M3U
@@ -79,10 +105,10 @@ class XtreamCatalogParser {
       // ⚠️ Un message peut encore être en vol quand l'isolate a rendu son
       // résultat : sans ce garde-fou, la barre reviendrait de 100 % à 97 %.
       if (finished) return;
-      if (message is! (double, String?)) return;
+      if (message is! (double, int, int, int)) return;
       onProgress?.call(message.$1);
-      final String? detail = message.$2;
-      if (detail != null) onDetail?.call(detail);
+      // D1A-08 — texte composé ICI (isolate principal), pas dans l'isolate.
+      onDetail?.call(_catalogDetailText(message.$2, message.$3, message.$4));
     });
 
     try {
@@ -209,7 +235,7 @@ class XtreamCatalogParser {
   ///
   /// ⚠️ Sans ce filtre, une liste de 350 000 entrées enverrait 350 000
   /// messages inter-isolates pour faire bouger une barre de 100 pixels.
-  void tick(String section) {
+  void tick(int section) {
     if (sink == null) return;
     final double value = total == 0
         ? 1.0
@@ -218,26 +244,20 @@ class XtreamCatalogParser {
     final int bucket = (value * 100).round();
     if (bucket == lastBucket) return;
     lastBucket = bucket;
-    sink.send((
-      value,
-      '$section · ${formatCount(done)}/${formatCount(total)}',
-    ));
+    sink.send((value, section, done, total));
   }
 
   // Premier repère : le décodage est derrière nous, et on annonce l'ampleur du
   // travail restant AVANT de le commencer.
   if (sink != null) {
     lastBucket = (XtreamCatalogParser._decodeWeight * 100).round();
-    sink.send((
-      XtreamCatalogParser._decodeWeight,
-      '${formatCount(total)} entrées',
-    ));
+    sink.send((XtreamCatalogParser._decodeWeight, _kSectionTotal, total, total));
   }
 
   // ── Live (chaînes TV) ─────────────────────────────────────────────────────
   for (final item in liveRaw) {
     done++;
-    tick('chaînes');
+    tick(_kSectionLive);
     if (item is! Map<String, dynamic>) continue;
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
@@ -270,7 +290,7 @@ class XtreamCatalogParser {
   // ── Films (VOD) ───────────────────────────────────────────────────────────
   for (final item in vodRaw) {
     done++;
-    tick('films');
+    tick(_kSectionVod);
     if (item is! Map<String, dynamic>) continue;
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
@@ -297,7 +317,7 @@ class XtreamCatalogParser {
   // ── Séries (1 stub par série, épisodes lazy via get_series_info) ─────────
   for (final item in seriesRaw) {
     done++;
-    tick('séries');
+    tick(_kSectionSeries);
     if (item is! Map<String, dynamic>) continue;
     final id = (item['series_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();

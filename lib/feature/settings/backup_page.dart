@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
 import 'package:aetherStream/feature/settings/backup_restore_flow.dart';
@@ -136,7 +137,7 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
                   },
                   style: FilledButton.styleFrom(
                     backgroundColor: kAccentPrimary,
-                    foregroundColor: Colors.black,
+                    foregroundColor: onColorFor(kAccentPrimary), // D4B-08
                   ),
                   child: Text(ctx.l10n.bkSave),
                 ),
@@ -199,7 +200,7 @@ class _BackupPageState extends State<BackupPage> with TvInitialFocus {
             onPressed: () => Navigator.pop(ctx),
             style: FilledButton.styleFrom(
               backgroundColor: kAccentPrimary,
-              foregroundColor: Colors.black,
+              foregroundColor: onColorFor(kAccentPrimary), // D4B-08
             ),
             child: Text(ctx.l10n.commonOk),
           ),
@@ -383,7 +384,7 @@ class _ActionCard extends StatelessWidget {
             ),
             style: FilledButton.styleFrom(
               backgroundColor: color,
-              foregroundColor: Colors.black,
+              foregroundColor: onColorFor(color), // D4B-08
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),

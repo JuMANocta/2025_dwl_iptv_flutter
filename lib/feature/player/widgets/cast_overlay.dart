@@ -196,7 +196,7 @@ class CastOverlay extends StatelessWidget {
                           else
                             Text(
                               state.live
-                                  ? 'EN DIRECT'
+                                  ? context.l10n.castOverlayLive
                                   : (state.buffering
                                       ? context.l10n.castOverlayLoading
                                       : ''),
@@ -307,8 +307,10 @@ class CastOverlay extends StatelessWidget {
                                     // Nommé par le problème qu'il résout, pas
                                     // par le mécanisme : « conversion » ne dit
                                     // rien au client, « image et son » si.
-                                    label: const Text(
-                                      "Resynchroniser l'image et le son",
+                                    // Revue 2026-09-11, D2A-08 — la clé
+                                    // existait, le texte restait en dur.
+                                    label: Text(
+                                      context.l10n.castOverlayResync,
                                       maxLines: 2,
                                       textAlign: TextAlign.center,
                                     ),

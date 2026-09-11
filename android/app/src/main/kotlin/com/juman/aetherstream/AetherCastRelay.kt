@@ -84,8 +84,13 @@ class AetherCastRelay(private val context: Context) {
         fun onCompleted(outputPath: String)
 
         /**
-         * [userFacing] : le message est déjà écrit en français pour l'écran
-         * (refus motivé). Sinon c'est la cause technique, à ne pas afficher.
+         * [userFacing] : refus MOTIVÉ — [message] est alors un CODE de refus
+         * (ex. [REFUSAL_DV_PROFILE_5]) que Dart traduit dans la langue de
+         * l'écran (`relayFailureText`). Sinon c'est la cause technique, à ne
+         * pas afficher.
+         *
+         * Revue 2026-09-11, D2B-03 — ⚠️ Jamais une PHRASE ici : le Kotlin
+         * n'a pas la langue de l'écran, et le cliquet l10n ne lit que `lib/`.
          */
         fun onFailed(message: String, userFacing: Boolean)
     }
@@ -328,6 +333,9 @@ class AetherCastRelay(private val context: Context) {
 
     companion object {
         const val TAG = "AetherCastRelay"
+
+        /** D2B-03 — code de refus d'un Dolby Vision profil 5 (traduit côté Dart). */
+        const val REFUSAL_DV_PROFILE_5 = "dvProfile5"
     }
 }
 
@@ -426,11 +434,9 @@ private class RelayExtractorOutput(
             val codecs = f.codecs ?: ""
             val profile = codecs.split('.').getOrNull(1)?.toIntOrNull()
             if (profile == 5) {
-                onUnsupported(
-                    "Ce film est en Dolby Vision profil 5 : sans décodeur Dolby " +
-                        "Vision, l'image aurait des couleurs fausses. Il ne peut pas " +
-                        "être converti pour le téléviseur."
-                )
+                // D2B-03 — un CODE : la phrase (« sans décodeur Dolby Vision,
+                // l'image aurait des couleurs fausses ») naît côté Dart.
+                onUnsupported(AetherCastRelay.REFUSAL_DV_PROFILE_5)
                 return f
             }
             val base = if (codecs.startsWith("dva")) MimeTypes.VIDEO_H264 else MimeTypes.VIDEO_H265

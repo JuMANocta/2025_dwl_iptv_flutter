@@ -7,6 +7,7 @@ import '../../core/utils/notification_permission.dart';
 import '../../core/utils/platform_tv.dart';
 import '../../feature/player/cast_policy.dart';
 import 'cast_service.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// §castSend — Pont entre `CastService.state` (le SEUL état de diffusion) et
 /// le canal natif `aetherstream/cast_notif`, porté par `AetherCastService.kt`
@@ -87,6 +88,11 @@ abstract final class CastNotificationBridge {
         'playing': notice.playing,
         'image': s.imageUrl,
         'lowBattery': battery != null,
+        // Revue 2026-09-11, D3L-02 — les boutons parlent la langue de
+        // l'écran ; le natif garde un repli (res/values*/strings.xml).
+        'pauseLabel': L10n.current.castOverlayPause,
+        'playLabel': L10n.current.castOverlayPlay,
+        'stopLabel': L10n.current.castNotifStop,
       });
     } catch (e) {
       debugPrint('⚠️ CastNotificationBridge.show : $e');

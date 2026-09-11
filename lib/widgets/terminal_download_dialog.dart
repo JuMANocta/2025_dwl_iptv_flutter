@@ -498,7 +498,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                               children: [
                                 Text(
                                   '> [!] ${context.l10n.termPreviousErrors(messages.length)}'
-                                  '  ${isExpanded ? '▲ MASQUER' : '▼ AFFICHER'}',
+                                  '  ${isExpanded ? context.l10n.termHide : context.l10n.termShow}',
                                   style: GoogleFonts.sourceCodePro(
                                     color: kWarning.withAlpha(200),
                                     fontSize: 12,

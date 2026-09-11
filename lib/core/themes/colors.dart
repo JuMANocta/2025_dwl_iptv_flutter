@@ -20,6 +20,48 @@ const Color kTextDarkPrimary = Color(0xFFFFFFFF);
 const Color kAetherSecondaryCyan  = Color(0xFF00CED1); // Cyan/Turquoise
 const Color kMatrixGreenDim       = Color(0xFF00C832); // Variante plus douce
 
+// ── Terminal « Matrix » (dialogue de mise à jour) ────────────────────────────
+/// Revue 2026-09-11, D3B-09 — §updateGreen : le dialogue de mise à jour garde
+/// un style terminal FIGÉ, indépendant du thème (choix de style assumé). Ses
+/// teintes vivaient en dur dans deux widgets ; elles sont nommées ici, valeurs
+/// inchangées.
+// Valeur de l'ancien `kMatrixGreen` (retiré par D4B-07, lot 6) : écrite ici,
+// le terminal étant son seul lecteur.
+const Color kTermGreen       = Color(0xFF00FF41);  // titres, boutons, filets
+const Color kTermGreenDim    = Color(0xFF00AA00);  // texte secondaire
+const Color kTermGreenYellow = Color(0xFFADFF2F);  // valeurs (taille, version)
+const Color kTermGreenBright = Color(0xFF33FF33);  // barre ASCII, partie qui change
+const Color kTermOlive       = Color(0xFF7A9A3F);  // préfixe commun atténué
+const Color kTermRed         = Color(0xFFFF5555);  // erreur
+const Color kTermBackground  = kBlack;             // fond du terminal (avec alpha)
+
+// ── Posé SUR UNE IMAGE (vignettes, hero, logos) ──────────────────────────────
+/// Revue 2026-09-11, D4A-16 — Texte, voiles et ombres posés sur une affiche.
+/// ⚠️ Volontairement FIXES, jamais dérivés du thème : une affiche est la même
+/// en thème clair et en thème sombre, et le voile qui rend le titre lisible
+/// ne doit pas s'éclaircir avec le fond de l'app (§lightTheme). Valeurs
+/// identiques aux littéraux qu'elles remplacent (aucun changement de rendu).
+const Color kOnImage         = kWhite;             // texte / icône sur image
+const Color kImageScrim      = kBlack;             // voile, ombre (avec alpha)
+const Color kImageScrim70    = Color(0xB3000000);  // pastille ⋯ d'une vignette
+const Color kImageScrim80    = Color(0xCC000000);  // ombre portée du hero
+const Color kImageScrimSoft  = Color(0x42000000);  // = Colors.black26
+const Color kOnImageFaint    = Color(0x1FFFFFFF);  // = Colors.white12
+const Color kOnImageSubtle   = Color(0x3DFFFFFF);  // = Colors.white24
+const Color kOnImageMuted    = Color(0x8AFFFFFF);  // = Colors.white54
+const Color kDisabledOnDark  = Color(0x62FFFFFF);  // = Colors.white38
+const Color kDisabledOnLight = Color(0x61000000);  // = Colors.black38
+/// Tranche de la carte active du hero : cinq ombres dures, du clair au sombre,
+/// sous une carte à bord blanc ([kHeroCardEdge]).
+const Color kHeroEdge1 = Color(0xFFEDEDED);
+const Color kHeroEdge2 = Color(0xFFD2D2D2);
+const Color kHeroEdge3 = Color(0xFFA8A8A8);
+const Color kHeroEdge4 = Color(0xFF7E7E7E);
+const Color kHeroEdge5 = Color(0xFF4A4A4A);
+const Color kHeroCardEdge = kWhite;
+/// Fond derrière le logo d'une chaîne dans le hero (un logo n'a pas de fond).
+const Color kHeroChannelBackdrop = Color(0xFF15171C);
+
 // ── Alias sémantiques dynamiques ─────────────────────────────────────────────
 // Getters lus depuis ThemeService à chaque build → réagissent aux changements
 // de thème in-app sans toucher les widgets. Changer le preset = toute l'UI se recolore.

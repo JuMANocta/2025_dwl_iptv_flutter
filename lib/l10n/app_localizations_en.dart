@@ -272,7 +272,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsTheme => 'Appearance';
 
   @override
-  String get settingsThemeSub => 'Theme, colours, cyberpunk effects';
+  String get settingsThemeSub => 'Theme, colors, cyberpunk effects';
 
   @override
   String get settingsOptimization => 'Performance';
@@ -289,7 +289,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsBackupSub =>
-      'Export/import accounts, TMDB, theme, favourites (encrypted .aether)';
+      'Export/import accounts, TMDB, theme, favorites (encrypted .aether)';
 
   @override
   String get settingsAbout => 'About';
@@ -302,14 +302,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsResetUsageSub =>
-      'Clears favourites, resume points & history (keeps accounts & theme)';
+      'Clears favorites, resume points & history (keeps accounts & theme)';
 
   @override
   String get settingsResetTitle => 'Reset usage data?';
 
   @override
   String get settingsResetBody =>
-      'Clears favourites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.';
+      'Clears favorites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.';
 
   @override
   String get settingsResetConfirm => 'Reset';
@@ -399,7 +399,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get perfMinItemsSub =>
-      'Below this, the row folds into “Others” — never New or Favourites. 1 = never fold.';
+      'Below this, the row folds into “Others” — never New or Favorites. 1 = never fold.';
 
   @override
   String get dlOnDeviceTitle => 'On this device';
@@ -542,11 +542,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tmdbPostersFirstOn =>
-      'Carousel and favourites use the TMDB poster.';
+      'Carousel and favorites use the TMDB poster.';
 
   @override
   String get tmdbPostersFirstOff =>
-      'Carousel and favourites keep your lists\' poster.';
+      'Carousel and favorites keep your lists\' poster.';
 
   @override
   String get tmdbMemoryTitle => 'Stored data';
@@ -846,7 +846,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get perfDownloadsSection => 'Downloads';
 
   @override
-  String get perfParallelDownloadsTitle => 'Simultaneous transfers';
+  String get perfParallelDownloadsTitle => 'Downloads at once';
 
   @override
   String get perfParallelDownloadsSub =>
@@ -894,7 +894,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String perfPurgeDone(String size, int count) {
-    return '🧹 $size freed ($count file(s))';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '🧹 $size freed ($count files)',
+      one: '🧹 $size freed ($count file)',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -912,7 +918,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String perfFreeMemoryDone(int count) {
-    return '💤 $count secondary account(s) unloaded from memory';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '💤 $count secondary accounts unloaded from memory',
+      one: '💤 $count secondary account unloaded from memory',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -977,7 +989,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get perfKeepListsSub =>
-      'Every account stays loaded: cross-account search and instant playlist switching. Costs memory (~50 to 150 MB per playlist) — turn it off on a Fire Stick or a low-RAM box.';
+      'Every account stays loaded: search covers all accounts and switching playlists is instant. Uses more memory — turn it off on a Fire Stick or a box that has little.';
 
   @override
   String get perfUnloadAfterLabel => 'Unload after';
@@ -1026,7 +1038,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String perfStorageReclaimable(String size, int count) {
-    return '$size taken by $count file(s) nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$size taken by $count files nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.',
+      one:
+          '$size taken by $count file nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -1219,7 +1239,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String acctAgeHours(int count) {
-    return '$count h ago';
+    return '${count}h ago';
   }
 
   @override
@@ -1285,7 +1305,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String acctAgeMinutesShort(int count) {
-    return '${count}min';
+    return '${count}m';
   }
 
   @override
@@ -1853,7 +1873,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statsNo => 'no';
 
   @override
-  String get statsDropped => 'Dropped';
+  String get statsDropped => 'Skipped';
 
   @override
   String get statsBitrate => 'Bitrate';
@@ -2049,7 +2069,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statsFps => 'Frames/s';
 
   @override
-  String get statsLost => 'Dropped';
+  String get statsLost => 'Lost';
 
   @override
   String get statsRendered => 'Rendered';
@@ -2892,7 +2912,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String termPreviousErrors(int count) {
-    return '$count PREVIOUS ERROR(S)';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count PREVIOUS ERRORS',
+      one: '$count PREVIOUS ERROR',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -3115,9 +3141,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get detEpisodesNoAccount => 'account not found';
-
-  @override
-  String get castOverlayResyncFull => 'Resynchronize picture and sound';
 
   @override
   String memSourceAndParsed(String source, String parsed) {
@@ -3558,4 +3581,278 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commonIncrease => 'Increase';
+
+  @override
+  String get detEpisodesReasonNetwork => 'the server is not responding';
+
+  @override
+  String get detEpisodesReasonBusy =>
+      'the provider refuses: too many connections at once';
+
+  @override
+  String get detEpisodesReasonParse => 'the server\'s answer could not be read';
+
+  @override
+  String get detEpisodesReasonAccount => 'the account settings are incomplete';
+
+  @override
+  String failDetailTooLong(String delay) {
+    return '(still not ready after $delay)';
+  }
+
+  @override
+  String get failDetailCacheCleared => '(cleared at your request)';
+
+  @override
+  String durationHoursMinutes(int hours, String minutes) {
+    return '${hours}h ${minutes}m';
+  }
+
+  @override
+  String durationMinutes(int count) {
+    return '$count min';
+  }
+
+  @override
+  String durationSeconds(int count) {
+    return '$count s';
+  }
+
+  @override
+  String get healthNoStalls => 'no stalls';
+
+  @override
+  String healthStalls(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count stalls',
+      one: '$count stall',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String healthPerHour(String value) {
+    return '$value/h';
+  }
+
+  @override
+  String healthWatched(String duration) {
+    return '$duration watched';
+  }
+
+  @override
+  String bootDetailEntries(int n, String count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$count entries',
+      one: '$count entry',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String bootDetailSection(String section, String done, String total) {
+    return '$section · $done/$total';
+  }
+
+  @override
+  String get bootSectionLive => 'channels';
+
+  @override
+  String get bootSectionMovies => 'movies';
+
+  @override
+  String get bootSectionSeries => 'series';
+
+  @override
+  String get bootStepInit => '// starting…';
+
+  @override
+  String get bootStepServices => '// preparing services…';
+
+  @override
+  String get bootStepAccount => '// checking the account…';
+
+  @override
+  String get bootStepReadPlaylist => '// reading the playlist…';
+
+  @override
+  String get bootStepDownloadPlaylist => '// downloading the playlist…';
+
+  @override
+  String get bootStepAnalysis => '// parsing the catalog…';
+
+  @override
+  String get bootStepOtherAccounts => '// loading the other accounts…';
+
+  @override
+  String get bootStepReady => '// ready.';
+
+  @override
+  String bootStepUpdate(int index, int total, String label) {
+    return '// updating $index/$total · $label…';
+  }
+
+  @override
+  String bootStepAnalysisOf(String label) {
+    return '// parsing · $label…';
+  }
+
+  @override
+  String get playlistNoActiveAccount =>
+      'No active account selected. Choose one in the settings.';
+
+  @override
+  String playlistInvalidUrl(String label) {
+    return 'The playlist URL of the account “$label” is invalid. Check its settings.';
+  }
+
+  @override
+  String detRuntimeHoursMinutes(int hours, int minutes) {
+    return '${hours}h ${minutes}m';
+  }
+
+  @override
+  String get castOverlayLive => 'LIVE';
+
+  @override
+  String playerReconnectingNow(int attempt, int max) {
+    return 'Reconnecting… ($attempt/$max)';
+  }
+
+  @override
+  String get nextEpStayHere => 'Stay here';
+
+  @override
+  String get nowPlayingLive => 'Live';
+
+  @override
+  String get nowPlayingReplay => 'Replay';
+
+  @override
+  String tracksTrackN(String id) {
+    return 'Track $id';
+  }
+
+  @override
+  String replayManualTitle(String label) {
+    return 'Replay — $label';
+  }
+
+  @override
+  String get relayDolbyVisionP5 =>
+      'This film is in Dolby Vision profile 5: without a Dolby Vision decoder, its colors would be wrong. It can\'t be converted for the TV.';
+
+  @override
+  String get dlNotifFinished => 'Download complete — tap to open';
+
+  @override
+  String get dlNotifFailed => 'Download failed';
+
+  @override
+  String get castNotifStop => 'Stop';
+
+  @override
+  String dlNoticeAverage(int percent) {
+    return '$percent% on average';
+  }
+
+  @override
+  String get termShow => '▼ SHOW';
+
+  @override
+  String get termHide => '▲ HIDE';
+
+  @override
+  String get updDiffLine => '> DIFF    : see the release on GitHub';
+
+  @override
+  String get updViewChangelog => '[ VIEW CHANGELOG ]';
+
+  @override
+  String get updLater => '[ LATER ]';
+
+  @override
+  String get updAbort => '[ ABORT ]';
+
+  @override
+  String get updInstall => '[ INSTALL UPDATE ]';
+
+  @override
+  String get updRetry => '[ RETRY ]';
+
+  @override
+  String get xmltvNoGuide => 'No guide saved';
+
+  @override
+  String get consoleCodeLabel => 'Code: ';
+
+  @override
+  String get consoleCopyUrl => 'Copy the address';
+
+  @override
+  String bkBackupFrom(String date, String version) {
+    return 'Backup from $date (v$version):';
+  }
+
+  @override
+  String qualityStreamN(int n) {
+    return 'Stream $n';
+  }
+
+  @override
+  String searchVersionsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count versions',
+      one: '$count version',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get aboutVersionLabel => 'VERSION';
+
+  @override
+  String aboutMadeWith(String stack) {
+    return 'Made with $stack';
+  }
+
+  @override
+  String get acctCardActions => 'Account actions';
+
+  @override
+  String infoRowLabel(String label) {
+    return '$label:';
+  }
+
+  @override
+  String get detSynopsis => 'Synopsis';
+
+  @override
+  String detVotes(int count, String formatted) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$formatted votes',
+      one: '$formatted vote',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get actorJobDirecting => 'Directing team';
+
+  @override
+  String get themePresetPhosphore => 'Phosphor';
+
+  @override
+  String get themePresetNordique => 'Nordic';
+
+  @override
+  String get themePresetMinimaliste => 'Minimalist';
 }

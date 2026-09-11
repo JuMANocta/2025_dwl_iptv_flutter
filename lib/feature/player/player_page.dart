@@ -1542,7 +1542,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _pendingRetryTimer = Timer(const Duration(seconds: 5), () {
         _pendingRetryTimer = null;
         if (!mounted) return;
-        _recoveryLabel.value = 'Reconnexion… ($_retryCount/$_maxRetries)';
+        // Revue 2026-09-11, D2A-08 — écrasait la valeur traduite posée
+        // juste avant par une phrase française.
+        _recoveryLabel.value =
+            L10n.current.playerReconnectingNow(_retryCount, _maxRetries);
         _openMedia();
       });
     } else {

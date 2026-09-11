@@ -4,28 +4,27 @@
 # Ce fichier ne doit JAMAIS remonter : chaque tranche de
 # traduction l'abaisse. Un total qui augmente = une régression.
 #
-# TOTAL : 136 lignes dans 37 fichiers.
+# TOTAL : 110 lignes dans 35 fichiers.
 
 lib/core/diagnostics/jank_meter.dart 2
 lib/core/diagnostics/log_buffer.dart 6
 lib/core/navigation/focus_route_memory.dart 7
 lib/core/utils/notification_permission.dart 2
 lib/data/models/m3u_entry.dart 7
-lib/data/models/media_model.dart 3
+lib/data/models/media_model.dart 2
 lib/data/services/backup_service.dart 1
-lib/data/services/cast_relay_service.dart 1
 lib/data/services/cast_service.dart 2
 lib/data/services/download_manager_service.dart 2
 lib/data/services/favorites_service.dart 2
 lib/data/services/inferred_category_service.dart 1
-lib/data/services/parsed_playlist_service.dart 10
-lib/data/services/playlist_fleet_service.dart 13
+lib/data/services/parsed_playlist_service.dart 6
+lib/data/services/playlist_fleet_service.dart 9
 lib/data/services/playlist_reload_service.dart 1
-lib/data/services/playlist_service.dart 7
+lib/data/services/playlist_service.dart 3
 lib/data/services/storage_janitor.dart 3
 lib/data/services/stream_account_service.dart 3
 lib/data/services/tmdb_poster_cache.dart 2
-lib/data/services/tmdb_service.dart 5
+lib/data/services/tmdb_service.dart 3
 lib/data/services/visual_language_service.dart 1
 lib/data/services/xtream_api_service.dart 9
 lib/data/services/xtream_catalog_service.dart 10
@@ -35,11 +34,10 @@ lib/feature/onboarding/onboarding_page.dart 1
 lib/feature/player/media3_engine.dart 1
 lib/feature/player/player_page.dart 4
 lib/feature/player/video_stats.dart 2
-lib/feature/player/widgets/next_episode_overlay.dart 2
-lib/feature/player/widgets/video_stats_overlay.dart 4
+lib/feature/player/widgets/video_stats_overlay.dart 1
 lib/feature/search/details_page.dart 3
-lib/feature/search/m3u_parser.dart 2
-lib/feature/search/xtream_catalog_parser.dart 4
+lib/feature/search/m3u_parser.dart 1
+lib/feature/search/xtream_catalog_parser.dart 1
 lib/feature/settings/backup_restore_flow.dart 1
-lib/main.dart 3
+lib/main.dart 2
 lib/widgets/tv/dpad_row_anchor.dart 1

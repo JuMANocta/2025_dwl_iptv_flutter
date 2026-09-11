@@ -153,7 +153,9 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
                             channels > 0
                                 ? context.l10n.xmltvChannelsAndAge(
                                     channels, _formatAge(loadedAt))
-                                : 'Cache vide',
+                                // D4B-05 — « Cache vide » : en dur, et de
+                                // la mécanique (§clientText).
+                                : context.l10n.xmltvNoGuide,
                             style: TextStyle(
                               color: cs.onSurfaceVariant,
                               fontSize: 12,
@@ -190,7 +192,7 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: kAccentSecondary,
-                    foregroundColor: Colors.black,
+                    foregroundColor: onColorFor(kAccentSecondary), // D4B-08
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),

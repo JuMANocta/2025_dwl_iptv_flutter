@@ -69,6 +69,9 @@ class AetherCastService : Service() {
             playing: Boolean,
             image: String? = null,
             lowBattery: Boolean = false,
+            pauseLabel: String? = null,
+            playLabel: String? = null,
+            stopLabel: String? = null,
         ) {
             val intent = Intent(context, AetherCastService::class.java).apply {
                 putExtra("title", title)
@@ -76,6 +79,11 @@ class AetherCastService : Service() {
                 putExtra("playing", playing)
                 putExtra("image", image)
                 putExtra("lowBattery", lowBattery)
+                // Revue 2026-09-11, D3L-02 — libellés des boutons, traduits
+                // par Dart ; repli sur les ressources s'ils manquent.
+                putExtra("pauseLabel", pauseLabel)
+                putExtra("playLabel", playLabel)
+                putExtra("stopLabel", stopLabel)
             }
             try {
                 // §fgsSafeStart (2026-09-10) — ⚠️ `startForegroundService` arme
@@ -121,6 +129,18 @@ class AetherCastService : Service() {
     /// téléphone porte la diffusion, s'il s'éteint tout s'arrête.
     private var lowBattery: Boolean = false
 
+    /// Revue 2026-09-11, D3L-02 — libellés des boutons, venus de Dart (langue
+    /// de l'écran). ⚠️ Lus aussi par le thread de l'affiche (`maybeLoadPoster`
+    /// repose la notification) : `@Volatile`, comme `poster`.
+    @Volatile
+    private var pauseLabel: String? = null
+
+    @Volatile
+    private var playLabel: String? = null
+
+    @Volatile
+    private var stopLabel: String? = null
+
     /// §castAwake — Verrou CPU : sans lui, écran éteint, le téléphone se
     /// suspend et la diffusion avec. Non compté par référence : un seul
     /// `acquire` quel que soit le nombre de mises à jour de la notification,
@@ -140,7 +160,9 @@ class AetherCastService : Service() {
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createChannel()
         // §fgsSafeStart — Se déclarer dès la CRÉATION, avec un repli.
-        promoteToForeground(buildNotification("AetherStream", "Diffusion en cours", true))
+        promoteToForeground(
+            buildNotification("AetherStream", getString(R.string.notif_cast_running), true)
+        )
     }
 
     /// Déclare le service en premier plan. ⚠️ Ne lève jamais.
@@ -162,10 +184,13 @@ class AetherCastService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val title = intent?.getStringExtra("title") ?: "AetherStream"
-        val text = intent?.getStringExtra("text") ?: "Diffusion en cours"
+        val text = intent?.getStringExtra("text") ?: getString(R.string.notif_cast_running)
         val playing = intent?.getBooleanExtra("playing", true) ?: true
         val image = intent?.getStringExtra("image")
         lowBattery = intent?.getBooleanExtra("lowBattery", false) ?: false
+        pauseLabel = intent?.getStringExtra("pauseLabel")
+        playLabel = intent?.getStringExtra("playLabel")
+        stopLabel = intent?.getStringExtra("stopLabel")
         maybeLoadPoster(image, title, text, playing)
 
         // §fgsSafeStart — Déjà promu dans `onCreate` ; on remplace le repli.
@@ -260,10 +285,11 @@ class AetherCastService : Service() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        if (notificationManager.getNotificationChannel(CHANNEL_ID) != null) return
+        // Revue 2026-09-11, D2B-17 — recréé à chaque fois : Android met alors
+        // à jour le NOM du canal, qui suit la langue de l'appareil.
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Diffusion Chromecast",
+            getString(R.string.notif_channel_cast),
             NotificationManager.IMPORTANCE_LOW
         )
         notificationManager.createNotificationChannel(channel)
@@ -298,8 +324,21 @@ class AetherCastService : Service() {
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setContentIntent(contentPending)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(0, if (playing) "Pause" else "Lecture", togglePending)
-            .addAction(0, "Arrêter", stopPending)
+            // D3L-02 — libellés traduits par Dart, repli sur les ressources.
+            .addAction(
+                0,
+                if (playing) {
+                    pauseLabel?.takeIf { it.isNotBlank() } ?: getString(R.string.notif_pause)
+                } else {
+                    playLabel?.takeIf { it.isNotBlank() } ?: getString(R.string.notif_play)
+                },
+                togglePending
+            )
+            .addAction(
+                0,
+                stopLabel?.takeIf { it.isNotBlank() } ?: getString(R.string.notif_stop),
+                stopPending
+            )
         if (lowBattery) {
             // Fond coloré (autorisé pour un service de premier plan média) :
             // l'alerte se voit sans lire le texte.

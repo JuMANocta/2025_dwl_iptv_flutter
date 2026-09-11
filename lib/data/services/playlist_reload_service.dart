@@ -121,8 +121,11 @@ abstract final class PlaylistReloadService {
   static String formatAge(Duration age) {
     final int h = age.inHours;
     final int m = age.inMinutes % 60;
-    if (h > 0) return m > 0 ? '${h}h ${m}min' : '${h}h';
-    if (m > 0) return '${m}min';
+    // Revue 2026-09-11, lot 7 (recette en anglais) — « min » en dur : un écran
+    // anglais lisait « 20h 43min ». Le français ne change pas (« 3h 12min »).
+    final String mins = L10n.current.acctAgeMinutesShort(m);
+    if (h > 0) return m > 0 ? '${h}h $mins' : '${h}h';
+    if (m > 0) return mins;
     return L10n.current.reloadLessThanMinute;
   }
 }

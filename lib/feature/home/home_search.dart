@@ -506,7 +506,7 @@ class _TmdbOnlyCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.black.withAlpha(190),
+                        color: kImageScrim.withAlpha(190),
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(color: kWarning.withAlpha(140)),
                       ),
@@ -998,7 +998,7 @@ class _SearchEmptyState extends StatelessWidget {
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       child: Text(
-                        "Effacer",
+                        context.l10n.commonClear, // D4B-05 (la clé existait)
                         style: TextStyle(
                             fontSize: 12,
                             color: cs.onSurfaceVariant.withAlpha(180)),
@@ -1149,7 +1149,7 @@ class _LastWatchedTvTile extends StatelessWidget {
                     child: Container(
                       width: 48,
                       height: 48,
-                      color: Colors.black26,
+                      color: kImageScrimSoft, // D4A-16 (= black26)
                       // §imgDiskCache — cache disque partagé (AetherImage).
                       child: AetherImage(
                         url: last.logoUrl,
@@ -1157,7 +1157,7 @@ class _LastWatchedTvTile extends StatelessWidget {
                         // §imgThrash — 48 px réels.
                         cacheWidth: decodeWidthFor(context, 48),
                         fallback: (_) =>
-                            const Icon(Icons.live_tv, color: Colors.white54),
+                            const Icon(Icons.live_tv, color: kOnImageMuted),
                       ),
                     ),
                   ),
@@ -1201,8 +1201,9 @@ class _LastWatchedTvTile extends StatelessWidget {
                             blurRadius: 10),
                       ],
                     ),
-                    child: const Icon(Icons.play_arrow,
-                        color: Colors.black, size: 22),
+                    // D4B-08 — l'icône suit l'accent (Tron : fond blanc).
+                    child: Icon(Icons.play_arrow,
+                        color: onColorFor(kAccentPrimary), size: 22),
                   ),
                 ],
               ),

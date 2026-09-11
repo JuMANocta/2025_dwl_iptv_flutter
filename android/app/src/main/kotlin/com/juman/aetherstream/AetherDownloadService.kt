@@ -55,7 +55,8 @@ class AetherDownloadService : Service() {
             text: String,
             progress: Int,
             indeterminate: Boolean,
-            cancelTaskId: String?
+            cancelTaskId: String?,
+            cancelLabel: String? = null
         ) {
             val intent = Intent(context, AetherDownloadService::class.java).apply {
                 putExtra("title", title)
@@ -63,6 +64,8 @@ class AetherDownloadService : Service() {
                 putExtra("progress", progress)
                 putExtra("indeterminate", indeterminate)
                 putExtra("cancelTaskId", cancelTaskId)
+                // Revue 2026-09-11, D3L-02 — libellé du bouton, traduit par Dart.
+                putExtra("cancelLabel", cancelLabel)
             }
             try {
                 // §fgsSafeStart (2026-09-10) — ⚠️ **`startService`, PAS
@@ -105,13 +108,24 @@ class AetherDownloadService : Service() {
          * terminer) — un `NotificationManager` seul suffit, pas besoin de
          * relancer un service pour ça.
          */
-        fun postFinished(context: Context, id: Int, title: String, success: Boolean) {
+        fun postFinished(
+            context: Context,
+            id: Int,
+            title: String,
+            success: Boolean,
+            text: String? = null
+        ) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                nm.getNotificationChannel(CHANNEL_ID) == null
-            ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Revue 2026-09-11, D2B-17 — (re)créé à chaque fois : sur un
+                // canal existant, Android met à jour son NOM, qui suit donc la
+                // langue de l'appareil (l'importance, elle, ne bouge pas).
                 nm.createNotificationChannel(
-                    NotificationChannel(CHANNEL_ID, "Téléchargements", NotificationManager.IMPORTANCE_LOW)
+                    NotificationChannel(
+                        CHANNEL_ID,
+                        context.getString(R.string.notif_channel_downloads),
+                        NotificationManager.IMPORTANCE_LOW
+                    )
                 )
             }
             val contentIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
@@ -121,12 +135,17 @@ class AetherDownloadService : Service() {
                 context, id, contentIntent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-            val text = if (success) "Téléchargement terminé — appuyer pour ouvrir" else "Échec du téléchargement"
+            // D3L-02 — le texte vient de Dart (L10n) ; la ressource n'est que
+            // le repli, jamais une notification vide.
+            val body = text?.takeIf { it.isNotBlank() }
+                ?: context.getString(
+                    if (success) R.string.notif_download_finished else R.string.notif_download_failed
+                )
             val iconRes = context.resources.getIdentifier("ic_notification", "drawable", context.packageName)
                 .let { if (it != 0) it else context.applicationInfo.icon }
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setContentTitle(title)
-                .setContentText(text)
+                .setContentText(body)
                 .setSmallIcon(iconRes)
                 .setAutoCancel(true)
                 .setContentIntent(contentPending)
@@ -147,7 +166,9 @@ class AetherDownloadService : Service() {
         // laissait une fenêtre où un `stopService()` détruisait l'instance
         // avant toute promotion : personne n'appelait `startForeground()` et le
         // système tuait le processus.
-        promoteToForeground(buildNotification("Téléchargement", "", -1, true, null))
+        promoteToForeground(
+            buildNotification(getString(R.string.notif_download_title), "", -1, true, null, null)
+        )
     }
 
     override fun onDestroy() {
@@ -174,13 +195,15 @@ class AetherDownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val title = intent?.getStringExtra("title") ?: "Téléchargement"
+        val title = intent?.getStringExtra("title") ?: getString(R.string.notif_download_title)
         val text = intent?.getStringExtra("text") ?: ""
         val progress = intent?.getIntExtra("progress", -1) ?: -1
         val indeterminate = intent?.getBooleanExtra("indeterminate", false) ?: false
         val cancelTaskId = intent?.getStringExtra("cancelTaskId")
+        val cancelLabel = intent?.getStringExtra("cancelLabel")
 
-        val notification = buildNotification(title, text, progress, indeterminate, cancelTaskId)
+        val notification =
+            buildNotification(title, text, progress, indeterminate, cancelTaskId, cancelLabel)
         // §fgsSafeStart — Déjà promu dans `onCreate` : ici on ne fait que
         // remplacer la notification de repli par la vraie.
         // ⛔ Plus de `stopSelf()` en rattrapage d'échec : se retirer sans
@@ -207,10 +230,11 @@ class AetherDownloadService : Service() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        if (notificationManager.getNotificationChannel(CHANNEL_ID) != null) return
+        // Revue 2026-09-11, D2B-17 — plus de retour anticipé si le canal
+        // existe : le recréer met à jour son NOM (langue de l'appareil).
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Téléchargements",
+            getString(R.string.notif_channel_downloads),
             NotificationManager.IMPORTANCE_LOW
         )
         notificationManager.createNotificationChannel(channel)
@@ -221,7 +245,8 @@ class AetherDownloadService : Service() {
         text: String,
         progress: Int,
         indeterminate: Boolean,
-        cancelTaskId: String?
+        cancelTaskId: String?,
+        cancelLabel: String?
     ): Notification {
         val contentIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
@@ -256,7 +281,10 @@ class AetherDownloadService : Service() {
                 this, cancelTaskId.hashCode(), cancelIntent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-            builder.addAction(0, "Annuler", cancelPending)
+            // D3L-02 — libellé traduit par Dart, repli sur la ressource.
+            val label = cancelLabel?.takeIf { it.isNotBlank() }
+                ?: getString(R.string.notif_cancel)
+            builder.addAction(0, label, cancelPending)
         }
 
         return builder.build()

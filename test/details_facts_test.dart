@@ -41,6 +41,35 @@ void main() {
     });
   });
 
+  // Revue 2026-09-11, lot 7 — recette TV en anglais : « 5 M$ » et
+  // « 25/06/2026 » (formes françaises) sur un écran anglais.
+  group('la langue de l écran (lot 7)', () {
+    test('anglais : symbole devant, milliers à la virgule, M collé', () {
+      expect(moneyLabel(5000000, lang: 'en'), '\$5M');
+      expect(moneyLabel(1200000000, lang: 'en'), '\$1,200M');
+      expect(moneyLabel(750000, lang: 'en'), '\$750,000');
+      expect(moneyLabel(0, lang: 'en'), isNull);
+    });
+
+    test('anglais : mois/jour/année, sans zéro de tête', () {
+      expect(shortDate('2026-06-25', lang: 'en'), '6/25/2026');
+      expect(shortDate('2026-03-05T00:00:00.000Z', lang: 'en'), '3/5/2026');
+    });
+
+    test('français : strictement inchangé (valeur par défaut ET explicite)', () {
+      expect(moneyLabel(90000000, lang: 'fr'), moneyLabel(90000000));
+      expect(moneyLabel(750000, lang: 'fr'), '750 000 \$');
+      expect(shortDate('2023-07-12', lang: 'fr'), '12/07/2023');
+    });
+
+    test('le prochain épisode suit la même date', () {
+      const n = NextEpisodeInfo(
+          seasonNumber: 2, episodeNumber: 5, airDate: '2026-03-12', name: 'X');
+      expect(nextEpisodeLabel(n, lang: 'en'), 'S02E05 · 3/12/2026 — X');
+      expect(nextEpisodeLabel(n), 'S02E05 · 12/03/2026 — X');
+    });
+  });
+
   group('nextEpisodeLabel — le prochain épisode ANNONCÉ', () {
     test('numéro, date et titre', () {
       expect(

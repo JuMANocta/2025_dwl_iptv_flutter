@@ -274,7 +274,7 @@ class _HomeCardState extends State<_HomeCard> {
                       subtitle: LinearProgressIndicator(
                         value: progress.ratio,
                         minHeight: 3,
-                        backgroundColor: Colors.white12,
+                        backgroundColor: kOnImageFaint, // D4A-16 (= white12)
                         valueColor: AlwaysStoppedAnimation(kAccentSecondary),
                       ),
                       onTap: () => play(from: progress.position),
@@ -465,7 +465,7 @@ class _HomeCardState extends State<_HomeCard> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withAlpha(80),
+                    color: kImageScrim.withAlpha(80),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -507,7 +507,7 @@ class _HomeCardState extends State<_HomeCard> {
                             stops: const [0.55, 1.0],
                             colors: [
                               Colors.transparent,
-                              Colors.black.withAlpha(220),
+                              kImageScrim.withAlpha(220),
                             ],
                           ),
                         ),
@@ -530,10 +530,10 @@ class _HomeCardState extends State<_HomeCard> {
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                              color: kOnImage,
                               height: 1.2,
                               shadows: [
-                                Shadow(color: Colors.black, blurRadius: 4),
+                                Shadow(color: kImageScrim, blurRadius: 4),
                               ],
                             ),
                           ),
@@ -544,10 +544,10 @@ class _HomeCardState extends State<_HomeCard> {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.white.withAlpha(190),
+                                color: kOnImage.withAlpha(190),
                                 height: 1.3,
                                 shadows: const [
-                                  Shadow(color: Colors.black, blurRadius: 4),
+                                  Shadow(color: kImageScrim, blurRadius: 4),
                                 ],
                               ),
                             ),
@@ -588,13 +588,13 @@ class _HomeCardState extends State<_HomeCard> {
                             child: Center(
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
-                                  color: Color(0xB3000000),
+                                  color: kImageScrim70,
                                   shape: BoxShape.circle,
                                 ),
                                 child: Padding(
                                   padding: EdgeInsets.all(4),
                                   child: Icon(Icons.more_horiz,
-                                      size: 16, color: Colors.white),
+                                      size: 16, color: kOnImage),
                                 ),
                               ),
                             ),
@@ -621,7 +621,7 @@ class _HomeCardState extends State<_HomeCard> {
                             return LinearProgressIndicator(
                               value: p.ratio,
                               minHeight: 3,
-                              backgroundColor: Colors.white24,
+                              backgroundColor: kOnImageSubtle, // = white24
                               valueColor: AlwaysStoppedAnimation(kAccentSecondary),
                             );
                           },

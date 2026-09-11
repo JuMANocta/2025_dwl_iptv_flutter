@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/core/navigation/playlist_visibility.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
@@ -449,7 +450,8 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
               icon: const Icon(Icons.add),
               label: Text(ctx.l10n.acctAdd),
               backgroundColor: kAccentPrimary,
-              foregroundColor: Colors.black,
+              // Revue 2026-09-11, D4B-08 — le texte suit le fond (Tron : blanc).
+              foregroundColor: onColorFor(kAccentPrimary),
             );
           },
         ),
@@ -806,7 +808,9 @@ class _AccountCardState extends State<_AccountCard> {
     final h = age.inHours;
     final m = age.inMinutes % 60;
     final ageStr = h > 0
-        ? context.l10n.acctAgeHoursMinutes(h, m > 0 ? ' ${m}min' : '')
+        // Revue 2026-09-11, lot 7 — plus de « min » en dur (écran anglais).
+        ? context.l10n.acctAgeHoursMinutes(
+            h, m > 0 ? ' ${context.l10n.acctAgeMinutesShort(m)}' : '')
         : context.l10n.acctAgeMinutesShort(m);
     return showAppDialog<bool>(
       context: context,
@@ -1087,7 +1091,7 @@ class _AccountCardState extends State<_AccountCard> {
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: kAccentPrimary,
-                foregroundColor: Colors.black,
+                foregroundColor: onColorFor(kAccentPrimary), // D4B-08
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 // Coins alignés sur le halo de la chip (le stadium M3 par
                 // défaut laisserait le halo déborder dans les angles).
@@ -1105,7 +1109,7 @@ class _AccountCardState extends State<_AccountCard> {
             icon: Icon(Icons.more_vert,
                 color: cs.onSurfaceVariant.withAlpha(180)),
             onPressed: widget.onMore,
-            tooltip: 'Actions',
+            tooltip: context.l10n.acctCardActions, // D4B-05 (lu par TalkBack)
             style: IconButton.styleFrom(
               minimumSize: const Size(48, 48),
               side: BorderSide(color: cs.outline.withAlpha(60)),
@@ -1399,7 +1403,9 @@ class _PlaybackHealthLine extends StatelessWidget {
               Expanded(
                 child: Text(
                   [
-                    h.summary,
+                    // Revue 2026-09-11, D1B-07 — `summary` est le texte du
+                    // journal ; l'écran lit la version traduite.
+                    h.displaySummary(L10n.current),
                     if (startup != null)
                       L10n.current.acctStartupTime(
                           (startup.inMilliseconds / 1000).toStringAsFixed(1)),

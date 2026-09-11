@@ -123,7 +123,7 @@
   "@settingsTheme": {
     "description": "Settings tile title"
   },
-  "settingsThemeSub": "Theme, colours, cyberpunk effects",
+  "settingsThemeSub": "Theme, colors, cyberpunk effects",
   "@settingsThemeSub": {
     "description": "Settings tile subtitle"
   },
@@ -143,7 +143,7 @@
   "@settingsBackup": {
     "description": "Settings tile title"
   },
-  "settingsBackupSub": "Export/import accounts, TMDB, theme, favourites (encrypted .aether)",
+  "settingsBackupSub": "Export/import accounts, TMDB, theme, favorites (encrypted .aether)",
   "@settingsBackupSub": {
     "description": "Settings tile subtitle"
   },
@@ -159,7 +159,7 @@
   "@settingsResetUsage": {
     "description": "Settings tile title"
   },
-  "settingsResetUsageSub": "Clears favourites, resume points & history (keeps accounts & theme)",
+  "settingsResetUsageSub": "Clears favorites, resume points & history (keeps accounts & theme)",
   "@settingsResetUsageSub": {
     "description": "Settings tile subtitle"
   },
@@ -167,7 +167,7 @@
   "@settingsResetTitle": {
     "description": "Reset confirmation dialog title"
   },
-  "settingsResetBody": "Clears favourites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.",
+  "settingsResetBody": "Clears favorites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.",
   "@settingsResetBody": {
     "description": "Reset confirmation dialog body"
   },
@@ -287,7 +287,7 @@
   "@perfMinItemsTitle": {
     "description": "Optimisation setting title"
   },
-  "perfMinItemsSub": "Below this, the row folds into “Others” — never New or Favourites. 1 = never fold.",
+  "perfMinItemsSub": "Below this, the row folds into “Others” — never New or Favorites. 1 = never fold.",
   "@perfMinItemsSub": {
     "description": "Optimisation setting subtitle"
   },
@@ -488,11 +488,11 @@
   "@tmdbPostersFirstTitle": {
     "description": "Posters-first switch title"
   },
-  "tmdbPostersFirstOn": "Carousel and favourites use the TMDB poster.",
+  "tmdbPostersFirstOn": "Carousel and favorites use the TMDB poster.",
   "@tmdbPostersFirstOn": {
     "description": "Posters-first switch subtitle, on"
   },
-  "tmdbPostersFirstOff": "Carousel and favourites keep your lists' poster.",
+  "tmdbPostersFirstOff": "Carousel and favorites keep your lists' poster.",
   "@tmdbPostersFirstOff": {
     "description": "Posters-first switch subtitle, off"
   },
@@ -910,7 +910,7 @@
     }
   },
   "perfDownloadsSection": "Downloads",
-  "perfParallelDownloadsTitle": "Simultaneous transfers",
+  "perfParallelDownloadsTitle": "Downloads at once",
   "perfParallelDownloadsSub": "One transfer at a time per subscription: providers accept a single connection, and the player keeps one. This number only applies across different subscriptions; the others wait their turn.",
   "taskStatusQueuedWhy": "Waiting: one transfer at a time per subscription",
   "perfWifiOnlyTitle": "Download on Wi-Fi only",
@@ -933,7 +933,7 @@
   },
   "capsDisplayUiNote": "What Android reports here describes the UI, not necessarily the panel: many 4K TVs render menus at 1080p and video at 2160p. Only the decoders decide about 4K.",
   "perfPurgeNothing": "Nothing to reclaim — no orphan files",
-  "perfPurgeDone": "🧹 {size} freed ({count} file(s))",
+  "perfPurgeDone": "{count, plural, one{🧹 {size} freed ({count} file)} other{🧹 {size} freed ({count} files)}}",
   "@perfPurgeDone": {
     "placeholders": {
       "size": {
@@ -948,7 +948,7 @@
   "perfResetQuestion": "All optimization settings return to their default values.",
   "perfResetConfirm": "Reset",
   "perfResetDone": "Settings reset",
-  "perfFreeMemoryDone": "💤 {count} secondary account(s) unloaded from memory",
+  "perfFreeMemoryDone": "{count, plural, one{💤 {count} secondary account unloaded from memory} other{💤 {count} secondary accounts unloaded from memory}}",
   "@perfFreeMemoryDone": {
     "placeholders": {
       "count": {
@@ -974,7 +974,7 @@
   "perfBufferSub": "Seconds of video kept ahead. Raising it helps with a throttling provider — playback draws from the buffer instead of stalling — but holds that much more stream in memory, which matters on a set-top box. The “Stalls” counter in the Video info panel tells you whether the setting helps. Takes effect on the next playback.",
   "perfSectionLists": "Playlists",
   "perfKeepListsTitle": "Keep every playlist in memory",
-  "perfKeepListsSub": "Every account stays loaded: cross-account search and instant playlist switching. Costs memory (~50 to 150 MB per playlist) — turn it off on a Fire Stick or a low-RAM box.",
+  "perfKeepListsSub": "Every account stays loaded: search covers all accounts and switching playlists is instant. Uses more memory — turn it off on a Fire Stick or a box that has little.",
   "perfUnloadAfterLabel": "Unload after",
   "perfUnloadNever": "Never",
   "perfMinutesShort": "{count} min",
@@ -995,7 +995,7 @@
   "perfSectionStorage": "Storage",
   "perfStorageScanning": "Scanning storage…",
   "perfStorageNothing": "Nothing to reclaim: every file belongs to an existing account.",
-  "perfStorageReclaimable": "{size} taken by {count} file(s) nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.",
+  "perfStorageReclaimable": "{count, plural, one{{size} taken by {count} file nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.} other{{size} taken by {count} files nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.}}",
   "@perfStorageReclaimable": {
     "placeholders": {
       "size": {
@@ -1186,7 +1186,7 @@
       }
     }
   },
-  "acctAgeHours": "{count} h ago",
+  "acctAgeHours": "{count}h ago",
   "@acctAgeHours": {
     "placeholders": {
       "count": {
@@ -1268,7 +1268,7 @@
       }
     }
   },
-  "acctAgeMinutesShort": "{count}min",
+  "acctAgeMinutesShort": "{count}m",
   "@acctAgeMinutesShort": {
     "placeholders": {
       "count": {
@@ -1664,7 +1664,7 @@
   },
   "statsYes": "yes",
   "statsNo": "no",
-  "statsDropped": "Dropped",
+  "statsDropped": "Skipped",
   "statsBitrate": "Bitrate",
   "statsNetwork": "Network",
   "statsTransferred": "Transferred",
@@ -1750,7 +1750,7 @@
   "statsCodec": "Codec",
   "statsHdr": "HDR",
   "statsFps": "Frames/s",
-  "statsLost": "Dropped",
+  "statsLost": "Lost",
   "statsRendered": "Rendered",
   "statsBuffer": "Buffer",
   "statsAudio": "Audio",
@@ -2270,7 +2270,7 @@
   "onbSkip": "Skip",
   "onbNext": "Next",
   "onbStart": "Get started",
-  "termPreviousErrors": "{count} PREVIOUS ERROR(S)",
+  "termPreviousErrors": "{count, plural, one{{count} PREVIOUS ERROR} other{{count} PREVIOUS ERRORS}}",
   "@termPreviousErrors": {
     "placeholders": {
       "count": {
@@ -2437,7 +2437,6 @@
   },
   "detEpisodesBadSeriesId": "unreadable series identifier",
   "detEpisodesNoAccount": "account not found",
-  "castOverlayResyncFull": "Resynchronize picture and sound",
   "memSourceAndParsed": "source {source} · parsed {parsed}",
   "@memSourceAndParsed": {
     "placeholders": {
@@ -2674,5 +2673,263 @@
   "detEnableTmdb": "Turn on TMDB",
   "dlRestartUpper": "RESTART",
   "commonDecrease": "Decrease",
-  "commonIncrease": "Increase"
+  "commonIncrease": "Increase",
+  "detEpisodesReasonNetwork": "the server is not responding",
+  "detEpisodesReasonBusy": "the provider refuses: too many connections at once",
+  "detEpisodesReasonParse": "the server's answer could not be read",
+  "detEpisodesReasonAccount": "the account settings are incomplete",
+  "failDetailTooLong": "(still not ready after {delay})",
+  "@failDetailTooLong": {
+    "placeholders": {
+      "delay": {
+        "type": "String"
+      }
+    }
+  },
+  "failDetailCacheCleared": "(cleared at your request)",
+  "durationHoursMinutes": "{hours}h {minutes}m",
+  "@durationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "durationMinutes": "{count} min",
+  "@durationMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "durationSeconds": "{count} s",
+  "@durationSeconds": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthNoStalls": "no stalls",
+  "healthStalls": "{count, plural, one{{count} stall} other{{count} stalls}}",
+  "@healthStalls": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthPerHour": "{value}/h",
+  "@healthPerHour": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "healthWatched": "{duration} watched",
+  "@healthWatched": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "bootDetailEntries": "{n, plural, one{{count} entry} other{{count} entries}}",
+  "@bootDetailEntries": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "bootDetailSection": "{section} · {done}/{total}",
+  "@bootDetailSection": {
+    "placeholders": {
+      "section": {
+        "type": "String"
+      },
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "bootSectionLive": "channels",
+  "bootSectionMovies": "movies",
+  "bootSectionSeries": "series",
+  "bootStepInit": "// starting…",
+  "bootStepServices": "// preparing services…",
+  "bootStepAccount": "// checking the account…",
+  "bootStepReadPlaylist": "// reading the playlist…",
+  "bootStepDownloadPlaylist": "// downloading the playlist…",
+  "bootStepAnalysis": "// parsing the catalog…",
+  "bootStepOtherAccounts": "// loading the other accounts…",
+  "bootStepReady": "// ready.",
+  "bootStepUpdate": "// updating {index}/{total} · {label}…",
+  "@bootStepUpdate": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "bootStepAnalysisOf": "// parsing · {label}…",
+  "@bootStepAnalysisOf": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistNoActiveAccount": "No active account selected. Choose one in the settings.",
+  "playlistInvalidUrl": "The playlist URL of the account “{label}” is invalid. Check its settings.",
+  "@playlistInvalidUrl": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "detRuntimeHoursMinutes": "{hours}h {minutes}m",
+  "@detRuntimeHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "castOverlayLive": "LIVE",
+  "playerReconnectingNow": "Reconnecting… ({attempt}/{max})",
+  "@playerReconnectingNow": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "nextEpStayHere": "Stay here",
+  "nowPlayingLive": "Live",
+  "nowPlayingReplay": "Replay",
+  "tracksTrackN": "Track {id}",
+  "@tracksTrackN": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "replayManualTitle": "Replay — {label}",
+  "@replayManualTitle": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "relayDolbyVisionP5": "This film is in Dolby Vision profile 5: without a Dolby Vision decoder, its colors would be wrong. It can't be converted for the TV.",
+  "dlNotifFinished": "Download complete — tap to open",
+  "dlNotifFailed": "Download failed",
+  "castNotifStop": "Stop",
+  "dlNoticeAverage": "{percent}% on average",
+  "@dlNoticeAverage": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "termShow": "▼ SHOW",
+  "termHide": "▲ HIDE",
+  "updDiffLine": "> DIFF    : see the release on GitHub",
+  "updViewChangelog": "[ VIEW CHANGELOG ]",
+  "updLater": "[ LATER ]",
+  "updAbort": "[ ABORT ]",
+  "updInstall": "[ INSTALL UPDATE ]",
+  "updRetry": "[ RETRY ]",
+  "xmltvNoGuide": "No guide saved",
+  "consoleCodeLabel": "Code: ",
+  "consoleCopyUrl": "Copy the address",
+  "bkBackupFrom": "Backup from {date} (v{version}):",
+  "@bkBackupFrom": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "qualityStreamN": "Stream {n}",
+  "@qualityStreamN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "searchVersionsCount": "{count, plural, one{{count} version} other{{count} versions}}",
+  "@searchVersionsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aboutVersionLabel": "VERSION",
+  "aboutMadeWith": "Made with {stack}",
+  "@aboutMadeWith": {
+    "placeholders": {
+      "stack": {
+        "type": "String"
+      }
+    }
+  },
+  "acctCardActions": "Account actions",
+  "infoRowLabel": "{label}:",
+  "@infoRowLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "detSynopsis": "Synopsis",
+  "detVotes": "{count, plural, one{{formatted} vote} other{{formatted} votes}}",
+  "@detVotes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "actorJobDirecting": "Directing team",
+  "themePresetPhosphore": "Phosphor",
+  "themePresetNordique": "Nordic",
+  "themePresetMinimaliste": "Minimalist"
 }

@@ -55,8 +55,9 @@ class PlaylistService {
   static Future<String> playlistPath() async {
     final acc = await StreamAccountService.getCurrentAccount();
     if (acc == null) {
-      throw const HttpException(
-          "Aucun compte actif sélectionné. Veuillez en choisir un dans les paramètres.");
+      // Revue 2026-09-11, D1A-09 — `describeError` rend ce message tel quel :
+      // il doit donc être écrit dans la langue de l'écran.
+      throw HttpException(L10n.current.playlistNoActiveAccount);
     }
     return pathForAccountId(acc.id);
   }
@@ -546,10 +547,10 @@ class PlaylistService {
   static Future<String> _buildUrlForCurrentAccount() async {
     final acc = await StreamAccountService.getCurrentAccount();
     // Normalement, playlistPath() a déjà vérifié ça, mais c'est une sécurité.
-    if (acc == null) throw const HttpException("Aucun compte actif sélectionné.");
+    if (acc == null) throw HttpException(L10n.current.playlistNoActiveAccount);
     final url = acc.buildM3uUrl();
     if (url == null || url.isEmpty) {
-      throw HttpException("L'URL de la playlist pour le compte '${acc.label}' est invalide. Veuillez vérifier sa configuration.");
+      throw HttpException(L10n.current.playlistInvalidUrl(acc.label)); // D1A-09
     }
     return url;
   }

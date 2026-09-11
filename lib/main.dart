@@ -539,10 +539,13 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // `runApp` : l'écran de démarrage est donc déjà à l'écran pendant qu'ils se
     // préparent, et leur durée est visible dans le journal. On déplace le point
     // d'attente, on ne le supprime pas : rien ne touche aux comptes avant.
-    BootStatus.set('// préparation des services…');
+    // Revue 2026-09-11, D3B-07 — les étapes du démarrage suivent la langue de
+    // l'appareil (elles échappaient au cliquet : un `//` DANS le littéral le
+    // faisait passer pour un commentaire).
+    BootStatus.set(L10n.current.bootStepServices);
     await ensureServicesReady();
 
-    BootStatus.set('// vérification du compte…');
+    BootStatus.set(L10n.current.bootStepAccount);
     final accounts = await StreamAccountService.listAccounts();
     // §reloadScope — Publié AVANT tout affichage : la fiche d'un film demande
     // « y a-t-il plusieurs listes ? » dès le premier build, et la réponse ne
@@ -602,12 +605,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     final DateTime activeDeadline = DateTime.now().add(_bootHydrateHardCap);
     final acc = await StreamAccountService.getCurrentAccount();
 
-    BootStatus.set('// lecture de la playlist…');
+    BootStatus.set(L10n.current.bootStepReadPlaylist);
     final Future<String> pathFuture = PlaylistService.getOrDownloadPlaylist(
       // Appelé seulement si le cache est absent/périmé → on distingue une
       // lecture disque instantanée d'un vrai téléchargement réseau.
       onDownloadStart: () =>
-          BootStatus.set('// téléchargement de la playlist…'),
+          BootStatus.set(L10n.current.bootStepDownloadPlaylist),
     );
     // ⚠️ `catchError` posé TOUT DE SUITE : si on cesse d'attendre ce futur et
     // qu'il échoue plus tard, une erreur non capturée ferait tomber la zone.
@@ -671,7 +674,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       _prestartedDl =
           othersEarly.isEmpty ? null : _downloadPhase(othersEarly.first);
       _prestartedDlId = othersEarly.isEmpty ? null : othersEarly.first.id;
-      BootStatus.set('// analyse du catalogue…', progress: 0);
+      BootStatus.set(L10n.current.bootStepAnalysis, progress: 0);
       // §bootActiveCap — même filet sur l'ANALYSE : c'est l'étape la plus
       // longue (46 s par grosse liste, mesuré), et jusqu'ici la seule issue
       // si elle se figeait était de tuer l'app. ⚠️ Elle publie sa progression
@@ -744,7 +747,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       final others = accounts.where((a) => a.id != acc?.id).toList();
       // §bootStatus — Retour à une barre indéterminée : ce préchargement disque
       // n'expose pas de progression (quelques ms par compte).
-      BootStatus.set('// chargement des autres comptes…');
+      BootStatus.set(L10n.current.bootStepOtherAccounts);
       await ParsedPlaylistService.preloadOthersFromDisk(others);
       // §favReconcile — 1re passe sur ce qui est déjà en mémoire (compte actif
       // + préchargés disque). La passe FINALE (qui pose le flag one-shot) est
@@ -773,7 +776,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     }
 
     _bootAnnouncing = false;
-    BootStatus.set('// prêt.', progress: 1);
+    BootStatus.set(L10n.current.bootStepReady, progress: 1);
     // revue 2026-09-11, D3B-02 — La suite du démarrage vit dans
     // `_schedulePostBoot`, PARTAGÉE avec les entrées anticipées.
     _schedulePostBoot(accounts);
@@ -1052,13 +1055,14 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
             rest.id,
             AccountLoadState.notLoaded,
             kind: LoadFailureKind.deferred,
-            detail: 'budget de démarrage épuisé',
+            // Revue 2026-09-11, D3B-07 — plus de détail en dur : « Mise à jour
+            // reportée après le démarrage. » dit déjà tout, et traduit.
           );
         }
         break;
       }
       BootStatus.set(
-        '// mise à jour ${i + 1}/${pending.length} · ${acc.label}…',
+        L10n.current.bootStepUpdate(i + 1, pending.length, acc.label),
       );
       // §bootProgress — On attend tant que ça avance ; une liste immobile
       // rend la main (son travail continue, sans doublon : §fleetSingle) et
@@ -1154,7 +1158,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     final String path = dl.path!;
     try {
       if (announce && _bootAnnouncing) {
-        BootStatus.set('// analyse · ${acc.label}…', progress: 0);
+        BootStatus.set(L10n.current.bootStepAnalysisOf(acc.label), progress: 0);
       }
       if (alreadyLoaded) {
         // Rien de neuf : la copie en mémoire est déjà la bonne.

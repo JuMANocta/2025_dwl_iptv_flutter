@@ -359,7 +359,7 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> with TvInitialFocus {
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     backgroundColor: kAccentPrimary,
-                    foregroundColor: Colors.black,
+                    foregroundColor: onColorFor(kAccentPrimary), // D4B-08
                   ),
                 ),
               ),
@@ -586,7 +586,7 @@ class _InfoBlock extends StatelessWidget {
                 // §detailsActions — plein (cohérence page : plus de bouton contour).
                 style: FilledButton.styleFrom(
                   backgroundColor: kAccentSecondary,
-                  foregroundColor: Colors.black,
+                  foregroundColor: onColorFor(kAccentSecondary), // D4B-08
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),

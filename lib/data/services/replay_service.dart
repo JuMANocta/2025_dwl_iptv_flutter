@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart'; // Import pour debugPrint
 import 'package:aetherStream/core/utils/host_gate.dart';
 import 'package:aetherStream/core/utils/log_sanitizer.dart';
 import 'package:aetherStream/core/utils/network.dart';
+import 'package:aetherStream/core/utils/formatters.dart';
+import 'package:aetherStream/l10n/l10n_ext.dart';
 import 'stream_account_service.dart';
 import '../models/stream_account.dart';
 
@@ -106,13 +108,12 @@ class ReplayProgram {
     this.selectedCatchupSource,
   });
 
-  String get startLabel => DateFormat('dd/MM HH:mm').format(start);
-  String get durationLabel {
-    final duration = end.difference(start);
-    final h = duration.inHours;
-    final m = duration.inMinutes.remainder(60);
-    return h > 0 ? '${h}h${m.toString().padLeft(2, '0')}' : '$m min';
-  }
+  /// Revue 2026-09-11, D1B-19 — jour et mois dans l'ORDRE de la langue de
+  /// l'écran (« 11/09 » en français, « 9/11 » en anglais) ; `dd/MM` était
+  /// figé dans l'ordre français.
+  String get startLabel =>
+      DateFormat.Md(L10n.current.localeName).add_Hm().format(start);
+  String get durationLabel => formatShortDuration(end.difference(start));
 }
 
 class ReplayService {

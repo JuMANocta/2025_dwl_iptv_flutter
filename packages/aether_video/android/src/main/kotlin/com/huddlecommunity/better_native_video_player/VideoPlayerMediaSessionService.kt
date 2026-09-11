@@ -191,10 +191,13 @@ class VideoPlayerMediaSessionService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             nm.getNotificationChannel(CHANNEL_ID) == null
         ) {
+            // AetherStream patch 21 — même nom de canal que
+            // `VideoPlayerNotificationHandler` (ressource de l'app, par nom).
+            val nameId = resources.getIdentifier("notif_channel_playback", "string", packageName)
             nm.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID,
-                    "Video Player",
+                    if (nameId != 0) getString(nameId) else "Video Player",
                     NotificationManager.IMPORTANCE_LOW
                 )
             )

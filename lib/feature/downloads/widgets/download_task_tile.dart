@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/main.dart';
@@ -113,7 +114,7 @@ class DownloadTaskTile extends StatelessWidget {
           FilledButton.icon(
             style: FilledButton.styleFrom(
               backgroundColor: kWarning,
-              foregroundColor: kBlack,
+              foregroundColor: onColorFor(kWarning), // D4B-08
             ),
             icon: const Icon(Icons.stop_rounded),
             label: Text(ctx.l10n.dlStop),

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
 import '../../core/themes/light_palette.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../core/utils/formatters.dart' show formatCountFor;
 import '../../data/services/favorites_service.dart';
 import '../../data/services/tmdb_service.dart';
 import '../../data/services/tmdb_api_service.dart';
@@ -37,7 +38,12 @@ import 'details_versions.dart';
 import '../../widgets/playback_gate.dart';
 import '../../widgets/media_chips.dart' show buildDownloadName;
 import 'version_dedup.dart';
+import 'episodes_failure.dart';
 import '../../l10n/l10n_ext.dart';
+
+/// Revue 2026-09-11, D4A-06 — un stub de série interrogé : le résultat du
+/// service, et l'échec constaté par la fiche avant tout appel (sinon `null`).
+typedef _StubOutcome = ({XtreamEpisodesResult r, EpisodesFailure? local});
 
 Color _qualityColor(String? quality) {
   return switch (quality) {
@@ -139,7 +145,9 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// aussi bien « la série n'a pas d'épisode » que « ton réseau est mort » :
   /// `fetchEpisodes` rendait `const []` dans les deux cas, et rien n'invitait
   /// à réessayer.
-  String? _episodesError;
+  /// Revue 2026-09-11, D4A-06 — la NATURE de l'échec, pas son texte : le
+  /// motif se compose à l'affichage, dans la langue de l'écran.
+  EpisodesFailure? _episodesFailure;
   /// §seriesMultiList — Stubs série (1 par compte) à fetcher via la JSON API,
   /// pour que chaque épisode porte les versions de TOUTES les listes qui ont
   /// la série (et pas juste le compte d'origine de la vignette).
@@ -392,28 +400,39 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// → chaque épisode porte les versions de toutes les listes. Remplace
   /// l'ancien fetch mono-compte qui ne montrait qu'un seul provider.
   Future<void> _fetchAllEpisodes() async {
-    final futures = _apiSeriesStubs.map((stub) async {
+    // Revue 2026-09-11, D4A-06 — chaque stub rend AUSSI l'échec constaté par
+    // la fiche elle-même (identifiant illisible, compte introuvable) : la
+    // `LoadFailureKind` seule ne distingue pas ces deux cas. Les motifs
+    // français restent ceux du JOURNAL (`episodesFailureReason`).
+    final futures = _apiSeriesStubs.map<Future<_StubOutcome>>((stub) async {
       final sid = _extractSeriesIdFromUrl(stub.url);
       if (sid == null) {
         return (
-          episodes: null,
-          error: 'identifiant de série illisible',
-          kind: LoadFailureKind.badAccount,
-        ) as XtreamEpisodesResult;
+          r: (
+            episodes: null,
+            error: 'identifiant de série illisible',
+            kind: LoadFailureKind.badAccount,
+          ),
+          local: EpisodesFailure.badSeriesId,
+        );
       }
       final acc = await StreamAccountService.getAccount(stub.accountId);
       if (acc == null) {
         return (
-          episodes: null,
-          error: 'compte introuvable',
-          kind: LoadFailureKind.badAccount,
-        ) as XtreamEpisodesResult;
+          r: (
+            episodes: null,
+            error: 'compte introuvable',
+            kind: LoadFailureKind.badAccount,
+          ),
+          local: EpisodesFailure.noAccount,
+        );
       }
-      return XtreamApiService.fetchEpisodes(acc, sid);
+      return (r: await XtreamApiService.fetchEpisodes(acc, sid), local: null);
     }).toList();
 
-    final results = await Future.wait(futures);
+    final outcomes = await Future.wait(futures);
     if (!mounted) return;
+    final results = <XtreamEpisodesResult>[for (final o in outcomes) o.r];
     final apiEpisodes =
         results.expand((r) => r.episodes ?? const <M3uEntry>[]).toList();
 
@@ -423,7 +442,14 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     // exploitable : qu'une liste secondaire soit injoignable pendant qu'une
     // autre rend les épisodes n'est pas une panne pour l'utilisateur.
     if (apiEpisodes.isEmpty) {
-      return _finishEpisodesLoading(error: episodesFailureReason(results));
+      final String? reason = episodesFailureReason(results);
+      if (reason != null) debugPrint('⚠️ Épisodes non chargés : $reason');
+      return _finishEpisodesLoading(
+        failure: episodesFailureOf(
+          results,
+          local: <EpisodesFailure?>[for (final o in outcomes) o.local],
+        ),
+      );
     }
 
     // Merge épisodes M3U déjà groupés + nouveaux épisodes API → regroupe tout.
@@ -484,15 +510,15 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// message "aucun épisode disponible" au lieu d'un spinner infini.
   /// [error] non nul = le chargement a ÉCHOUÉ (§episodeTruth) : la fiche
   /// affiche alors le motif et un bouton « Réessayer », pas « aucun épisode ».
-  void _finishEpisodesLoading({String? error}) {
+  void _finishEpisodesLoading({EpisodesFailure? failure}) {
     if (!mounted) {
       _episodesLoading = false;
-      _episodesError = error;
+      _episodesFailure = failure;
       return;
     }
     setState(() {
       _episodesLoading = false;
-      _episodesError = error;
+      _episodesFailure = failure;
     });
   }
 
@@ -502,7 +528,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     if (_episodesLoading || _apiSeriesStubs.isEmpty) return;
     setState(() {
       _episodesLoading = true;
-      _episodesError = null;
+      _episodesFailure = null;
     });
     _fetchAllEpisodes();
   }
@@ -1185,11 +1211,14 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
             // §tmdbMore — la durée était CALCULÉE puis masquée pour
             // les séries (`&& !isSeries`) : « 45m/épisode » est une
             // info utile, on l'affiche aussi.
-            if (_tmdbData?.runtimeOrEpisodeLength != null) ...[
+            // Revue 2026-09-11, D1A-10 — la durée se compose ici, dans la
+            // langue de l'écran (« 45m/épisode » était écrit par le modèle).
+            if (_tmdbData?.runtimeLabel(context.l10n) case final String runtime)
+            ...[
               const SizedBox(width: 8),
               Text('•', style: TextStyle(color: cs.onSurfaceVariant)),
               const SizedBox(width: 8),
-              _buildMetaTag(_tmdbData!.runtimeOrEpisodeLength!, cs.onSurfaceVariant),
+              _buildMetaTag(runtime, cs.onSurfaceVariant),
             ],
             // §tmdbBadges — Certification d'âge (PEGI/CSA) au même
             // niveau que la date / durée / note.
@@ -1433,7 +1462,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                   // on choisit son épisode après avoir lu le pitch.
                   if (displayOverview?.isNotEmpty == true) ...[
                     SectionMark('Synopsis',
-                        child: Text('Synopsis',
+                        child: Text(context.l10n.detSynopsis,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -1746,7 +1775,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
               ],
             ),
           )
-        else if (!hasSeasons && _episodesError != null)
+        else if (!hasSeasons && _episodesFailure != null)
           // §episodeTruth — Le fetch a ÉCHOUÉ : on dit pourquoi, et on offre
           // de réessayer. Confondre ce cas avec « aucun épisode » laissait
           // l'utilisateur devant une série vide sans rien à tenter.
@@ -1758,7 +1787,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    context.l10n.detEpisodesError(_episodesError!),
+                    context.l10n.detEpisodesError(
+                        episodesFailureText(context.l10n, _episodesFailure!)),
                     style: TextStyle(
                         fontSize: 13, color: cs.onSurfaceVariant),
                   ),
@@ -2212,7 +2242,12 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60);
-    if (h > 0) return '${h}h${m.toString().padLeft(2, '0')}';
+    // Revue 2026-09-11, lot 7 (recette en anglais) — « RESUME · 1h00 » : la
+    // forme française sur un écran anglais. Même clé que les autres durées
+    // courtes (« 1h00 » en français, inchangé ; « 1h 00m » en anglais).
+    if (h > 0) {
+      return context.l10n.durationHoursMinutes(h, m.toString().padLeft(2, '0'));
+    }
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
@@ -2655,11 +2690,13 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   }
 
   /// §tmdbMore — « 12 400 votes » (séparateur d'espace, comme MemoryStatsCard).
+  ///
+  /// Revue 2026-09-11, D4B-05 — pluriel ICU, plus le « s » français en dur ;
+  /// et (relecture) le groupement suit la langue : « 12,400 votes » en
+  /// anglais, le français est inchangé.
   String _formatCount(int n) {
-    final s = n.toString();
-    final grouped =
-        s.replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]} ');
-    return '$grouped vote${n > 1 ? 's' : ''}';
+    final l10n = context.l10n;
+    return l10n.detVotes(n, formatCountFor(n, l10n));
   }
 
   /// §tmdbMore — Section « Infos » : remplace l'ancienne ligne brute
@@ -2781,20 +2818,22 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
       }
       // ⚠️ Une DIFFUSION annoncée, pas une disponibilité : la ligne ne mène
       // nulle part, et ne doit pas laisser croire qu'on peut la lancer.
-      final String? next = nextEpisodeLabel(m?.nextEpisode);
+      final String? next =
+          nextEpisodeLabel(m?.nextEpisode, lang: l10n.localeName);
       if (next != null) rows.add((l10n.infoNextEpisode, next, null));
       // ⚠️ Pas de ligne « Diffusé par » ici : le bloc de chips au-dessus
       // l'affiche déjà, et c'est exactement le doublon qu'on vient de retirer
       // pour le réalisateur. Une information, un endroit.
     } else {
       // ⚠️ TMDB met **0** quand il ne sait pas, jamais `null`.
-      final String? budget = moneyLabel(m?.budget);
+      final String lang = l10n.localeName;
+      final String? budget = moneyLabel(m?.budget, lang: lang);
       if (budget != null) rows.add((l10n.infoBudget, budget, null));
-      final String? revenue = moneyLabel(m?.revenue);
+      final String? revenue = moneyLabel(m?.revenue, lang: lang);
       if (revenue != null) rows.add((l10n.infoRevenue, revenue, null));
-      final String? salle = shortDate(m?.theatricalDate);
+      final String? salle = shortDate(m?.theatricalDate, lang: lang);
       if (salle != null) rows.add((l10n.infoTheatrical, salle, null));
-      final String? numerique = shortDate(m?.digitalDate);
+      final String? numerique = shortDate(m?.digitalDate, lang: lang);
       if (numerique != null) rows.add((l10n.infoDigital, numerique, null));
     }
     if (m?.productionCountries.isNotEmpty == true) {
@@ -2806,10 +2845,11 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     if (m?.status?.trim().isNotEmpty == true) {
       rows.add((l10n.infoStatus, _statusLabel(m!.status!), null));
     }
-    if (m?.runtimeOrEpisodeLength?.trim().isNotEmpty == true) {
+    final String? runtime = m?.runtimeLabel(l10n);
+    if (runtime != null) {
       rows.add((
         isSeries ? l10n.infoEpisodeLength : l10n.infoRuntime,
-        m!.runtimeOrEpisodeLength!,
+        runtime,
         null,
       ));
     }
@@ -2940,13 +2980,14 @@ class _ActionButtonState extends State<_ActionButton> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final lit = widget.active && widget.onPressed != null;
-    final dimmed = isDark ? Colors.white38 : Colors.black38;
+    // Revue 2026-09-11, D4A-16 — mêmes valeurs, constantes nommées.
+    final dimmed = isDark ? kDisabledOnDark : kDisabledOnLight;
     final filled = _focused && lit;
 
     // Rempli : fond à la couleur pleine, contenu en négatif pour le contraste.
     // Au repos : fond transparent, contour et texte colorés.
     final fg = filled
-        ? (isDark ? Colors.black : Colors.white)
+        ? (isDark ? kBlack : kWhite)
         : (lit ? widget.color : dimmed);
     final bg = filled ? widget.color : Colors.transparent;
     final border = lit ? widget.color : dimmed;

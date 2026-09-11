@@ -402,9 +402,11 @@ class ParsedPlaylistService {
         // ⚠️ Cette méthode NE DOIT PAS se mettre à analyser : elle tourne en
         // arrière-plan pendant que l'accueil s'affiche. C'est au réconciliateur
         // de reprendre le travail ; ici on se contente de NOMMER le problème.
+        // Revue 2026-09-11, D1A-07 (relecture) — plus de détail : il
+        // s'AFFICHAIT sous la puce (describeFailure), en français et en
+        // jargon, à la suite d'une phrase traduite. Il reste au journal.
         setLoadState(acc.id, AccountLoadState.notLoaded,
-            kind: LoadFailureKind.cacheGone,
-            detail: 'source présente, cache analysé inexploitable');
+            kind: LoadFailureKind.cacheGone);
         debugPrint('⚠️ §cacheKeep préchargement : « ${acc.label} » a une source '
             'sur disque mais AUCUN cache analysé exploitable → invisible de '
             'l\'accueil tant que rien ne la ré-analyse');
@@ -1027,9 +1029,13 @@ class ParsedPlaylistService {
     if (!inMemory) {
       // Rien à afficher : l'état « pas chargée » reste la vérité, avec sa
       // raison.
+      // Revue 2026-09-11, D1A-07 (relecture) — le détail (« source
+      // renouvelée, analyse à faire ») s'affichait sous la puce ; il ne vit
+      // plus qu'au journal.
       setLoadState(accountId, AccountLoadState.notLoaded,
-          kind: LoadFailureKind.never,
-          detail: 'source renouvelée, analyse à faire');
+          kind: LoadFailureKind.never);
+      debugPrint('🔄 ParsedPlaylist: source renouvelée, analyse à faire — '
+          '$accountId');
     }
     // ⚠️ APRÈS le `setLoadState` : déclarer une liste « chargée » lève le
     // drapeau (cf. [setLoadState]), le poser avant reviendrait à l'effacer.
@@ -1059,7 +1065,9 @@ class ParsedPlaylistService {
     _stale.remove(accountId);
     invalidateCountsCache(accountId);
     setLoadState(accountId, AccountLoadState.notLoaded,
-        kind: LoadFailureKind.cacheGone, detail: 'cache effacé volontairement');
+        // Revue 2026-09-11, D1A-07 — ce détail s'AFFICHE (describeFailure).
+        kind: LoadFailureKind.cacheGone,
+        detail: L10n.current.failDetailCacheCleared);
     version.value++;
     _deleteDiskCache(accountId);
     debugPrint('🗑️ ParsedPlaylist: oublié (mémoire + disque) — $accountId');
@@ -1254,7 +1262,9 @@ class ParsedPlaylistService {
             if (bucket != lastBucket) {
               lastBucket = bucket;
               onProgress?.call(v);
-              onDetail?.call('${formatCount(entries.length)} entrées');
+              // D1A-08 — compteur de l'écran de démarrage, traduit.
+              onDetail?.call(L10n.current.bootDetailEntries(entries.length,
+                  formatCountFor(entries.length, L10n.current)));
             }
           }
         }

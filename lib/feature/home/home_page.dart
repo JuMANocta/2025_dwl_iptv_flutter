@@ -7,6 +7,7 @@ import 'package:aetherStream/core/diagnostics/jank_meter.dart';
 import 'package:aetherStream/core/diagnostics/log_buffer.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/navigation/playlist_visibility.dart';
 import 'package:aetherStream/core/navigation/foreground_gate.dart';
 import 'package:aetherStream/data/models/stream_account.dart';

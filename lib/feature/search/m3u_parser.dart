@@ -5,6 +5,7 @@ import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/core/utils/string_pool.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
+import 'package:aetherStream/l10n/l10n_ext.dart';
 
 class M3uParser {
   /// Parse le fichier M3U et alimente les trois listes.
@@ -141,7 +142,13 @@ class M3uParser {
         // §bootPercent — Le compteur d'entrées, au même rythme que la barre.
         // Il est calculé ici et pas à chaque entrée : le débit est déjà borné
         // par le rendement toutes les 8 ms.
-        onDetail?.call('${formatCount(filmsList.length + seriesList.length + tvList.length)} entrées');
+        // Revue 2026-09-11, D1A-08 — traduit (isolate principal : §m3uIsolate
+        // a été retiré, ce parseur ne tourne jamais dans un isolate).
+        if (onDetail != null) {
+          final int n = filmsList.length + seriesList.length + tvList.length;
+          onDetail(L10n.current
+              .bootDetailEntries(n, formatCountFor(n, L10n.current)));
+        }
       }
 
       final trimmed = line.trim();

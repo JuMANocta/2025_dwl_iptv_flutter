@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/themes/colors.dart';
+import '../../core/themes/light_palette.dart';
 import '../../data/models/account_info.dart';
 import '../../data/models/stream_account.dart';
 import '../../data/services/expiration_alert_service.dart';
@@ -135,7 +136,7 @@ class ExpirationAlertDialog extends StatelessWidget {
           label: Text(context.l10n.expSeeDetails),
           style: FilledButton.styleFrom(
             backgroundColor: kAccentPrimary,
-            foregroundColor: Colors.black,
+            foregroundColor: onColorFor(kAccentPrimary), // D4B-08
           ),
         ),
       ],

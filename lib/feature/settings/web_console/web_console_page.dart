@@ -4,6 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/themes/colors.dart';
+import '../../../core/themes/light_palette.dart';
 import '../../../core/utils/user_error.dart';
 import '../../../core/themes/theme_service.dart';
 import '../../../core/utils/platform_tv.dart';
@@ -267,14 +268,17 @@ class _WebConsolePageState extends State<WebConsolePage> {
         mainAxisAlignment:
             centered ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: [
-          Text('Code : ', style: TextStyle(color: cs.onSurfaceVariant)),
+          // Revue 2026-09-11, D4B-05 — cette PAGE n'est pas exclue de la
+          // l10n (seuls le HTML et le serveur de la console le sont).
+          Text(context.l10n.consoleCodeLabel,
+              style: TextStyle(color: cs.onSurfaceVariant)),
           SelectableText(
             _token ?? '',
             style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2),
           ),
           IconButton(
             icon: const Icon(Icons.copy, size: 18),
-            tooltip: 'Copier l\'URL',
+            tooltip: context.l10n.consoleCopyUrl,
             onPressed: () {
               Clipboard.setData(ClipboardData(text: _url ?? ''));
               ScaffoldMessenger.of(context).showSnackBar(
@@ -311,7 +315,7 @@ class _WebConsolePageState extends State<WebConsolePage> {
         onPressed: _stopServer,
         style: FilledButton.styleFrom(
           backgroundColor: kWarning,
-          foregroundColor: Colors.black,
+          foregroundColor: onColorFor(kWarning), // D4B-08
         ),
         icon: const Icon(Icons.power_settings_new),
         label: Text(context.l10n.consoleStopServer),

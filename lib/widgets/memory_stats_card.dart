@@ -267,9 +267,14 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
   }
 
   /// Espace fine tous les 3 chiffres (18 133) — la carte se lit à 3 m sur TV.
-  String _fmtCount(int n) => n
-      .toString()
-      .replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]} ');
+  ///
+  /// Revue 2026-09-11, lot 7 (recette en anglais) — « 22 722 entries » : le
+  /// groupement français sur un écran anglais. Le français ne change pas.
+  String _fmtCount(int n) => L10n.current.localeName.startsWith('fr')
+      ? n
+          .toString()
+          .replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]} ')
+      : NumberFormat.decimalPattern(L10n.current.localeName).format(n);
 
   /// Poids lisible : sous le Mo, un arrondi au Mo affichait « 0 Mo » pour des
   /// fichiers bien présents.

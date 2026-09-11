@@ -198,7 +198,8 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
                         subtitle: Text(
                           [
                             if (year != null) year,
-                            '${group.length} version${group.length > 1 ? 's' : ''}',
+                            // D4B-05 — pluriel ICU, plus un « s » bricolé.
+                            context.l10n.searchVersionsCount(group.length),
                           ].join(' · '),
                           style: TextStyle(color: cs.onSurfaceVariant),
                         ),

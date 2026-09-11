@@ -155,8 +155,9 @@ Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Sauvegarde du ${_fmtDate(content.exportedAt)} '
-            '(v${content.appVersion}) :',
+            // Revue 2026-09-11, D4B-05 — était écrit en dur, en français.
+            ctx.l10n.bkBackupFrom(
+                _fmtDate(content.exportedAt), content.appVersion),
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),

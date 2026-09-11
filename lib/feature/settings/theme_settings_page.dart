@@ -233,7 +233,15 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    preset.name,
+                    // Revue 2026-09-11, lot 7 (recette en anglais) — trois
+                    // noms de préréglages sont des mots FRANÇAIS ; ils ne
+                    // servent qu'à l'affichage (aucune persistance par nom).
+                    switch (preset.name) {
+                      'Phosphore' => context.l10n.themePresetPhosphore,
+                      'Nordique' => context.l10n.themePresetNordique,
+                      'Minimaliste' => context.l10n.themePresetMinimaliste,
+                      _ => preset.name,
+                    },
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: active ? FontWeight.bold : FontWeight.normal,

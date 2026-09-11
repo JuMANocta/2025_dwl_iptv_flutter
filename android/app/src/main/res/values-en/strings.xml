@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Revue 2026-09-11, D2B-17 / D3L-02 — voir values/strings.xml (mêmes clés). -->
+<resources>
+    <string name="notif_channel_downloads">Downloads</string>
+    <string name="notif_channel_cast">Chromecast casting</string>
+    <string name="notif_channel_playback">Now playing</string>
+    <string name="notif_channel_playback_desc">Playback controls</string>
+    <string name="notif_download_title">Download</string>
+    <string name="notif_download_finished">Download complete — tap to open</string>
+    <string name="notif_download_failed">Download failed</string>
+    <string name="notif_cancel">Cancel</string>
+    <string name="notif_cast_running">Casting</string>
+    <string name="notif_pause">Pause</string>
+    <string name="notif_play">Play</string>
+    <string name="notif_stop">Stop</string>
+</resources>

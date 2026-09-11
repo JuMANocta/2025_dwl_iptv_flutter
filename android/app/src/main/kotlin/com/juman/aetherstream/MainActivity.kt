@@ -297,13 +297,17 @@ class MainActivity : FlutterActivity() {
         transferChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "startOrUpdate" -> {
-                    val title = call.argument<String>("title") ?: "Téléchargement"
+                    // Revue 2026-09-11, D3L-02 — libellés traduits par Dart ;
+                    // les ressources (res/values*/strings.xml) ne sont qu'un repli.
+                    val title = call.argument<String>("title")
+                        ?: getString(R.string.notif_download_title)
                     val text = call.argument<String>("text") ?: ""
                     val progress = call.argument<Int>("progress") ?: -1
                     val indeterminate = call.argument<Boolean>("indeterminate") ?: false
                     val cancelTaskId = call.argument<String>("cancelTaskId")
+                    val cancelLabel = call.argument<String>("cancelLabel")
                     AetherDownloadService.start(
-                        this, title, text, progress, indeterminate, cancelTaskId
+                        this, title, text, progress, indeterminate, cancelTaskId, cancelLabel
                     )
                     result.success(null)
                 }
@@ -313,9 +317,11 @@ class MainActivity : FlutterActivity() {
                 }
                 "postFinished" -> {
                     val id = call.argument<Int>("id") ?: 0
-                    val title = call.argument<String>("title") ?: "Téléchargement"
+                    val title = call.argument<String>("title")
+                        ?: getString(R.string.notif_download_title)
                     val success = call.argument<Boolean>("success") ?: false
-                    AetherDownloadService.postFinished(this, id, title, success)
+                    val text = call.argument<String>("text")
+                    AetherDownloadService.postFinished(this, id, title, success, text)
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -387,11 +393,18 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "show" -> {
                     val title = call.argument<String>("title") ?: "AetherStream"
-                    val text = call.argument<String>("text") ?: "Diffusion en cours"
+                    val text = call.argument<String>("text")
+                        ?: getString(R.string.notif_cast_running)
                     val playing = call.argument<Boolean>("playing") ?: true
                     val image = call.argument<String>("image")
                     val lowBattery = call.argument<Boolean>("lowBattery") ?: false
-                    AetherCastService.start(this, title, text, playing, image, lowBattery)
+                    // Revue 2026-09-11, D3L-02 — boutons traduits par Dart.
+                    AetherCastService.start(
+                        this, title, text, playing, image, lowBattery,
+                        pauseLabel = call.argument<String>("pauseLabel"),
+                        playLabel = call.argument<String>("playLabel"),
+                        stopLabel = call.argument<String>("stopLabel"),
+                    )
                     result.success(null)
                 }
                 "hide" -> {

@@ -181,6 +181,27 @@ ne coûte aucune capacité ; retirer du code en coûte.
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).
 
+## patch 21 — le canal de la notification de lecture parle la langue de l'appareil (2026-09-11, revue de code, lot 7)
+
+Numéroté 21 à la fusion : le lot 6 de la même revue a pris le patch 20 (voir
+plus bas).
+
+**D2B-17.** `VideoPlayerNotificationHandler.createNotificationChannel` et
+`VideoPlayerMediaSessionService.placeholderNotification` créaient le canal
+`CHANNEL_ID` sous les libellés amont « Video Player » / « Media playback
+controls », écrits en dur : un téléphone en français les montrait en anglais
+dans Paramètres > Notifications. Le nom et la description sont désormais lus
+dans les ressources de l'APPLICATION par leur nom
+(`getIdentifier("notif_channel_playback", "string", packageName)` et
+`notif_channel_playback_desc`), définies dans
+`android/app/src/main/res/values/strings.xml` (français, défaut) et
+`values-en/strings.xml`. La brique ne dépend pas de la classe `R` de l'app ;
+si la ressource manque, les libellés amont reviennent. `res/raw/keep.xml`
+(app) protège ces noms du rétrécissement des ressources en release.
+
+⚠️ Reprise d'une version amont : réappliquer ces deux lectures, ou le canal
+repasse en anglais.
+
 ## patch 19 — plus de sonde HLS parallèle, erreurs sans pile en release (2026-09-11, revue de code, lot 4)
 
 **D2B-02.** `VideoPlayerMethodHandler` lançait, pour toute URL `.m3u8`,

@@ -1,10 +1,26 @@
-import 'dart:math' as math;
+import 'package:intl/intl.dart';
 
-String formatFileSize(int bytes) {
-  if (bytes <= 0) return "0 B";
-  const suffixes = ["B", "KB", "MB", "GB", "TB"];
-  final i = (math.log(bytes) / math.log(1024)).floor();
-  return "${(bytes / (1 << (10 * i))).toStringAsFixed(2)} ${suffixes[i]}";
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
+
+/// Taille d'un fichier, dans la langue de l'écran.
+///
+/// Revue 2026-09-11, D1B-19 — Écrivait « B / KB / MB / GB » en dur, avec un
+/// point décimal : en français, la tuile de téléchargement affichait
+/// « 1.50 GB » pendant que l'Optimisation disait « 12.3 Mo ». Les unités
+/// passent désormais par les MÊMES clés que `StorageJanitor.humanBytes`
+/// (`size*`), et le séparateur décimal suit la langue (« 1,50 Go »).
+///
+/// ⚠️ `L10n.current` : ne JAMAIS appeler cette fonction dans un isolate
+/// (§isolateLeak). [formatCount], lui, reste pur et utilisable partout.
+String formatFileSize(int bytes, [AppLocalizations? l10n]) {
+  final AppLocalizations l = l10n ?? L10n.current;
+  if (bytes < 1024) return l.sizeBytes('${bytes < 0 ? 0 : bytes}');
+  final NumberFormat two = NumberFormat('0.00', l.localeName);
+  const int k = 1024;
+  if (bytes < k * k) return l.sizeKilobytes(two.format(bytes / k));
+  if (bytes < k * k * k) return l.sizeMegabytes(two.format(bytes / (k * k)));
+  return l.sizeGigabytes(two.format(bytes / (k * k * k)));
 }
 
 /// §bootPercent — Séparateur de milliers : « 53 781 » se lit, « 53781 » non.
@@ -30,6 +46,19 @@ String formatCount(int n) {
   return b.toString();
 }
 
+/// Revue 2026-09-11, lot 7 (relecture) — Un nombre groupé dans la langue de
+/// l'ÉCRAN : « 12 400 » en français (exactement [formatCount], rien ne bouge),
+/// « 12,400 » en anglais. Le groupement français à l'espace appliqué à un
+/// écran anglais (« 12 400 votes », « 153 062 entries ») se lisait comme une
+/// traduction oubliée.
+///
+/// ⚠️ `L10n` / `intl` : isolate PRINCIPAL uniquement. Dans un isolate,
+/// [formatCount] reste la seule option (§isolateLeak).
+String formatCountFor(int n, AppLocalizations l) =>
+    l.localeName.startsWith('fr')
+        ? formatCount(n)
+        : NumberFormat.decimalPattern(l.localeName).format(n);
+
 String formatDuration(int totalSeconds) {
   if (totalSeconds < 0) return "--:--";
   final duration = Duration(seconds: totalSeconds);
@@ -37,4 +66,24 @@ String formatDuration(int totalSeconds) {
   final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
   final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
   return (duration.inHours > 0) ? "$hours:$minutes:$seconds" : "$minutes:$seconds";
+}
+
+/// Revue 2026-09-11, D1B-07 / D1B-19 — Une durée courte lisible : « 2h10 »,
+/// « 45 min ». Remplace trois copies de `'${h}h$m' : '$m min'` (santé de
+/// lecture, replay, guide des chaînes) écrites en dur.
+String formatShortDuration(Duration d, [AppLocalizations? l10n]) {
+  final AppLocalizations l = l10n ?? L10n.current;
+  final int h = d.inHours;
+  final int m = d.inMinutes.remainder(60);
+  return h > 0
+      ? l.durationHoursMinutes(h, m.toString().padLeft(2, '0'))
+      : l.durationMinutes(m);
+}
+
+/// Revue 2026-09-11, D1A-07 — Un DÉLAI d'attente : « 3 min », « 25 s ».
+String formatShortDelay(Duration d, [AppLocalizations? l10n]) {
+  final AppLocalizations l = l10n ?? L10n.current;
+  final int s = d.inSeconds;
+  if (s >= 60 && s % 60 == 0) return l.durationMinutes(s ~/ 60);
+  return l.durationSeconds(s);
 }

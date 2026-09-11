@@ -355,7 +355,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
     final label = _buildLabel();
     final stream = _selectedStream;
     Navigator.of(context).pop(ReplayProgram(
-      title: 'Replay — $label',
+      title: L10n.current.replayManualTitle(label), // D2A-08
       start: start,
       end: end,
       description: '',

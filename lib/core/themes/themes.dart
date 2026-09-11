@@ -273,13 +273,16 @@ ThemeData darkTheme(AppThemeConfig config) {
       textTheme: ButtonTextTheme.primary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
+    // Revue 2026-09-11, D4B-08 (relecture) — le texte suit le fond, comme en
+    // thème clair (`onPrimary`) : identique pour les neuf préréglages (tous
+    // clairs en sombre), lisible sur une couleur personnalisée foncée.
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: config.primaryColor,
-      foregroundColor: kBlack,
+      foregroundColor: onColorFor(config.primaryColor),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        foregroundColor: kBlack,
+        foregroundColor: onColorFor(config.primaryColor),
         backgroundColor: config.primaryColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

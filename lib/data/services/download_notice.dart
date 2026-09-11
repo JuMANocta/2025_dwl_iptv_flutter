@@ -77,7 +77,8 @@ DownloadNotice? downloadNotice(
       active.length;
   return (
     title: L10n.current.dlActiveCount(active.length),
-    text: '${(avg * 100).round()} % en moyenne',
+    // Revue 2026-09-11, D3A-11 — était écrit en dur, en français.
+    text: L10n.current.dlNoticeAverage((avg * 100).round()),
     progress: avg,
     activeCount: active.length,
     cancelTaskId: null,

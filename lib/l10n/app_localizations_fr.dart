@@ -903,7 +903,13 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String perfPurgeDone(String size, int count) {
-    return '🧹 $size libérés ($count fichier(s))';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '🧹 $size libérés ($count fichiers)',
+      one: '🧹 $size libérés ($count fichier)',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -921,7 +927,13 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String perfFreeMemoryDone(int count) {
-    return '💤 $count compte(s) secondaire(s) déchargé(s) de la mémoire';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '💤 $count comptes secondaires déchargés de la mémoire',
+      one: '💤 $count compte secondaire déchargé de la mémoire',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -985,7 +997,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get perfKeepListsSub =>
-      'Chaque compte reste chargé : recherche cross-comptes et changement de liste instantanés. Coûte de la mémoire (~50 à 150 Mo par liste) — à éteindre sur Fire Stick ou box à faible RAM.';
+      'Chaque compte reste chargé : la recherche couvre tous les comptes et le changement de liste est instantané. Demande plus de mémoire — à éteindre sur un Fire Stick ou une box qui en a peu.';
 
   @override
   String get perfUnloadAfterLabel => 'Décharger après';
@@ -1035,7 +1047,15 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String perfStorageReclaimable(String size, int count) {
-    return '$size occupés par $count fichier(s) dont plus personne n\'a besoin : listes de comptes supprimés, et téléchargements interrompus qui ne peuvent plus reprendre.';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$size occupés par $count fichiers dont plus personne n\'a besoin : listes de comptes supprimés, et téléchargements interrompus qui ne peuvent plus reprendre.',
+      one:
+          '$size occupés par $count fichier dont plus personne n\'a besoin : listes de comptes supprimés, et téléchargements interrompus qui ne peuvent plus reprendre.',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -2908,7 +2928,13 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String termPreviousErrors(int count) {
-    return '$count ERREUR(S) PRÉCÉDENTE(S)';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ERREURS PRÉCÉDENTES',
+      one: '$count ERREUR PRÉCÉDENTE',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -3133,9 +3159,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get detEpisodesNoAccount => 'compte introuvable';
-
-  @override
-  String get castOverlayResyncFull => 'Resynchroniser l\'image et le son';
 
   @override
   String memSourceAndParsed(String source, String parsed) {
@@ -3576,4 +3599,279 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get commonIncrease => 'Augmenter';
+
+  @override
+  String get detEpisodesReasonNetwork => 'le serveur ne répond pas';
+
+  @override
+  String get detEpisodesReasonBusy =>
+      'le fournisseur refuse : trop de connexions en même temps';
+
+  @override
+  String get detEpisodesReasonParse => 'la réponse du serveur est illisible';
+
+  @override
+  String get detEpisodesReasonAccount =>
+      'les réglages du compte sont incomplets';
+
+  @override
+  String failDetailTooLong(String delay) {
+    return '(toujours pas prête après $delay)';
+  }
+
+  @override
+  String get failDetailCacheCleared => '(vidé à ta demande)';
+
+  @override
+  String durationHoursMinutes(int hours, String minutes) {
+    return '${hours}h$minutes';
+  }
+
+  @override
+  String durationMinutes(int count) {
+    return '$count min';
+  }
+
+  @override
+  String durationSeconds(int count) {
+    return '$count s';
+  }
+
+  @override
+  String get healthNoStalls => 'aucun blocage';
+
+  @override
+  String healthStalls(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count blocages',
+      one: '$count blocage',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String healthPerHour(String value) {
+    return '$value/h';
+  }
+
+  @override
+  String healthWatched(String duration) {
+    return '$duration vues';
+  }
+
+  @override
+  String bootDetailEntries(int n, String count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$count entrées',
+      one: '$count entrée',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String bootDetailSection(String section, String done, String total) {
+    return '$section · $done/$total';
+  }
+
+  @override
+  String get bootSectionLive => 'chaînes';
+
+  @override
+  String get bootSectionMovies => 'films';
+
+  @override
+  String get bootSectionSeries => 'séries';
+
+  @override
+  String get bootStepInit => '// initialisation…';
+
+  @override
+  String get bootStepServices => '// préparation des services…';
+
+  @override
+  String get bootStepAccount => '// vérification du compte…';
+
+  @override
+  String get bootStepReadPlaylist => '// lecture de la playlist…';
+
+  @override
+  String get bootStepDownloadPlaylist => '// téléchargement de la playlist…';
+
+  @override
+  String get bootStepAnalysis => '// analyse du catalogue…';
+
+  @override
+  String get bootStepOtherAccounts => '// chargement des autres comptes…';
+
+  @override
+  String get bootStepReady => '// prêt.';
+
+  @override
+  String bootStepUpdate(int index, int total, String label) {
+    return '// mise à jour $index/$total · $label…';
+  }
+
+  @override
+  String bootStepAnalysisOf(String label) {
+    return '// analyse · $label…';
+  }
+
+  @override
+  String get playlistNoActiveAccount =>
+      'Aucun compte actif sélectionné. Choisis-en un dans les paramètres.';
+
+  @override
+  String playlistInvalidUrl(String label) {
+    return 'L’URL de la playlist du compte « $label » est invalide. Vérifie sa configuration.';
+  }
+
+  @override
+  String detRuntimeHoursMinutes(int hours, int minutes) {
+    return '$hours h $minutes min';
+  }
+
+  @override
+  String get castOverlayLive => 'EN DIRECT';
+
+  @override
+  String playerReconnectingNow(int attempt, int max) {
+    return 'Reconnexion… ($attempt/$max)';
+  }
+
+  @override
+  String get nextEpStayHere => 'Rester ici';
+
+  @override
+  String get nowPlayingLive => 'En direct';
+
+  @override
+  String get nowPlayingReplay => 'Replay';
+
+  @override
+  String tracksTrackN(String id) {
+    return 'Piste $id';
+  }
+
+  @override
+  String replayManualTitle(String label) {
+    return 'Replay — $label';
+  }
+
+  @override
+  String get relayDolbyVisionP5 =>
+      'Ce film est en Dolby Vision profil 5 : sans décodeur Dolby Vision, l\'image aurait des couleurs fausses. Il ne peut pas être converti pour le téléviseur.';
+
+  @override
+  String get dlNotifFinished => 'Téléchargement terminé — appuyer pour ouvrir';
+
+  @override
+  String get dlNotifFailed => 'Échec du téléchargement';
+
+  @override
+  String get castNotifStop => 'Arrêter';
+
+  @override
+  String dlNoticeAverage(int percent) {
+    return '$percent % en moyenne';
+  }
+
+  @override
+  String get termShow => '▼ AFFICHER';
+
+  @override
+  String get termHide => '▲ MASQUER';
+
+  @override
+  String get updDiffLine => '> DIFF    : voir la release sur GitHub';
+
+  @override
+  String get updViewChangelog => '[ VOIR LES NOUVEAUTÉS ]';
+
+  @override
+  String get updLater => '[ PLUS TARD ]';
+
+  @override
+  String get updAbort => '[ ANNULER ]';
+
+  @override
+  String get updInstall => '[ INSTALLER ]';
+
+  @override
+  String get updRetry => '[ RÉESSAYER ]';
+
+  @override
+  String get xmltvNoGuide => 'Aucun guide enregistré';
+
+  @override
+  String get consoleCodeLabel => 'Code : ';
+
+  @override
+  String get consoleCopyUrl => 'Copier l\'adresse';
+
+  @override
+  String bkBackupFrom(String date, String version) {
+    return 'Sauvegarde du $date (v$version) :';
+  }
+
+  @override
+  String qualityStreamN(int n) {
+    return 'Flux $n';
+  }
+
+  @override
+  String searchVersionsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count versions',
+      one: '$count version',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get aboutVersionLabel => 'VERSION';
+
+  @override
+  String aboutMadeWith(String stack) {
+    return 'Fait avec $stack';
+  }
+
+  @override
+  String get acctCardActions => 'Actions du compte';
+
+  @override
+  String infoRowLabel(String label) {
+    return '$label :';
+  }
+
+  @override
+  String get detSynopsis => 'Synopsis';
+
+  @override
+  String detVotes(int count, String formatted) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$formatted votes',
+      one: '$formatted vote',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get actorJobDirecting => 'Équipe de réalisation';
+
+  @override
+  String get themePresetPhosphore => 'Phosphore';
+
+  @override
+  String get themePresetNordique => 'Nordique';
+
+  @override
+  String get themePresetMinimaliste => 'Minimaliste';
 }

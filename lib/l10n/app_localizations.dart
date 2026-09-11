@@ -587,7 +587,7 @@ abstract class AppLocalizations {
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'Theme, colours, cyberpunk effects'**
+  /// **'Theme, colors, cyberpunk effects'**
   String get settingsThemeSub;
 
   /// Settings tile title
@@ -617,7 +617,7 @@ abstract class AppLocalizations {
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'Export/import accounts, TMDB, theme, favourites (encrypted .aether)'**
+  /// **'Export/import accounts, TMDB, theme, favorites (encrypted .aether)'**
   String get settingsBackupSub;
 
   /// Settings tile title
@@ -641,7 +641,7 @@ abstract class AppLocalizations {
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'Clears favourites, resume points & history (keeps accounts & theme)'**
+  /// **'Clears favorites, resume points & history (keeps accounts & theme)'**
   String get settingsResetUsageSub;
 
   /// Reset confirmation dialog title
@@ -653,7 +653,7 @@ abstract class AppLocalizations {
   /// Reset confirmation dialog body
   ///
   /// In en, this message translates to:
-  /// **'Clears favourites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.'**
+  /// **'Clears favorites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.'**
   String get settingsResetBody;
 
   /// Reset confirmation button
@@ -803,7 +803,7 @@ abstract class AppLocalizations {
   /// Optimisation setting subtitle
   ///
   /// In en, this message translates to:
-  /// **'Below this, the row folds into “Others” — never New or Favourites. 1 = never fold.'**
+  /// **'Below this, the row folds into “Others” — never New or Favorites. 1 = never fold.'**
   String get perfMinItemsSub;
 
   /// Downloads: section of files found on device but absent from the list
@@ -1061,13 +1061,13 @@ abstract class AppLocalizations {
   /// Posters-first switch subtitle, on
   ///
   /// In en, this message translates to:
-  /// **'Carousel and favourites use the TMDB poster.'**
+  /// **'Carousel and favorites use the TMDB poster.'**
   String get tmdbPostersFirstOn;
 
   /// Posters-first switch subtitle, off
   ///
   /// In en, this message translates to:
-  /// **'Carousel and favourites keep your lists\' poster.'**
+  /// **'Carousel and favorites keep your lists\' poster.'**
   String get tmdbPostersFirstOff;
 
   /// Maintenance section title
@@ -1535,7 +1535,7 @@ abstract class AppLocalizations {
   /// No description provided for @perfParallelDownloadsTitle.
   ///
   /// In en, this message translates to:
-  /// **'Simultaneous transfers'**
+  /// **'Downloads at once'**
   String get perfParallelDownloadsTitle;
 
   /// No description provided for @perfParallelDownloadsSub.
@@ -1613,7 +1613,7 @@ abstract class AppLocalizations {
   /// No description provided for @perfPurgeDone.
   ///
   /// In en, this message translates to:
-  /// **'🧹 {size} freed ({count} file(s))'**
+  /// **'{count, plural, one{🧹 {size} freed ({count} file)} other{🧹 {size} freed ({count} files)}}'**
   String perfPurgeDone(String size, int count);
 
   /// No description provided for @perfResetTitle.
@@ -1643,7 +1643,7 @@ abstract class AppLocalizations {
   /// No description provided for @perfFreeMemoryDone.
   ///
   /// In en, this message translates to:
-  /// **'💤 {count} secondary account(s) unloaded from memory'**
+  /// **'{count, plural, one{💤 {count} secondary account unloaded from memory} other{💤 {count} secondary accounts unloaded from memory}}'**
   String perfFreeMemoryDone(int count);
 
   /// No description provided for @perfFreeMemoryNothing.
@@ -1757,7 +1757,7 @@ abstract class AppLocalizations {
   /// No description provided for @perfKeepListsSub.
   ///
   /// In en, this message translates to:
-  /// **'Every account stays loaded: cross-account search and instant playlist switching. Costs memory (~50 to 150 MB per playlist) — turn it off on a Fire Stick or a low-RAM box.'**
+  /// **'Every account stays loaded: search covers all accounts and switching playlists is instant. Uses more memory — turn it off on a Fire Stick or a box that has little.'**
   String get perfKeepListsSub;
 
   /// No description provided for @perfUnloadAfterLabel.
@@ -1841,7 +1841,7 @@ abstract class AppLocalizations {
   /// No description provided for @perfStorageReclaimable.
   ///
   /// In en, this message translates to:
-  /// **'{size} taken by {count} file(s) nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.'**
+  /// **'{count, plural, one{{size} taken by {count} file nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.} other{{size} taken by {count} files nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.}}'**
   String perfStorageReclaimable(String size, int count);
 
   /// No description provided for @perfPurging.
@@ -2153,7 +2153,7 @@ abstract class AppLocalizations {
   /// No description provided for @acctAgeHours.
   ///
   /// In en, this message translates to:
-  /// **'{count} h ago'**
+  /// **'{count}h ago'**
   String acctAgeHours(int count);
 
   /// No description provided for @acctAgeDays.
@@ -2249,7 +2249,7 @@ abstract class AppLocalizations {
   /// No description provided for @acctAgeMinutesShort.
   ///
   /// In en, this message translates to:
-  /// **'{count}min'**
+  /// **'{count}m'**
   String acctAgeMinutesShort(int count);
 
   /// No description provided for @homeExitSearch.
@@ -3203,7 +3203,7 @@ abstract class AppLocalizations {
   /// No description provided for @statsDropped.
   ///
   /// In en, this message translates to:
-  /// **'Dropped'**
+  /// **'Skipped'**
   String get statsDropped;
 
   /// No description provided for @statsBitrate.
@@ -3575,7 +3575,7 @@ abstract class AppLocalizations {
   /// No description provided for @statsLost.
   ///
   /// In en, this message translates to:
-  /// **'Dropped'**
+  /// **'Lost'**
   String get statsLost;
 
   /// No description provided for @statsRendered.
@@ -4973,7 +4973,7 @@ abstract class AppLocalizations {
   /// No description provided for @termPreviousErrors.
   ///
   /// In en, this message translates to:
-  /// **'{count} PREVIOUS ERROR(S)'**
+  /// **'{count, plural, one{{count} PREVIOUS ERROR} other{{count} PREVIOUS ERRORS}}'**
   String termPreviousErrors(int count);
 
   /// No description provided for @replayPickTitle.
@@ -5359,12 +5359,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'account not found'**
   String get detEpisodesNoAccount;
-
-  /// No description provided for @castOverlayResyncFull.
-  ///
-  /// In en, this message translates to:
-  /// **'Resynchronize picture and sound'**
-  String get castOverlayResyncFull;
 
   /// No description provided for @memSourceAndParsed.
   ///
@@ -6192,6 +6186,408 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Increase'**
   String get commonIncrease;
+
+  /// No description provided for @detEpisodesReasonNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'the server is not responding'**
+  String get detEpisodesReasonNetwork;
+
+  /// No description provided for @detEpisodesReasonBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'the provider refuses: too many connections at once'**
+  String get detEpisodesReasonBusy;
+
+  /// No description provided for @detEpisodesReasonParse.
+  ///
+  /// In en, this message translates to:
+  /// **'the server\'s answer could not be read'**
+  String get detEpisodesReasonParse;
+
+  /// No description provided for @detEpisodesReasonAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'the account settings are incomplete'**
+  String get detEpisodesReasonAccount;
+
+  /// No description provided for @failDetailTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'(still not ready after {delay})'**
+  String failDetailTooLong(String delay);
+
+  /// No description provided for @failDetailCacheCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'(cleared at your request)'**
+  String get failDetailCacheCleared;
+
+  /// No description provided for @durationHoursMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}h {minutes}m'**
+  String durationHoursMinutes(int hours, String minutes);
+
+  /// No description provided for @durationMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} min'**
+  String durationMinutes(int count);
+
+  /// No description provided for @durationSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} s'**
+  String durationSeconds(int count);
+
+  /// No description provided for @healthNoStalls.
+  ///
+  /// In en, this message translates to:
+  /// **'no stalls'**
+  String get healthNoStalls;
+
+  /// No description provided for @healthStalls.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} stall} other{{count} stalls}}'**
+  String healthStalls(int count);
+
+  /// No description provided for @healthPerHour.
+  ///
+  /// In en, this message translates to:
+  /// **'{value}/h'**
+  String healthPerHour(String value);
+
+  /// No description provided for @healthWatched.
+  ///
+  /// In en, this message translates to:
+  /// **'{duration} watched'**
+  String healthWatched(String duration);
+
+  /// No description provided for @bootDetailEntries.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, one{{count} entry} other{{count} entries}}'**
+  String bootDetailEntries(int n, String count);
+
+  /// No description provided for @bootDetailSection.
+  ///
+  /// In en, this message translates to:
+  /// **'{section} · {done}/{total}'**
+  String bootDetailSection(String section, String done, String total);
+
+  /// No description provided for @bootSectionLive.
+  ///
+  /// In en, this message translates to:
+  /// **'channels'**
+  String get bootSectionLive;
+
+  /// No description provided for @bootSectionMovies.
+  ///
+  /// In en, this message translates to:
+  /// **'movies'**
+  String get bootSectionMovies;
+
+  /// No description provided for @bootSectionSeries.
+  ///
+  /// In en, this message translates to:
+  /// **'series'**
+  String get bootSectionSeries;
+
+  /// No description provided for @bootStepInit.
+  ///
+  /// In en, this message translates to:
+  /// **'// starting…'**
+  String get bootStepInit;
+
+  /// No description provided for @bootStepServices.
+  ///
+  /// In en, this message translates to:
+  /// **'// preparing services…'**
+  String get bootStepServices;
+
+  /// No description provided for @bootStepAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'// checking the account…'**
+  String get bootStepAccount;
+
+  /// No description provided for @bootStepReadPlaylist.
+  ///
+  /// In en, this message translates to:
+  /// **'// reading the playlist…'**
+  String get bootStepReadPlaylist;
+
+  /// No description provided for @bootStepDownloadPlaylist.
+  ///
+  /// In en, this message translates to:
+  /// **'// downloading the playlist…'**
+  String get bootStepDownloadPlaylist;
+
+  /// No description provided for @bootStepAnalysis.
+  ///
+  /// In en, this message translates to:
+  /// **'// parsing the catalog…'**
+  String get bootStepAnalysis;
+
+  /// No description provided for @bootStepOtherAccounts.
+  ///
+  /// In en, this message translates to:
+  /// **'// loading the other accounts…'**
+  String get bootStepOtherAccounts;
+
+  /// No description provided for @bootStepReady.
+  ///
+  /// In en, this message translates to:
+  /// **'// ready.'**
+  String get bootStepReady;
+
+  /// No description provided for @bootStepUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'// updating {index}/{total} · {label}…'**
+  String bootStepUpdate(int index, int total, String label);
+
+  /// No description provided for @bootStepAnalysisOf.
+  ///
+  /// In en, this message translates to:
+  /// **'// parsing · {label}…'**
+  String bootStepAnalysisOf(String label);
+
+  /// No description provided for @playlistNoActiveAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'No active account selected. Choose one in the settings.'**
+  String get playlistNoActiveAccount;
+
+  /// No description provided for @playlistInvalidUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'The playlist URL of the account “{label}” is invalid. Check its settings.'**
+  String playlistInvalidUrl(String label);
+
+  /// No description provided for @detRuntimeHoursMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}h {minutes}m'**
+  String detRuntimeHoursMinutes(int hours, int minutes);
+
+  /// No description provided for @castOverlayLive.
+  ///
+  /// In en, this message translates to:
+  /// **'LIVE'**
+  String get castOverlayLive;
+
+  /// No description provided for @playerReconnectingNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnecting… ({attempt}/{max})'**
+  String playerReconnectingNow(int attempt, int max);
+
+  /// No description provided for @nextEpStayHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay here'**
+  String get nextEpStayHere;
+
+  /// No description provided for @nowPlayingLive.
+  ///
+  /// In en, this message translates to:
+  /// **'Live'**
+  String get nowPlayingLive;
+
+  /// No description provided for @nowPlayingReplay.
+  ///
+  /// In en, this message translates to:
+  /// **'Replay'**
+  String get nowPlayingReplay;
+
+  /// No description provided for @tracksTrackN.
+  ///
+  /// In en, this message translates to:
+  /// **'Track {id}'**
+  String tracksTrackN(String id);
+
+  /// No description provided for @replayManualTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Replay — {label}'**
+  String replayManualTitle(String label);
+
+  /// No description provided for @relayDolbyVisionP5.
+  ///
+  /// In en, this message translates to:
+  /// **'This film is in Dolby Vision profile 5: without a Dolby Vision decoder, its colors would be wrong. It can\'t be converted for the TV.'**
+  String get relayDolbyVisionP5;
+
+  /// No description provided for @dlNotifFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'Download complete — tap to open'**
+  String get dlNotifFinished;
+
+  /// No description provided for @dlNotifFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Download failed'**
+  String get dlNotifFailed;
+
+  /// No description provided for @castNotifStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get castNotifStop;
+
+  /// No description provided for @dlNoticeAverage.
+  ///
+  /// In en, this message translates to:
+  /// **'{percent}% on average'**
+  String dlNoticeAverage(int percent);
+
+  /// No description provided for @termShow.
+  ///
+  /// In en, this message translates to:
+  /// **'▼ SHOW'**
+  String get termShow;
+
+  /// No description provided for @termHide.
+  ///
+  /// In en, this message translates to:
+  /// **'▲ HIDE'**
+  String get termHide;
+
+  /// No description provided for @updDiffLine.
+  ///
+  /// In en, this message translates to:
+  /// **'> DIFF    : see the release on GitHub'**
+  String get updDiffLine;
+
+  /// No description provided for @updViewChangelog.
+  ///
+  /// In en, this message translates to:
+  /// **'[ VIEW CHANGELOG ]'**
+  String get updViewChangelog;
+
+  /// No description provided for @updLater.
+  ///
+  /// In en, this message translates to:
+  /// **'[ LATER ]'**
+  String get updLater;
+
+  /// No description provided for @updAbort.
+  ///
+  /// In en, this message translates to:
+  /// **'[ ABORT ]'**
+  String get updAbort;
+
+  /// No description provided for @updInstall.
+  ///
+  /// In en, this message translates to:
+  /// **'[ INSTALL UPDATE ]'**
+  String get updInstall;
+
+  /// No description provided for @updRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'[ RETRY ]'**
+  String get updRetry;
+
+  /// No description provided for @xmltvNoGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'No guide saved'**
+  String get xmltvNoGuide;
+
+  /// No description provided for @consoleCodeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Code: '**
+  String get consoleCodeLabel;
+
+  /// No description provided for @consoleCopyUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the address'**
+  String get consoleCopyUrl;
+
+  /// No description provided for @bkBackupFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup from {date} (v{version}):'**
+  String bkBackupFrom(String date, String version);
+
+  /// No description provided for @qualityStreamN.
+  ///
+  /// In en, this message translates to:
+  /// **'Stream {n}'**
+  String qualityStreamN(int n);
+
+  /// No description provided for @searchVersionsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{count} version} other{{count} versions}}'**
+  String searchVersionsCount(int count);
+
+  /// No description provided for @aboutVersionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'VERSION'**
+  String get aboutVersionLabel;
+
+  /// No description provided for @aboutMadeWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Made with {stack}'**
+  String aboutMadeWith(String stack);
+
+  /// No description provided for @acctCardActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Account actions'**
+  String get acctCardActions;
+
+  /// No description provided for @infoRowLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'{label}:'**
+  String infoRowLabel(String label);
+
+  /// No description provided for @detSynopsis.
+  ///
+  /// In en, this message translates to:
+  /// **'Synopsis'**
+  String get detSynopsis;
+
+  /// No description provided for @detVotes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, one{{formatted} vote} other{{formatted} votes}}'**
+  String detVotes(int count, String formatted);
+
+  /// No description provided for @actorJobDirecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Directing team'**
+  String get actorJobDirecting;
+
+  /// No description provided for @themePresetPhosphore.
+  ///
+  /// In en, this message translates to:
+  /// **'Phosphor'**
+  String get themePresetPhosphore;
+
+  /// No description provided for @themePresetNordique.
+  ///
+  /// In en, this message translates to:
+  /// **'Nordic'**
+  String get themePresetNordique;
+
+  /// No description provided for @themePresetMinimaliste.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimalist'**
+  String get themePresetMinimaliste;
 }
 
 class _AppLocalizationsDelegate

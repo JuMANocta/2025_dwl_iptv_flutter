@@ -136,12 +136,21 @@ class VideoPlayerNotificationHandler(
      */
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // AetherStream patch 21 (revue 2026-09-11, D2B-17) — nom et
+            // description du canal lus dans les ressources de l'APP, PAR LEUR
+            // NOM (la brique ne connaît pas la classe R de l'app), traduits
+            // fr/en. Repli sur les libellés d'origine si la ressource manque.
+            val nameId = context.resources.getIdentifier(
+                "notif_channel_playback", "string", context.packageName)
+            val descId = context.resources.getIdentifier(
+                "notif_channel_playback_desc", "string", context.packageName)
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Video Player",
+                if (nameId != 0) context.getString(nameId) else "Video Player",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Media playback controls"
+                description =
+                    if (descId != 0) context.getString(descId) else "Media playback controls"
                 setShowBadge(false)
             }
             notificationManager.createNotificationChannel(channel)

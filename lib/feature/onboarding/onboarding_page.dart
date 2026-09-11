@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/web_console_service.dart';
@@ -266,7 +267,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       onPressed: _next,
                       style: FilledButton.styleFrom(
                         backgroundColor: kAccentPrimary,
-                        foregroundColor: Colors.black,
+                        foregroundColor: onColorFor(kAccentPrimary), // D4B-08
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),

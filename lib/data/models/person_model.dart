@@ -105,7 +105,10 @@ class FilmographyEntry {
     final mediaType = rawType ?? (looksLikeMovie ? 'movie' : 'tv');
     final isMovie = mediaType == 'movie';
 
-    final title = (isMovie ? json['title'] : json['name']) as String? ?? 'Inconnu';
+    // Revue 2026-09-11, D1A-10 — vide plutôt que « Inconnu » (texte français
+    // en dur) : un crédit sans titre est ÉCARTÉ par `Person.fromJson`
+    // (`c.title.isNotEmpty`), il n'a rien à montrer.
+    final title = (isMovie ? json['title'] : json['name']) as String? ?? '';
     final originalTitle = (isMovie ? json['original_title'] : json['original_name']) as String?;
 
     // Déterminer la date de sortie pour obtenir l'année

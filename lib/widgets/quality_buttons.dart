@@ -39,7 +39,7 @@ List<(M3uEntry, String)> labeledVersions(List<M3uEntry> versions) {
     return (v.title.languages.isNotEmpty ? v.title.languages.first : null) ??
         v.title.versionLabel ??
         v.title.providerTag ??
-        'Flux ${i + 1}';
+        L10n.current.qualityStreamN(i + 1); // D4B-05
   }
   final bases = sorted.indexed.map((e) => baseLabel(e.$2, e.$1)).toList();
 

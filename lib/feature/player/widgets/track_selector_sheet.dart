@@ -133,7 +133,7 @@ class _TrackSelector extends StatelessWidget {
         ? 'Auto'
         : isNo
             ? L10n.current.tracksNone
-            : (_langName(t.language) ?? t.title?.trim() ?? 'Piste ${t.id}');
+            : (_langName(t.language) ?? t.title?.trim() ?? L10n.current.tracksTrackN(t.id));
     final sub = (!isAuto &&
             !isNo &&
             t.title != null &&
@@ -167,7 +167,7 @@ class _TrackSelector extends StatelessWidget {
         ? L10n.current.tracksDisabled
         : isAuto
             ? 'Auto'
-            : (_langName(t.language) ?? t.title?.trim() ?? 'Piste ${t.id}');
+            : (_langName(t.language) ?? t.title?.trim() ?? L10n.current.tracksTrackN(t.id));
     final sub = (!isNo &&
             !isAuto &&
             t.title != null &&

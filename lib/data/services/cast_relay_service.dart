@@ -8,7 +8,34 @@ import 'package:flutter/services.dart';
 import '../../core/utils/lan_address.dart';
 import 'cast_service.dart';
 import 'fmp4_index.dart';
+import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_ext.dart';
+
+/// Revue 2026-09-11, D2B-03 — Code de refus remonté par `AetherCastRelay.kt`
+/// (`onFailed(message, userFacing = true)`) pour un Dolby Vision profil 5.
+///
+/// **Le défaut corrigé** : le natif remontait une PHRASE, écrite en français
+/// dans le Kotlin, que l'écran affichait telle quelle — en français sur un
+/// téléphone anglais, et hors de portée du cliquet l10n (qui ne lit que
+/// `lib/`). Le natif ne remonte plus qu'un CODE ; la phrase naît ici.
+const String kRelayRefusalDvProfile5 = 'dvProfile5';
+
+/// Le texte d'un échec de conversion, dans la langue de l'écran. Pure.
+///
+/// ⚠️ Un code INCONNU — ou une phrase, venue d'une version antérieure du
+/// natif — n'est JAMAIS affiché : il retombe sur le message générique. Le
+/// natif n'a pas la langue de l'écran.
+String relayFailureText(
+  String code, {
+  required bool userFacing,
+  AppLocalizations? l10n,
+}) {
+  final AppLocalizations l = l10n ?? L10n.current;
+  if (userFacing && code == kRelayRefusalDvProfile5) {
+    return l.relayDolbyVisionP5;
+  }
+  return l.relayFormatFailed;
+}
 
 /// §castRelay — Le téléphone au milieu : il convertit le son du film en AAC
 /// (côté natif, `AetherCastRelay.kt`) et **sert le résultat au téléviseur**
@@ -659,15 +686,14 @@ abstract final class CastRelayService {
           );
         case 'onRelayFailed':
           _converting = false;
-          final String msg =
-              (args['message'] as String?) ?? 'conversion impossible';
+          final String msg = (args['message'] as String?) ?? '';
           final bool userFacing = (args['userFacing'] as bool?) ?? false;
-          debugPrint('❌ §castRelay — $msg');
+          debugPrint('❌ §castRelay — ${msg.isEmpty ? 'motif inconnu' : msg}');
           if (current == null) return;
+          // Revue 2026-09-11, D2B-03 — le natif remonte un CODE, jamais une
+          // phrase à afficher (cf. `relayFailureText`).
           state.value = current.copyWith(
-            error: userFacing
-                ? msg
-                : L10n.current.relayFormatFailed,
+            error: relayFailureText(msg, userFacing: userFacing),
           );
       }
     });

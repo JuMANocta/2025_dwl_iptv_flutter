@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/utils/notification_permission.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../l10n/l10n_ext.dart';
 import '../models/download_task.dart';
 import 'download_manager_service.dart';
 import 'download_notice.dart';
@@ -115,6 +116,9 @@ abstract final class TransferNotificationBridge {
               notice.progress == null ? -1 : (notice.progress! * 100).round(),
           'indeterminate': notice.progress == null,
           'cancelTaskId': notice.cancelTaskId,
+          // Revue 2026-09-11, D3L-02 — le libellé du bouton vient de Dart,
+          // dans la langue de l'écran ; le natif n'a plus qu'un REPLI.
+          'cancelLabel': L10n.current.commonCancel,
         });
       }
     } catch (e) {
@@ -131,6 +135,10 @@ abstract final class TransferNotificationBridge {
         'id': f.task.id.hashCode,
         'title': f.task.displayName,
         'success': f.success,
+        // D3L-02 — texte de la notification de fin, traduit ici.
+        'text': f.success
+            ? L10n.current.dlNotifFinished
+            : L10n.current.dlNotifFailed,
       });
     } catch (e) {
       debugPrint('⚠️ TransferNotificationBridge.postFinished : $e');

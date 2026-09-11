@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Revue 2026-09-11, D2B-17 — `notif_channel_playback*` n'est référencé que PAR
+  SON NOM (`getIdentifier`, paquet vendoré `aether_video`, patch 20) : sans
+  cette ligne, le rétrécissement des ressources d'un build release pourrait
+  le retirer, et le canal retomberait sur « Video Player ».
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/notif_*" />
