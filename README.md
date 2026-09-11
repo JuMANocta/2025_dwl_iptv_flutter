@@ -59,7 +59,7 @@
 ### ⏪ Replay / EPG
 - Timeshift Xtream Codes avec picker manuel (jour + heure + durée + qualité FHD/HD/SD)
 - **Grille EPG XMLTV** : sélection directe d'un programme dans la grille pour le replay
-- EPG "En cours / Ensuite" dans la fiche chaîne via XMLTV (source TNT France, cache 12h)
+- EPG "En cours / Ensuite" dans la fiche chaîne via XMLTV (source TNT France, cache 24 h) ; « Rafraîchir le guide » télécharge vraiment un guide neuf, et un guide en panne garde le précédent
 - Détection automatique du meilleur format de flux (`.ts` prioritaire, fallback `.m3u8`)
 - Support des formats catchup : Xtream Codes path-based et Flussonic (`{utc}/{lutc}`)
 
@@ -75,12 +75,12 @@
 - **Hero "jeu de cartes"** (films/séries) : pile de 10 cartes empilées en éventail avec effet 3D (padding blanc "papier" 3px + box-shadow stack simulant l'épaisseur). 5 cartes "Reprendre" triées par dernière lecture + **tendances TMDB de la semaine présentes dans la playlist** (matching exact, cache 24h ; repli sur les nouveautés si pas de clé TMDB)
 - **Swipe horizontal** sur le hero pour naviguer manuellement entre les cartes (pause auto-rotation pendant le drag, snap avec biais de vélocité au relâché)
 - Auto-rotation 6 s entre les cartes (continue après un swipe manuel)
-- Hero 16/9 classique conservé sur la page Chaînes (live)
+- Le même hero en éventail sur la page Chaînes (live)
 - Hero remonte jusqu'à la status bar (l'icône ⚙️ flotte par-dessus, l'inclinaison libère le coin haut-droit)
 - 3 pages swipeables : Séries / Films / Chaînes (PageView + tabs animées sous le hero)
 - Catégories triées : ⭐ Favoris → 🇫🇷 France (TV) → 🔥 New → genres → Autres
 - Films/Séries en carrousels horizontaux (poster 2:3), Chaînes en grille 3 colonnes (logo carré)
-- Limite 25 items par section + tile "Voir tout" qui ouvre la liste complète. **Favoris sans plafond** (curation utilisateur)
+- Nombre de vignettes par rangée réglable (15 par défaut, page Optimisation) + tuile "Voir tout" qui ouvre la liste complète. **Favoris sans plafond** (curation utilisateur)
 - Tuile **REPRENDRE LA CHAÎNE** en tête de la page Chaînes (dernière chaîne TV regardée)
 - Long-press sur une carte → menu contextuel (Lire/Reprendre, Oublier la reprise, Voir détails, Télécharger, Favori)
 - Recherche in-place via la NavigationBar (pas de page séparée)
@@ -95,21 +95,30 @@
 - Stockage `SharedPreferences` (clé canonique `<type>|<groupKey>`)
 
 ### ⬇️ Téléchargements
-- Téléchargement avec suivi de progression
-- Reprise sur interruption (header `Range`)
+- Téléchargement avec suivi de progression, **notification système** avec bouton Annuler, et un transfert qui continue quand l'application passe en arrière-plan
+- **File d'attente par abonnement** : un seul transfert à la fois par fournisseur (ils n'acceptent qu'une connexion), plafond global réglable, et la tuile dit pourquoi un téléchargement attend
+- **Wi-Fi seulement** (réglable) : rien ne part sur les données mobiles
+- Reprise sur interruption (header `Range`) **vérifiée** : si le serveur refuse (« trop de connexions ») ou ignore la reprise, sa réponse n'est plus jamais collée au fichier — le transfert échoue proprement ou repart de zéro, et un film n'est « Terminé » que s'il est complet
+- Chaque épisode de série porte sa saison et son numéro, et l'application n'écrase jamais un fichier existant (elle écrit à côté, « (2) »)
 - **Relance automatique quand le débit s'effondre** (§dlWatchdog) — un serveur qui bride ne provoque jamais d'erreur, le transfert rampe : l'app détecte le décrochage et reconnecte seule au même octet, sans rien afficher d'autre qu'un compteur de relances
-- Sauvegarde dans `/Movies/AetherStream/` via MediaStore Android
+- Écriture **directement** dans `/Movies/AetherStream/` (aucune copie finale : pas besoin de deux fois la taille du film), avec repli MediaStore
+- Les fichiers présents dans ce dossier mais absents de la liste remontent dans une section « Sur l'appareil » (lecture, suppression)
 
 ### 🔄 Mise à jour in-app
 - Vérification automatique au démarrage via l'API GitHub Releases
 - Téléchargement et installation de l'APK directement depuis l'application
+- Choisit l'APK adapté au processeur de l'appareil (32 ou 64 bits) et **vérifie son empreinte SHA-256** avant d'ouvrir l'installeur ; n'accepte que les fichiers publiés dans les Releases de ce dépôt
+- Ne s'affiche jamais par-dessus un film : le dialogue attend le retour sur l'accueil
 
 ### 🔒 Sécurité & confidentialité
 - **SSL bypass scoped** : accepté uniquement pour les serveurs IPTV utilisateur, jamais pour TMDB/GitHub/XMLTV (HTTPS strict)
-- **`network_security_config.xml`** : cleartext interdit sur les APIs publiques connues
+- **HTTPS strict** vers TMDB, GitHub et le guide XMLTV : les adresses sont en `https://` dans le code (le fichier `network_security_config.xml` interdit en plus le clair côté système, mais ne couvre pas le trafic de l'application elle-même)
 - **`allowBackup="false"`** + règles d'extraction excluant tout → pas de fuite credentials via `adb backup`
-- **Logs sanitisés** : `redactUrl()` / `redactServer()` masquent `user:pass` dans logcat
+- **Journaux sanitisés** : les identifiants Xtream sont masqués avant d'entrer dans le journal de diagnostic (la même règle sert à les lire et à les masquer), et aucun journal ne part vers le système dans la version publiée
 - **Stockage chiffré** des comptes IPTV et clé TMDB (`flutter_secure_storage` / EncryptedSharedPreferences)
+- **Console web verrouillée** : accessible seulement depuis le réseau local, avec un code de 16 caractères, jamais depuis un autre site web ouvert dans le navigateur ; elle s'arrête seule 30 minutes après la dernière action et un bandeau le signale tant qu'elle est ouverte
+- **Diffusion Chromecast** : le téléphone ne sert un film qu'au réseau local, à une adresse secrète propre à ce film, et coupe ce serveur une minute après la fin de la diffusion
+- **Code protégé** dans la version publiée (R8 + obfuscation Dart)
 
 ---
 
@@ -117,9 +126,17 @@
 
 ### Depuis les Releases GitHub
 
-Télécharge `aetherstream.apk` depuis la page [Releases](https://github.com/JuMANocta/2025_dwl_iptv_flutter/releases) et installe-le directement sur ton appareil Android (minSdk 24 — Android 7.0+).
+Chaque release de la page [Releases](https://github.com/JuMANocta/2025_dwl_iptv_flutter/releases) contient **trois APK**, chacun avec son empreinte `.sha256` (Android 7.0+, minSdk 24) :
 
-Compatible **smartphones, tablettes, Fire Stick et Android TV** (Philips, Sony, etc.) — toutes architectures ARM64 / ARMv7 / x86_64.
+| Fichier | Pour qui |
+|---|---|
+| `aetherstream_arm64-v8a.apk` | téléphones, tablettes et box récents (processeur 64 bits) — **le bon choix dans la plupart des cas** |
+| `aetherstream_armeabi-v7a.apk` | Fire TV Stick et appareils 32 bits |
+| `aetherstream.apk` | universel (les deux), en cas de doute — plus lourd |
+
+Compatible **smartphones, tablettes, Fire Stick et Android TV** (Philips, Sony, etc.) — processeurs **ARM64 et ARMv7**. ⚠️ Aucune version x86_64 n'est publiée : les émulateurs Android d'un PC se construisent depuis les sources (voir ci-dessous).
+
+Une fois installée, l'application se met à jour toute seule et prend d'elle-même le bon fichier. ⚠️ Un appareil qui a reçu un APK par processeur n'accepte plus ensuite l'APK universel (Android le voit comme une version plus ancienne) : pour changer, exporter une sauvegarde `.aether`, désinstaller, réinstaller, restaurer.
 
 > ⚠️ L'installation d'APK hors Play Store nécessite d'activer **"Sources inconnues"** dans les paramètres Android.
 
@@ -137,10 +154,13 @@ flutter pub get
 flutter run
 
 # Build APK universel (téléphone + TV + Fire Stick — armeabi-v7a + arm64-v8a)
-flutter build apk --release
+flutter build apk --release --target-platform android-arm,android-arm64
+
+# Émulateur Android (x86_64, absent des releases)
+flutter build apk --release -Pabi-x86=true
 ```
 
-Les releases GitHub sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : analyse et 955 tests en parallèle du build, signature, empreinte SHA-256 publiée dans la release — et **pas de release si un test échoue**.
+Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 955 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
 
 ---
 
@@ -166,11 +186,14 @@ Pour bénéficier des affiches, synopsis et informations TMDB :
 ### 3. Paramètres
 
 Toutes les options sont regroupées dans **⚙️ Paramètres** (icône en haut à droite de l'accueil) :
-- **Comptes IPTV** : gestion des providers + compte actif
+- **Comptes IPTV** : gestion des providers + compte actif, avec les statistiques et la santé (blocages) de chaque abonnement
 - **Affiches et infos TMDB** : langue des visuels, rangées TMDB, données mémorisées, et la clé (avec le lien d'inscription)
 - **Guide des chaînes** : statut + refresh du cache XMLTV
-- **Personnalisation** : thèmes + 5 presets (Matrix, Blade Runner, Tron, Minimaliste, Classic)
-- **Statistiques playlist** : nombre de films/séries/chaînes du compte actif
+- **Personnalisation** : thèmes + 9 presets (Matrix, Blade Runner, Tron, Cyberpunk, Synthwave, Phosphore, Nordique, Minimaliste, Classic), mode clair lisible
+- **Optimisation** : profil Léger / Équilibré / Complet (choisi seul au premier lancement), « Ce que ton appareil sait faire », téléchargements, stockage récupérable
+- **Langues / régions** et **langue des visuels** TMDB
+- **Sauvegarde** : export / import `.aether` chiffré
+- **Console web** : configurer et piloter l'application depuis un navigateur du réseau local
 - **↻ (accueil)** : recharge **toutes** les listes, une par une, avec un bilan
 - **À propos** : version + check des mises à jour manuel
 
@@ -191,17 +214,17 @@ lib/
 │        ├── StreamAccountService      #   comptes IPTV + currentAccountIdNotifier
 │        ├── PlaylistService           #   cache M3U 24h, multi-comptes
 │        ├── ParsedPlaylistService     #   hub central JSON.gz + mémoire (byTypeWithPriority)
-│        ├── DownloadManagerService    #   Dio stream + reprise + MediaStore
+│        ├── DownloadManagerService    #   file par abonnement + reprise Range vérifiée + écriture directe
 │        ├── TmdbService / TmdbApiService #   recherche TMDB 4 passes + Bearer Token
 │        ├── ReplayService             #   Xtream timeshift + EPG short
-│        ├── XmltvService              #   EPG TNT France (cache 12h)
+│        ├── XmltvService              #   EPG TNT France (cache 24 h)
 │        ├── FavoritesService          #   §1d favoris cross-comptes
 │        ├── WatchProgressService      #   §1e reprise (save 10s + dispose)
 │        ├── SearchHistoryService      #   §1i historique recherche
 │        ├── LastWatchedChannelService #   §1i dernière chaîne TV
 │        └── UpdateService             #   MAJ in-app GitHub Releases
 ├── feature/
-│   ├── accounts/                      # AccountsPage (§1g refondue), EditAccountSheet, PlaylistManagementPage
+│   ├── accounts/                      # AccountsPage (comptes + statistiques par compte), EditAccountSheet
 │   ├── downloads/                     # Gestionnaire de téléchargements
 │   ├── home/home_page.dart            # Hub principal : carrousels, hero, recherche in-place
 │   ├── onboarding/onboarding_page.dart # §1i — 3 écrans au 1er lancement + OnboardingService
@@ -211,7 +234,7 @@ lib/
 │   ├── settings/                      # SettingsPage (hub), ThemeSettings, TmdbKey (§1g), Xmltv (§1g)
 │   └── update/                        # Mise à jour in-app (GitHub Releases)
 ├── widgets/                           # MediaActionSheet (+_FavoriteToggleTile, _PlayResumeTiles, _SkeletonLine),
-│                                      # MediaCard, MediaChips, QualityButtons, EpgBlock, TerminalDownloadDialog
+│                                      # MediaChips, QualityButtons, EpgBlock, TerminalDownloadDialog, AetherImage
 ├── l10n/                              # Traductions FR / EN (app_en.arb = template)
 └── feature/search/category_labels.dart # Catégories : la clé reste FR, l'affichage est traduit
 ```
@@ -230,12 +253,30 @@ lib/
 | EPG XMLTV | `xml` |
 | Polices | `google_fonts` |
 | Permissions | `permission_handler` |
+| Navigation télécommande | `dpad` |
+| Cache disque des images | `cached_network_image` + `flutter_cache_manager` |
+| Sauvegarde chiffrée | `cryptography` (AES-256-GCM + PBKDF2) |
+| Empreinte des mises à jour | `crypto` (SHA-256) |
+| Guide XMLTV, mises à jour | `http` |
+| Import de sauvegarde, QR | `file_picker`, `qr_flutter` |
+| Appareil, version, liens | `device_info_plus`, `package_info_plus`, `url_launcher` |
+| Traductions | `flutter_localizations` + `intl` (français, anglais) |
 
 ---
 
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Revue complète du code avant la version de production** (§review0911, 2026-09-11) — 192 défauts relevés, chacun vérifié dans le code avant d'être retenu, puis corrigés par lots. Ce que tu peux constater :
+- [x] **Un téléchargement ne peut plus finir corrompu** (revue, 2026-09-11) — quand le fournisseur refusait la connexion (« trop de connexions ») ou ignorait la reprise, sa réponse était collée au fichier et le film s'affichait « Terminé ». La réponse est maintenant vérifiée avant d'écrire ; un serveur sans reprise fait repartir de zéro proprement (fichier identique à l'original, vérifié) ; un disque plein arrête le transfert sans abîmer ce qui est déjà là ; un titre qui contient un point (« Mr. Robot ») garde son extension ; tirer pour rafraîchir la page n'interrompt plus les transferts en cours.
+- [x] **Les listes résistent à un fournisseur saturé** (revue, 2026-09-11) — la page d'erreur de quelques kilo-octets d'un serveur surchargé pouvait remplacer un catalogue sain ; ce n'est plus possible. « Entrer sans attendre » entre vraiment dans l'application, et une restauration de sauvegarde ratée n'efface plus rien.
+- [x] **Lecteur et Chromecast plus sûrs** (revue, 2026-09-11) — la position de reprise suit la télé même quand le lecteur reste ouvert sur le téléphone ; quitter pendant la préparation d'une conversion ne fige plus le lecteur ; zapper vite ne coupe plus la chaîne suivante ; un flux illisible affiche un message clair au lieu d'un code technique.
+- [x] **Console web et diffusion verrouillées** (revue, 2026-09-11) — la console ne s'ouvre plus à tout le réseau ni à un site web tiers, et un Chromecast ne sert plus un fichier à quiconque devinerait son adresse ; les identifiants restent masqués dans le journal dans tous les formats d'adresse.
+- [x] **Réglages qui tiennent** (revue, 2026-09-11) — choisir un profil d'optimisation ne désactive plus « Wi-Fi seulement » (le téléchargement suivant partait sur les données mobiles) ; les rangées TMDB suivent ta dernière lecture sans redémarrer ; une panne de TMDB n'efface plus d'affiche ; plus aucun dialogue par-dessus un film ; modifier un compte ne le rend plus principal.
+- [x] **Plus sobre** (revue, 2026-09-11) — le lecteur ne réveille plus le téléphone chaque seconde pendant la lecture, et 900 lignes de code mort sont parties.
+- [x] **Tout suit la langue du téléphone** (revue, 2026-09-11) — l'écran de démarrage, les notifications et même les nombres (« 12 400 votes ») s'affichent enfin dans la langue de l'appareil.
+- [x] **Version de production** (revue, 2026-09-11) — un APK par type de processeur (deux fois plus léger que l'universel), code protégé, mise à jour intégrée qui choisit le bon fichier et vérifie son empreinte, et une vérification automatique à chaque envoi de code.
+- [x] **Des titres rendus** (revue, 2026-09-11) — « Caméra Café » n'est plus pris pour une copie filmée en salle, « The French Dispatch » ou « Empire of Light » gardent leur titre complet : 398 fausses « CAM » et 388 titres amputés corrigés, et tes favoris sont conservés à la mise à jour.
 - [x] **Sur téléviseur, Retour ne saute plus deux écrans** (§dpadBack, 2026-09-10) — un seul appui fermait le film au lieu du panneau d'options, et depuis une fiche deux appuis suffisaient à quitter l'application. Chaque appui ramène maintenant exactement un écran en arrière.
 - [x] **Le thème clair est lisible** (§lightTheme, 2026-09-10) — les couleurs de l'application, pensées pour un fond noir, devenaient presque invisibles sur fond blanc. Elles s'assombrissent maintenant juste assez pour rester lisibles, en gardant leur teinte — y compris tes couleurs personnalisées.
 - [x] **L'application est entièrement en anglais sur un téléphone en anglais** (2026-09-10) — une cinquantaine de textes restaient en français : casting, pistes audio, guide des programmes, replay, écran de première configuration.
@@ -289,7 +330,7 @@ lib/
 - [x] **Rafraîchissement des listes secondaires** (§secondaryRefresh, 2026-08-17) — Le cache de 24 h ne s'appliquait qu'au compte principal : la playlist d'un compte secondaire, une fois téléchargée, ne se mettait **jamais** à jour. Elle est désormais revérifiée au démarrage comme les autres, et rafraîchie immédiatement quand on passe le compte en principal ou qu'on vide son cache
 - [x] **Navigation télécommande alignée + touches média** (§dpadAlign, 2026-08-14) — Le retour ne « recharge » plus la page : le focus revient **sur la carte d'où l'on est parti** (une mémoire de focus par route remplace le repli du package D-pad, qui retombait toujours sur la 1re vignette de l'accueil en faisant défiler la liste en haut). Un seul chemin pour le bouton Retour (physique, télécommande web, bouton du player). Les touches **PLAY / PAUSE / STOP / avance / recul / piste suivante** de la télécommande sont enfin gérées — elles n'étaient captées nulle part. Alignement D-pad des écrans oubliés : tous les dialogs de confirmation, les feuilles Replay, la grille « Voir tout », l'onboarding
 - [x] **Journal de diagnostic TV** (§tvLogs, 2026-08-14) — Android TV n'expose pas de logcat : le journal de l'application se consulte désormais **depuis le téléphone** via la Console web, et s'exporte en `.txt`. Inclut un **traceur de touches** pour voir ce que la télécommande émet réellement. Les identifiants (URLs de playlist, mots de passe) sont masqués avant d'entrer dans le journal
-- [x] **Refonte complète du player** — `media_kit`, contrôles custom, gestures, reconnexion auto *(PiP reporté)*
+- [x] **Refonte complète du player** — `media_kit`, contrôles custom, gestures, reconnexion auto *(moteur remplacé par Media3/ExoPlayer le 2026-09-01 ; PiP livré le 2026-09-04)*
 - [x] **Mise à jour in-app** — vérification + téléchargement APK depuis GitHub Releases
 - [x] **Grille EPG XMLTV** — sélection programme dans la grille pour le replay
 - [x] **Refactoring recherche** — modules séparés (parser, filter, widgets) puis suppression du code mort `recherche_page`/`recherche_m3u` (lot A, 2026-06-11)
@@ -300,7 +341,7 @@ lib/
 - [x] **Catégories M3U** — chips de filtre par catégorie dans la recherche (films + séries)
 - [x] **Filmographie acteur DISPO** — badge sur les films présents dans la playlist + navigation `DetailsPage`
 - [x] **Fiche TMDB même hors listes** (§tmdbOnlyDetails) — dans une filmographie, un titre **sans** badge DISPO ouvre désormais sa fiche TMDB (affiche, synopsis, note, casting, réalisateur, similaires disponibles) au lieu de ne rien faire. Pas de bouton Lire, mais un **« Chercher dans mes listes »** pré-rempli, avec bascule sur le **titre original** — les fournisseurs IPTV nomment souvent en VO, et le repérage automatique est volontairement strict pour ne jamais afficher un faux DISPO
-- [x] **Android TV / Fire Stick** (v1.6.0+) — Détection plateforme native, NavigationRail latéral, focus visible Matrix glow sur toutes les cards, action sheets en Dialog focusable, player entièrement contrôlable à la télécommande (OK / ← → / ↑ ↓ / MediaPlayPause / Menu), textScaler ×1.3 pour lisibilité 3 m+
+- [x] **Android TV / Fire Stick** (v1.6.0+) — Détection plateforme native, NavigationRail latéral, focus visible Matrix glow sur toutes les cards, action sheets en Dialog focusable, player entièrement contrôlable à la télécommande (OK / ← → / ↑ ↓ / MediaPlayPause / Menu), texte agrandi pour la lecture à 3 m (aujourd'hui un plancher de taille pour les petits textes, §tvSmallText)
 - [x] **Un seul QR, le panneau complet** (§webConsoleOnly) — Tous les points d'entrée « Configurer depuis mon téléphone » (écran sans compte, ajout de playlist, clé TMDB, onboarding TV) ouvrent désormais **la Console web**, et plus un formulaire à champ unique. Le QR mène directement à la bonne page (comptes, TMDB…) tout en gardant le reste du panneau à un clic. Sur TV, c'est le **bouton principal**, donc celui qui prend le focus D-pad. L'onboarding TV passe de 3 à **2 écrans** : un seul scan configure playlist *et* clé TMDB
 - [x] **Navigation TV affinée** — Déplacement ↑/↓ « façon Netflix » (change de rangée et se cale à gauche, ne saute plus les rangées courtes comme les favoris), filmographie acteur parcourable ligne par ligne, et **double-appui sur Retour** pour quitter depuis l'accueil (évite les sorties accidentelles à la télécommande)
 - [x] **Console web** (v1.8.8) — Un QR + une URL : depuis un PC/téléphone du même réseau, gérer les **comptes IPTV** (CRUD + recharger + compte principal), la **clé TMDB**, le **guide XMLTV**, les **langues/régions**, le **thème**, **réinitialiser les données d'usage** et **importer/exporter une sauvegarde `.aether`** (mot de passe dans le navigateur). Bonus **télécommande** : pavé directionnel + transport player pour piloter la TV depuis le téléphone. Serveur LAN-only sécurisé par token, actif en arrière-plan jusqu'à l'arrêt explicite (ou 30 min)
@@ -347,7 +388,7 @@ lib/
 - [x] **Masquer le portugais sous-titré et les catégories anglophones** (§legLang, 2026-09-05) — ✅ fait : « Legendado » devient une langue à part entière, avec sa pastille et sa case dans Langues / régions ; le « -LEG » parasite qui doublait l'étiquette sur certaines vignettes a disparu ; « ENGLISH FILMS » se masque via UK ; sept régions qui étaient reléguées en bas de l'accueil sans pouvoir être cachées le sont maintenant. ⏳ À vérifier sur l'appareil — ancienne description : — le marqueur « -LEG » (Legendado) devient une vraie langue avec sa pastille et sa case « Legendado » dans Langues / régions ; le tiret parasite disparaît ; « ENGLISH FILMS » se masque via UK ; sept régions déjà reléguées (Coréen, Ramadan, Suisse, Canada, Bosnie, Ex-Yougoslavie, Rép. Dominicaine) deviennent masquables
 - [x] **Les catégories rangées sur les vraies listes, et les micro-rangées repliées** (§catWords + §rowFold, 2026-09-05) — ✅ fait : le mot « films » n'est plus jamais une catégorie (onze rangées « FILMS… » et « FILMES » représentaient ~6 900 films hors de leur genre), les genres portugais sont reconnus, les doublons d'un même genre fusionnent (Sci-Fi / SCIENCE-FICTION, Fêtes / FILMS DE NOËL…), et les rangées de moins de 5 titres se replient dans « Autres » (seuil réglable dans Optimisation ; « New » reste toujours en tête)
 - [x] **Page TMDB relue par un client** (§tmdbPageOrder + §tmdbKeyCheck + §posterScope + §perfNotify, 2026-09-05 soir) — ✅ fait : sans clé, la page explique comment en obtenir une (lien d'inscription corrigé) et s'arrête là ; avec clé, les options viennent d'abord et la clé tout en bas. Une clé est vérifiée auprès de TMDB avant d'être acceptée. « Affiches TMDB en priorité » ne s'applique plus qu'au carrousel et aux favoris (toutes les vignettes, c'était 450 recherches et un accueil saccadé). Et un bug de fond : quatre réglages de confort (dont « Épisode suivant automatique ») n'étaient appliqués qu'au prochain lancement — corrigé, avec test
-- [x] **L'application sait ce que ton appareil peut faire** (§deviceCaps + §autoProfile, 2026-09-06) — ✅ fait : une sonde mesure les décodeurs vidéo (matériel ou logiciel, jusqu'à quelle définition), l'écran (définition réelle, HDR) et la mémoire, et l'affiche dans Optimisation → « Ce que ton appareil sait faire ». Le profil d'optimisation est choisi tout seul au premier lancement — **Complet, Équilibré ou Léger** — et une version **4K** est refusée, avec l'explication mesurée, quand l'appareil ne peut pas la décoder ou, sur téléviseur, quand l'écran n'affiche pas 2160p.
+- [x] **L'application sait ce que ton appareil peut faire** (§deviceCaps + §autoProfile, 2026-09-06) — ✅ fait : une sonde mesure les décodeurs vidéo (matériel ou logiciel, jusqu'à quelle définition), l'écran (définition réelle, HDR) et la mémoire, et l'affiche dans Optimisation → « Ce que ton appareil sait faire ». Le profil d'optimisation est choisi tout seul au premier lancement — **Complet, Équilibré ou Léger** — et une version **4K** est refusée, avec l'explication mesurée, quand l'appareil ne peut pas la décoder — seul le décodeur décide : l'écran annoncé par Android décrit l'interface, pas la dalle (§caps4kDisplay).
 - [x] **La fin d'un film te rend la main, et la reprise disparaît vraiment** (§endOfMovie, 2026-09-06) — ✅ fait : à la fin d'un film, le lecteur restait figé sur la dernière image et le film restait marqué « Reprendre » — parfois avec la reprise d'une autre version du même titre. Le lecteur revient sur la fiche tout seul, et la reprise s'efface pour toutes les versions.
 - [x] **Sortir d'un film est rapide sur téléphone** (§exitRotate, 2026-09-06) — ✅ fait : la fiche s'affichait en paysage pendant plus d'une seconde avant de tourner. La rotation part dès l'appui sur Retour : fiche en portrait en moins d'une demi-seconde (mesuré sur Galaxy S25). Sur tous les appareils, la libération du lecteur ne bloque plus l'interface pendant la transition.
 - [x] **Recharger toutes les listes depuis la télécommande** (§tvReloadReach, 2026-09-06) — ✅ fait : sur téléviseur, le bouton ↻ de l'accueil n'était atteignable par aucune direction. Il disparaît sur TV et l'action vit dans Paramètres, à un pas du rail.
@@ -359,13 +400,13 @@ lib/
 - [x] **Ce qui marche en ce moment sur Netflix, Disney+ et Prime** (§tmdbProviders, 2026-09-06) — ✅ fait : une rangée par plateforme sur l'accueil, après « Les mieux notés » : les films et séries que TMDB donne comme populaires en France chez ce diffuseur, **et que tes listes ont vraiment** (mesuré avant de livrer : 15 à 19 titres sur 20 par plateforme). Interrupteur dans « Affiches et infos TMDB ». Au passage, sans hero les icônes ↻ et ⚙️ ne recouvrent plus les onglets Séries / Films / Chaînes.
 - [ ] **Changer d'onglet, encore plus vite** (§jankNext — le gros est fait le 2026-09-06, voir « Terminé » ; restent des postes secondaires à mesurer) — après les trois correctifs de septembre, la bascule Accueil ↔ Recherche ↔ Téléchargements coûte encore ~42 ms sur sa pire image : les trois pages restent vivantes en même temps, avec leurs trois carrousels animés. Onze pistes chiffrées, à reprendre à la mesure.
 - [ ] **Choisir la qualité d'une chaîne en direct** (§engineFeatures) — sur les chaînes servies en plusieurs débits, pouvoir forcer une qualité plus basse quand la connexion faiblit, au lieu de subir les coupures.
-- [ ] **Diffuser un film téléchargé sur le Chromecast** (§castLocal, demandé le 2026-09-05) — aujourd'hui le bouton Cast refuse un fichier local ; le téléphone sait pourtant déjà servir un flux au téléviseur (§castRelay) : le film téléchargé sera servi tel quel, ou converti si le téléviseur ne lit pas sa piste audio
+- [x] **Diffuser un film téléchargé sur le Chromecast** (§castLocal, câblé le 2026-09-06) — ✅ le téléphone sert le film téléchargé au téléviseur, tel quel ou avec le son converti, sur le réseau local et à une adresse secrète (revue du 2026-09-11). ⏳ Reste la vérification sur un vrai Chromecast
 - [x] **Le repère de section reste sur l'accueil** (§beaconScope, 2026-09-05) — ✅ fait : la pastille « SYNOPSIS / CASTING / INFOS » (téléviseur uniquement) ne s'affiche plus sur les fiches, où elle n'annonçait que trois sections sur une page courte. Elle est ensuite partie de l'accueil aussi (§beaconDev, même jour, après recette sur téléviseur avec un vrai catalogue) : l'application publiée n'affiche plus aucun repère de ce genre. Le titre « Saisons » est aligné sur les autres titres de section — ancienne description : — la pastille « SYNOPSIS / CASTING / INFOS » (télé uniquement) n'apporte rien sur une fiche courte
-- [x] **Jaquettes dans la langue du téléphone** (§posterLang, 2026-09-05) — ✅ fait : un réglage « Langue des visuels » (comme le téléphone, français, anglais, ou version originale sans texte) décide de la langue des affiches, résumés et castings venus de TMDB ; l'interface, elle, reste en français. Une option séparée permet de préférer l'affiche TMDB à celle de vos listes. Les deux vivent dans la page de la clé TMDB, avec un bloc « Mémoire TMDB » qui montre enfin ce que l'application a retenu (nombre d'affiches, titres rangés grâce à TMDB) et permet de tout oublier pour repartir de zéro, ou de faire réapprendre les catégories devinées. Chaque affiche trouvée est mémorisée durablement pour ne jamais être recherchée deux fois — y compris les recherches infructueuses, qui évitent de chercher indéfiniment un titre que TMDB ne connaît pas. ⏳ À vérifier sur l'appareil — ancienne description : — aujourd'hui l'affiche vient du plus gros fournisseur et TMDB est figé en français ; une préférence « Langue des visuels » (auto / fr / en / original) et, en option, « jaquettes TMDB d'abord »
+- [x] **Jaquettes dans la langue du téléphone** (§posterLang, 2026-09-05) — ✅ fait : un réglage « Langue des visuels » (comme le téléphone, français, anglais, ou version originale sans texte) décide de la langue des affiches, résumés et castings venus de TMDB. Une option séparée permet de préférer l'affiche TMDB à celle de vos listes. Les deux vivent dans la page de la clé TMDB, avec un bloc « Mémoire TMDB » qui montre enfin ce que l'application a retenu (nombre d'affiches, titres rangés grâce à TMDB) et permet de tout oublier pour repartir de zéro, ou de faire réapprendre les catégories devinées. Chaque affiche trouvée est mémorisée durablement pour ne jamais être recherchée deux fois — y compris les recherches infructueuses, qui évitent de chercher indéfiniment un titre que TMDB ne connaît pas. ⏳ À vérifier sur l'appareil — ancienne description : — aujourd'hui l'affiche vient du plus gros fournisseur et TMDB est figé en français ; une préférence « Langue des visuels » (auto / fr / en / original) et, en option, « jaquettes TMDB d'abord »
 - [x] **Interface entièrement traduisible** (§l10nAll, terminé le 2026-09-07) — ✅ fait : **l'application suit désormais la langue du téléphone**. Les 25 écrans, les messages du lecteur, ceux du Chromecast, les erreurs de téléchargement et jusqu'aux noms de genres et de régions des rangées d'accueil existent en français **et** en anglais — 1 011 textes traduits, contre 299 au départ. Le français n'est plus imposé : sur un téléphone en anglais, l'application est en anglais, et rien ne change sur un téléphone en français. Trois contrôles automatiques empêchent la marche arrière : aucune phrase ne peut être réécrite en dur, aucune traduction ne peut manquer d'un côté, et les noms de rangées doivent rester identiques en français. ⏳ À vérifier sur l'appareil
 
 **🔥 Top priorité (2026-08-05)** :
-- [x] **Plafond du cache image en RAM** (§imgMemCache) — réglable dans Optimisation (20-150 Mo, 40 Mo en profil Performance) au lieu des 100 Mo par défaut de Flutter ; rendu possible par le cache disque
+- [x] **Plafond du cache image en RAM** (§imgMemCache) — réglable dans Optimisation (20-150 Mo, 40 Mo en profil Performance) au lieu des 100 Mo par défaut de Flutter ; rendu possible par le cache disque — ⚠️ décision revenue en arrière (§imgThrash) : un plafond plus bas que celui de Flutter faisait saccader le téléviseur
 - [x] **Cache disque des images** (§imgDiskCache) — vignettes persistées sur disque (widget partagé `AetherImage`, rétention 60 j TMDB / 7 j provider), backdrop de fiche en w1280, ligne « Cache images » + bouton de purge dans Optimisation
 - [x] **Statut de démarrage parlant** (§bootStatus) — l'écran de lancement affiche l'étape réelle au lieu du « // initialisation… » figé : vérification du compte, lecture **ou** téléchargement de la playlist, analyse du catalogue, chargement des autres comptes. ⚠️ *Le pourcentage affiché pendant l'analyse ne mesure rien depuis le passage au catalogue JSON : il saute de 5 % à 100 % sans rien entre les deux — corrigé par §bootPercent (planifié).*
 - [x] **Audit de la gestion des favoris** (§favAudit) — la latence venait du groupement de la home, qui se relançait **entièrement à chaque cœur** : la rangée ⭐ (catégorie virtuelle) est désormais recalculée seule. Corrigé aussi : le flag one-shot de réconciliation pouvait n'être jamais posé (scan de la playlist à chaque démarrage) et les regex de `tvGroupKey` étaient recompilées à chaque appel
@@ -379,6 +420,14 @@ lib/
 - [x] **Les autres comptes chargés pendant l'écran de démarrage** (§bootHydrate) — ✅ livré le 2026-09-02 (détail dans « Terminé ») — à l'époque, les listes secondaires se téléchargent et se parsent **5 s après** l'arrivée sur l'accueil. Mesuré sur téléviseur le 2026-09-01 : **46 secondes** de téléchargement, de parsing et d'écriture disque pendant qu'on fait défiler les vignettes — l'application paraît boguée alors qu'elle travaille. Le travail doit se faire sur l'écran de démarrage, annoncé, et seulement les jours où un cache est réellement périmé
 - [x] **Un pourcentage de démarrage qui dit la vérité** (§bootPercent) — ✅ livré le 2026-09-02 (détail dans « Terminé ») — pendant « analyse du catalogue », la barre affiche 5 % puis 100 %, sans rien entre les deux : le parsing tourne dans un fil séparé qui ne rend aucun compte avant d'avoir fini. Sur une grosse liste, cela fait **16 secondes** d'écran immobile à 5 % — le moment exact où l'on se demande si l'application a planté
 - [x] **Enchaînement automatique de l'épisode suivant en fin de lecture** (§autoNextEp) — ✅ livré le 2026-08-17 (détail dans « Terminé »), en attente de validation sur appareil — compte à rebours annulable type Netflix
+
+**🧾 Suites de la revue du 2026-09-11** (détail et points d'ancrage : roadmap interne) :
+- [ ] **Vérifications sur appareil** — diffusion d'un fichier téléchargé sur un vrai Chromecast (adresse secrète), mise à jour intégrée sur un appareil installé depuis une release, Fire TV Stick 32 bits, premier tag de production
+- [ ] **Focus à la télécommande** — en remontant depuis la rangée « New », la sélection saute la rangée Favoris quand elle ne contient qu'une carte
+- [ ] **Textes de réglages à clarifier** — quelques sous-titres encore techniques, les pluriels « (s) », le séparateur décimal des tailles (« 12.3 Mo » / « 1,50 Go »)
+- [ ] **Mémoire** — libérer les listes secondaires aussi quand on est sur l'onglet Téléchargements
+- [ ] **Affiches** — oublier les « titres introuvables » enregistrés pendant une panne par les versions précédentes (au prix d'une vague de recherches)
+- [ ] **Titres** — mesurer les autres étiquettes techniques touchées par la même limite de reconnaissance des mots accentués
 
 **Autres** :
 - [ ] **Écran éteint : garder le son, couper l'image** (§bgAudio, 2026-09-05) — la lecture d'un film ou d'une chaîne continue déjà quand on éteint l'écran ; il reste à le mesurer sur l'appareil, puis à cesser de décoder la vidéo pendant ce temps pour économiser la batterie quand seul le son est utile
@@ -400,7 +449,7 @@ lib/
 - [x] **Le clavier ne masque plus les résultats** (§searchKeyboard, 2026-08-29) — il se referme au défilement
 - [x] **Bandeau de mise à jour repensé** (§updateBanner, 2026-08-29) — il annonçait la version à installer **sans jamais dire de quelle version on part**. Il affiche désormais les deux, la nouvelle se « décodant » à la manière de Matrix avec **la partie qui change en surbrillance**. La pluie Matrix couvre tout le bandeau au lieu de la seule barre de téléchargement, et le changelog brut est remplacé par un lien vers la release GitHub
 - [x] **Plus de « faux focus » sur téléphone** (§touchNoFocus, 2026-08-29) — les indicateurs de focus, faits pour la télécommande, s'affichaient aussi sur mobile : fermer un dialogue ou revenir en arrière allumait une vignette ou une icône **que personne n'avait touchée**. Au doigt, plus rien ne prend le focus ; la navigation TV et clavier est inchangée
-- [x] **Interface entièrement en français** (§frOnly, 2026-08-29) — l'app suivait la langue de l'appareil : sur un téléphone en anglais, les rares écrans câblés sur l10n basculaient en anglais pendant que le reste de l'interface restait en français. Le français est désormais imposé, et **tous les titres de page** ainsi que les libellés d'onglets passent par l10n
+- [x] **Interface entièrement en français** (§frOnly, 2026-08-29 — ⚠️ **levé le 2026-09-07** : l'application suit désormais la langue du téléphone, §l10nAll) — l'app suivait la langue de l'appareil : sur un téléphone en anglais, les rares écrans câblés sur l10n basculaient en anglais pendant que le reste de l'interface restait en français. Le français est désormais imposé, et **tous les titres de page** ainsi que les libellés d'onglets passent par l10n
 - [x] **Repères visuels** (2026-08-29) — le témoin de chargement des listes ne décale plus l'accueil (filet de 2 px en surimpression au lieu d'un bandeau), et la barre de navigation du bas se détache du fond noir par un filet dégradé
 - [x] **Un téléchargement bridé se relance tout seul** (§dlWatchdog, 2026-08-29) — un serveur qui bride ne provoque **jamais** d'erreur : le transfert rampe, et rien ne se déclenchait. L'app surveille désormais le débit et reconnecte d'elle-même au même octet. Pour l'utilisateur rien ne se passe — **la même barre continue**, seul un compteur « 🔁 Relances » monte — et la tuile garde « ↻ relancé ×N » après un redémarrage. Le bouton « Relancer » devient inutile et disparaît pendant le transfert
 - [x] **Les compteurs des listes ne tombent plus à zéro** (§secondaryCounts, 2026-08-29) — les totaux films/séries/chaînes étaient recomptés en mémoire : dès qu'une liste secondaire était déchargée pour libérer de la RAM, ils affichaient 0 et laissaient croire à une liste vide. Ils sont désormais enregistrés dans le cache et restent exacts, même liste déchargée
@@ -409,23 +458,23 @@ lib/
 - [x] **Les affiches ne disparaissent plus** (§logoFallback, 2026-08-29) — il suffisait qu'une seule de vos listes fournisse une adresse d'image **morte** pour que la vignette reste vide, alors qu'une autre liste en proposait une valide. L'application essaie désormais toutes les adresses du titre, puis TMDB en dernier recours
 - [x] **Vérité sur la qualité** (§qualityTruth/§videoStats, 2026-08-29) — la qualité affichée par les listes vient de leur **titre**, et certaines annoncent du 4K pour servir du 1080p. L'app mesure désormais la définition **réellement décodée** à chaque lecture et l'affiche **sur la fiche** (sous la version, épisodes compris), **sur les vignettes d'accueil** et **sur les chaînes TV** : `⚠ réel FHD` quand la liste survend, `✓ 1080p` quand elle dit vrai. Un encart de diagnostic en direct par-dessus l'image donne le détail. Affiche aussi décodage **matériel ou logiciel**, codec, images/s tenu contre annoncé, images perdues, débit. Activable via le bouton ⚙ des contrôles (mobile) ou ↑ → Options (TV) → « Infos vidéo » ; le relevé part aussi dans le journal de diagnostic, lisible depuis la console web
 - [x] **Format d'image du lecteur** (§videoFit, 2026-08-29) — **Original** (image entière), **Zoom** (efface les bandes noires en rognant les bords) ou **Plein écran** (remplit en déformant). Choix mémorisé d'une vidéo à l'autre ; accessible via le bouton ⚙ des contrôles (mobile) ou ↑ → Options (TV) → « Format d'image »
-- [x] **Piste audio de secours** (§audioFallback, 2026-08-29) — quand une piste TrueHD/Atmos ne se décode pas (fréquent sur les rips 4K), le lecteur bascule sur une autre piste au lieu d'abandonner, et lit sans son en dernier recours plutôt que d'afficher une erreur
+- [x] **Piste audio de secours** (§audioFallback, 2026-08-29) — quand une piste TrueHD/Atmos ne se décode pas (fréquent sur les rips 4K), le lecteur bascule sur une autre piste au lieu d'abandonner, et lit sans son en dernier recours plutôt que d'afficher une erreur — ⚠️ depuis le changement de moteur vidéo (septembre 2026), ce secours n'est plus déclenché : le rebrancher ou le retirer reste à décider
 - [x] **Catégorie Radio séparée** (§radioCat, 2026-08-29) — les webradios ne noient plus les chaînes de télévision
 - [x] **Pistes audio + sous-titres (embarqués)** — sélecteur in-player (bouton CC) + préférence de langue mémorisée
 - [ ] **Sous-titres externes** — fichier/URL `.srt` + recherche en ligne auto par TMDB
-- [ ] **File d'attente DL + WiFi-only** — sémaphore, reprise auto au retour réseau
+- [x] **File d'attente DL + WiFi-only** — ✅ fait le 2026-09-06 (une file par abonnement, pas un simple sémaphore ; voir « Terminé »)
 - [x] **Background audio** — ✅ déjà en place (vérifié dans le code le 2026-09-05) : le lecteur tient un verrou CPU / WiFi pendant la lecture et le service de premier plan de §nowPlaying garde l'app vivante ; le son continue écran éteint tant que le lecteur est ouvert. Reste à mesurer sur l'appareil (voir §bgAudio)
 - [ ] **PIN / contrôle parental** — verrouillage app + masquage contenus adultes
-- [ ] **Empty states + Pull-to-refresh** — UX unifiée sur toutes les pages
-- [ ] **Mode hors-ligne** — bascule auto sur fichiers locaux si pas de réseau
+- [x] **Empty states + Pull-to-refresh** — ✅ fait (§12, v1.7.0)
+- [x] **Mode hors-ligne** — ✅ fait le 2026-09-06 (§offlineBoot) : bandeau, fichiers téléchargés au démarrage sans réseau, reprise seule au retour de la connexion
 - [x] **Parsing M3U en isolate** — ✅ fait : catalogue JSON parsé en isolate (§23) et lecture M3U en flux (§ramDiet) ; le `compute()` d'origine n'a plus d'objet
 - ⛔ ~~**Téléchargement différentiel** — HEAD + Range requests pour économiser la bande passante~~ — écarté le 2026-09-05 : depuis le catalogue JSON, il n'y a plus de fichier M3U distant à comparer
-- [ ] **Hardening sécurité v2** — DownloadManagerService → SecureStorage, M3U cache → ApplicationSupport, debugPrint no-op en release
+- [ ] **Hardening sécurité v2** — tâches de téléchargement dans le stockage chiffré, caches de listes dans le dossier privé (déjà faits : plus aucun journal envoyé au système en version publiée, console web et serveurs Chromecast verrouillés par la revue du 2026-09-11)
 - [ ] **Cleanup perfs** — Image.network avec cacheWidth/cacheHeight, memoization _HomeCard.build, helper launchPlayer factorisé
-- [ ] **Tests unitaires** — services purs (parser, filter, replay URL builder, etc.)
+- [x] **Tests unitaires** — ✅ une suite complète et bloquante : elle tourne à chaque envoi de code, et aucune version n'est publiée si un test échoue
 - [x] **Nouveau moteur vidéo — HDR natif sur téléviseur** *(✅ validé sur appareil le 2026-09-02, §engineVendor — détail dans « Terminé »)* — le lecteur actuel compose l'image dans une texture, ce qui **impose une conversion en SDR** : un téléviseur compatible HDR n'affiche jamais de HDR, et le calcul de conversion faisait jeter une image sur trois en 4K. Le nouveau moteur dessine directement sur une surface d'affichage, ce qui rend le **HDR réel** possible (vérifié : la télé affiche enfin ses témoins HDR et Dolby) et **allège l'application d'environ 40 Mo**. La compatibilité des formats a été comparée fichier par fichier sur un téléviseur **et** un téléphone réels : aucune perte
 - [ ] **Mise à jour des dépendances** — `flutter_secure_storage` v10, `google_fonts` v8, migration "Built-in Kotlin" (Flutter ≥ 3.44)
-- [ ] **Port Windows** — branche `windows-port` synchronisée à v1.11.2 ; cible : fusion mono-branche + exe Windows attaché aux releases GitHub (voir `.claude/windows_ci_release_plan.md`)
+- [ ] **Port Windows** — branche `windows-port` synchronisée à v1.11.2 ; cible : fusion mono-branche + exe Windows attaché aux releases GitHub (plan interne, hors dépôt)
 
 ---
 
