@@ -307,6 +307,14 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   // Regroupe les entrées d'erreur en fin de log dans un accordéon replié.
   // Appelé quand le téléchargement reprend après un état failed.
   void _collapseRecentErrors(DownloadTask task) {
+    // §dlPauseBack (recette S25 du 2026-09-11) — Le transfert REPART : l'état
+    // d'erreur tombe TOUJOURS, avant tout le reste. Il n'était baissé qu'en
+    // fin de fonction, APRÈS un `return` anticipé pris dès que la dernière
+    // ligne du journal n'était pas une erreur — or RELANCER passe par la file,
+    // qui écrit « ⏳ en attente… » après les erreurs. Le moniteur restait donc
+    // en mode « échec » (RELANCER / FERMER) pendant tout le transfert repris,
+    // sans bouton PAUSE.
+    _hasFatalError = false;
     // §dlWatchdog — Le compteur vient de la TÂCHE dès qu'elle en sait plus que
     // nous : il vivait ici seul, donc il repartait à zéro dès qu'on refermait
     // le moniteur, alors que le transfert, lui, continuait. On garde le repli
