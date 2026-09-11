@@ -38,8 +38,13 @@ Future<bool> confirmOrUndo(
   required VoidCallback onUndo,
   bool destructive = true,
   bool? isTv,
+  // Recette S25 du 2026-09-11 — Demander AVANT sur tous les appareils : pour
+  // une perte coûteuse à refaire (une clé de ~220 caractères), une annulation
+  // de 5 s dans une snackbar se rate trop facilement (« pas eu d'Annuler
+  // possible, ça a détruit la clé »).
+  bool alwaysAsk = false,
 }) async {
-  if (isTv ?? PlatformTv.isTv) {
+  if (alwaysAsk || (isTv ?? PlatformTv.isTv)) {
     final bool ok = await showAppDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(

@@ -162,6 +162,11 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
     );
     if (result != null) {
       await StreamAccountService.saveAccount(result);
+      // Recette S25 du 2026-09-11 — le nouveau nom va aussi aux pastilles de
+      // version des fiches (elles lisent la table des listes chargées).
+      if (initial != null) {
+        ParsedPlaylistService.renameAccount(result.id, result.label);
+      }
       // Revue 2026-09-11, D4B-03 — seul un compte NOUVEAU devient principal.
       // En édition, corriger le nom d'un secondaire le rendait principal sans
       // le dire (et l'accueil se rechargeait sur lui) : aucun commentaire ne

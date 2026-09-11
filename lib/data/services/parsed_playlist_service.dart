@@ -886,6 +886,18 @@ class ParsedPlaylistService {
   /// Nom affiché d'un compte (pour les badges [Provider A] dans les action sheets).
   static String? accountName(String accountId) => _accountNames[accountId];
 
+  /// Recette S25 du 2026-09-11 — Renommer un compte ne changeait que sa
+  /// configuration : les pastilles de version d'une fiche lisent CETTE table,
+  /// remplie au chargement d'une liste, et gardaient l'ancien nom jusqu'au
+  /// rechargement suivant. On la met à jour sans rien recharger.
+  /// ⚠️ Volontairement SANS `version.value++` : ce signal fait regrouper tout
+  /// l'accueil (clé du mémo), pour un nom que les pastilles relisent de toute
+  /// façon à leur construction.
+  static void renameAccount(String accountId, String label) {
+    if (!_accountNames.containsKey(accountId)) return;
+    _accountNames[accountId] = label;
+  }
+
   // ── Invalidation ──────────────────────────────────────────────────────────
 
   /// Re-parse atomiquement la playlist depuis le disque sans laisser d'état vide.

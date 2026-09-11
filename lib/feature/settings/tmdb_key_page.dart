@@ -155,6 +155,8 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> with TvInitialFocus {
     if (!mounted) return;
     await confirmOrUndo(
       context,
+      // Recette S25 — demander AVANT aussi au doigt (clé de ~220 caractères).
+      alwaysAsk: true,
       title: l10n.tmdbKeyRemoveTitle,
       question: l10n.tmdbKeyRemoveQuestion,
       confirmLabel: l10n.tmdbKeyRemove,
@@ -576,7 +578,13 @@ class _InfoBlock extends StatelessWidget {
           _step(context, 3, l10n.tmdbHowStep3),
           _step(context, 4, l10n.tmdbHowStep4),
           const SizedBox(height: 8),
-          Row(
+          // Recette S25 du 2026-09-11 — un `Row` : « Créer un compte » +
+          // « J'ai déjà un compte » dépassaient l'écran d'un téléphone. Le
+          // `Wrap` passe le second bouton à la ligne quand la place manque.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               FilledButton.icon(
                 onPressed: onSignup,
