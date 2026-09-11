@@ -18,6 +18,7 @@ import 'package:aetherStream/main.dart' show checkForUpdate;
 import '../../l10n/app_localizations.dart';
 import '../themes/colors.dart';
 import 'package:aetherStream/widgets/offline_banner.dart';
+import 'package:aetherStream/widgets/web_console_banner.dart';
 import '../../l10n/l10n_ext.dart';
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
@@ -199,6 +200,8 @@ class _MainNavigationState extends State<MainNavigation> {
     final stack = Column(
       children: [
         const OfflineBanner(),
+        // D1B-02 — La console web ouverte hors de son écran se VOIT.
+        const WebConsoleBanner(),
         Expanded(
           child: IndexedStack(
             index: _stackIndex,

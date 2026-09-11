@@ -1,3 +1,5 @@
+import '../../core/utils/log_sanitizer.dart' show xtreamPathCredentialIndexes;
+
 /// Mode d’authentification
 /// - [completeUrl] : l’utilisateur fournit directement l’URL .m3u complète.
 /// - [separate]   : on construit l’URL à partir de baseUrl + username + password (style Xtream Codes).
@@ -61,7 +63,13 @@ class StreamAccount {
     final base = hasSlash ? b.substring(0, b.length - 1) : b;
     final String typeValue = playlistType == PlaylistType.simple ? 'simple' : 'm3u_plus';
 
-    return "$base/get.php?username=$u&password=$p&type=$typeValue&output=ts";
+    // §tourFix — revue 2026-09-11, D1A-16 — Identifiant et mot de passe
+    // ENCODÉS, comme le fait déjà `XtreamApiService._baseUrl`. Interpolés
+    // bruts, un mot de passe « ab&cd#1 » partait en `password=ab` (le `&`
+    // ouvre un autre paramètre, le `#` coupe l'URL) : le repli get.php
+    // échouait à tous les coups. Sans effet sur un identifiant alphanumérique.
+    return "$base/get.php?username=${Uri.encodeQueryComponent(u)}"
+        "&password=${Uri.encodeQueryComponent(p)}&type=$typeValue&output=ts";
 
   }
 
@@ -259,25 +267,21 @@ class XtreamCredentials {
     // Format 2 : path Xtream `/{user}/{pass}/{stream_id}[.ext]`.
     // On accepte `/live/`, `/movie/`, `/series/`, `/timeshift/` comme préfixe
     // optionnel, puis 2 segments user/pass, puis au moins 1 segment de plus.
+    //
+    // §tourFix — revue 2026-09-11, D5A-02 — La règle vit dans
+    // `log_sanitizer.dart` (`xtreamPathCredentialIndexes`) et `redactUrl`
+    // applique LA MÊME : ce qu'on extrait ici est garanti masqué dans les
+    // journaux. Comportement d'extraction inchangé (déplacé à l'identique).
     final segments = uri.pathSegments
         .where((s) => s.isNotEmpty)
         .toList(growable: false);
-    if (segments.length >= 3) {
-      const prefixes = {'live', 'movie', 'series', 'timeshift'};
-      int startIdx = 0;
-      if (prefixes.contains(segments.first.toLowerCase())) startIdx = 1;
-      if (segments.length >= startIdx + 3) {
-        final u = segments[startIdx];
-        final p = segments[startIdx + 1];
-        // Heuristique anti-faux-positif : user et pass ne ressemblent pas à
-        // un chemin de fichier (pas d'extension `.m3u8`, pas de point).
-        if (u.isNotEmpty &&
-            p.isNotEmpty &&
-            !u.contains('.') &&
-            !p.contains('.')) {
-          return (host: origin, username: u, password: p);
-        }
-      }
+    final idx = xtreamPathCredentialIndexes(segments);
+    if (idx != null) {
+      return (
+        host: origin,
+        username: segments[idx.user],
+        password: segments[idx.pass],
+      );
     }
 
     return null;

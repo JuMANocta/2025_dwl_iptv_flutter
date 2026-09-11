@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.DataReader
 import androidx.media3.common.Format
@@ -147,7 +146,7 @@ class AetherCastRelay(private val context: Context) {
         } else {
             MediaItem.fromUri(url)
         }
-        if (startMs > 0) Log.i(TAG, "conversion démarrée à ${startMs / 1000} s")
+        if (startMs > 0) AetherLog.i(TAG, "conversion démarrée à ${startMs / 1000} s")
         val edited = EditedMediaItem.Builder(item).build()
         // `setTransmuxVideo` est laissé pour l'intention ; il est SANS EFFET sur
         // un élément unique (voir l'en-tête). La recopie vient de l'extracteur.
@@ -222,7 +221,7 @@ class AetherCastRelay(private val context: Context) {
                     // course ne doit pas envoyer « terminé » après « échoué ».
                     if (failed) return
                     failed = true
-                    Log.i(
+                    AetherLog.i(
                         TAG,
                         "conversion finie — vidéo ${describeProcess(result.videoConversionProcess)}, " +
                             "son ${describeProcess(result.audioConversionProcess)}, " +
@@ -239,7 +238,7 @@ class AetherCastRelay(private val context: Context) {
                     result: ExportResult,
                     exception: ExportException
                 ) {
-                    Log.w(TAG, "conversion échouée : ${exception.errorCodeName} ${exception.message}")
+                    AetherLog.w(TAG, "conversion échouée : ${exception.errorCodeName} ${exception.message}")
                     stopTicker()
                     if (!failed) {
                         failed = true
@@ -417,7 +416,7 @@ private class RelayExtractorOutput(
      * donnerait une image aux couleurs fausses, on refuse en le disant.
      */
     private fun normalizeVideo(f: Format): Format {
-        Log.i(
+        AetherLog.i(
             AetherCastRelay.TAG,
             "source vidéo : ${f.sampleMimeType} ${f.width}x${f.height} " +
                 "codecs=${f.codecs} pixels=${f.pixelWidthHeightRatio}"
@@ -436,11 +435,11 @@ private class RelayExtractorOutput(
             }
             val base = if (codecs.startsWith("dva")) MimeTypes.VIDEO_H264 else MimeTypes.VIDEO_H265
             b = f.buildUpon().setSampleMimeType(base).setCodecs(null)
-            Log.i(AetherCastRelay.TAG, "vidéo : Dolby Vision ($codecs) réétiqueté $base pour la recopie")
+            AetherLog.i(AetherCastRelay.TAG, "vidéo : Dolby Vision ($codecs) réétiqueté $base pour la recopie")
         }
         if (f.pixelWidthHeightRatio != 1f) {
             b = (b ?: f.buildUpon()).setPixelWidthHeightRatio(1f)
-            Log.i(
+            AetherLog.i(
                 AetherCastRelay.TAG,
                 "vidéo : rapport de pixels ${f.pixelWidthHeightRatio} forcé à 1 pour la recopie"
             )
@@ -455,7 +454,7 @@ private class RelayExtractorOutput(
      * maximum).
      */
     private fun tagAudio(f: Format, rank: Int): Format {
-        Log.i(
+        AetherLog.i(
             AetherCastRelay.TAG,
             "source audio #$rank : ${f.sampleMimeType} langue=${f.language} " +
                 "canaux=${f.channelCount} débit=${f.bitrate} flags=${f.selectionFlags}"

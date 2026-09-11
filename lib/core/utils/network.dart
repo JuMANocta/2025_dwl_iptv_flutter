@@ -123,11 +123,18 @@ class NetworkUtils {
   }
 
   /// §cookieScope — Choix des cookies à envoyer, extrait pour être testable
-  /// sans appareil : le compte porte les siens, sinon on retombe sur le
-  /// stockage legacy mono-compte. Rend `''` quand il n'y en a pas.
+  /// sans appareil. Rend `''` quand il n'y en a pas.
+  ///
+  /// Revue 2026-09-11, D1B-10 — Un compte connu envoie SES cookies, et rien
+  /// d'autre : le repli sur le stockage legacy mono-compte ne vaut plus que
+  /// SANS compte du tout (installation d'avant la migration). Avant, tout
+  /// compte sans cookies recevait ceux du legacy — c'est-à-dire la session du
+  /// panel de l'ère mono-compte envoyée à un AUTRE fournisseur, exactement la
+  /// fuite que §cookieScope voulait fermer (la migration copie déjà ces
+  /// cookies dans le compte migré, qui n'y perd rien).
+  /// Testé : `test/cookie_scope_test.dart`.
   static String cookiesFor(StreamAccount? account, Map<String, dynamic> legacy) {
-    final String own = (account?.cookies ?? '').trim();
-    if (own.isNotEmpty) return own;
+    if (account != null) return (account.cookies ?? '').trim();
     return (legacy['cookies'] ?? '').toString().trim();
   }
 }

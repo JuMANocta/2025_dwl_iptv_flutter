@@ -95,7 +95,16 @@ class MainActivity : FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 try {
-                    val file = File(path)
+                    val file = File(path).canonicalFile
+                    // Revue 2026-09-11, D2B-12 — Le canal acceptait N'IMPORTE
+                    // quel chemin : seul l'APK de mise à jour, dans
+                    // `cache/updates/`, a le droit de sortir par le
+                    // FileProvider (défense en profondeur avec file_paths.xml).
+                    val updatesDir = File(cacheDir, "updates").canonicalFile
+                    if (file.parentFile != updatesDir) {
+                        result.error("BAD_PATH", "APK hors du dossier des mises à jour", null)
+                        return@setMethodCallHandler
+                    }
                     val uri = FileProvider.getUriForFile(
                         this,
                         "${packageName}.fileprovider",
@@ -556,6 +565,8 @@ class MainActivity : FlutterActivity() {
     // désarmerait exactement quand il sert le plus.
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        // D2B-16 — Journal natif muet sur un APK non débogable (AetherLog.kt).
+        AetherLog.init(this)
         val filter = IntentFilter(AetherDownloadService.ACTION_CANCEL)
         // §castSend — Meme cycle de vie que le recepteur d'annulation, pour la
         // meme raison : les boutons servent quand l'app est en arriere-plan.

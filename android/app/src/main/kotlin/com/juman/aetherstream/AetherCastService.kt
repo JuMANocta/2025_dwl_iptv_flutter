@@ -13,7 +13,6 @@ import android.graphics.BitmapFactory
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import java.net.HttpURLConnection
@@ -88,7 +87,7 @@ class AetherCastService : Service() {
                 @Suppress("DEPRECATION")
                 context.startService(intent)
             } catch (e: Exception) {
-                Log.w(TAG, "démarrage du service refusé (${e.javaClass.simpleName})")
+                AetherLog.w(TAG, "démarrage du service refusé (${e.javaClass.simpleName})")
             }
         }
 
@@ -157,7 +156,7 @@ class AetherCastService : Service() {
                 startForeground(ONGOING_NOTIFICATION_ID, notification)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "startForeground refusé (${e.javaClass.simpleName})")
+            AetherLog.w(TAG, "startForeground refusé (${e.javaClass.simpleName})")
         }
     }
 

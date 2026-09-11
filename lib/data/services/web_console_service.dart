@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/diagnostics/log_buffer.dart';
+import '../../core/utils/lan_address.dart';
+import '../../core/utils/user_error.dart';
 import 'load_failure.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/theme_service.dart';
@@ -41,9 +44,30 @@ import '../../feature/settings/web_console/web_console_html.dart' as html;
 /// **multi-routes** : tant que l'écran "Console web" de la TV est ouvert, le
 /// serveur répond aux actions (comptes, TMDB, XMLTV, thème, sauvegarde).
 ///
-/// Sécurité : HTTP clair LAN uniquement, token 8 chars requis sur toute requête,
-/// serveur fermé sur `stop()` (dispose de l'écran) ou timeout 30 min. Le `.aether`
-/// reste chiffré — le mot de passe est exigé côté navigateur pour appliquer.
+/// Sécurité — revue 2026-09-11, D1B-02 (décision utilisateur : la console
+/// RESTE en release, mais verrouillée). L'en-tête d'origine promettait
+/// « fermeture à la sortie de l'écran » alors que §webConsolePersist la garde
+/// vivante hors écran : il décrit désormais ce qui est vrai.
+///   - HTTP clair, **lié à l'adresse LAN** détectée (plus `0.0.0.0` : sur un
+///     point d'accès ou un téléphone en données mobiles, elle écoutait sur
+///     toutes les interfaces) ; repli `anyIPv4` seulement si la détection est
+///     impossible. Un second écouteur sur la BOUCLE LOCALE, même port : c'est
+///     par lui que passe `adb forward` (driver.sh `port`/`logs`/`api`) — il
+///     n'est joignable que depuis l'appareil lui-même.
+///   - Jeton de **16** caractères (80 bits, contre 40) sur TOUTE requête — il
+///     ouvre `/api/backup/export`, donc tous les identifiants IPTV.
+///   - Plus d'en-tête CORS `*` (la page est servie par ce même serveur, elle
+///     n'en a jamais eu besoin) ; `Referrer-Policy: no-referrer` et plus de
+///     police Google (l'URL de la page porte le jeton).
+///   - Fermeture après 30 min **sans geste** (le délai repart à chaque
+///     requête authentifiée : une télécommande en cours n'est plus coupée
+///     net — sauf les lectures que la page relance seule, `/logs.txt` et
+///     `/fleet.json`, sinon un onglet oublié la garderait ouverte à vie) ;
+///     tant qu'elle tourne, un bandeau le dit hors de l'écran ([running]).
+///   - `/api/dev/*` absentes du release (sauf `--dart-define=AS_DEV_ROUTES=true`),
+///     corps de requête borné ([maxBodyBytes]), erreurs par `describeError`.
+/// Le `.aether` reste chiffré — le mot de passe est exigé côté navigateur pour
+/// appliquer.
 ///
 /// §webConsoleOnly (2026-08-05) — La Console web est devenue le **seul** canal
 /// QR de l'app (l'ancien `PairingService` mono-formulaire a été supprimé : sur
@@ -77,10 +101,53 @@ class WebConsoleService {
   static final WebConsoleService instance = WebConsoleService._();
 
   HttpServer? _server;
+
+  /// D1B-02 — Écouteur sur la boucle locale, même port que [_server] : le
+  /// chemin d'`adb forward` (outillage de recette), injoignable du réseau.
+  HttpServer? _loopback;
   String? _token;
   String? _localIp;
   AppThemeConfig _theme = AppThemeConfig.defaults;
   Timer? _timeout;
+  DateTime? _autoStopAt;
+
+  /// D1B-02 — Vrai tant que le serveur écoute. Le bandeau de l'app
+  /// (`WebConsoleBanner`) s'y abonne : la console survit à son écran
+  /// (§webConsolePersist), il faut que ça se VOIE.
+  final ValueNotifier<bool> running = ValueNotifier<bool>(false);
+
+  /// D1B-12 — Plafond d'un corps de requête. Le plus gros légitime est un
+  /// `.aether` en base64 (quelques Mo) : 20 Mo laissent une marge large sans
+  /// laisser un POST de plusieurs centaines de Mo se charger en mémoire.
+  @visibleForTesting
+  static int maxBodyBytes = 20 * 1024 * 1024;
+
+  /// Source de l'adresse LAN — remplaçable par les tests (boucle locale).
+  @visibleForTesting
+  static Future<String?> Function() localAddress =
+      () => lanIpv4(allowNonPrivate: true);
+
+  /// D1B-11 / D5A-17 — `/api/dev/*` (le banc AOT §parseSpeed) re-parse une
+  /// liste sur le thread principal : l'interface gèle le temps de l'analyse.
+  /// Servies en debug et en profile (profile = AOT : la mesure reste
+  /// possible), jamais dans un release — sauf build de recette compilé avec
+  /// `--dart-define=AS_DEV_ROUTES=true`, comme `AS_KEYTRACE`.
+  static const bool devRoutesEnabled =
+      !kReleaseMode || bool.fromEnvironment('AS_DEV_ROUTES');
+
+  /// D1B-02 — Lectures que la page relance d'elle-même (journal en suivi
+  /// direct, état des listes) : elles ne prouvent pas qu'une personne est là,
+  /// donc ne repoussent pas l'arrêt automatique.
+  static bool _isPassivePoll(String method, String path) =>
+      method == 'GET' && (path == '/logs.txt' || path == '/fleet.json');
+
+  /// Échéance de l'arrêt automatique (tests / diagnostic).
+  @visibleForTesting
+  DateTime? get autoStopAt => _autoStopAt;
+
+  /// Adresse d'écoute réelle du serveur LAN (tests).
+  @visibleForTesting
+  InternetAddress? get boundAddress => _server?.address;
 
   /// §webConsoleOnly — Vue sur laquelle le QR ouvre le navigateur (`accounts`,
   /// `tmdb`…). `null` = tableau de bord complet.
@@ -124,22 +191,55 @@ class WebConsoleService {
     _theme = theme;
     _initialView = initialView;
     _token = _generateToken();
-    _localIp = await _detectLocalIp();
+    _localIp = await localAddress();
 
+    // D1B-02 — Lié à l'adresse LAN ; `anyIPv4` seulement si la détection n'a
+    // rien donné (comportement d'avant, faute de mieux).
+    final String? ip = _localIp;
+    final InternetAddress bindTo =
+        ip == null ? InternetAddress.anyIPv4 : InternetAddress(ip);
     try {
-      _server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
+      _server = await HttpServer.bind(bindTo, 0);
     } catch (e) {
       debugPrint('❌ WebConsoleService: bind impossible : $e');
       rethrow;
     }
+    // ⚠️ Format lu par driver.sh (`WebConsoleService: <ip>:<port>`) : ne pas
+    // le changer sans mettre l'outil à jour.
     debugPrint('🚀 WebConsoleService: ${_server!.address.address}:${_server!.port} (ip=$_localIp)');
 
     _server!.listen(_handleRequest, onError: (e) {
       debugPrint('❌ WebConsoleService: $e');
     });
 
+    // Boucle locale, MÊME port (adb forward tcp:P → 127.0.0.1:P sur
+    // l'appareil). Inutile si le serveur écoute déjà partout ou sur la boucle.
+    if (!bindTo.isLoopback && bindTo != InternetAddress.anyIPv4) {
+      try {
+        _loopback =
+            await HttpServer.bind(InternetAddress.loopbackIPv4, _server!.port);
+        _loopback!.listen(_handleRequest, onError: (e) {
+          debugPrint('❌ WebConsoleService (boucle locale): $e');
+        });
+      } catch (e) {
+        // Port déjà pris sur la boucle : la console marche, seul l'outillage
+        // adb est privé de ce chemin.
+        debugPrint('⚠️ WebConsoleService: boucle locale indisponible : $e');
+      }
+    }
+
+    running.value = true;
+    _armAutoStop();
+  }
+
+  /// D1B-02 — (Ré)arme l'arrêt automatique : 30 min APRÈS la dernière
+  /// requête authentifiée qui vient d'un GESTE, et non plus 30 min après
+  /// l'ouverture — une télécommande en cours d'usage était coupée net.
+  void _armAutoStop() {
+    _timeout?.cancel();
+    _autoStopAt = DateTime.now().add(_autoStopDuration);
     _timeout = Timer(_autoStopDuration, () {
-      debugPrint('⏱️ WebConsoleService: timeout 30 min, fermeture');
+      debugPrint('⏱️ WebConsoleService: 30 min sans requête, fermeture');
       stop();
     });
   }
@@ -147,13 +247,19 @@ class WebConsoleService {
   Future<void> stop() async {
     _timeout?.cancel();
     _timeout = null;
+    _autoStopAt = null;
     try {
       await _server?.close(force: true);
     } catch (_) {}
+    try {
+      await _loopback?.close(force: true);
+    } catch (_) {}
     _server = null;
+    _loopback = null;
     _token = null;
     _localIp = null;
     _initialView = null;
+    running.value = false;
     debugPrint('🛑 WebConsoleService: arrêté');
   }
 
@@ -167,8 +273,11 @@ class WebConsoleService {
   Future<void> _handleRequest(HttpRequest req) async {
     final res = req.response;
     try {
-      res.headers.set('Access-Control-Allow-Origin', '*');
+      // D1B-02 — Plus de `Access-Control-Allow-Origin: *` : la page est
+      // servie par ce serveur, et l'en-tête ouvrait les réponses à tout script
+      // d'une autre origine. D1B-13 — l'URL porte le jeton : aucun Referer.
       res.headers.set('Cache-Control', 'no-store');
+      res.headers.set('Referrer-Policy', 'no-referrer');
 
       final uri = req.uri;
       if (uri.path == '/favicon.ico') {
@@ -185,6 +294,13 @@ class WebConsoleService {
         await res.close();
         return;
       }
+      // D1B-02 — Requête authentifiée : la session est utilisée, l'arrêt
+      // automatique repart de maintenant. ⚠️ SAUF les deux lectures que la
+      // page relance TOUTE SEULE (`/logs.txt` toutes les 2 s en suivi direct,
+      // `/fleet.json` toutes les 5 s) : un onglet oublié sur le PC aurait
+      // gardé la console ouverte sans fin — pire que les 30 min FIXES d'avant.
+      // Seul un geste (page ouverte, télécommande, action) prolonge la session.
+      if (!_isPassivePoll(req.method, uri.path)) _armAutoStop();
 
       if (req.method == 'GET' && uri.path == '/') {
         await _serveView(req, uri.queryParameters['view']);
@@ -391,8 +507,27 @@ class WebConsoleService {
     };
   }
 
+  /// D1B-12 — Lecture BORNÉE : au-delà de [maxBodyBytes] (annoncé par
+  /// `Content-Length` ou constaté en route pour un corps « chunked »), plus
+  /// rien n'est GARDÉ en mémoire.
+  ///
+  /// ⚠️ Le reste du corps est quand même LU (et jeté) avant de répondre :
+  /// abandonner le flux de la requête en cours de route fait fermer la
+  /// connexion par `HttpServer`, et le navigateur ne reçoit jamais le 413 —
+  /// seulement « connexion fermée ». Mémoire bornée à plafond + un bloc.
   Future<Map<String, dynamic>> _readJson(HttpRequest req) async {
-    final body = await utf8.decoder.bind(req).join();
+    bool tooLarge = req.contentLength > maxBodyBytes;
+    final BytesBuilder buf = BytesBuilder(copy: false);
+    await for (final List<int> chunk in req) {
+      if (tooLarge) continue; // on vide sans garder
+      buf.add(chunk);
+      if (buf.length > maxBodyBytes) {
+        tooLarge = true;
+        buf.clear();
+      }
+    }
+    if (tooLarge) throw const _PayloadTooLarge();
+    final String body = utf8.decode(buf.takeBytes());
     if (body.isEmpty) return {};
     return jsonDecode(body) as Map<String, dynamic>;
   }
@@ -401,15 +536,28 @@ class WebConsoleService {
     req.response.statusCode = code;
     req.response.headers.contentType = ContentType.json;
     req.response.write(jsonEncode(body));
-    req.response.close();
+    // D1B-12 — `close()` n'était pas attendu NI gardé : un onglet fermé
+    // pendant la réponse devenait une erreur asynchrone non gérée.
+    unawaited(req.response.close().then<void>((_) {}, onError: (Object e) {
+      debugPrint('ℹ️ WebConsoleService: réponse interrompue (${e.runtimeType})');
+    }));
   }
 
   Future<void> _handleApi(HttpRequest req, String path) async {
     Map<String, dynamic> payload;
     try {
       payload = await _readJson(req);
+    } on _PayloadTooLarge {
+      _json(req, 413, {'ok': false, 'error': 'Fichier trop volumineux.'});
+      return;
     } catch (_) {
       _json(req, 400, {'ok': false, 'error': 'Payload invalide.'});
+      return;
+    }
+
+    // D1B-11 / D5A-17 — Outils de mesure : absents d'un release.
+    if (path.startsWith('/api/dev/') && !devRoutesEnabled) {
+      _json(req, 404, {'ok': false, 'error': 'Route inconnue.'});
       return;
     }
 
@@ -534,7 +682,10 @@ class WebConsoleService {
       if (path != '/api/remote' && !path.startsWith('/api/logs/')) _emit(path);
     } catch (e) {
       debugPrint('❌ WebConsoleService API $path: $e');
-      _json(req, 400, {'ok': false, 'error': e.toString()});
+      // D1B-12 / §userError — Jamais le `toString()` brut au navigateur
+      // (`FileSystemException`, `TypeError`…) : `describeError` garde nos
+      // phrases de validation, traduit le reste et repasse par sanitizeForLog.
+      _json(req, 400, {'ok': false, 'error': describeError(e)});
     }
   }
 
@@ -615,6 +766,12 @@ class WebConsoleService {
       await TmdbApiService.deleteApiKey();
     } else {
       if (t.length < 20) throw 'Token trop court.';
+      // §tmdbKeyCheck — revue 2026-09-11, D1B-18 — Même contrôle que la page
+      // native : une clé mal collée depuis le PC (le canal privilégié sur TV)
+      // répondait « ok » et laissait une app sans affiche, sans un mot.
+      // `null` (TMDB injoignable) : on enregistre quand même, comme la page.
+      final bool? accepted = await TmdbService.probeKey(t);
+      if (accepted == false) throw 'Clé refusée par TMDB.';
       await TmdbApiService.saveApiKey(t);
     }
     TmdbService.resetInstance();
@@ -711,39 +868,17 @@ class WebConsoleService {
     }
   }
 
+  /// D1B-02 — 16 caractères sur 32 symboles (80 bits ; 8 auparavant). Même
+  /// alphabet sans caractères ambigus (ni 0/O ni 1/I) : il se recopie à la
+  /// main depuis l'écran de la TV.
   static String _generateToken() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final rnd = Random.secure();
-    return List.generate(8, (_) => chars[rnd.nextInt(chars.length)]).join();
+    return List.generate(16, (_) => chars[rnd.nextInt(chars.length)]).join();
   }
+}
 
-  static Future<String?> _detectLocalIp() async {
-    try {
-      final interfaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-        includeLoopback: false,
-        includeLinkLocal: false,
-      );
-      if (interfaces.isEmpty) return null;
-      String prioOf(String name) {
-        final n = name.toLowerCase();
-        if (n.startsWith('wlan') || n.contains('wifi')) return 'a';
-        if (n.startsWith('eth')) return 'b';
-        return 'c';
-      }
-      interfaces.sort((a, b) => prioOf(a.name).compareTo(prioOf(b.name)));
-      for (final iface in interfaces) {
-        for (final addr in iface.addresses) {
-          final ip = addr.address;
-          if (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
-            return ip;
-          }
-        }
-      }
-      return interfaces.first.addresses.first.address;
-    } catch (e) {
-      debugPrint('❌ WebConsoleService._detectLocalIp: $e');
-      return null;
-    }
-  }
+/// D1B-12 — Corps de requête au-delà de [WebConsoleService.maxBodyBytes].
+class _PayloadTooLarge implements Exception {
+  const _PayloadTooLarge();
 }

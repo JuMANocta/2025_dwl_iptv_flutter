@@ -2579,10 +2579,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get consoleBackgroundNote =>
-      'The server stays alive in the background as long as you use the remote, even after leaving this screen. Stop it here when you are done (otherwise it closes automatically after 30 min).';
+      'The server stays alive in the background as long as you use the remote, even after leaving this screen. Stop it here when you are done (otherwise it closes after 30 min without use).';
 
   @override
   String get consoleStopServer => 'Stop the server';
+
+  @override
+  String get consoleActiveBanner =>
+      'Web console open: the app can be controlled from your local network';
 
   @override
   String get failNotLoaded => 'NOT LOADED';

@@ -70,6 +70,19 @@ class VideoPlayerMethodHandler(
     companion object {
         private const val TAG = "VideoPlayerMethod"
 
+        /**
+         * patch 19 (revue 2026-09-11, D2B-02) — Sonde des qualités HLS COUPÉE.
+         * Pour toute URL `.m3u8`, l'amont ouvrait une 2e connexion au panel
+         * (`URL.openConnection`, UA Dalvik, sans délai ni bypass TLS) : sur un
+         * abonnement « 1 / 1 » elle concurrençait la lecture (§hostGate), un
+         * panel qui filtre l'UA répondait 500 (§iptvUaCompat) — et
+         * l'`HttpURLConnection` lève alors `FileNotFoundException(url)`, que
+         * `NpLog.e` écrivait dans logcat EN RELEASE : `/live/USER/PASS/id.m3u8`.
+         * L'app n'exploite pas ces qualités (aucun `getAvailableQualities`,
+         * `qualitiesStream` ni `setQuality` dans `lib/`).
+         */
+        private const val FETCH_HLS_QUALITIES = false
+
         // Grace period before a plain pause abandons audio focus — long
         // enough to survive the background→PiP transition, short enough to
         // stay polite to other audio apps.
@@ -806,7 +819,9 @@ class VideoPlayerMethodHandler(
         }
 
         // Fetch qualities asynchronously for HLS streams
-        if (url.contains(".m3u8")) {
+        // patch 19 (revue 2026-09-11, D2B-02) — DÉSACTIVÉ : voir
+        // FETCH_HLS_QUALITIES dans le companion.
+        if (FETCH_HLS_QUALITIES && url.contains(".m3u8")) {
             CoroutineScope(Dispatchers.Main).launch {
                 availableQualities = VideoPlayerQualityHandler.fetchHLSQualities(url)
                 NpLog.d(TAG, "Fetched ${availableQualities.size} qualities")

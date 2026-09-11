@@ -200,6 +200,15 @@ class StreamAccountService {
 
     await saveAccount(acc);
     await setCurrentAccount(acc.id);
+    // §cookieScope — revue 2026-09-11, D1B-10 — Migration réussie : le
+    // stockage mono-compte n'a plus rien à dire (tout est copié dans le
+    // compte ci-dessus). `clearLegacy` n'avait AUCUN appelant, et
+    // `NetworkUtils.buildDio` relit ce stockage à chaque requête.
+    try {
+      await SecureStorageService().clearLegacy();
+    } catch (e) {
+      debugPrint('⚠️ migrateFromLegacyIfNeeded : nettoyage legacy impossible ($e)');
+    }
   }
 
   /// Méthode pour récupérer les informations d'un compte utilisateur.

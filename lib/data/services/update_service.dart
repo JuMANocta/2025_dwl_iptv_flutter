@@ -175,8 +175,19 @@ class UpdateService {
       }
     }
 
+    // §security — revue 2026-09-11, D2B-12 — L'APK vit dans `cache/updates/`,
+    // le SEUL dossier que le FileProvider rend partageable (`file_paths.xml`)
+    // et que le canal `install_apk` accepte : il ouvrait tout le cache privé
+    // (partiels de téléchargement, relais Cast, images) pour ce seul usage.
     final cacheDir = await getTemporaryDirectory();
-    final apkPath = '${cacheDir.path}/aetherstream_update.apk';
+    final updatesDir = Directory('${cacheDir.path}/updates');
+    await updatesDir.create(recursive: true);
+    final apkPath = '${updatesDir.path}/aetherstream_update.apk';
+    // Ancien emplacement (racine du cache) : plus jamais relu, ~60 Mo.
+    try {
+      final legacyApk = File('${cacheDir.path}/aetherstream_update.apk');
+      if (await legacyApk.exists()) await legacyApk.delete();
+    } catch (_) {/* le système videra le cache */}
 
     debugPrint('🚀 UpdateService: téléchargement → $url');
 

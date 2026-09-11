@@ -2595,10 +2595,14 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get consoleBackgroundNote =>
-      'Le serveur reste actif en arrière-plan tant que tu utilises la télécommande, même après avoir quitté cet écran. Arrête-le ici quand tu as fini (sinon fermeture auto après 30 min).';
+      'Le serveur reste actif en arrière-plan tant que tu utilises la télécommande, même après avoir quitté cet écran. Arrête-le ici quand tu as fini (sinon il se ferme après 30 min sans utilisation).';
 
   @override
   String get consoleStopServer => 'Arrêter le serveur';
+
+  @override
+  String get consoleActiveBanner =>
+      'Console web ouverte : l\'app est pilotable depuis le réseau local';
 
   @override
   String get failNotLoaded => 'NON CHARGÉ';

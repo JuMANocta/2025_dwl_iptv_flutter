@@ -181,6 +181,26 @@ ne coûte aucune capacité ; retirer du code en coûte.
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).
 
+## patch 19 — plus de sonde HLS parallèle, erreurs sans pile en release (2026-09-11, revue de code, lot 4)
+
+**D2B-02.** `VideoPlayerMethodHandler` lançait, pour toute URL `.m3u8`,
+`VideoPlayerQualityHandler.fetchHLSQualities` : une **seconde connexion** au
+panel par `URL.openConnection()` — UA Dalvik, sans délai, sans bypass TLS. Sur
+un abonnement « 1 / 1 » elle concurrence la lecture (§hostGate) ; un panel qui
+filtre l'UA répond 500 (§iptvUaCompat), et `HttpURLConnection` lève alors
+`FileNotFoundException(url)` — le message EST l'URL `/live/USER/PASS/id.m3u8`,
+que `NpLog.e` écrivait dans logcat **y compris en release**. L'app n'utilise
+aucune de ces qualités (grep vide de `getAvailableQualities`, `qualitiesStream`,
+`setQuality` dans `lib/`) : la sonde est coupée par `FETCH_HLS_QUALITIES =
+false` (companion du handler). Si elle revient : délais de 8 s posés, et son
+échec part en `NpLog.w` (filtré) avec le seul nom de l'exception.
+
+**D2B-16.** `NpLog.e` restait émis avec la pile complète en release : la pile
+n'y est plus passée que sur un build débogable (le message, lui, reste).
+
+Numéroté 19 à la fusion : le lot 3 de la même revue a pris les patchs 15 à 18
+(voir plus bas).
+
 ## patch 14 — la libération du lecteur ne gèle plus la sortie (2026-09-06)
 
 `VideoPlayerMethodHandler.handleDispose` appelait `SharedPlayerManager.removePlayer`

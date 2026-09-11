@@ -456,4 +456,114 @@ void main() {
       expect(castIdleMessage(null), isNull);
     });
   });
+
+  // Revue 2026-09-11, D2A-04 — Un lecteur ROUVERT pendant la diffusion d'un
+  // fichier ou d'un relais doit se reconnaître : sinon il propose « Diffuser
+  // ce titre » sur le film déjà diffusé et réécrit sa position locale figée
+  // sous la clé de reprise, en alternance avec celle du téléviseur.
+  group('castsThisMedia — la télé lit-elle CE média ?', () {
+    const String film = '/storage/emulated/0/Movies/AetherStream/Heat.mkv';
+    const String servi = 'http://192.168.1.10:41234/local/ab12/media.mkv';
+
+    test('rien n est diffusé → non', () {
+      expect(
+        castsThisMedia(
+            castUrl: null,
+            castProgressKey: null,
+            mediaPath: film,
+            resumeKey: film),
+        isFalse,
+      );
+    });
+
+    test('flux : l adresse réécrite par castUrlFor suffit (comportement d avant)', () {
+      expect(
+        castsThisMedia(
+          castUrl: 'http://p.tv/live/u/p/9.m3u8',
+          castProgressKey: null,
+          mediaPath: 'http://p.tv/live/u/p/9.ts',
+          resumeKey: 'http://p.tv/live/u/p/9.ts',
+        ),
+        isTrue,
+      );
+    });
+
+    test('⚠️ fichier servi, lecteur ROUVERT (sans chemin mémorisé) : reconnu par la clé de reprise', () {
+      expect(
+        castsThisMedia(
+          castUrl: servi,
+          castProgressKey: 'http://p.tv/movie/u/p/77.mkv',
+          mediaPath: film,
+          resumeKey: 'http://p.tv/movie/u/p/77.mkv',
+        ),
+        isTrue,
+      );
+    });
+
+    test('fichier servi, clé de reprise absente : reconnu par l URL de NOTRE serveur', () {
+      expect(
+        castsThisMedia(
+          castUrl: servi,
+          castProgressKey: null,
+          mediaPath: film,
+          resumeKey: film,
+          localFileUrl: servi,
+        ),
+        isTrue,
+      );
+    });
+
+    test('⚠️ relais (jamais de clé de reprise) : reconnu par sa source', () {
+      const String relais = 'http://192.168.1.10:5555/cd34/relay.mp4';
+      expect(
+        castsThisMedia(
+          castUrl: relais,
+          castProgressKey: null,
+          mediaPath: film,
+          resumeKey: film,
+          relayUrl: relais,
+          relaySourcePath: film,
+        ),
+        isTrue,
+      );
+    });
+
+    test('un AUTRE film diffusé → non (ni clé, ni URL, ni source)', () {
+      const String relais = 'http://192.168.1.10:5555/cd34/relay.mp4';
+      expect(
+        castsThisMedia(
+          castUrl: relais,
+          castProgressKey: null,
+          mediaPath: film,
+          resumeKey: film,
+          localFileUrl: servi,
+          relayUrl: relais,
+          relaySourcePath: '/storage/emulated/0/Movies/AetherStream/Autre.mkv',
+        ),
+        isFalse,
+      );
+      expect(
+        castsThisMedia(
+          castUrl: servi,
+          castProgressKey: 'http://p.tv/movie/u/p/1.mkv',
+          mediaPath: film,
+          resumeKey: 'http://p.tv/movie/u/p/2.mkv',
+        ),
+        isFalse,
+      );
+    });
+
+    test('la page qui a lancé la diffusion garde son critère (castMediaPath)', () {
+      expect(
+        castsThisMedia(
+          castUrl: 'http://192.168.1.10:5555/cd34/relay.mp4',
+          castProgressKey: null,
+          mediaPath: film,
+          resumeKey: film,
+          castMediaPath: film,
+        ),
+        isTrue,
+      );
+    });
+  });
 }

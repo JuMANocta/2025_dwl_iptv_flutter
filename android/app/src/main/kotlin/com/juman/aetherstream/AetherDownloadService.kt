@@ -10,7 +10,6 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 
 /**
@@ -88,7 +87,7 @@ class AetherDownloadService : Service() {
                 // continue, il perd seulement sa notification. C'était déjà le
                 // comportement avant — mais par plantage rattrapé, pas par
                 // choix.
-                Log.w(TAG, "démarrage du service refusé (${e.javaClass.simpleName})")
+                AetherLog.w(TAG, "démarrage du service refusé (${e.javaClass.simpleName})")
             }
         }
 
@@ -169,7 +168,7 @@ class AetherDownloadService : Service() {
                 startForeground(ONGOING_NOTIFICATION_ID, notification)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "startForeground refusé (${e.javaClass.simpleName})")
+            AetherLog.w(TAG, "startForeground refusé (${e.javaClass.simpleName})")
         }
     }
 

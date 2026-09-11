@@ -15,8 +15,11 @@ import 'package:aetherStream/core/utils/log_sanitizer.dart';
 /// c'est-à-dire le cas le plus nombreux du catalogue. Le test
 /// « sans extension » ci-dessous est là pour que ça ne revienne jamais.
 ///
-/// La règle reste étroite (exactement 3 segments, dernier = id numérique, user
-/// et pass sans point) pour ne pas détruire les paths d'API innocents.
+/// Revue 2026-09-11 (D5A-02 / D1B-03) — La règle NUE n'est plus une copie
+/// « étroite » de l'extraction : c'est LE MÊME prédicat
+/// (`xtreamPathCredentialIndexes`), donc tout ce que `tryExtract` lit est
+/// masqué. Le contrat croisé vit dans `test/xtream_redact_invariant_test.dart` ;
+/// ce fichier garde les cas historiques et les formes qui fuyaient.
 void main() {
   group('redactUrl — forme Xtream NUE /{user}/{pass}/{id}[.ext]', () {
     test('SANS extension (chaîne TV Ultimate) — le cas qui fuyait', () {
@@ -45,6 +48,29 @@ void main() {
       expect(out, isNot(contains('jean')));
       expect(out, isNot(contains('s3cr3t')));
       expect(out, contains('987.ts'));
+    });
+
+    // Revue 2026-09-11, D1B-03 — trois formes qui traversaient en clair.
+    test('slash final (segment vide) : masqué', () {
+      final out = redactUrl('http://srv:8080/jean/s3cr3t/12345/');
+      expect(out, isNot(contains('jean')));
+      expect(out, isNot(contains('s3cr3t')));
+      expect(out, contains('12345'));
+    });
+
+    test('dernier segment non numérique (HLS nu index.m3u8) : masqué', () {
+      final out = redactUrl('http://h/jean/s3cr3t/index.m3u8');
+      expect(out, isNot(contains('jean')));
+      expect(out, isNot(contains('s3cr3t')));
+      expect(out, contains('index.m3u8'));
+    });
+
+    test('identifiants en userInfo (user:pass@hôte) : masqués', () {
+      final out = redactUrl('http://jean:s3cr3t@panel.tv/playlist.m3u');
+      expect(out, isNot(contains('jean')));
+      expect(out, isNot(contains('s3cr3t')));
+      expect(out, contains('panel.tv'));
+      expect(out, contains('playlist.m3u'));
     });
   });
 
@@ -77,11 +103,16 @@ void main() {
   });
 
   group('redactUrl — pas de faux positif', () {
-    test('path 3 segments innocent /api/v2/status.json traverse INTACT', () {
-      // `status.json` n'est pas un id numérique : la règle NUE ne doit pas se
-      // déclencher, sinon `v2` serait détruit.
+    test('ARBITRAGE (revue 2026-09-11) : /api/v2/status.json est MASQUÉ', () {
+      // Ce test disait « traverse INTACT ». Or `XtreamCredentials.tryExtract`
+      // en EXTRAIT (api, v2) : l'invariant §tourFix exigeait donc de le
+      // masquer. Resserrer l'extraction (exclure `api`) aurait changé un
+      // chemin FONCTIONNEL (carte Xtream, API JSON, castUrlFor, replay) sans
+      // aucune mesure, et un identifiant Xtream est une chaîne LIBRE :
+      // « api » peut en être un. Un faux positif ne coûte que de la
+      // lisibilité au journal ; host et dernier segment restent lisibles.
       const url = 'http://api.example.com/api/v2/status.json';
-      expect(redactUrl(url), url);
+      expect(redactUrl(url), 'http://api.example.com/***/***/status.json');
     });
 
     test('segment à extension en position user/pass → pas de masquage', () {

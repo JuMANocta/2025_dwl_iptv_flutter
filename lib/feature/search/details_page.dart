@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:dpad/dpad.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -213,7 +214,12 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     _currentEpisode = widget.entry;
     _memorySignature = versionsSignature(_entriesFromMemory());
     ParsedPlaylistService.version.addListener(_onPlaylistChanged);
-    WidgetsBinding.instance.addObserver(this); // §exitCost — mesure de la rotation
+    // §exitCost — mesure de la rotation. Revue 2026-09-11, D4L-02 — hors
+    // release seulement : l'observateur ne sert QU'À ce chrono, et chaque
+    // rotation / clavier / PiP ajoutait une ligne au journal persistant
+    // (§logPersist), le seul canal de diagnostic d'un téléviseur. Debug et
+    // profile gardent la mesure, comme §exitCost la décrit.
+    if (!kReleaseMode) WidgetsBinding.instance.addObserver(this);
     _buildSeasonEpisodes();
 
     if (widget.entry.type == M3uContentType.series) {
@@ -296,7 +302,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     final entries = _entriesFromMemory();
     final sig = versionsSignature(entries);
     // §exitCost — mesure : ce balayage tourne a chaque bump de version.
-    debugPrint('\u23F1\uFE0F \u00A7detailsLive : balayage memoire ${sw.elapsedMilliseconds} ms (${entries.length} entrees du titre, change=${sig != _memorySignature})');
+    // D4L-02 — le chrono reste, la ligne de journal seulement hors release.
+    if (!kReleaseMode) debugPrint('\u23F1\uFE0F \u00A7detailsLive : balayage memoire ${sw.elapsedMilliseconds} ms (${entries.length} entrees du titre, change=${sig != _memorySignature})');
     if (sig == _memorySignature) return; // rien de neuf pour CE titre
     _memorySignature = sig;
     if (widget.entry.type == M3uContentType.series) {

@@ -4481,7 +4481,7 @@ abstract class AppLocalizations {
   /// No description provided for @consoleBackgroundNote.
   ///
   /// In en, this message translates to:
-  /// **'The server stays alive in the background as long as you use the remote, even after leaving this screen. Stop it here when you are done (otherwise it closes automatically after 30 min).'**
+  /// **'The server stays alive in the background as long as you use the remote, even after leaving this screen. Stop it here when you are done (otherwise it closes after 30 min without use).'**
   String get consoleBackgroundNote;
 
   /// No description provided for @consoleStopServer.
@@ -4489,6 +4489,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Stop the server'**
   String get consoleStopServer;
+
+  /// No description provided for @consoleActiveBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Web console open: the app can be controlled from your local network'**
+  String get consoleActiveBanner;
 
   /// No description provided for @failNotLoaded.
   ///

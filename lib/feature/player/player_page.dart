@@ -13,6 +13,7 @@ import 'package:aetherStream/data/services/remote_control_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
+import 'package:aetherStream/core/utils/log_sanitizer.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'media3_engine.dart';
 import 'playback_engine.dart';
@@ -485,9 +486,27 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// le chemin source dont ce relais est issu, mémorisé au lancement.
   String? _castMediaPath;
 
-  bool get _castsThisMedia =>
-      _cast != null &&
-      (_cast!.url == castUrlFor(_media.path) || _castMediaPath == _media.path);
+  ///
+  /// Revue 2026-09-11, D2A-04 — Décision PURE (`castsThisMedia`,
+  /// cast_policy.dart) : un lecteur ROUVERT pendant la diffusion d'un fichier
+  /// ou d'un relais ne se reconnaissait pas (clé de reprise, URL servie par
+  /// `CastFileServer`, source du relais n'étaient pas regardées).
+  bool get _castsThisMedia => castsThisMedia(
+        castUrl: _cast?.url,
+        castProgressKey: _cast?.progressKey,
+        mediaPath: _media.path,
+        resumeKey: _media.resumeKey,
+        castMediaPath: _castMediaPath,
+        localFileUrl: CastFileServer.urlFor(_media.path),
+        // ⚠️ `_relay` (la copie de la PAGE), pas `CastRelayService.state` :
+        // `_saveProgress` et `_stopCast` ajoutent `_relay!.offset` à la
+        // position du téléviseur. Reconnaître le relais avant que la page le
+        // connaisse (lecteur rouvert, `_relay` encore nul — et nul pour de bon
+        // si la conversion est finie) enregistrerait la position SANS le
+        // décalage : « Reprendre » à 5 min au lieu de 50.
+        relayUrl: _relay?.url,
+        relaySourcePath: CastRelayService.sourcePath,
+      );
 
   /// §castRelay — La conversion a bougé : l'écran de préparation en vit.
   void _onRelayStateChanged() {
@@ -712,8 +731,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _castMediaPath = _media.path;
     final bool isFile = _media.sourceType == VideoSourceType.file;
     // §castLocal — l'adresse du serveur LAN pour un fichier téléchargé.
+    // Revue 2026-09-11, D2A-03 — TOUJOURS `start(_media.path)` (idempotent,
+    // l'URL est propre à chaque fichier), jamais `CastFileServer.url ??` : le
+    // bouton « Diffuser ce titre » du panneau ne passe pas par la sonde, et
+    // renvoyait au téléviseur l'URL du fichier servi AVANT (celui d'un autre
+    // film), avec le titre et la clé de reprise de celui-ci.
     final String url = isFile
-        ? (CastFileServer.url ?? await CastFileServer.start(_media.path) ?? '')
+        ? (await CastFileServer.start(_media.path) ?? '')
         : castUrlFor(_media.path);
     if (url.isEmpty) {
       if (!mounted) return;
@@ -1499,8 +1523,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         final alt = _altExtUrl(_media.path);
         if (alt != null) {
           _currentPath = alt;
+          // Revue 2026-09-11, D2A-20 — `alt` = `/live/<user>/<pass>/<id>.m3u8` :
+          // en debug et profile, `debugPrint` part BRUT à logcat (la
+          // rédaction au puits §tourFix ne vaut que pour le tampon).
           debugPrint(
-              '⚠️ PlayerPage: retry $_retryCount/$_maxRetries — extension alternative: $alt');
+              '⚠️ PlayerPage: retry $_retryCount/$_maxRetries — extension alternative: ${redactUrl(alt)}');
         }
       } else {
         _currentPath = _media.path; // retour à l'URL originale
