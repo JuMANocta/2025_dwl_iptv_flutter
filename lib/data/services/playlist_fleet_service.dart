@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 
+import '../../core/utils/formatters.dart';
+import '../../core/utils/user_error.dart';
+import '../../l10n/l10n_ext.dart';
 import '../models/stream_account.dart';
 import 'load_failure.dart';
 import 'parsed_playlist_service.dart';
@@ -140,7 +143,9 @@ abstract final class PlaylistFleetService {
           acc.id,
           AccountLoadState.notLoaded,
           kind: LoadFailureKind.deferred,
-          detail: 'budget de $reason épuisé',
+          // Revue 2026-09-11, D1A-07 — pas de détail : « budget de boot
+          // épuisé » était du jargon, en français, collé à une phrase
+          // traduite. Le motif de base dit déjà « reportée ».
         );
         continue;
       }
@@ -162,12 +167,16 @@ abstract final class PlaylistFleetService {
       }
 
       onDetail?.call(acc.label);
+      // Revue 2026-09-11, D1A-07 — le délai RÉELLEMENT appliqué à l'étape en
+      // cours : l'écran annonçait « 25 s » pour une ré-analyse bornée à 3 min.
+      Duration applied = perAccount;
       try {
         switch (step) {
           case FleetStep.none:
             break;
           case FleetStep.loadCache:
           case FleetStep.reparse:
+            applied = step == FleetStep.reparse ? reparse : perAccount;
             await ParsedPlaylistService.loadSecondary(
               acc.id,
               acc.label,
@@ -183,23 +192,37 @@ abstract final class PlaylistFleetService {
           case FleetStep.download:
             final res = await PlaylistService.ensureDownloadedForAccount(
               acc,
-              force: facts.sourceIsStale && !facts.inMemory,
+              // revue 2026-09-11, D1A-02 + D3B-02 (relecture) — ⚠️ Les faits
+              // ci-dessus datent d'AVANT le verrou de téléchargement du compte.
+              // Depuis que le démarrage programme ce réconciliateur même quand
+              // l'utilisateur entre sans attendre, il passe PENDANT le
+              // téléchargement de la liste principale (ou de la première
+              // secondaire, §bootPipeline) : forcé, il attendait la fin de ce
+              // téléchargement… puis en refaisait un second, complet, sur un
+              // panel limité à une connexion. Sans forçage, le contrôle de
+              // fraîcheur se refait SOUS le verrou et trouve le fichier neuf.
+              force: facts.sourceIsStale &&
+                  !facts.inMemory &&
+                  !PlaylistService.isDownloadInProgress(acc.id),
             ).timeout(perAccount);
             if (res.path == null) {
+              // Revue 2026-09-11, D1A-07 — la précision va au JOURNAL : à
+              // l'écran, « Serveur injoignable. » (traduit) suffit.
+              debugPrint('❌ §fleetLoad : « ${acc.label} » — '
+                  'téléchargement impossible.');
               failed[acc.id] = LoadFailure(
                 LoadFailureKind.network,
-                detail: 'téléchargement impossible',
                 at: DateTime.now(),
               );
               ParsedPlaylistService.setLoadState(
                 acc.id,
                 AccountLoadState.error,
                 kind: LoadFailureKind.network,
-                detail: 'téléchargement impossible',
               );
               continue;
             }
             downloaded++;
+            applied = reparse;
             await ParsedPlaylistService.loadSecondary(
               acc.id,
               acc.label,
@@ -227,16 +250,17 @@ abstract final class PlaylistFleetService {
           // ⚠️ Une liste à zéro entrée n'est JAMAIS un succès : c'est le
           // symptôme d'un catalogue amputé (une section de l'API a échoué et
           // a rendu une liste vide, indiscernable d'un vrai vide).
+          // Revue 2026-09-11, D1A-07 — même règle : la mécanique au journal.
+          debugPrint('❌ §fleetLoad : « ${acc.label} » — aucune entrée '
+              'après analyse.');
           failed[acc.id] = LoadFailure(
             LoadFailureKind.amputated,
-            detail: 'aucune entrée après analyse',
             at: DateTime.now(),
           );
           ParsedPlaylistService.setLoadState(
             acc.id,
             AccountLoadState.error,
             kind: LoadFailureKind.amputated,
-            detail: 'aucune entrée après analyse',
           );
         }
       } on TimeoutException {
@@ -245,21 +269,28 @@ abstract final class PlaylistFleetService {
           acc.id,
           AccountLoadState.notLoaded,
           kind: LoadFailureKind.deferred,
-          detail: 'délai de ${perAccount.inSeconds} s dépassé',
+          detail: L10n.current.failDetailTooLong(formatShortDelay(applied)),
         );
         debugPrint('⏳ §fleetLoad : « ${acc.label} » dépasse '
-            '${perAccount.inSeconds} s — reportée.');
+            '${applied.inSeconds} s — reportée.');
       } catch (e) {
+        // §updAbi / obfuscation (revue 2026-09-11, lot 9) — Le détail passe
+        // SOUS la chip de la page Comptes (`describeFailure`). C'était
+        // `e.runtimeType.toString()` : un nom de classe Dart, qui devient une
+        // suite de lettres sans aucun sens dans l'APK obfusqué, et du jargon
+        // (« FormatException ») dans l'autre. Même phrase que les trois autres
+        // échecs d'analyse de `ParsedPlaylistService`.
+        final String detail = describeError(e);
         failed[acc.id] = LoadFailure(
           LoadFailureKind.parse,
-          detail: e.runtimeType.toString(),
+          detail: detail,
           at: DateTime.now(),
         );
         ParsedPlaylistService.setLoadState(
           acc.id,
           AccountLoadState.error,
           kind: LoadFailureKind.parse,
-          detail: e.runtimeType.toString(),
+          detail: detail,
         );
         debugPrint('❌ §fleetLoad : « ${acc.label} » a échoué ($e)');
       }

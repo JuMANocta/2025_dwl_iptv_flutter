@@ -28,6 +28,18 @@ extension DownloadActionX on DownloadAction {
       this == DownloadAction.cancel || this == DownloadAction.delete;
 }
 
+/// Fichiers à effacer quand on SUPPRIME une tâche (D3A-13).
+///
+/// Le fichier FINAL ne part que si la tâche est terminée : c'est alors le
+/// sien. Pour une tâche en échec, en attente ou annulée, `finalPath` n'est
+/// qu'un nom RÉSERVÉ — l'effacer supprimait un fichier personnel de même nom
+/// ou, pour des épisodes enregistrés avant §dlEpisode, l'épisode TERMINÉ d'une
+/// autre tâche qui partageait ce chemin. Le partiel, lui, part toujours.
+({String? finalPath, String partialPath}) filesToDeleteFor(DownloadTask task) => (
+      finalPath: task.status == DownloadStatus.completed ? task.finalPath : null,
+      partialPath: task.tempPath,
+    );
+
 /// Action principale (tap / touche OK) + entrées du menu ⋯.
 typedef DownloadTileActions = ({
   DownloadAction primary,
@@ -57,6 +69,10 @@ DownloadTileActions downloadTileActions(DownloadStatus status) {
         ],
       );
 
+    // Revue 2026-09-11, D3A-15 — `paused` n'est jamais affecté ; son étiquette
+    // reste pour l'exhaustivité du `switch`. Sa branche « forcer le démarrage »
+    // (`restart`) était morte ET contredisait §dlQueue : il suit la file.
+    case DownloadStatus.paused:
     case DownloadStatus.queued:
       // §dlQueue (2026-09-06) — Plus de « forcer le démarrage » : la tâche
       // attend qu'une place se libère sur son abonnement (un transfert à la
@@ -66,18 +82,6 @@ DownloadTileActions downloadTileActions(DownloadStatus status) {
       return (
         primary: DownloadAction.monitor,
         menu: const [
-          DownloadAction.cancel,
-          DownloadAction.delete,
-        ],
-      );
-
-    case DownloadStatus.paused:
-      // `restart` sert ici de « forcer le démarrage » : une tâche en pause
-      // doit pouvoir être poussée sans passer par une annulation.
-      return (
-        primary: DownloadAction.monitor,
-        menu: const [
-          DownloadAction.restart,
           DownloadAction.cancel,
           DownloadAction.delete,
         ],

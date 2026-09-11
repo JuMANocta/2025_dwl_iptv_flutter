@@ -1,5 +1,6 @@
 import 'playback_engine.dart' show AetherNowPlaying;
 import 'player_page.dart' show PlayerBadgeType, VideoSourceType;
+import '../../l10n/l10n_ext.dart';
 
 /// §episodeMeta — Tout ce qui décrit le contenu **actuellement lu**.
 ///
@@ -123,24 +124,8 @@ class PlayerMedia {
     return a != b;
   }
 
-  PlayerMedia copyWith({String? path, Duration? startPosition}) => PlayerMedia(
-        path: path ?? this.path,
-        title: title,
-        qualityTag: qualityTag,
-        episodeTag: episodeTag,
-        seriesName: seriesName,
-        synopsis: synopsis,
-        sourceType: sourceType,
-        badgeType: badgeType,
-        replayStart: replayStart,
-        replayDuration: replayDuration,
-        startPosition: startPosition ?? this.startPosition,
-        progressKey: progressKey,
-        siblingResumeKeys: siblingResumeKeys,
-        seasonNumber: seasonNumber,
-        accountId: accountId,
-        posterUrl: posterUrl,
-      );
+  // Revue 2026-09-11, D2A-11 — `copyWith` n'avait plus aucun appelant dans
+  // `lib/` (seul un test le couvrait) : retiré avec ce test.
 }
 
 /// §nowPlaying — Ce que la notification de lecture doit afficher pour [m].
@@ -161,11 +146,13 @@ AetherNowPlaying nowPlayingFor(PlayerMedia m) {
 
   String? subtitle;
   switch (m.badgeType) {
+    // Revue 2026-09-11, D2A-08 — notification, écran verrouillé et Cast
+    // parlent la langue de l'appareil (§notifAudit P9).
     case PlayerBadgeType.live:
-      subtitle = 'En direct';
+      subtitle = L10n.current.nowPlayingLive;
       break;
     case PlayerBadgeType.replay:
-      subtitle = 'Replay';
+      subtitle = L10n.current.nowPlayingReplay;
       break;
     case PlayerBadgeType.series:
       final parts = <String>[

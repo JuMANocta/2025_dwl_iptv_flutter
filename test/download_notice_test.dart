@@ -77,6 +77,24 @@ void main() {
       expect(finalizing.progress, isNull);
     });
 
+    test('D3A-07 — pas d\'« Annuler » pendant la finalisation', () {
+      // Le transfert est fini : l'interrompre laisserait une copie à moitié
+      // faite, et la tuile le refusait déjà.
+      final finalizing = downloadNotice(
+        [task(id: '1', status: DownloadStatus.finalizing)],
+        isTv: false,
+        granted: true,
+      )!;
+      expect(finalizing.cancelTaskId, isNull);
+
+      final queued = downloadNotice(
+        [task(id: '1', status: DownloadStatus.queued)],
+        isTv: false,
+        granted: true,
+      )!;
+      expect(queued.cancelTaskId, '1');
+    });
+
     test('plusieurs tâches actives : accord pluriel, pas de cible d\'annulation',
         () {
       final n = downloadNotice(

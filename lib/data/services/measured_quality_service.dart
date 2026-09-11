@@ -21,10 +21,13 @@ class MeasuredQuality {
     required this.measuredAt,
   });
 
-  /// Étiquette de définition déduite de la hauteur. Barème PARTAGÉ avec
-  /// l'encart du lecteur ([QualityScale]) : la fiche et le lecteur ne doivent
-  /// pas pouvoir se contredire.
-  String get definitionLabel => QualityScale.labelForHeight(height);
+  /// Étiquette de définition, d'après la largeur ET la hauteur (§qualityScope :
+  /// un FHD 2,40:1 fait 1920×800). Barème PARTAGÉ avec l'encart du lecteur
+  /// ([QualityScale]) : la fiche et le lecteur ne doivent pas pouvoir se
+  /// contredire. Les mesures déjà enregistrées portent leur largeur : elles
+  /// sont reclassées sans migration.
+  String get definitionLabel =>
+      QualityScale.labelFor(width: width, height: height);
 
   /// Verdict face à la qualité annoncée par la liste pour ce flux.
   QualityVerdict verdictFor(String? announced) =>

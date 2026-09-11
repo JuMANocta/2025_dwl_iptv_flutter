@@ -40,6 +40,11 @@ void main() {
   });
 
   test('100 000 chunks en rafale → notifications bornées par le TEMPS', () async {
+    // D5A-20 (revue 2026-09-11, lot 9) — Intervalle d'UNE HEURE, et non les
+    // 250 ms réelles du setUp : l'ancienne borne (< 20) supposait que la
+    // boucle tienne sous ~5 s, ce qu'un runner CI chargé ou `--coverage` ne
+    // garantit pas. Le test ne dépend plus de l'horloge.
+    DownloadManagerService.progressNotifyInterval = const Duration(hours: 1);
     var notifications = 0;
     void listener() => notifications++;
     manager.tasksNotifier.addListener(listener);
@@ -53,9 +58,10 @@ void main() {
       );
     }
 
-    // La boucle s'exécute en bien moins de 250 ms : quelques notifications
-    // seulement, au lieu d'une par chunk.
-    expect(notifications, lessThan(20));
+    // Le premier chunk notifie, la complétion (100 %) échappe TOUJOURS au
+    // throttle ; tout le reste tombe dans l'intervalle : 2 au plus, au lieu
+    // d'une notification par chunk.
+    expect(notifications, lessThanOrEqualTo(2));
   });
 
   test('le throttle est TEMPOREL, pas par pourcentage', () async {

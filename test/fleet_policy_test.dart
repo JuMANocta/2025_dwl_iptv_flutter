@@ -96,14 +96,18 @@ void main() {
       );
     });
 
-    test('aucune combinaison ne rend null : la décision est totale', () {
+    // D5A-13 (revue 2026-09-11, lot 9) — Le retour de `nextStep` est non
+    // nullable : `isA<FleetStep>()` ne pouvait pas échouer. Ce que ce test
+    // prouve vraiment, c'est l'absence d'exception sur les 32 combinaisons —
+    // il le dit désormais.
+    test('ne lève sur aucune combinaison : la décision est totale', () {
       for (final a in [true, false]) {
         for (final b in [true, false]) {
           for (final c in [true, false]) {
             for (final d in [true, false]) {
               for (final e in [true, false]) {
                 expect(
-                  step(
+                  () => step(
                     inMemory: a,
                     entriesInMemory: a ? 10 : 0,
                     hasParsedCache: b,
@@ -111,7 +115,7 @@ void main() {
                     sourceIsStale: d,
                     allowNetwork: e,
                   ),
-                  isA<FleetStep>(),
+                  returnsNormally,
                 );
               }
             }

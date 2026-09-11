@@ -7,8 +7,32 @@ enum DownloadStatus {
   completed,   // Terminé avec succès
   failed,      // Échec
   canceled,    // Annulé par l'utilisateur
-  paused,      // En pause (pour une future évolution)
+  // Revue 2026-09-11, D3A-15 — JAMAIS affecté (aucun chemin ne met une tâche
+  // en pause). ⛔ Ne pas retirer la valeur : l'ordre de l'enum est figé par
+  // la persistance par index (cf. [downloadStatusFromJson]) — la retirer
+  // décalerait `finalizing`. Ses branches mortes ont été retirées.
+  paused,
   finalizing,  // En cours de finalisation (déplacement du fichier)
+}
+
+/// Relit un statut persisté (D3A-14).
+///
+/// ⚠️ **L'écriture reste par INDEX** (`status.index`) : l'écrire par nom
+/// rendrait la liste illisible à un APK antérieur, qui fait
+/// `DownloadStatus.values[json['status'] as int]` — un retour arrière perdrait
+/// alors TOUS les téléchargements. La lecture, elle, accepte les deux formes
+/// et replie un statut inconnu sur `failed` (reprenable) au lieu de lever.
+/// Corollaire : l'ordre de l'enum est FIGÉ, n'insérer une valeur qu'à la fin.
+DownloadStatus downloadStatusFromJson(Object? raw) {
+  if (raw is int && raw >= 0 && raw < DownloadStatus.values.length) {
+    return DownloadStatus.values[raw];
+  }
+  if (raw is String) {
+    for (final s in DownloadStatus.values) {
+      if (s.name == raw) return s;
+    }
+  }
+  return DownloadStatus.failed;
 }
 
 @immutable
@@ -89,7 +113,7 @@ class DownloadTask {
       displayName: json['displayName'] as String,
       finalPath: json['finalPath'] as String,
       tempPath: json['tempPath'] as String? ?? '',
-      status: DownloadStatus.values[json['status'] as int],
+      status: downloadStatusFromJson(json['status']),
       progress: (json['progress'] as num).toDouble(),
       totalSize: json['totalSize'] as int,
       createdAt: DateTime.parse(json['createdAt'] as String),

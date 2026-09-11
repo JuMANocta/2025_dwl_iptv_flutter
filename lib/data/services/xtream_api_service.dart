@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -167,6 +169,57 @@ XtreamListResult classifyListBody(Object? body, int? status) {
   );
 }
 
+/// Revue 2026-09-11, D1A-12 — Au-delà de cette taille, une réponse est
+/// décodée dans un isolate. C'est le seuil que Dio lui-même retient pour
+/// sortir un décodage JSON du thread principal (`BackgroundTransformer`,
+/// 50 Ko). En dessous (catégories, `get_series_info` d'une fiche ouverte),
+/// lancer un isolate coûterait plus que le décodage : on reste sur place.
+const int _kIsolateDecodeThreshold = 50 * 1024;
+
+/// Décodeur UTF-8 + JSON FUSIONNÉ, qui tolère l'UTF-8 invalide comme le
+/// faisait Dio en `ResponseType.plain` (`utf8.decode(…, allowMalformed:
+/// true)`).
+final Converter<List<int>, Object?> _utf8JsonDecoder =
+    const Utf8Decoder(allowMalformed: true).fuse(const JsonDecoder());
+
+/// Revue 2026-09-11, D1A-12 — **Le corps d'une réponse `player_api.php`,
+/// décodé depuis ses OCTETS.** Fonction pure, top-level : elle tourne aussi
+/// bien sur le thread UI (petites réponses) que dans un isolate.
+///
+/// Rend EXACTEMENT ce que rendait l'ancien chemin — Dio en
+/// `ResponseType.plain` (`utf8.decode(octets, allowMalformed: true)`), puis
+/// `jsonDecode` — c'est-à-dire :
+/// - `null` pour un corps vide ;
+/// - le JSON décodé ;
+/// - sinon le texte, tronqué à 500 caractères (`classifyListBody` y cherche
+///   un « too many connections »).
+///
+/// Le décodeur fusionné saute la chaîne intermédiaire (une passe de moins).
+/// ⚠️ Relecture lot 8a — ce n'est PAS un gain de mémoire : au-delà de 50 Ko,
+/// les octets sont COPIÉS dans l'isolate (le message d'`Isolate.run`) et
+/// l'original reste tenu par la réponse Dio jusqu'au retour, soit ~2n + le
+/// graphe au pic — l'ordre de grandeur de l'ancien chemin (texte + graphe),
+/// pas moins. Le gain est ailleurs : le décodage ne tient plus le thread UI.
+/// Équivalence vérifiée
+/// cas par cas (UTF-8 invalide dans une chaîne, octets Latin-1, BOM en tête,
+/// BOM seul, `null`, HTML, espaces, séquences tronquées…) par
+/// `test/xtream_body_decode_test.dart`, contre l'ancien algorithme. Le seul
+/// écart du décodeur fusionné — un corps réduit à un BOM, que `utf8.decode`
+/// rend vide — est rattrapé par le repli ci-dessous.
+@visibleForTesting
+Object? decodeXtreamBody(Uint8List bytes) {
+  if (bytes.isEmpty) return null;
+  try {
+    return _utf8JsonDecoder.convert(bytes);
+  } catch (_) {
+    // Pas du JSON : on garde le texte, `classifyListBody` saura y
+    // reconnaître un « too many connections ».
+    final String raw = utf8.decode(bytes, allowMalformed: true);
+    if (raw.isEmpty) return null; // BOM seul : vide, comme avant.
+    return raw.length > 500 ? raw.substring(0, 500) : raw;
+  }
+}
+
 /// Le corps parle-t-il d'un excès de connexions ? (fr/en, panels bavards)
 bool _mentionsConnections(Object? body) {
   if (body == null) return false;
@@ -189,10 +242,10 @@ bool _mentionsConnections(Object? body) {
 /// playlist en interne via cette API.
 ///
 /// **Architecture :**
-/// 1. `auth(account)` — vérifie les credentials (et récupère `server_info`).
-/// 2. `get*Categories()` — liste les catégories (TV / VOD / Séries).
-/// 3. `get*Streams()` — liste les flux (id + nom + logo + catégorie).
-/// 4. §23 — `XtreamCatalogService` sauvegarde les réponses brutes dans
+/// 1. `get*CategoriesResult()` — liste les catégories (TV / VOD / Séries).
+/// 2. `get*StreamsResult()` / `getSeriesResult()` — liste les flux (id + nom +
+///    logo + catégorie).
+/// 3. §23 — `XtreamCatalogService` sauvegarde les réponses brutes dans
 ///    `playlist_<id>.json`, parsé directement par `XtreamCatalogParser`
 ///    (l'ancien `XtreamM3uBuilder` qui reconstituait un M3U texte a été
 ///    supprimé — plus de round-trip ni de perte de métadonnées).
@@ -210,11 +263,6 @@ class XtreamApiService {
 
   static String _cacheKey(String accountId, int seriesId) =>
       '$accountId#$seriesId';
-
-  /// Invalide une entrée du cache (utile si on ajoute un refresh manuel un jour).
-  static void invalidateEpisodes(String accountId, int seriesId) {
-    _episodesCache.remove(_cacheKey(accountId, seriesId));
-  }
 
   /// Construit le Dio pour appeler `player_api.php` du host de [account].
   /// Hérite du profil IPTV (UA `IPTVSmartersPro`, Accept-Encoding gzip).
@@ -243,7 +291,7 @@ class XtreamApiService {
   /// Trois changements par rapport à la version d'origine :
   /// 1. l'appel entier passe par [HostGate] → une seule requête à la fois vers
   ///    ce panel (les abonnements de l'utilisateur sont en « 1 / 1 ») ;
-  /// 2. `validateStatus` aligné sur `buildBaseDio` (`< 500`) → un
+  /// 2. `validateStatus` aligné sur `buildIptvBaseDio` (`< 500`) → un
   ///    `403 Too many connections` devient une **réponse lisible** au lieu
   ///    d'une exception opaque dont le corps était jeté sans être lu ;
   /// 3. le `Dio` est fermé avant de rendre le jeton : sans ça, le socket
@@ -267,28 +315,27 @@ class XtreamApiService {
       return await HostGate.run(url, () async {
         final dio = await _dio(account);
         try {
-          final resp = await dio.get<String>(
+          // Revue 2026-09-11, D1A-12 — OCTETS, et plus `ResponseType.plain` :
+          // Dio décodait la réponse en texte (UTF-16, deux fois sa taille)
+          // PUIS `jsonDecode` la parcourait, les deux sur le thread UI — pour
+          // `get_vod_streams`, des dizaines de Mo, accueil affiché compris
+          // (passe « reprise », `refreshIfStale`, « Tout recharger »). Une
+          // grosse réponse est désormais décodée dans un isolate ; le
+          // résultat revient par `Isolate.exit`, sans copie.
+          final resp = await dio.get<List<int>>(
             url,
             options: Options(
-              responseType: ResponseType.plain,
+              responseType: ResponseType.bytes,
               followRedirects: true,
               receiveTimeout: timeout ?? const Duration(minutes: 2),
               // ⚠️ Ne PAS remettre `s < 300` : le 403 doit être lu, pas levé.
               validateStatus: (s) => s != null && s < 500,
             ),
           );
-          final raw = resp.data ?? '';
-          if (raw.isEmpty) {
-            return (body: null, status: resp.statusCode, error: null);
-          }
-          Object? decoded;
-          try {
-            decoded = jsonDecode(raw);
-          } catch (_) {
-            // Pas du JSON : on garde le texte, `classifyListBody` saura y
-            // reconnaître un « too many connections ».
-            decoded = raw.length > 500 ? raw.substring(0, 500) : raw;
-          }
+          final List<int> data = resp.data ?? const <int>[];
+          final Uint8List bytes =
+              data is Uint8List ? data : Uint8List.fromList(data);
+          final Object? decoded = await decodeBody(bytes);
           return (body: decoded, status: resp.statusCode, error: null);
         } finally {
           // Referme le HttpClient (et donc le socket) AVANT de rendre le jeton.
@@ -321,69 +368,41 @@ class XtreamApiService {
     }
   }
 
-  /// §hostGate — Applique la limite de connexions annoncée par le panel.
-  ///
-  /// ⚠️ `maxConnections - 1` : **la connexion restante est réservée au
-  /// lecteur vidéo**, qui ne passe jamais par [HostGate].
-  static void _applyConnectionLimit(StreamAccount account, Object? authBody) {
-    if (authBody is! Map) return;
-    final info = authBody['user_info'];
-    if (info is! Map) return;
-    final max = int.tryParse((info['max_connections'] ?? '').toString());
-    if (max == null || max <= 0) return;
-    final host = credentialsOf(account)?.host;
-    if (host == null) return;
-    HostGate.setLimit(host, max - 1 < 1 ? 1 : max - 1);
-  }
+  /// Revue 2026-09-11, D1A-12 — §isolateLeak : portée DÉDIÉE. La fermeture
+  /// envoyée à l'isolate ne voit que [bytes] ; déclarée dans `_fetch`, elle
+  /// aurait partagé le `Context` de la fermeture de `HostGate.run`, qui tient
+  /// le `Dio` (son `HttpClient` ne se transmet pas) et le compte.
+  static Future<Object?> _decodeOffUiThread(Uint8List bytes) =>
+      Isolate.run(() => decodeXtreamBody(bytes), debugName: 'xtream-json');
 
-  // ── Auth / info compte ──────────────────────────────────────────────────
-
-  /// Appelle `player_api.php` sans action → renvoie le bloc complet
-  /// `{ user_info: {…}, server_info: {…} }`. Null si échec / compte invalide.
-  static Future<Map<String, dynamic>?> auth(StreamAccount account) async {
-    final url = _baseUrl(account);
-    if (url == null) return null;
-    final r = await _fetch(account, url,
-        timeout: const Duration(seconds: 20),
-        queueTimeout: const Duration(seconds: 60));
-    if (r.error != null) {
-      debugPrint('⚠️ XtreamApi.auth : ${r.error}');
-      return null;
-    }
-    final data = r.body;
-    if (data is Map<String, dynamic>) {
-      // §hostGate — Le panel vient de dire combien de connexions il tolère.
-      _applyConnectionLimit(account, data);
-      return data;
-    }
-    return null;
-  }
+  /// D1A-12 — Le choix du chemin : sur place sous [_kIsolateDecodeThreshold],
+  /// dans un isolate au-delà. C'est CETTE fonction que `_fetch` appelle, et
+  /// que `test/xtream_body_decode_test.dart` rejoue (aller-retour réel par
+  /// l'isolate compris) contre l'ancien chemin de Dio.
+  @visibleForTesting
+  static FutureOr<Object?> decodeBody(Uint8List bytes) =>
+      bytes.length < _kIsolateDecodeThreshold
+          ? decodeXtreamBody(bytes)
+          : _decodeOffUiThread(bytes);
 
   // ── Live (chaînes TV) ───────────────────────────────────────────────────
   //
-  // §catalogTruth — DEUX familles de getters :
-  //  · `get…Result()` — le contrat honnête (`items == null` ⇔ échec), utilisé
-  //    par `XtreamCatalogService` pour refuser d'écrire un catalogue amputé ;
-  //  · `get…()` — façade de compatibilité qui rend `[]` en cas d'échec, pour
-  //    les appelants qui ne savent pas quoi faire d'une panne.
+  // §catalogTruth — Le contrat honnête : `items == null` ⇔ échec. C'est ce
+  // qui permet à `XtreamCatalogService` de refuser d'écrire un catalogue
+  // amputé.
   //
-  // ⚠️ Ne PAS appeler la façade depuis un chemin qui écrit sur le disque : un
-  // `[]` d'échec y est indiscernable d'un catalogue réellement vide, et c'est
-  // exactement le bug qui effaçait les listes.
-
-  /// Liste des catégories live (TV). Retourne `[]` si échec (façade).
-  static Future<List<Map<String, dynamic>>> getLiveCategories(
-          StreamAccount account) =>
-      _itemsOrEmpty(getLiveCategoriesResult(account));
+  // Revue 2026-09-11, D1A-14 — Les six façades « liste ou `[]` » (`get…()`),
+  // leur `_itemsOrEmpty`, ainsi que `auth` / `_applyConnectionLimit` et
+  // `invalidateEpisodes`, n'avaient plus AUCUN appelant : retirés.
+  // ⛔ Ne pas réintroduire de façade qui rend `[]` en cas d'échec : un `[]`
+  // d'échec est indiscernable d'un catalogue réellement vide, et c'est
+  // exactement le bug qui effaçait les listes. La limite de connexions
+  // annoncée par le panel (§hostGate) est posée par
+  // `StreamAccountService.fetchAccountInfo`.
 
   static Future<XtreamListResult> getLiveCategoriesResult(
           StreamAccount account) =>
       _listAction(account, 'get_live_categories');
-
-  /// Liste de toutes les chaînes live (sans filtrage par catégorie).
-  static Future<List<Map<String, dynamic>>> getLiveStreams(
-          StreamAccount account) =>
-      _itemsOrEmpty(getLiveStreamsResult(account));
 
   static Future<XtreamListResult> getLiveStreamsResult(
           StreamAccount account) =>
@@ -391,42 +410,22 @@ class XtreamApiService {
 
   // ── VOD (films) ──────────────────────────────────────────────────────────
 
-  static Future<List<Map<String, dynamic>>> getVodCategories(
-          StreamAccount account) =>
-      _itemsOrEmpty(getVodCategoriesResult(account));
-
   static Future<XtreamListResult> getVodCategoriesResult(
           StreamAccount account) =>
       _listAction(account, 'get_vod_categories');
-
-  static Future<List<Map<String, dynamic>>> getVodStreams(
-          StreamAccount account) =>
-      _itemsOrEmpty(getVodStreamsResult(account));
 
   static Future<XtreamListResult> getVodStreamsResult(StreamAccount account) =>
       _listAction(account, 'get_vod_streams');
 
   // ── Séries ───────────────────────────────────────────────────────────────
 
-  static Future<List<Map<String, dynamic>>> getSeriesCategories(
-          StreamAccount account) =>
-      _itemsOrEmpty(getSeriesCategoriesResult(account));
-
   static Future<XtreamListResult> getSeriesCategoriesResult(
           StreamAccount account) =>
       _listAction(account, 'get_series_categories');
 
   /// Liste des séries (un item = une série, sans détails des épisodes).
-  static Future<List<Map<String, dynamic>>> getSeries(
-          StreamAccount account) =>
-      _itemsOrEmpty(getSeriesResult(account));
-
   static Future<XtreamListResult> getSeriesResult(StreamAccount account) =>
       _listAction(account, 'get_series');
-
-  static Future<List<Map<String, dynamic>>> _itemsOrEmpty(
-      Future<XtreamListResult> r) async =>
-      (await r).items ?? const [];
 
   /// §xtreamEpisodes — Récupère TOUS les épisodes d'une série et les retourne
   /// directement sous forme de `List<M3uEntry>` prêts à être affichés par

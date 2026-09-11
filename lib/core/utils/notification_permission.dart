@@ -15,9 +15,24 @@ import 'package:permission_handler/permission_handler.dart';
 /// deux refus.
 bool? _granted;
 
-Future<bool> ensureNotificationPermission() async {
+/// Demande en cours : deux appels pendant que la boîte système est ouverte
+/// attendent la MÊME réponse au lieu de lancer deux `request()` (D3A-08).
+Future<bool>? _pending;
+
+Future<bool> ensureNotificationPermission() {
   final bool? known = _granted;
-  if (known != null) return known;
+  if (known != null) return Future<bool>.value(known);
+  return _pending ??= _ask().whenComplete(() => _pending = null);
+}
+
+/// Oublie la réponse mémorisée (tests).
+@visibleForTesting
+void resetNotificationPermissionForTest() {
+  _granted = null;
+  _pending = null;
+}
+
+Future<bool> _ask() async {
   try {
     final PermissionStatus status = await Permission.notification.status;
     if (status.isGranted) return _granted = true;
@@ -35,7 +50,3 @@ Future<bool> ensureNotificationPermission() async {
     return _granted = false;
   }
 }
-
-/// Tests uniquement : oublie la réponse mémorisée.
-@visibleForTesting
-void resetNotificationPermissionForTest() => _granted = null;

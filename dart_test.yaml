@@ -1,0 +1,6 @@
+# §parseSpeed / D5A-01 (revue 2026-09-11, lot 9) — Déclare le tag `bench` posé
+# sur `test/parse_bench_test.dart`. Sans cette déclaration, `flutter test`
+# avertit à chaque passage (« tag non déclaré ») ; le tag ne change RIEN à ce
+# qui tourne : bancs et instantanés restent dans la suite complète.
+tags:
+  bench:

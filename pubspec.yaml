@@ -2,10 +2,17 @@ name: aetherStream
 description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
-version: 1.18.16+149
+version: 1.19.0+152
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
+  # D5A-09 (revue 2026-09-11, lot 9) — Le VRAI minimum. `>=3.0.0` mentait : le
+  # lock exige Dart 3.10 / Flutter 3.38 (contraintes des dépendances), et la
+  # borne basse de cette ligne FIXE la version de langage du paquet — elle
+  # était figée à 3.0. ⚠️ Changer cette borne change la langue du code
+  # (sémantique de `_` depuis 3.7, analyse de flux depuis 3.9) : commit ISOLÉ,
+  # suivi d'un `driver.sh verify` et d'un démarrage à froid sur appareil.
+  sdk: ^3.10.0
+  flutter: ">=3.38.0"
 
 dependencies:
   flutter:
@@ -45,6 +52,10 @@ dependencies:
   package_info_plus: ^8.3.0         # lire la version courante de l'app
   xml: ^6.5.0                       # parsing XMLTV (EPG)
   cryptography: ^2.7.0              # AES-256-GCM + PBKDF2 (sauvegarde §10)
+  # §updAbi (revue 2026-09-11, lot 9) — SHA-256 de l'APK de mise à jour, vérifié
+  # AVANT l'installeur. Déjà dans le lock (transitif, 3.0.7) : on le déclare
+  # parce qu'on l'importe, sans changer de version.
+  crypto: ^3.0.7
   file_picker: ^8.1.7               # sélection fichier .aether (import §10)
   qr_flutter: ^4.1.0                # génération QR code (§3c-8 pairing mobile→TV)
   window_manager: ^0.5.1
@@ -70,7 +81,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_launcher_icons: ^0.14.4
-  flutter_native_splash: ^2.4.0
+  # Revue 2026-09-11, D5A-16 — `flutter_native_splash` RETIRÉ : sa config est
+  # commentée (plus bas), aucun fichier ne l'importe, et son plugin Android ne
+  # fait que répondre `getPlatformVersion` (aucune ressource, manifeste vide).
+  # Le splash vient de NOS drawables/styles, édités à la main : rien ne change
+  # au rendu. ⛔ Ne pas le remettre « au cas où » (cf. la note plus bas).
   flutter_lints: ^6.0.0
 
 flutter:
@@ -100,7 +115,8 @@ flutter_launcher_icons:
 #
 # Ne PAS relancer `dart run flutter_native_splash:create` sans réactiver cette
 # config — ça remplacerait nos drawables ET nos couleurs. Pour réactiver :
-# décommenter le bloc ci-dessous + regénérer.
+# re-déclarer `flutter_native_splash` en dev_dependency (retiré le 2026-09-11,
+# revue D5A-16), décommenter le bloc ci-dessous + regénérer.
 #
 # flutter_native_splash:
 #   android: true

@@ -2,6 +2,19 @@ import 'package:flutter/material.dart';
 import '../../data/models/stream_account.dart';
 import '../../l10n/app_localizations.dart';
 
+/// Revue 2026-09-11, D4B-02 — Adresse de serveur acceptable : analysable,
+/// absolue, avec un hôte. ⚠️ Les deux validateurs faisaient
+/// `Uri.tryParse(v)!.isAbsolute` : `tryParse` rend `null` là où `parse`
+/// lèverait (port non numérique « :808O », crochet IPv6 non fermé), et le `!`
+/// levait alors en plein `validate()` — aucun message sous le champ, et
+/// « Enregistrer » ne faisait plus rien.
+bool isValidServerUrl(String? v) {
+  final String s = v?.trim() ?? '';
+  if (s.isEmpty) return false;
+  final Uri? u = Uri.tryParse(s);
+  return u != null && u.isAbsolute && u.host.isNotEmpty;
+}
+
 class EditAccountSheet extends StatefulWidget {
   final StreamAccount? initial;
   const EditAccountSheet({super.key, this.initial});
@@ -53,11 +66,13 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
 
   void _save() {
     if (!_form.currentState!.validate()) return;
-    final l10n = AppLocalizations.of(context)!;
     final id = widget.initial?.id ?? "acc_${DateTime.now().millisecondsSinceEpoch}";
     final acc = StreamAccount(
       id: id,
-      label: _label.text.trim().isEmpty ? l10n.editAccountNameHint : _label.text.trim(),
+      // Revue 2026-09-11, D4B-07 — Le repli « Mon Compte IPTV » était
+      // inatteignable : le validateur du champ exige un nom non vide, et
+      // `validate()` vient de passer.
+      label: _label.text.trim(),
       mode: _mode,
       completeUrl: _mode == StreamAuthMode.completeUrl ? _completeUrl.text.trim() : null,
       baseUrl: _mode == StreamAuthMode.separate ? _baseUrl.text.trim() : null,
@@ -79,9 +94,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
       onFieldSubmitted: (_) => _save(),
       decoration: InputDecoration(
           labelText: l10n.editAccountFullUrlLabel, prefixIcon: const Icon(Icons.public)),
-      validator: (v) => (v == null || v.trim().isEmpty || !Uri.tryParse(v.trim())!.isAbsolute)
-          ? l10n.editAccountFullUrlInvalid
-          : null,
+      validator: (v) =>
+          isValidServerUrl(v) ? null : l10n.editAccountFullUrlInvalid,
     );
   }
 
@@ -96,9 +110,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
           decoration: InputDecoration(
               labelText: l10n.editAccountServerUrlLabel,
               prefixIcon: const Icon(Icons.dns)),
-          validator: (v) => (v == null || v.trim().isEmpty || !Uri.tryParse(v.trim())!.isAbsolute)
-              ? l10n.editAccountFullUrlInvalid
-              : null,
+          validator: (v) =>
+              isValidServerUrl(v) ? null : l10n.editAccountFullUrlInvalid,
         ),
         const SizedBox(height: 16),
         TextFormField(
@@ -186,11 +199,41 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
                 else
                   _buildSeparateModeFields(l10n),
                 const SizedBox(height: 32),
-                FilledButton.icon(
-                  onPressed: _save,
-                  icon: const Icon(Icons.save),
-                  label: Text(l10n.editAccountSaveButton),
-                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                // §tvOptionsBack — ce formulaire n'avait qu'UN bouton : à la
+                // télécommande, la seule façon de renoncer était la touche
+                // Retour (buguée ailleurs dans l'app : elle ferme un film en
+                // cours, §dpadBack). Ce n'est pas une liste de choix — donc
+                // pas de `SheetCloseTile` en queue, mais un vrai bouton
+                // « Annuler » À CÔTÉ d'« Enregistrer ».
+                //
+                // ⚠️ Volontairement SANS autofocus, à l'inverse des dialogues
+                // de confirmation destructifs du projet (où le bouton sûr
+                // reçoit le focus par défaut) : ici on vient de SAISIR du
+                // texte, donner le focus par défaut à Annuler serait un
+                // piège — un simple appui sur OK jetterait la saisie. Le
+                // focus initial TV (`TvAutofocusFirst`) tombe donc sur le
+                // premier champ du formulaire, pas sur ce bouton.
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: Text(l10n.cancel),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _save,
+                        icon: const Icon(Icons.save),
+                        label: Text(l10n.editAccountSaveButton),
+                        style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

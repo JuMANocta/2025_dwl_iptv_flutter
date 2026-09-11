@@ -6,10 +6,11 @@ import '../../l10n/l10n_ext.dart';
 /// `flutter test`. Le canal natif (`transfer_notif`) ne fait qu'exécuter ce
 /// que ces fonctions décident.
 
+// Revue 2026-09-11, D3A-15 — `paused` n'est jamais affecté : retiré des
+// statuts actifs, et sa ligne « En pause » (texte en dur, jamais affichable).
 const _activeStatuses = {
   DownloadStatus.downloading,
   DownloadStatus.queued,
-  DownloadStatus.paused,
   DownloadStatus.finalizing,
 };
 
@@ -57,10 +58,6 @@ DownloadNotice? downloadNotice(
         ),
       DownloadStatus.queued => (text: L10n.current.dlQueued, progress: null),
       DownloadStatus.finalizing => (text: L10n.current.dlFinalizing, progress: null),
-      DownloadStatus.paused => (
-          text: 'En pause',
-          progress: t.progress.clamp(0.0, 1.0),
-        ),
       _ => (text: '', progress: null),
     };
     return (
@@ -68,7 +65,9 @@ DownloadNotice? downloadNotice(
       text: info.text,
       progress: info.progress,
       activeCount: 1,
-      cancelTaskId: t.id,
+      // D3A-07 — Pas d'« Annuler » pendant la finalisation : le transfert est
+      // fini, l'interrompre ne ferait que laisser un fichier à moitié copié.
+      cancelTaskId: t.status == DownloadStatus.finalizing ? null : t.id,
     );
   }
 
@@ -78,7 +77,8 @@ DownloadNotice? downloadNotice(
       active.length;
   return (
     title: L10n.current.dlActiveCount(active.length),
-    text: '${(avg * 100).round()} % en moyenne',
+    // Revue 2026-09-11, D3A-11 — était écrit en dur, en français.
+    text: L10n.current.dlNoticeAverage((avg * 100).round()),
     progress: avg,
     activeCount: active.length,
     cancelTaskId: null,

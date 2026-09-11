@@ -5,17 +5,27 @@ import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/quality_buttons.dart';
+import '../l10n/l10n_ext.dart';
 
 class EpgNowNextBlock extends StatefulWidget {
   final String tvgId;
   final List<M3uEntry> versions;
   final void Function(M3uEntry)? onPlayVersion;
 
+  /// Revue 2026-09-11, D4B-04 — `false` quand l'appelant rend les boutons de
+  /// lecture LUI-MÊME, hors du bloc : tant que le guide chargeait (jusqu'à
+  /// 12 s, premier lancement ou xmltvfr.fr lent), la feuille d'une chaîne TNT
+  /// n'offrait qu'une barre fine — impossible de lancer la chaîne, l'action
+  /// principale de la feuille. Le bloc ne donne alors que l'information du
+  /// programme, sans doublon une fois le guide arrivé.
+  final bool showPlayButtons;
+
   const EpgNowNextBlock({
     super.key,
     required this.tvgId,
     this.versions = const [],
     this.onPlayVersion,
+    this.showPlayButtons = true,
   });
 
   @override
@@ -63,7 +73,9 @@ class _EpgNowNextBlockState extends State<EpgNowNextBlock> {
       );
     }
     if (_current == null && _next == null) {
-      if (widget.versions.isEmpty || widget.onPlayVersion == null) {
+      if (!widget.showPlayButtons ||
+          widget.versions.isEmpty ||
+          widget.onPlayVersion == null) {
         return const SizedBox.shrink();
       }
       return Padding(
@@ -87,8 +99,9 @@ class _EpgNowNextBlockState extends State<EpgNowNextBlock> {
               EpgProgramRow(
                 program: _current!,
                 isNow: true,
-                versions: widget.versions,
-                onPlayVersion: widget.onPlayVersion,
+                versions: widget.showPlayButtons ? widget.versions : const [],
+                onPlayVersion:
+                    widget.showPlayButtons ? widget.onPlayVersion : null,
                 channelIconUrl: _channelIconUrl,
               ),
             if (_current != null && _next != null)
@@ -177,7 +190,9 @@ class EpgProgramRow extends StatelessWidget {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            isNow ? '● EN COURS' : 'ENSUITE',
+                            isNow
+                                ? '● ${context.l10n.epgNow}'
+                                : context.l10n.epgNext,
                             style: const TextStyle(color: kWhite, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.8),
                           ),
                         ),

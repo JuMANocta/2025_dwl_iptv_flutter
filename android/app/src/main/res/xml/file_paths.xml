@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <!-- Dossier cache privé de l'app (getTemporaryDirectory) -->
-    <cache-path name="cache" path="." />
+    <!-- Revue 2026-09-11, D2B-12 : SEUL le sous-dossier des mises à jour
+         (getTemporaryDirectory()/updates, cf. update_service.dart). L'ancien
+         `path="."` rendait partageable tout le cache privé (partiels de
+         téléchargement, relais Cast, images) pour ce seul usage. -->
+    <cache-path name="updates" path="updates/" />
 </paths>

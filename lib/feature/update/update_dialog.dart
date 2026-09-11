@@ -4,16 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/utils/user_error.dart';
 import '../../widgets/matrix_rain.dart';
 import 'version_diff_line.dart';
 import '../../data/services/update_service.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
+import '../../core/themes/colors.dart';
 import '../../l10n/l10n_ext.dart';
 
 /// §updateGreen — Vert vif du dialog de MAJ (style « Matrix terminal », figé,
 /// indépendant du thème). Remplace `kSuccess` (#4CAF50, trop terne sur fond
 /// sombre) pour rendre les boutons/séparateurs bien visibles.
-const Color _kTermGreen = Color(0xFF00FF41);
+///
+/// Revue 2026-09-11, D3B-09 — Les teintes du terminal vivent dans
+/// `colors.dart` (`kTerm*`), valeurs inchangées. Les répliques « Matrix »
+/// (`> SYSTEM UPDATE`, `> DOWNLOADING...`, pool de boot) restent en anglais
+/// par CHOIX DE STYLE ; ce qui se LIT pour agir (boutons, ligne DIFF) passe
+/// par la l10n.
+const Color _kTermGreen = kTermGreen;
 
 /// Dialogue de mise à jour in-app — style terminal Matrix.
 /// Cohérent avec [TerminalDownloadDialog].
@@ -74,7 +82,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
     try {
       await UpdateService.downloadAndInstall(
-        widget.info.downloadUrl,
+        widget.info,
         onProgress: (p) {
           if (mounted) setState(() => _progress = p);
         },
@@ -88,7 +96,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
         if (mounted) {
           setState(() {
             _state = _DownloadState.error;
-            _errorMessage = e.message ?? L10n.current.updNetworkError;
+            // Revue 2026-09-11, D1B-08 / D3B-08 — `e.message` était l'anglais
+            // brut de Dio (et, pour certains types, l'URL de la requête) :
+            // jamais le texte brut d'une exception à l'écran (§userError).
+            _errorMessage = describeError(e);
           });
         }
       }
@@ -96,7 +107,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
       if (mounted) {
         setState(() {
           _state = _DownloadState.error;
-          _errorMessage = e.toString();
+          // D1B-08 / D3B-08 — `e.toString()` affichait « Exception: … », et
+          // un disque plein « FileSystemException: … path = '/data/user/0/…' ».
+          _errorMessage = describeError(e);
         });
       }
     }
@@ -162,7 +175,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
       insetPadding: const EdgeInsets.all(20),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.black.withAlpha((255 * 0.93).round()),
+          color: kTermBackground.withAlpha((255 * 0.93).round()),
           border: Border.all(color: _kTermGreen.withAlpha(60)),
           borderRadius: BorderRadius.circular(8),
           boxShadow: [
@@ -212,7 +225,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     Text(
                       _bootMsg,
                       style: GoogleFonts.sourceCodePro(
-                        color: const Color(0xFF00AA00), fontSize: 11),
+                        color: kTermGreenDim, fontSize: 11),
                     ),
                     const SizedBox(height: 6),
 
@@ -230,7 +243,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       Text(
                         '> SIZE   : $sizeStr',
                         style: GoogleFonts.sourceCodePro(
-                          color: const Color(0xFFADFF2F), fontSize: 12),
+                          color: kTermGreenYellow, fontSize: 12),
                       ),
                     ],
 
@@ -240,13 +253,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     // source, qui le rend correctement.
                     const SizedBox(height: 8),
                     Text(
-                      '> DIFF    : voir la release sur GitHub',
+                      context.l10n.updDiffLine,
                       style: GoogleFonts.sourceCodePro(
-                          color: const Color(0xFF00AA00), fontSize: 11),
+                          color: kTermGreenDim, fontSize: 11),
                     ),
                     const SizedBox(height: 4),
                     _terminalLinkButton(
-                      label: '[ VIEW CHANGELOG ]',
+                      label: context.l10n.updViewChangelog,
                       onPressed: _openRelease,
                     ),
 
@@ -257,7 +270,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       Text(
                         '> DOWNLOADING...',
                         style: GoogleFonts.sourceCodePro(
-                          color: const Color(0xFFADFF2F), fontSize: 12),
+                          color: kTermGreenYellow, fontSize: 12),
                       ),
                       const SizedBox(height: 4),
                       SizedBox(
@@ -267,7 +280,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                             child: Text(
                               _asciiBar(_progress),
                               style: GoogleFonts.sourceCodePro(
-                                color: const Color(0xFF33FF33),
+                                color: kTermGreenBright,
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -282,12 +295,12 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       Text(
                         '> ERROR: ${_errorMessage ?? "UNKNOWN"}',
                         style: GoogleFonts.sourceCodePro(
-                          color: const Color(0xFFFF5555), fontSize: 12),
+                          color: kTermRed, fontSize: 12),
                       ),
                       Text(
                         '> CONNECTION TO THE MATRIX LOST.',
                         style: GoogleFonts.sourceCodePro(
-                          color: const Color(0xFFFF5555), fontSize: 11),
+                          color: kTermRed, fontSize: 11),
                       ),
                     ],
                   ],
@@ -306,8 +319,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
                   onPressed: _cancel,
                   child: Text(
                     _state == _DownloadState.downloading
-                        ? '[ ABORT ]'
-                        : '[ LATER ]',
+                        ? context.l10n.updAbort
+                        : context.l10n.updLater,
                     style: GoogleFonts.vt323(color: _kTermGreen, fontSize: 18),
                   ),
                 ),
@@ -329,8 +342,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     ),
                     child: Text(
                       _state == _DownloadState.error
-                          ? '[ RETRY ]'
-                          : '[ INSTALL UPDATE ]',
+                          ? context.l10n.updRetry
+                          : context.l10n.updInstall,
                       style: GoogleFonts.vt323(
                         color: _kTermGreen, fontSize: 18,
                         fontWeight: FontWeight.bold),

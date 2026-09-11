@@ -1,0 +1,64 @@
+name: CI
+
+# D5L-01 (revue 2026-09-11, lot 9) — L'analyse et la suite de tests ne
+# tournaient QUE sur un tag de release : un commit de branche ou une PR cassés
+# ne le découvraient qu'au moment de publier, le tag déjà poussé. Ce workflow
+# est la porte de chaque push et de chaque PR ; `release.yml` l'appelle tel
+# quel (`workflow_call`) pour que les deux ne puissent jamais diverger.
+#
+# ⚠️ Un push de TAG ne le déclenche pas ici (filtre `branches` seul) : c'est
+# `release.yml` qui l'appelle, une seule fois.
+on:
+  push:
+    branches: [master, newSkin]
+  pull_request:
+  workflow_call:
+
+# D5A-05 — Lecture seule : ce workflow ne publie rien.
+permissions:
+  contents: read
+
+env:
+  # ⚠️ La MÊME version que la machine de recette (émulateurs + Galaxy S25), et
+  # la même que `release.yml` : le job `version` de la release échoue si les
+  # deux fichiers divergent. Monter les trois ENSEMBLE.
+  FLUTTER_VERSION: '3.44.0'
+
+jobs:
+  check:
+    name: Analyse + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # D5A-05 — Actions épinglées par SHA de commit (un tag se déplace, un
+      # SHA non), version en commentaire pour les relire.
+      - name: Checkout du code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+          pub-cache: true
+          # pubspec.lock est VERSIONNÉ (et imposé ci-dessous) : c'est lui qui
+          # fait la clé du cache.
+          pub-cache-key: pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
+
+      # D5A-04 — `--enforce-lockfile` : le lock versionné fait foi. Sans lui, un
+      # pubspec modifié sans lock régénéré était résolu EN SILENCE, et l'APK
+      # signé embarquait des versions jamais testées sur la machine de recette.
+      - name: Installer les dépendances (lock imposé)
+        run: flutter pub get --enforce-lockfile
+
+      # `--no-fatal-infos` : le lint `package_names` (aetherStream) est une info
+      # permanente ; les erreurs et les avertissements sont BLOQUANTS.
+      - name: Analyser le code
+        run: flutter analyze --no-fatal-infos
+
+      # La suite complète (cliquet l10n, invariant redactUrl, règles Cast, choix
+      # de l'APK de mise à jour…). Les tests qui lisent les dumps de
+      # lib/iptv_exemple/ (non versionnés) se sautent d'eux-mêmes.
+      - name: Tests
+        run: flutter test

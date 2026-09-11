@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
@@ -52,6 +53,22 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   AppLocalizations? _cachedL10n;
 
   Stopwatch? _stopwatch;
+
+  /// §dlElapsed — Temps écoulé du transfert, affiché à la seconde.
+  ///
+  /// ⚠️ **`_stopwatch` NE PEUT PAS servir** : il est `reset()` toutes les
+  /// 500 ms pour calculer le débit instantané. Il en faut un second, qui ne
+  /// repart qu'au démarrage d'un nouveau transfert.
+  final Stopwatch _elapsed = Stopwatch();
+
+  /// §dlElapsed — ⚠️ Un `Timer`, **jamais un ticker ni une animation** : le
+  /// journal n'est repeint que sur notification de tâche (throttlée à 250 ms,
+  /// et MUETTE quand le transfert est bloqué — précisément le moment où l'on
+  /// regarde ce compteur). §bootCursorTimer (2026-09-06) a déjà payé la leçon
+  /// inverse : un curseur clignotant en `AnimationController` forçait 60
+  /// images/s et volait les deux tiers du CPU de l'analyse.
+  Timer? _elapsedTimer;
+
   int _lastReceivedBytes = 0;
   double _speed = 0;
   int _eta = 0;
@@ -159,12 +176,29 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       if (_isDownloadComplete) {
         _isDownloadComplete = false;
         _stopwatch = null; // vitesse/ETA recalculés pour la nouvelle session
+        _elapsed
+          ..reset()
+          ..start(); // §dlElapsed — nouveau transfert, nouveau chrono
         _pushRetryLine('> RESTART — NEW TRANSFER INITIATED...');
       }
       _stopwatch ??= Stopwatch()..start();
-      const barLength = 20;
-      final filled = (task.progress * barLength).clamp(0, barLength).toInt();
-      final bar = '█' * filled + '▒' * (barLength - filled);
+      if (!_elapsed.isRunning) _elapsed.start();
+      // D3A-12 — Le Timer RÉÉCRIT la ligne de statistiques : il se contentait
+      // de `setState`, or le temps écoulé est figé dans la chaîne au moment
+      // de la dernière notification — il ne bougeait donc plus précisément
+      // quand le transfert était bloqué, le cas pour lequel il existe.
+      _elapsedTimer ??= Timer.periodic(
+        const Duration(seconds: 1),
+        (_) {
+          if (!mounted) return;
+          final DownloadTask? t = _lastTaskState;
+          final AppLocalizations? l = _cachedL10n;
+          if (t != null && l != null && t.status == DownloadStatus.downloading) {
+            _writeStats(_statsLine(t, l));
+          }
+          setState(() {});
+        },
+      );
 
       if (_stopwatch!.elapsedMilliseconds > 500) {
         final currentReceived = (task.progress * task.totalSize).toInt();
@@ -179,16 +213,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
         _stopwatch!.reset();
       }
 
-      final speedInfo = _speed > 0 ? '\n🚀 ${l10n.terminalSpeedMessage} : ${formatFileSize(_speed.toInt())}/s' : '';
-      final etaInfo = _eta > 0 ? '\n⏳ ${l10n.terminalEtaMessage} : ${formatDuration(_eta)}' : '';
-      // §dlWatchdog — Le nombre de relances s'affiche DANS le bloc stats,
-      // qui est remplacé à chaque rafraîchissement : il ne s'empile jamais.
-      final retryInfo = _retryCount > 0
-          ? '\n🔁 ${l10n.terminalRetryCountMessage} : $_retryCount'
-          : '';
-      final formatted = '\n[$bar] ${(task.progress * 100).toStringAsFixed(1)}%$speedInfo$etaInfo$retryInfo';
-
-      _writeStats(formatted);
+      _writeStats(_statsLine(task, l10n));
     } else if (task.status == DownloadStatus.finalizing &&
         _lastTaskState?.status != DownloadStatus.finalizing) {
       // Forcer la barre à 100% avant le message de finalisation
@@ -204,8 +229,10 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       _logs.add({'message': l10n.terminalSuccessMessage, 'type': 'log'});
       _logs.add({'message': '\n> THERE IS NO SPOON.', 'type': 'matrix'});
       _isDownloadComplete = true;
+      _stopElapsedTicker();
     } else if (task.status == DownloadStatus.failed &&
         _lastTaskState?.status != DownloadStatus.failed) {
+      _stopElapsedTicker();
       _logs.add({'message': l10n.terminalFatalErrorMessage, 'type': 'error'});
       _logs.add({'message': '\n> CONNECTION TO THE MATRIX LOST.', 'type': 'error'});
       _hasFatalError = true;
@@ -235,6 +262,34 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   }
 
 
+  /// La ligne de statistiques (barre, débit, reste, temps écoulé) de [task].
+  String _statsLine(DownloadTask task, AppLocalizations l10n) {
+    const barLength = 20;
+    final filled = (task.progress * barLength).clamp(0, barLength).toInt();
+    final bar = '█' * filled + '▒' * (barLength - filled);
+    final speedInfo = _speed > 0 ? '\n🚀 ${l10n.terminalSpeedMessage} : ${formatFileSize(_speed.toInt())}/s' : '';
+    final etaInfo = _eta > 0 ? '\n⏳ ${l10n.terminalEtaMessage} : ${formatDuration(_eta)}' : '';
+    // §dlElapsed — Le temps écoulé remplace le compteur de relances
+    // (signalement du 2026-09-08 : « vu que la relance fonctionne
+    // correctement, supprimer la partie relance et mettre à la place le
+    // temps réel du téléchargement qui incrémente de secondes »).
+    // ⚠️ Le compteur « relancé ×N » de la TUILE, lui, RESTE : c'est là qu'il
+    // distingue « source lente » de « source qui bride », et il survit à la
+    // fermeture de ce moniteur — ce que ce dialogue ne peut pas faire.
+    final elapsedInfo = '\n⏱️ ${l10n.terminalElapsedMessage} : '
+        '${formatDuration(_elapsed.elapsed.inSeconds)}';
+    return '\n[$bar] ${(task.progress * 100).toStringAsFixed(1)}%$speedInfo$etaInfo$elapsedInfo';
+  }
+
+  /// Arrête le compteur de temps quand le transfert est fini (succès ou
+  /// échec) : plus rien à compter, et plus de reconstruction chaque seconde.
+  /// Une relance le recrée (branche `downloading`).
+  void _stopElapsedTicker() {
+    _elapsedTimer?.cancel();
+    _elapsedTimer = null;
+    _elapsed.stop();
+  }
+
   /// §dlWatchdog — Écrit une ligne de relance en REMPLAÇANT la précédente si
   /// elle est encore la dernière du journal.
   ///
@@ -252,6 +307,14 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   // Regroupe les entrées d'erreur en fin de log dans un accordéon replié.
   // Appelé quand le téléchargement reprend après un état failed.
   void _collapseRecentErrors(DownloadTask task) {
+    // §dlPauseBack (recette S25 du 2026-09-11) — Le transfert REPART : l'état
+    // d'erreur tombe TOUJOURS, avant tout le reste. Il n'était baissé qu'en
+    // fin de fonction, APRÈS un `return` anticipé pris dès que la dernière
+    // ligne du journal n'était pas une erreur — or RELANCER passe par la file,
+    // qui écrit « ⏳ en attente… » après les erreurs. Le moniteur restait donc
+    // en mode « échec » (RELANCER / FERMER) pendant tout le transfert repris,
+    // sans bouton PAUSE.
+    _hasFatalError = false;
     // §dlWatchdog — Le compteur vient de la TÂCHE dès qu'elle en sait plus que
     // nous : il vivait ici seul, donc il repartait à zéro dès qu'on refermait
     // le moniteur, alors que le transfert, lui, continuait. On garde le repli
@@ -310,6 +373,8 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
   @override
   void dispose() {
     _downloadManager.tasksNotifier.removeListener(_onTaskUpdated);
+    _elapsedTimer?.cancel(); // §dlElapsed
+    _elapsed.stop();
     _scrollController.dispose();
     super.dispose();
   }
@@ -441,7 +506,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                               children: [
                                 Text(
                                   '> [!] ${context.l10n.termPreviousErrors(messages.length)}'
-                                  '  ${isExpanded ? '▲ MASQUER' : '▼ AFFICHER'}',
+                                  '  ${isExpanded ? context.l10n.termHide : context.l10n.termShow}',
                                   style: GoogleFonts.sourceCodePro(
                                     color: kWarning.withAlpha(200),
                                     fontSize: 12,
@@ -536,7 +601,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                     alignment: WrapAlignment.end,
                     children: [
                       _terminalButton(
-                        label: 'RELANCER',
+                        label: context.l10n.dlRestartUpper,
                         color: kAccentSecondary,
                         onPressed: () {
                           final t = _lastTaskState;
@@ -547,6 +612,11 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                       closeButton,
                     ],
                   );
+                }
+                // D3A-07 — Pas d'ABORT pendant la finalisation : le transfert
+                // est fini, l'interrompre ne ferait que corrompre la copie.
+                if (_lastTaskState?.status == DownloadStatus.finalizing) {
+                  return closeButton;
                 }
                 return Wrap(
                   spacing: 8,

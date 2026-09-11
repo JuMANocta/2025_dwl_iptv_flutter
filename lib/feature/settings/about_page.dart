@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/data/services/update_service.dart';
 import 'package:aetherStream/feature/update/update_dialog.dart';
 import 'package:aetherStream/widgets/memory_stats_card.dart';
@@ -162,7 +163,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       style: FilledButton.styleFrom(
                         backgroundColor: kAccentTertiary,
-                        foregroundColor: Colors.black,
+                        foregroundColor: onColorFor(kAccentTertiary), // D4B-08
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
@@ -187,7 +188,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                       ),
                       style: FilledButton.styleFrom(
                         backgroundColor: kAccentPrimary,
-                        foregroundColor: Colors.black,
+                        foregroundColor: onColorFor(kAccentPrimary), // D4B-08
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
@@ -201,7 +202,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       style: FilledButton.styleFrom(
                         backgroundColor: kAccentSecondary,
-                        foregroundColor: Colors.black,
+                        foregroundColor: onColorFor(kAccentSecondary), // D4B-08
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
@@ -213,7 +214,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       style: FilledButton.styleFrom(
                         backgroundColor: kAccentTertiary,
-                        foregroundColor: Colors.black,
+                        foregroundColor: onColorFor(kAccentTertiary), // D4B-08
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
@@ -283,7 +284,7 @@ class _VersionBadge extends StatelessWidget {
           Icon(Icons.tag, size: 16, color: kAccentPrimary),
           const SizedBox(width: 8),
           Text(
-            'VERSION',
+            context.l10n.aboutVersionLabel,
             style: TextStyle(
               fontSize: 10,
               color: cs.onSurfaceVariant,
@@ -321,7 +322,8 @@ class _CreditFooter extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text(
-          'Made with Flutter · Media3/ExoPlayer',
+          // D4B-05 — les noms propres restent, « Made with » se traduit.
+          context.l10n.aboutMadeWith('Flutter · Media3/ExoPlayer'),
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 11,

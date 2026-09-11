@@ -81,10 +81,21 @@ Future<ReloadBatchResult?> showReloadAllFlow(
   // laisserait croire à un blocage.
   final progress = ValueNotifier<String>(l10n.reloadAllPreparing);
   final NavigatorState navigator = Navigator.of(context);
+
+  // §reloadBackground (2026-09-10) — ⚠️ Cette boîte était une IMPASSE à la
+  // télécommande : `canPop: false`, pas de fermeture au clic extérieur, aucun
+  // bouton, et une durée mesurée de 153 s sur trois grosses listes. C'est
+  // exactement la situation qui a fait tuer l'application à la main en
+  // §bootEscape. Le lot continue, seule la boîte se retire.
+  //
+  // ⚠️ On suit l'état RÉEL de la boîte au lieu d'interroger le navigateur : le
+  // `navigator.canPop()` de la fin de lot dépilerait sinon la route où
+  // l'utilisateur se trouve, puisqu'il aura navigué entre-temps.
+  bool progressVisible = true;
   unawaited(showAppDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => PopScope(
+    builder: (dialogContext) => PopScope(
       canPop: false, // on ne quitte pas un lot en cours par mégarde
       child: AlertDialog(
         title: Text(l10n.reloadAllProgressTitle),
@@ -104,12 +115,25 @@ Future<ReloadBatchResult?> showReloadAllFlow(
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            // Seule action de la boîte : l'autofocus ne peut pas voler le
+            // focus d'entrée à autre chose, et sur TV c'est ce qui la rend
+            // atteignable à la télécommande.
+            autofocus: true,
+            onPressed: () {
+              progressVisible = false;
+              Navigator.of(dialogContext).pop();
+            },
+            child: Text(l10n.reloadAllBackground),
+          ),
+        ],
       ),
     ),
-  ));
+  ).whenComplete(() => progressVisible = false));
 
   final succeeded = <String>[];
-  final failed = <String, String>{};
+  final failed = <String>[]; // D4B-15 — une entrée par COMPTE, pas par nom
 
   for (var i = 0; i < accounts.length; i++) {
     final a = accounts[i];
@@ -128,13 +152,14 @@ Future<ReloadBatchResult?> showReloadAllFlow(
       // ⚠️ Un échec n'arrête PAS le lot : une liste injoignable ne doit pas
       // empêcher de rafraîchir les autres — c'est exactement le problème qu'on
       // cherche à supprimer.
-      failed[a.label] = e.toString();
+      failed.add(a.label);
       debugPrint('❌ §reloadAll — « ${a.label} » : $e');
     }
   }
 
+  // ⚠️ Fermer d'abord, disposer ensuite : la boîte écoute encore `progress`.
+  if (progressVisible && navigator.canPop()) navigator.pop();
   progress.dispose();
-  if (navigator.canPop()) navigator.pop(); // ferme la boîte de progression
 
   final result = ReloadBatchResult(succeeded: succeeded, failed: failed);
   debugPrint('🔄 §reloadAll — ${result.summary}');

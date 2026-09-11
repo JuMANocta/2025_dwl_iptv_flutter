@@ -1,17 +1,31 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart'; // Import pour debugPrint
+import 'package:aetherStream/core/utils/host_gate.dart';
 import 'package:aetherStream/core/utils/log_sanitizer.dart';
+import 'package:aetherStream/core/utils/network.dart';
+import 'package:aetherStream/core/utils/formatters.dart';
+import 'package:aetherStream/l10n/l10n_ext.dart';
 import 'stream_account_service.dart';
 import '../models/stream_account.dart';
 
-class XtreamCredentials {
+/// Identifiants Xtream du replay (serveur + user + pass).
+///
+/// §tourFix — revue 2026-09-11, D1B-24 — S'appelait `XtreamCredentials`,
+/// comme la classe de `stream_account.dart`, avec SES PROPRES règles
+/// d'extraction : préfixe sensible à la casse (`/LIVE/` raté), aucune garde
+/// anti-point (une URL de CDN `/a.b/c/d.m3u8` donnait des « identifiants »
+/// `a.b` / `c`, et `get_short_epg` partait vers ce serveur-là). Renommée, et
+/// [fromStreamUrl] passe désormais par `XtreamCredentials.tryExtract` — la
+/// seule règle, celle que `redactUrl` sait masquer.
+class ReplayCredentials {
   final String server; // https://host:port
   final String username;
   final String password;
 
-  XtreamCredentials({required this.server, required this.username, required this.password});
+  ReplayCredentials({required this.server, required this.username, required this.password});
 
   String get playerApiBase => '$server/player_api.php';
 
@@ -36,37 +50,20 @@ class XtreamCredentials {
   }) =>
       '$server/timeshift/$username/$password/$durationMinutes/$startFormatted/$streamId.$ext';
 
-  static XtreamCredentials? fromAccount(StreamAccount? acc) {
+  static ReplayCredentials? fromAccount(StreamAccount? acc) {
     if (acc == null || acc.baseUrl == null || acc.username == null || acc.password == null) return null;
     final uri = Uri.parse(acc.baseUrl!);
     final server = uri.hasPort && uri.port != 0 ? '${uri.scheme}://${uri.host}:${uri.port}' : '${uri.scheme}://${uri.host}';
-    return XtreamCredentials(server: server, username: acc.username!, password: acc.password!);
+    return ReplayCredentials(server: server, username: acc.username!, password: acc.password!);
   }
 
-  static XtreamCredentials? fromStreamUrl(String url) {
-    try {
-      final uri = Uri.parse(url);
-      final server = uri.hasPort && uri.port != 0
-          ? '${uri.scheme}://${uri.host}:${uri.port}'
-          : '${uri.scheme}://${uri.host}';
-
-      // Format 1 : query params (?username=...&password=...)
-      final usernameQp = uri.queryParameters['username'];
-      final passwordQp = uri.queryParameters['password'];
-      if (usernameQp != null && passwordQp != null) {
-        return XtreamCredentials(server: server, username: usernameQp, password: passwordQp);
-      }
-
-      // Format 2 : path Xtream Codes (/{type}/{username}/{password}/{stream_id})
-      // Le premier segment peut être un préfixe de type : live, movie, series → à ignorer.
-      final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
-      const typePrefixes = {'live', 'movie', 'series', 'timeshift'};
-      final start = (segments.isNotEmpty && typePrefixes.contains(segments[0])) ? 1 : 0;
-      if (segments.length >= start + 3) {
-        return XtreamCredentials(server: server, username: segments[start], password: segments[start + 1]);
-      }
-    } catch (_) {}
-    return null;
+  /// Identifiants lus dans l'URL du flux (query `username`/`password`, ou
+  /// chemin Xtream), par la règle UNIQUE de `XtreamCredentials.tryExtract`.
+  static ReplayCredentials? fromStreamUrl(String url) {
+    final creds = XtreamCredentials.tryExtract(url);
+    if (creds == null) return null;
+    return ReplayCredentials(
+        server: creds.host, username: creds.username, password: creds.password);
   }
 }
 
@@ -111,22 +108,31 @@ class ReplayProgram {
     this.selectedCatchupSource,
   });
 
-  String get startLabel => DateFormat('dd/MM HH:mm').format(start);
-  String get durationLabel {
-    final duration = end.difference(start);
-    final h = duration.inHours;
-    final m = duration.inMinutes.remainder(60);
-    return h > 0 ? '${h}h${m.toString().padLeft(2, '0')}' : '$m min';
-  }
+  /// Revue 2026-09-11, D1B-19 — jour et mois dans l'ORDRE de la langue de
+  /// l'écran (« 11/09 » en français, « 9/11 » en anglais) ; `dd/MM` était
+  /// figé dans l'ordre français.
+  String get startLabel =>
+      DateFormat.Md(L10n.current.localeName).add_Hm().format(start);
+  String get durationLabel => formatShortDuration(end.difference(start));
 }
 
 class ReplayService {
-  Future<XtreamCredentials?> _resolveCreds({String? streamUrl}) async {
+  /// §iptvUaCompat — revue 2026-09-11, D1B-06 / D5A-03 — Borne de la requête
+  /// `get_short_epg` : l'ancien `http.get` n'en avait aucune (feuille Replay
+  /// qui tourne sans fin face à un panel muet).
+  static const Duration epgReceiveTimeout = Duration(seconds: 15);
+  static const Duration epgConnectTimeout = Duration(seconds: 10);
+
+  /// Attente maximale dans la file §hostGate : un rafraîchissement de liste
+  /// peut occuper le panel des minutes, la feuille ne l'attend pas.
+  static const Duration epgQueueTimeout = Duration(seconds: 20);
+
+  Future<ReplayCredentials?> _resolveCreds({String? streamUrl}) async {
     // Priorité 1 : l'URL du stream — elle contient le BON serveur pour cette qualité.
     // Les variants FHD/4K peuvent être servis par un serveur différent du compte principal.
     // Utiliser le compte en priorité enverrait le timeshift au mauvais serveur.
     if (streamUrl != null) {
-      final fromStream = XtreamCredentials.fromStreamUrl(streamUrl);
+      final fromStream = ReplayCredentials.fromStreamUrl(streamUrl);
       if (fromStream != null) {
         debugPrint('🔑 ReplayService: Crédentiels résolus depuis l\'URL du stream → serveur: ${redactServer(fromStream.server)}');
         return fromStream;
@@ -134,7 +140,7 @@ class ReplayService {
     }
     // Priorité 2 : compte courant (fallback si l'URL ne contient pas de crédentiels lisibles).
     final acc = await StreamAccountService.getCurrentAccount();
-    final fromAcc = XtreamCredentials.fromAccount(acc);
+    final fromAcc = ReplayCredentials.fromAccount(acc);
     if (fromAcc != null) {
       debugPrint('🔑 ReplayService: Crédentiels résolus depuis le compte courant → serveur: ${redactServer(fromAcc.server)}');
       return fromAcc;
@@ -159,11 +165,11 @@ class ReplayService {
     });
 
     debugPrint('🌐 ReplayService: Appel → ${redactUrl(uri.toString())}');
-    final response = await http.get(uri);
-    debugPrint('📨 ReplayService: Réponse HTTP ${response.statusCode}');
+    final ({int? status, String body}) response = await _getEpg(uri);
+    debugPrint('📨 ReplayService: Réponse HTTP ${response.status}');
 
-    if (response.statusCode != 200) {
-      debugPrint('❌ ReplayService: Échec HTTP statut ${response.statusCode}');
+    if (response.status != 200) {
+      debugPrint('❌ ReplayService: Échec HTTP statut ${response.status}');
       return [];
     }
 
@@ -211,6 +217,52 @@ class ReplayService {
     } catch (e) {
       debugPrint('💀 ReplayService: Erreur parsing EPG: $e');
       return [];
+    }
+  }
+
+  /// §iptvUaCompat + §hostGate + §cookieScope — revue 2026-09-11, D1B-06 /
+  /// D5A-03 — La requête `get_short_epg`, par la pile réseau IPTV.
+  ///
+  /// **Le défaut réparé.** C'était le SEUL appel au panel fait par un
+  /// `package:http` nu : ni l'UA `IPTVSmartersPro` (un panel qui filtre l'UA
+  /// répond 500 → feuille « vide » sans un mot), ni la tolérance de
+  /// certificat (panel auto-signé → `HandshakeException` alors que le direct
+  /// marche), ni les cookies du compte, ni délai (serveur muet → la feuille
+  /// tourne à vie), ni la file par hôte. Tout le reste de l'app passe par
+  /// `NetworkUtils.buildDio` ; `buildDio` le disait lui-même (« replay… »).
+  ///
+  /// Même comportement que l'ancien appel pour l'appelant : un statut ≠ 200
+  /// rend une liste vide, une panne réseau lève (la feuille affiche « guide
+  /// indisponible » par `describeError`) — mais en temps borné.
+  /// ⚠️ Le `Dio` est fermé AVANT de rendre le jeton de la file, comme
+  /// `XtreamApiService._fetch` : sinon le socket keep-alive compterait encore
+  /// comme une connexion côté panel.
+  Future<({int? status, String body})> _getEpg(Uri uri) async {
+    final String url = uri.toString();
+    try {
+      return await HostGate.run(url, () async {
+        final Dio dio = await NetworkUtils.buildDio(url);
+        dio.options.connectTimeout = epgConnectTimeout;
+        try {
+          final Response<String> r = await dio.getUri<String>(
+            uri,
+            options: Options(
+              responseType: ResponseType.plain,
+              receiveTimeout: epgReceiveTimeout,
+              // Tout statut est LU (l'ancien `http.get` ne levait sur aucun) :
+              // l'appelant garde sa règle « ≠ 200 → liste vide ».
+              validateStatus: (int? s) => s != null,
+            ),
+          );
+          return (status: r.statusCode, body: r.data ?? '');
+        } finally {
+          dio.close(force: true);
+        }
+      }, timeout: epgQueueTimeout);
+    } on HostGateTimeoutException {
+      // `toString()` porte l'hôte : jamais à l'écran. Une attente trop longue
+      // se dit comme un délai dépassé (`describeError` → errTimeout).
+      throw TimeoutException(null, epgQueueTimeout);
     }
   }
 
@@ -294,14 +346,7 @@ class ReplayService {
     return DateTime.tryParse(s)?.toLocal();
   }
 
-  /// Vérifie si un flux a du replay : au moins un programme avec has_archive=true.
-  /// get_short_epg retourne les programmes à venir — si le serveur y indique has_archive,
-  /// c'est que le stream supporte le catchup de façon générale.
-  Future<bool> hasReplay(int streamId, {String? streamUrl}) async {
-    debugPrint('🔍 ReplayService: Vérification replay — streamId: $streamId');
-    final programs = await fetchShortEpg(streamId, limit: 10, streamUrl: streamUrl);
-    final supported = programs.any((p) => p.hasArchive);
-    debugPrint(supported ? '✅ ReplayService: Replay supporté (has_archive=true trouvé).' : '📭 ReplayService: Pas de replay (has_archive=false sur tous les programmes).');
-    return supported;
-  }
+  // Revue 2026-09-11, D5L-02 / D1B-20 — `hasReplay` (détection de replay par
+  // `get_short_epg`) n'avait aucun appelant : retirée. Une détection future
+  // devra repasser par le client IPTV corrigé (D5A-03), pas la ressusciter.
 }

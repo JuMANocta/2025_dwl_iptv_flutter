@@ -280,6 +280,26 @@ object SharedPlayerManager {
     }
 
     /**
+     * §engineVendor patch 15 (AetherStream, revue 2026-09-11, D2B-01) — la
+     * libération DIFFÉRÉE du patch 14 ne libère que l'instance qu'elle visait.
+     *
+     * [expected] est le lecteur inscrit sous [controllerId] au moment de la
+     * demande de libération (`null` s'il n'y en avait pas). ⚠️ Pendant les
+     * 450 ms du report, un nouveau lecteur peut s'inscrire sous le même
+     * identifiant (c'était systématique tant que l'app donnait `7000` à tous
+     * ses lecteurs) : l'ancien `removePlayer` l'arrêtait puis le libérait avec
+     * sa session, et le film qui venait de s'ouvrir restait noir. On compare
+     * donc par IDENTITÉ avant d'agir ; sinon, on laisse le nouveau tranquille.
+     */
+    fun removePlayerIfCurrent(context: Context, controllerId: Int, expected: ExoPlayer?) {
+        if (players[controllerId] !== expected) {
+            NpLog.d(TAG, "Deferred release skipped for controller $controllerId: a newer player owns this ID (patch 15)")
+            return
+        }
+        removePlayer(context, controllerId)
+    }
+
+    /**
      * Removes a player (called when explicitly disposed)
      */
     fun removePlayer(context: Context, controllerId: Int) {

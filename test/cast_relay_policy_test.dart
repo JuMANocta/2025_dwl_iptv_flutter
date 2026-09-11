@@ -24,7 +24,6 @@ void main() {
       );
       expect(p.offered, isTrue);
       expect(p.blocker, isNull);
-      expect(p.sourceAudio, 'AC3 (Dolby Digital)');
     });
 
     test('une piste lisible existe : inutile, on la demandera', () {
@@ -49,7 +48,7 @@ void main() {
       expect(p.blocker, CastRelayBlocker.notNeeded);
     });
 
-    test('chaîne en direct : refusé, et le motif le dit', () {
+    test('chaîne en direct : refusé, pour ce motif', () {
       final p = castRelayPlan(
         isLocalFile: false,
         isLive: true,
@@ -58,7 +57,6 @@ void main() {
       );
       expect(p.offered, isFalse);
       expect(p.blocker, CastRelayBlocker.liveStream);
-      expect(castRelayBlockerMessage(p.blocker!), contains('direct'));
     });
 
     test('§castLocal — un fichier local avec de l AC3 se convertit comme un flux',
@@ -95,19 +93,11 @@ void main() {
       expect(p.offered, isFalse);
       expect(p.blocker, CastRelayBlocker.unsupportedSource);
     });
-
-    test('« pas nécessaire » ne produit aucun message : il n\'y a rien à dire',
-        () {
-      expect(castRelayBlockerMessage(CastRelayBlocker.notNeeded), isNull);
-    });
   });
 
   group('castRelayConsent — expliquer avant de demander', () {
-    test('dit ce que ça fait, ce que ça coûte, ce que ça ne fera pas', () {
-      final c = castRelayConsent(
-        deviceName: 'télé',
-        sourceAudio: 'AC3 (Dolby Digital)',
-      );
+    test('dit ce que ça fait et ce que ça coûte', () {
+      final c = castRelayConsent(deviceName: 'télé');
       // Plus de titre : la phrase seule porte tout (décision 2026-09-05).
       expect(c.what, contains('télé'));
       // Une phrase, sans jargon (décision 2026-09-04 : ne pas faire peur).
@@ -116,53 +106,16 @@ void main() {
       // Une seule note, la batterie ; plus de liste des limites.
       expect(c.costs, hasLength(1));
       expect(c.costs.single, contains('batterie'));
-      expect(c.limits, isEmpty);
       expect(c.confirmLabel, 'Adapter et diffuser');
       expect(c.cancelLabel, 'Annuler');
     });
 
-    test('sans nom d\'appareil ni codec connu : reste lisible', () {
-      final c = castRelayConsent(deviceName: '  ', sourceAudio: null);
+    test('sans nom d\'appareil : reste lisible', () {
+      final c = castRelayConsent(deviceName: '  ');
       // Repli sans nom : « la télé » (mots de l'utilisateur), lisible.
       expect(c.what, contains('télé'));
       expect(c.what, contains('le son de ce film'.split(' ').first));
       expect(c.what, isNot(contains('null')));
-    });
-  });
-
-  group('castRelayProgressLabel', () {
-    test('sans durée totale : seulement l\'avance', () {
-      final s = castRelayProgressLabel(
-        ready: const Duration(minutes: 3, seconds: 5),
-        total: null,
-        playing: true,
-      );
-      expect(s, contains('03:05'));
-      expect(s, isNot(contains('%')));
-    });
-
-    test('avec durée : pourcentage, et l\'état de lecture', () {
-      final s = castRelayProgressLabel(
-        ready: const Duration(minutes: 30),
-        total: const Duration(minutes: 120),
-        playing: true,
-      );
-      expect(s, contains('25 %'));
-      final p = castRelayProgressLabel(
-        ready: const Duration(minutes: 30),
-        total: const Duration(minutes: 120),
-        playing: false,
-      );
-      expect(p, contains('en pause'));
-    });
-
-    test('film long : l\'heure apparaît', () {
-      final s = castRelayProgressLabel(
-        ready: const Duration(hours: 1, minutes: 2, seconds: 3),
-        total: const Duration(hours: 2),
-        playing: true,
-      );
-      expect(s, contains('1:02:03'));
     });
   });
 

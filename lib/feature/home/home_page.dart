@@ -7,7 +7,9 @@ import 'package:aetherStream/core/diagnostics/jank_meter.dart';
 import 'package:aetherStream/core/diagnostics/log_buffer.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/navigation/playlist_visibility.dart';
+import 'package:aetherStream/core/navigation/foreground_gate.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
@@ -36,6 +38,7 @@ import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/confirm_or_undo.dart';
 import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/media_action_sheet.dart';
+import 'package:aetherStream/widgets/sheet_close_tile.dart';
 import 'package:aetherStream/widgets/playback_gate.dart';
 import 'package:aetherStream/widgets/media_chips.dart';
 import 'package:aetherStream/widgets/measured_quality_badge.dart';
@@ -96,7 +99,12 @@ class HomePage extends StatefulWidget {
   /// l'utilisateur** — plus de catégories, plus de vignettes — et rien ne les
   /// recharge, puisque la ré-hydratation §lazyUnload est accrochée à
   /// `didPopNext`, qui ne se produit jamais si on ne quitte pas la page.
-  static bool isForeground = false;
+  ///
+  /// Revue 2026-09-11, D3B-13 — tenu par [homeForeground] : les dialogues
+  /// sur minuterie (mise à jour, expiration, profil) attendent que l'accueil
+  /// redevienne visible au lieu de s'ouvrir par-dessus le lecteur.
+  static bool get isForeground => homeForeground.foreground;
+  static set isForeground(bool value) => homeForeground.foreground = value;
 
   /// Callback pour sortir du mode recherche (invoqué quand l'utilisateur
   /// clique sur le bouton X dans la barre de recherche).
@@ -174,6 +182,11 @@ class _HomePageState extends State<HomePage> with RouteAware {
   final FocusNode _searchFocus = FocusNode();
   String _searchQuery = '';
   Timer? _searchDebounce;
+
+  /// Revue 2026-09-11, D4A-09 — Résultats de la dernière recherche, rendus tels
+  /// quels tant que la requête et les listes n'ont pas changé (cf.
+  /// `_SearchHitsMemo`, dans `home_search.dart`).
+  final _SearchHitsMemo _searchHits = _SearchHitsMemo();
 
   @override
   void initState() {
@@ -262,6 +275,14 @@ class _HomePageState extends State<HomePage> with RouteAware {
     if (!widget.searchMode && oldWidget.searchMode) {
       _searchCtrl.clear();
       _searchFocus.unfocus();
+      // Revue 2026-09-11, D4A-03 — l'index STATIQUE de la recherche par
+      // personne indexe toutes les entrées non-TV de tous les comptes ; il
+      // n'était remplacé qu'à la recherche suivante, donc survivait au
+      // déchargement des listes secondaires. Hors recherche, il ne sert à
+      // rien : on le lâche (reconstruit à la prochaine requête par personne).
+      _PersonTitlesSectionState.dropIndex();
+      // D4A-09 — même raison pour le mémo des résultats (cf. `_SearchHitsMemo`).
+      _searchHits.clear();
     }
   }
 
@@ -273,6 +294,14 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // notifications playlist/favoris/progression pendant la lecture.
     final route = ModalRoute.of(context);
     if (route is PageRoute) appRouteObserver.subscribe(this, route);
+    // Revue 2026-09-11, D4A-01 — ⚠️ `ModalRoute.of` rend cette page
+    // dépendante de TOUT le statut de la route, `isCurrent` compris : à chaque
+    // route poussée, `didPushNext` rendait le jeton… puis, une frame plus
+    // tard, ce rappel (déclenché par `isCurrent` passé à faux) le REPRENAIT
+    // avec `isForeground = true`. Le déchargement §lazyUnload ne se
+    // déclenchait donc jamais tant que l'accueil existait, lecteur compris.
+    // Sous une route poussée, c'est `didPopNext` qui reprend le jeton.
+    if (_inBackground) return;
     // §unloadGuard — L'accueil est visible dès qu'il est monté ; `didPopNext`
     // n'est appelé qu'au RETOUR d'une autre route, jamais à la première
     // apparition.
@@ -293,6 +322,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
 
   /// Vrai tant que cet écran détient le jeton de visibilité (cf. ci-dessus).
   bool _holdsVisibility = false;
+
+  /// D4A-02 — `TmdbService.generation` vue au dernier retour sur l'accueil.
+  int _seenTmdbGeneration = TmdbService.generation;
 
   void _releaseVisibility() {
     if (!_holdsVisibility) return;
@@ -324,8 +356,14 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // était sur le player, on les re-précharge depuis le cache disque JSON.gz
     // (~50 ms par compte). Idempotent : skip ceux déjà en mémoire.
     _rehydrateSecondariesIfNeeded();
+    // Revue 2026-09-11, D4A-02 — une clé TMDB saisie ou retirée pendant
+    // qu'on était ailleurs (page TMDB, restauration) ne passe par aucun des
+    // notifieurs de l'accueil : sans ce signal, ni tendances ni rangées TMDB
+    // n'apparaissaient (ou ne disparaissaient) avant un redémarrage.
+    final bool tmdbChanged = TmdbService.generation != _seenTmdbGeneration;
+    _seenTmdbGeneration = TmdbService.generation;
     // Rejouer une éventuelle notification ignorée pendant l'arrière-plan.
-    if (_pendingRefresh && mounted) {
+    if ((_pendingRefresh || tmdbChanged) && mounted) {
       _pendingRefresh = false;
       _contentTick.value++; // §pageTick — le hero doit voir la reprise
       setState(() {});
@@ -405,7 +443,13 @@ class _HomePageState extends State<HomePage> with RouteAware {
       if (ParsedPlaylistService.getAccount(id) == null) {
         // Sans chemin connu (changement de compte runtime) → s'appuyer sur
         // PlaylistService pour résoudre/télécharger le M3U du compte courant.
-        final path = initialPath ?? await PlaylistService.getOrDownloadPlaylist();
+        // ⚠️ §bootEscape — Un chemin VIDE veut dire « inconnu », pas « ce
+        // fichier-là » : c'est ce que passe le démarrage quand l'utilisateur
+        // est entré sans attendre la fin du téléchargement. `??` seul ne
+        // suffirait pas ('' n'est pas `null`) et `loadActive('')` échouerait.
+        final path = (initialPath == null || initialPath.isEmpty)
+            ? await PlaylistService.getOrDownloadPlaylist()
+            : initialPath;
         await ParsedPlaylistService.loadActive(id, _activeAccountName, path);
       }
     } catch (e) {
@@ -687,7 +731,12 @@ class _HomePageState extends State<HomePage> with RouteAware {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final statusBarHeight = MediaQuery.of(context).padding.top;
+    // Revue 2026-09-11, D4A-09 — `paddingOf` et non `of(context).padding` :
+    // `MediaQuery.of` abonne la HomePage à TOUT le `MediaQueryData` (clavier,
+    // taille, préférences d'accessibilité…), et chaque changement la
+    // reconstruisait entière. Seule la marge du haut est lue : même valeur,
+    // moins de réveils.
+    final statusBarHeight = MediaQuery.paddingOf(context).top;
     // §heroFan ergo / §heroUnify — Le hero "fan" (désormais utilisé par TOUTES
     // les pages, y compris Chaînes) remonte jusqu'au status bar : l'inclinaison
     // des cartes laisse le coin haut-droit libre pour les icônes refresh/⚙️ qui
@@ -800,7 +849,8 @@ class _HomePageState extends State<HomePage> with RouteAware {
                         // §searchTopGap — juste la status bar + petite marge
                         // (avant : + kToolbarHeight, qui poussait le champ très
                         // bas pour rien). L'arrow_back est inline avec le champ.
-                        SizedBox(height: MediaQuery.of(context).padding.top + 6),
+                        // D4A-09 — même lecture ciblée qu'en tête de `build`.
+                        SizedBox(height: MediaQuery.paddingOf(context).top + 6),
                         Padding(
                           // §searchGap — bottom réduit (12 → 8) : combiné au
                           // `top: 4` de l'en-tête de section, il ne reste que
@@ -821,6 +871,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
                           child: _SearchView(
                             query: _searchQuery,
                             byType: byType,
+                            memo: _searchHits,
                             onSelectSuggestion: (q) {
                               _searchCtrl.text = q;
                               _searchCtrl.selection =
@@ -975,7 +1026,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear, size: 20),
-                  tooltip: 'Effacer',
+                  tooltip: context.l10n.commonClear,
                   splashRadius: 20,
                   onPressed: () => _searchCtrl.clear(),
                 )
@@ -1224,19 +1275,70 @@ class _SecondaryAccountsProgressLine extends StatelessWidget {
 ///      liste manquante disparaissait de l'accueil sans un mot.
 /// Il affiche désormais `n/N` en vert quand ça travaille, et `n/N ⚠` en
 /// couleur d'alerte quand des listes manquent sans être en cours de chargement.
-class SecondaryAccountsCounter extends StatelessWidget {
+class SecondaryAccountsCounter extends StatefulWidget {
   const SecondaryAccountsCounter({super.key});
 
   @override
+  State<SecondaryAccountsCounter> createState() =>
+      _SecondaryAccountsCounterState();
+}
+
+/// Revue 2026-09-11, D4A-13 — La liste des comptes n'est plus relue à chaque
+/// reconstruction.
+///
+/// **Le défaut.** `FutureBuilder(future: StreamAccountService.listAccounts())`
+/// vivait sous deux `ValueListenableBuilder` (version de la playlist, états de
+/// chargement) : chaque transition relançait `1 + N` lectures du stockage
+/// chiffré, sur le canal plateforme — une rafale pendant l'hydratation des
+/// listes au démarrage, pour une liste de comptes qui n'avait pas bougé.
+///
+/// **La règle.** Le futur est gardé tant que `accountsVersion` ne bouge pas :
+/// c'est le seul signal d'un changement de la liste (ajout d'un compte,
+/// suppression — y compris la migration legacy et la restauration `.aether`,
+/// qui passent par `saveAccount` / `deleteAccount`). Une modification d'un
+/// compte existant ne le bumpe pas, et n'a pas à le faire : le décompte ne
+/// lit que les identifiants. Les deux autres signaux ne font que RELIRE la
+/// mémoire (`entriesCountOf`, `loadStates`), sans stockage. ⚠️ Un échec de
+/// lecture n'est pas mémoïsé : la reconstruction suivante réessaie, comme
+/// avant.
+class _SecondaryAccountsCounterState extends State<SecondaryAccountsCounter> {
+  /// Une liste entre ou sort de la mémoire, ou un compte est ajouté / retiré.
+  final Listenable _versions = Listenable.merge(<Listenable>[
+    ParsedPlaylistService.version,
+    StreamAccountService.accountsVersion,
+  ]);
+
+  Future<List<StreamAccount>>? _accounts;
+  int _accountsVersion = -1;
+
+  Future<List<StreamAccount>> _accountsFuture() {
+    final int v = StreamAccountService.accountsVersion.value;
+    final Future<List<StreamAccount>>? cached = _accounts;
+    if (cached != null && v == _accountsVersion) return cached;
+    _accountsVersion = v;
+    // Sonde D4A-13 : une ligne par relecture réelle (démarrage, ajout ou
+    // suppression d'un compte) — jamais par transition de chargement.
+    if (!kReleaseMode) {
+      debugPrint('🔢 §secondaryCounts : relecture des comptes '
+          '(accountsVersion=$v)');
+    }
+    final Future<List<StreamAccount>> f = StreamAccountService.listAccounts();
+    f.then<void>((_) {}, onError: (Object _) {
+      if (identical(_accounts, f)) _accounts = null;
+    });
+    return _accounts = f;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: ParsedPlaylistService.version,
-      builder: (ctx, _, __) {
+    return ListenableBuilder(
+      listenable: _versions,
+      builder: (ctx, __) {
         return ValueListenableBuilder<Map<String, AccountLoadState>>(
           valueListenable: ParsedPlaylistService.loadStates,
           builder: (ctx, states, __) {
             return FutureBuilder<List<StreamAccount>>(
-              future: StreamAccountService.listAccounts(),
+              future: _accountsFuture(),
               builder: (ctx, snap) {
                 final accounts = snap.data;
                 if (accounts == null || accounts.length < 2) {
@@ -1371,6 +1473,15 @@ class _TypePage extends StatefulWidget {
     }
   }
 
+  /// Revue 2026-09-11, D4A-14 — Préfixe `|FR|` d'un titre de chaîne, hissé en
+  /// `static final` comme `_reRadioGroup` juste en dessous. La VM Dart ne met
+  /// AUCUNE expression en cache à la construction (`RegExp(...)` rend un
+  /// `_RegExp` natif neuf, compilé à son premier usage) : le regroupement de la
+  /// page Chaînes en allouait et en compilait une par groupe. Même motif, mêmes
+  /// options — sortie identique.
+  static final RegExp _reFrPrefix =
+      RegExp(r'^\s*\|\s*FR\s*\|', caseSensitive: false);
+
   /// Détecte une chaîne TV française pour la regrouper en tête de la page Chaînes.
   /// Critères (ordre de fiabilité) :
   ///   1. tvgId se terminant par `.fr` (TF1.fr, France2.fr, M6.fr, ARTE.fr…)
@@ -1380,7 +1491,7 @@ class _TypePage extends StatefulWidget {
     final tvgId = e.tvgId?.toLowerCase() ?? '';
     if (tvgId.endsWith('.fr')) return true;
     final raw = e.title.rawTitle;
-    if (RegExp(r'^\s*\|\s*FR\s*\|', caseSensitive: false).hasMatch(raw)) return true;
+    if (_reFrPrefix.hasMatch(raw)) return true;
     final group = (e.groupTitle ?? '').toUpperCase();
     if (group.contains('FRANCE') || group.contains('|FR|')) return true;
     return false;
@@ -1503,13 +1614,25 @@ class _TmdbRowsMemo {
   /// des reprises et celle des favoris. Tant que rien n'a bougé, recharger
   /// ne changerait rien — et coûterait une passe O(entrées) plus une
   /// recherche TMDB à chaque recréation de page (§tabSwitchCost).
-  final List<M3uEntry> source;
+  ///
+  /// ⚠️ Revue 2026-09-11, D4A-03 — une référence FAIBLE : ce mémo est
+  /// statique et n'est réécrit que par `_loadTmdbRows`. Tenue en dur, la
+  /// liste (qui concatène les entrées de TOUS les comptes) survivait au
+  /// déchargement des listes secondaires — « Libérer la mémoire » ne libérait
+  /// pas leurs dizaines de milliers d'entrées. Seule l'IDENTITÉ sert ici :
+  /// une cible ramassée vaut « entrées changées », donc rechargement.
+  final WeakReference<List<M3uEntry>> source;
   final int watchVersion;
   final int favVersion;
 
   /// `TmdbService.generation` au chargement : une clé changée ou retirée
   /// invalide le mémo (les caches du service, eux, meurent avec l'instance).
   final int tmdbGeneration;
+
+  /// Revue 2026-09-11, D4A-02 — Les trois interrupteurs au chargement (bits
+  /// 1 = « Parce que tu as regardé », 2 = mieux notés, 4 = plateformes) : une
+  /// rangée allumée APRÈS coup n'a rien été chargée, le mémo ne vaut plus.
+  final int switches;
 
   const _TmdbRowsMemo({
     required this.version,
@@ -1521,6 +1644,7 @@ class _TmdbRowsMemo {
     required this.watchVersion,
     required this.favVersion,
     required this.tmdbGeneration,
+    required this.switches,
   });
 }
 
@@ -1702,6 +1826,12 @@ class _TypePageState extends State<_TypePage>
   static final Map<M3uContentType, List<TrendingTitle>> _sharedTrending =
       <M3uContentType, List<TrendingTitle>>{};
 
+  /// Revue 2026-09-11, D4A-02 — `TmdbService.generation` au dernier
+  /// `_loadTrending` du type : une clé saisie ou retirée depuis relance les
+  /// tendances au prochain signal (elles n'étaient chargées qu'au montage).
+  static final Map<M3uContentType, int> _sharedTrendingGen =
+      <M3uContentType, int>{};
+
   // §tmdbRows — Les deux rangées éditoriales TMDB, par type, partagées comme
   // `_sharedTrending` pour survivre à la destruction de la page. Le
   // croisement avec la playlist se fait dans `_ensureTmdbRows`.
@@ -1778,7 +1908,7 @@ class _TypePageState extends State<_TypePage>
     // Tendances seulement pour films/séries (pas de matching TMDB sur le live TV).
     if (widget.type != M3uContentType.tv) {
       _loadTrending();
-      _loadTmdbRows();
+      unawaited(_reloadTmdbRows());
     }
   }
 
@@ -1838,6 +1968,47 @@ class _TypePageState extends State<_TypePage>
     if (!mounted) return;
     debugPrint('🔔 §pageTick (${widget.type.name}) : reconstruite');
     setState(() {});
+    // Revue 2026-09-11, D4A-02 — Les rangées TMDB et les tendances n'étaient
+    // chargées qu'en `initState` : depuis §tabPageKeep la page vit toute la
+    // session, donc « Parce que tu as regardé <ancien titre> » restait figé,
+    // une rangée rallumée n'apparaissait qu'au redémarrage, une clé saisie
+    // ne donnait rien. Le signal relance donc les deux chargements — APRÈS
+    // la frame, pour que `_memo` soit celui des entrées courantes (l'index
+    // `byUrl` du mémo évite toute passe O(entrées) sur le retour du lecteur).
+    // Les gardes des deux chargements rendent la main sans rien faire quand
+    // rien n'a bougé (même graine, mêmes interrupteurs, même clé).
+    if (widget.type == M3uContentType.tv) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_sharedTrendingGen[widget.type] != TmdbService.generation) {
+        _loadTrending();
+      }
+      unawaited(_reloadTmdbRows());
+    });
+  }
+
+  /// Revue 2026-09-11, D4A-02 — Un seul `_loadTmdbRows` à la fois par page :
+  /// un signal qui arrive pendant un chargement (réseau TMDB) en redemande
+  /// UN de plus à la fin, jamais deux en parallèle.
+  bool _tmdbRowsBusy = false;
+  bool _tmdbRowsAgain = false;
+
+  Future<void> _reloadTmdbRows() async {
+    if (_tmdbRowsBusy) {
+      _tmdbRowsAgain = true;
+      return;
+    }
+    _tmdbRowsBusy = true;
+    try {
+      do {
+        _tmdbRowsAgain = false;
+        await _loadTmdbRows();
+      } while (_tmdbRowsAgain && mounted);
+    } catch (e) {
+      debugPrint('⚠️ §tmdbRows (${widget.type.name}) : $e');
+    } finally {
+      _tmdbRowsBusy = false;
+    }
   }
 
   /// §tmdbRows — Charge les deux rangées TMDB du type courant, puis force le
@@ -1849,6 +2020,9 @@ class _TypePageState extends State<_TypePage>
   /// rangée « parce que tu as regardé » vide de sens.
   Future<void> _loadTmdbRows() async {
     final perf = PerformanceSettingsService.config.value;
+    // Tout éteint : rien à charger MAINTENANT. Ce n'est plus une sortie
+    // définitive (revue 2026-09-11, D4A-02) : le signal de contenu rappelle
+    // cette méthode, et l'interrupteur rallumé sera relu à ce moment-là.
     if (!perf.tmdbRowBecause &&
         !perf.tmdbRowTopRated &&
         !perf.tmdbRowProviders) {
@@ -1857,19 +2031,24 @@ class _TypePageState extends State<_TypePage>
     final isTv = widget.type == M3uContentType.series;
     final svc = TmdbService.instance;
 
-    // §tabSwitchCost — Le `PageView` recrée cette page à chaque changement
-    // d'onglet. Si ni les entrées, ni les reprises, ni les favoris n'ont
-    // bougé depuis le dernier chargement, la graine serait la même : on ne
-    // repaye ni l'index par URL ni la recherche TMDB. (Trouvé à la revue.)
+    // §tabSwitchCost — Ce chargement est rappelé à chaque signal de contenu
+    // (§pageTick, D4A-02) et au montage. Si ni les entrées, ni les reprises,
+    // ni les favoris, ni la clé TMDB, ni les interrupteurs n'ont bougé depuis
+    // le dernier chargement, la graine et les rangées seraient les mêmes : on
+    // ne repaye ni la recherche de graine ni les appels TMDB.
     final int watchV = WatchProgressService.version.value;
     final int favV = FavoritesService.version.value;
     final int gen = TmdbService.generation;
+    final int switches = (perf.tmdbRowBecause ? 1 : 0) |
+        (perf.tmdbRowTopRated ? 2 : 0) |
+        (perf.tmdbRowProviders ? 4 : 0);
     final _TmdbRowsMemo? prev = _sharedTmdbRows[widget.type];
     if (prev != null &&
-        identical(prev.source, widget.entries) &&
+        identical(prev.source.target, widget.entries) &&
         prev.watchVersion == watchV &&
         prev.favVersion == favV &&
-        prev.tmdbGeneration == gen) {
+        prev.tmdbGeneration == gen &&
+        prev.switches == switches) {
       return;
     }
 
@@ -1889,23 +2068,49 @@ class _TypePageState extends State<_TypePage>
     M3uEntry? seed;
     List<TrendingTitle> because = const [];
     if (perf.tmdbRowBecause) {
-      final byUrl = <String, M3uEntry>{
-        for (final e in widget.entries) e.url: e,
-      };
       final progresses = WatchProgressService.all
         ..sort((a, b) => b.lastWatched.compareTo(a.lastWatched));
-      for (final p in progresses) {
-        final e = byUrl[p.url];
-        if (e != null) {
-          seed = e;
-          break;
+      // Revue 2026-09-11, D4A-02 — §resumeIndex/§favIndex : maintenant que ce
+      // chargement suit le signal de contenu (donc le retour du lecteur), la
+      // graine se retrouve par les index du mémo (`byUrl`, `byKey`), jamais
+      // par une passe sur toutes les entrées. Le parcours ne reste qu'au
+      // MONTAGE, quand le rangement n'existe pas encore (comportement d'avant).
+      final _GroupingMemo? grouping = _memo;
+      if (grouping != null && identical(grouping.source, widget.entries)) {
+        final Map<String, List<M3uEntry>> byUrl = grouping.byUrl;
+        for (final p in progresses) {
+          final List<M3uEntry>? g = byUrl[p.url];
+          if (g != null) {
+            seed = g.firstWhere((e) => e.url == p.url, orElse: () => g.first);
+            break;
+          }
         }
-      }
-      if (seed == null) {
-        for (final e in widget.entries) {
-          if (FavoritesService.isEntryFavorite(e)) {
+        if (seed == null) {
+          final favs = favoriteGroupsFor(
+            favoriteKeys: FavoritesService.all,
+            type: widget.type,
+            byKey: grouping.byKey,
+            groups: grouping.groups,
+          );
+          if (favs.isNotEmpty) seed = favs.first.first;
+        }
+      } else {
+        final byUrl = <String, M3uEntry>{
+          for (final e in widget.entries) e.url: e,
+        };
+        for (final p in progresses) {
+          final e = byUrl[p.url];
+          if (e != null) {
             seed = e;
             break;
+          }
+        }
+        if (seed == null) {
+          for (final e in widget.entries) {
+            if (FavoritesService.isEntryFavorite(e)) {
+              seed = e;
+              break;
+            }
           }
         }
       }
@@ -1936,10 +2141,11 @@ class _TypePageState extends State<_TypePage>
       because: because,
       topRated: topRated,
       providers: providers,
-      source: widget.entries,
+      source: WeakReference<List<M3uEntry>>(widget.entries),
       watchVersion: watchV,
       favVersion: favV,
       tmdbGeneration: gen,
+      switches: switches,
     );
     if (same) {
       _sharedTmdbRows[widget.type] = memo;
@@ -1963,6 +2169,7 @@ class _TypePageState extends State<_TypePage>
   /// force un recalcul du hero pour y injecter les titres dispo.
   Future<void> _loadTrending() async {
     final isTv = widget.type == M3uContentType.series; // series → /trending/tv
+    _sharedTrendingGen[widget.type] = TmdbService.generation; // D4A-02
     final list = await TmdbService.instance.getTrending(isTv: isTv);
     if (!mounted) return;
     // ⚠️ Ne RIEN faire si les tendances n'ont pas bougé. Le service rend la

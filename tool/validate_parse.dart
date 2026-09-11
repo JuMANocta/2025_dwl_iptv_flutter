@@ -1,8 +1,14 @@
 // §23 — Script de validation de TitleMetadata.parse sur les catalogues réels.
 // Usage : dart run tool/validate_parse.dart
-// Charge les 3 dumps lib/iptv_exemple/*_vod_cache.json, parse tous les noms,
-// mesure la convergence cross-listes des baseTitle (= fusion en une vignette)
-// et imprime des échantillons pour contrôle visuel.
+// Charge les 4 dumps JSON de lib/iptv_exemple/ (PLATINIUM, PREMIUM, VOD
+// `_vod_cache.json` + xenoIptv.json) et la liste Ultimate VOD_get.m3u, parse
+// tous les noms, mesure la convergence cross-listes des baseTitle (= fusion en
+// une vignette) et imprime des échantillons pour contrôle visuel.
+//
+// D5A-11 (revue 2026-09-11, lot 9) — Un dump ABSENT est annoncé (« ⏭️ ») et
+// sauté, au lieu de faire planter tout le rapport sur `PathNotFoundException`
+// (après un `refresh_dumps.py --only VOD`, par exemple). Les sections qui
+// COMPARENT des listes ne sortent que si toutes celles qu'elles lisent sont là.
 //
 // ignore_for_file: avoid_print
 
@@ -13,7 +19,7 @@ import 'package:aetherStream/data/models/m3u_entry.dart';
 
 void main() {
   const dir = 'lib/iptv_exemple';
-  final files = {
+  final allFiles = {
     'PLATINIUM': '$dir/PLATINIUM_vod_cache.json',
     'PREMIUM': '$dir/PREMIUM_vod_cache.json',
     'VOD': '$dir/VOD_vod_cache.json',
@@ -22,6 +28,15 @@ void main() {
     // la validation ne voyait tout simplement pas le format qu'on gère.
     'XENO': '$dir/xenoIptv.json',
   };
+  // D5A-11 — Seuls les dumps PRÉSENTS sont lus ; les autres sont annoncés.
+  final files = <String, String>{};
+  allFiles.forEach((k, p) {
+    if (File(p).existsSync()) {
+      files[k] = p;
+    } else {
+      print('⏭️  $k absent ($p) — ignoré');
+    }
+  });
 
   final parsed = <String, Map<String, List<String>>>{}; // provider → kind → baseTitles
   // §yearTitle — Une base réduite à un tag (« (FR HD) », « SD », « FHD ») est un
@@ -138,7 +153,14 @@ void main() {
   samples.forEach(print);
 
   print('\n── Convergence cross-listes (baseTitle, lowercase) ──');
-  for (final kind in ['vod', 'series']) {
+  // D5A-11 — Cette section lit les quatre listes JSON à la fois (`!`) : elle
+  // ne sort que si les quatre sont là.
+  final bool allJson = ['PLATINIUM', 'PREMIUM', 'VOD', 'XENO']
+      .every(parsed.containsKey);
+  if (!allJson) {
+    print('  ⏭️  ignorée : il manque au moins un des 4 dumps JSON');
+  }
+  for (final kind in allJson ? const ['vod', 'series'] : const <String>[]) {
     final p = parsed['PLATINIUM']![kind]!.toSet();
     final r = parsed['PREMIUM']![kind]!.toSet();
     final v = parsed['VOD']![kind]!.toSet();

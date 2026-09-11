@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Revue 2026-09-11, D2B-17 / D3L-02 — Textes des notifications NATIVES.
+
+  Dart passe les libellés par les canaux existants (`transfer_notif`,
+  `cast_notif`), dans la langue de l'écran (§l10nAll). Ces ressources ne sont
+  que le REPLI (service recréé sans Dart, notification posée avant l'appel du
+  canal) et les NOMS DE CANAUX (Paramètres > Notifications), qu'Android lit
+  sans Dart.
+
+  Défaut : FRANÇAIS (repli de l'app, cf. `L10n.current`) ; `values-en/` pour
+  l'anglais. Les deux fichiers portent exactement les mêmes clés.
+  ⚠️ `notif_channel_playback*` est lu PAR SON NOM par le paquet vendoré
+  (`aether_video`, patch 20) : ne pas le renommer sans lui.
+-->
+<resources>
+    <string name="notif_channel_downloads">Téléchargements</string>
+    <string name="notif_channel_cast">Diffusion Chromecast</string>
+    <string name="notif_channel_playback">Lecture en cours</string>
+    <string name="notif_channel_playback_desc">Commandes de lecture</string>
+    <string name="notif_download_title">Téléchargement</string>
+    <string name="notif_download_finished">Téléchargement terminé — appuyer pour ouvrir</string>
+    <string name="notif_download_failed">Échec du téléchargement</string>
+    <string name="notif_cancel">Annuler</string>
+    <string name="notif_cast_running">Diffusion en cours</string>
+    <string name="notif_pause">Pause</string>
+    <string name="notif_play">Lecture</string>
+    <string name="notif_stop">Arrêter</string>
+</resources>

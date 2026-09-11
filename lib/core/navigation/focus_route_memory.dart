@@ -292,16 +292,118 @@ abstract final class AppBack {
   static bool pop() {
     final NavigatorState? nav = navigatorKey.currentState;
     if (nav == null || !nav.canPop()) return false;
-    if (_throttled()) return true;
+    // ⚠️ Le jeton s'arme même quand le debounce AVALE l'appui : le pop fantôme
+    // de la plateforme suit CHAQUE pression physique, consommée ou non.
+    _keyPopAt = DateTime.now();
+    if (_throttled()) {
+      _trace('touche', consomme: true, throttle: true);
+      return true;
+    }
+    _trace('touche', consomme: true);
     nav.maybePop();
     return true;
+  }
+
+  // ── §dpadBack — la voie PLATEFORME, mesurée le 2026-09-10 ────────────────
+
+  /// Instant du dernier Retour arrivé par la TOUCHE. Sert de jeton à UN coup.
+  static DateTime? _keyPopAt;
+
+  /// Fenêtre d'appariement touche ↔ plateforme.
+  ///
+  /// ⚠️ **Mesurée, pas choisie.** Sur l'émulateur TV, l'écart entre la trace de
+  /// la touche et le dépilement fantôme a valu 389 / 224 / 362 / **840** / 99 ms
+  /// sur cinq essais. Le debounce de 350 ms ne pouvait donc structurellement pas
+  /// l'attraper — trois mesures sur cinq le dépassent.
+  ///
+  /// ⚠️ Ce n'est PAS un debounce déguisé : l'appariement est 1-pour-1 (le jeton
+  /// se consomme), la fenêtre n'est qu'un garde-fou pour le cas où l'appareil
+  /// n'émettrait jamais l'événement plateforme.
+  static const Duration _platformPairWindow = Duration(milliseconds: 1500);
+
+  @visibleForTesting
+  static void resetPlatformTokenForTest() => _keyPopAt = null;
+
+  /// Retour arrivé par la **plateforme** (`onBackPressed` Android → `popRoute`).
+  ///
+  /// ## Le défaut que ça corrige (mesuré sur émulateur TV, 5 fois sur 5)
+  ///
+  /// Un seul appui physique produit DEUX dépilements : celui de la voie clavier
+  /// (tracée ici) **et** celui-ci, qui remonte par `FlutterActivity.onBackPressed`
+  /// jusqu'à `_WidgetsAppState.didPopRoute` et appelle `maybePop` sur le
+  /// navigateur racine — sans passer par `AppBack`, donc sans debounce et sans
+  /// trace. D'où le signalement du 2026-09-08 : « on fait retour et ça sort de
+  /// la vidéo au lieu de revenir dessus ».
+  ///
+  /// ⚠️ **La portée dépassait largement le lecteur** : depuis une fiche, un
+  /// appui ramenait à l'accueil ET armait le double-Retour de sortie — deux
+  /// appuis suffisaient à quitter l'application au lieu de trois.
+  ///
+  /// ⚠️ La preuve qui a tranché : **Échap** emprunte le même gestionnaire dpad
+  /// mais n'a aucune sémantique « back » pour Android → une trace, UN seul
+  /// dépilement, le film continue. Le second pop est donc bien propre à
+  /// `KEYCODE_BACK`, pas à notre gestion des touches.
+  ///
+  /// ⛔ Rendre `false` quand il n'y a rien à dépiler est **obligatoire** : c'est
+  /// ce qui laisse le système quitter l'application, et c'est la SEULE issue de
+  /// l'écran de chargement, qui n'a aucun `PopScope` (§bootEscape).
+  static bool popFromPlatform() {
+    final DateTime? armed = _keyPopAt;
+    _keyPopAt = null; // jeton à un coup, consommé même si trop vieux
+    if (armed != null &&
+        DateTime.now().difference(armed) < _platformPairWindow) {
+      _trace('plateforme', consomme: true, throttle: true);
+      return true; // c'est le doublon de l'appui déjà traité : on l'avale
+    }
+    final NavigatorState? nav = navigatorKey.currentState;
+    if (nav == null || !nav.canPop()) {
+      _trace('plateforme');
+      return false; // laisser le système quitter l'app
+    }
+    _trace('plateforme', consomme: true);
+    nav.maybePop();
+    return true;
+  }
+
+  /// L'observateur à enregistrer AVANT `runApp` (cf. `main.dart`).
+  static final WidgetsBindingObserver platformObserver = _AppBackObserver();
+
+  /// §tvOptionsBack — Journalise CHAQUE Retour, avec sa voie d'arrivée.
+  ///
+  /// **Ce qu'on cherche** (signalement du 2026-09-08 : sur téléviseur, Retour
+  /// depuis le panneau d'options ferme le FILM au lieu du panneau). Hypothèse :
+  /// sur Android le Retour arrive par DEUX voies — l'événement clavier, capté
+  /// par `dpad` et routé ici, **et** le message de plateforme `popRoute`, qui
+  /// ne passe pas par ce debounce. Un appui = deux dépilements.
+  ///
+  /// ⚠️ C'est une SONDE, pas un correctif : deux lignes pour un seul appui
+  /// confirmeraient l'hypothèse ; une seule la démentiraient, et il faudrait
+  /// chercher ailleurs. La recette appareil tranche — le journal interne
+  /// (§tvLogs) la rend lisible sur TV, où logcat est muet en release.
+  static void _trace(String voie, {bool consomme = false, bool throttle = false}) {
+    final NavigatorState? nav = navigatorKey.currentState;
+    debugPrint('⬅️ §tvOptionsBack — Retour par « $voie » '
+        '(consomme=$consomme, avale=$throttle, depilable=${nav?.canPop()})');
   }
 
   /// Retour déclenché depuis l'**interface** (bouton retour du player,
   /// télécommande web). Ne quitte jamais l'application : un bouton à l'écran ne
   /// doit pas pouvoir fermer l'app.
+  /// ⛔ N'arme JAMAIS le jeton plateforme : ces chemins ne produisent aucun
+  /// événement `popRoute`. Le jeton resterait armé et avalerait un vrai Retour.
   static void popFromUi() {
     if (_throttled()) return;
     navigatorKey.currentState?.maybePop();
   }
+}
+
+/// §dpadBack — Capte `popRoute` avant `_WidgetsAppState`.
+///
+/// ⚠️ L'ordre d'enregistrement est **porteur** : `handlePopRoute` parcourt les
+/// observateurs dans l'ordre où ils se sont inscrits et s'arrête au premier qui
+/// rend `true`. `_WidgetsAppState` s'inscrit dans son `initState`, donc APRÈS
+/// `runApp` — celui-ci doit s'inscrire avant.
+class _AppBackObserver with WidgetsBindingObserver {
+  @override
+  Future<bool> didPopRoute() async => AppBack.popFromPlatform();
 }

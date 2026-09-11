@@ -50,7 +50,13 @@ abstract final class PlaylistReloadService {
   }) async {
     final String? newPath;
     if (isPriority) {
-      newPath = await PlaylistService.downloadCurrentM3U();
+      // revue 2026-09-11, D1A-01 — Le principal peut désormais rendre le
+      // catalogue EXISTANT sans rien télécharger (panel qui refuse le JSON,
+      // repli `get.php` interdit pour ne pas détruire un catalogue sain).
+      // Même règle que les secondaires ci-dessous : rien de neuf ⇒ échec
+      // annoncé, jamais « rechargée » sur la liste d'hier.
+      final res = await PlaylistService.downloadCurrentM3UResult();
+      newPath = res.downloaded ? res.path : null;
     } else {
       // ⚠️ `force: true`, pas `respectTtl: false` : ce dernier ne télécharge
       // que si le fichier MANQUE — c'est-à-dire jamais, puisqu'on ne le
@@ -115,8 +121,11 @@ abstract final class PlaylistReloadService {
   static String formatAge(Duration age) {
     final int h = age.inHours;
     final int m = age.inMinutes % 60;
-    if (h > 0) return m > 0 ? '${h}h ${m}min' : '${h}h';
-    if (m > 0) return '${m}min';
+    // Revue 2026-09-11, lot 7 (recette en anglais) — « min » en dur : un écran
+    // anglais lisait « 20h 43min ». Le français ne change pas (« 3h 12min »).
+    final String mins = L10n.current.acctAgeMinutesShort(m);
+    if (h > 0) return m > 0 ? '${h}h $mins' : '${h}h';
+    if (m > 0) return mins;
     return L10n.current.reloadLessThanMinute;
   }
 }
@@ -126,8 +135,13 @@ abstract final class PlaylistReloadService {
 class ReloadBatchResult {
   final List<String> succeeded;
 
-  /// Libellés des comptes en échec, avec leur raison.
-  final Map<String, String> failed;
+  /// Libellés des comptes en échec, UN par compte.
+  ///
+  /// ⚠️ Revue 2026-09-11, D4B-15 — c'était une table indexée par le NOM du
+  /// compte : deux abonnements homonymes (« Xtream ») en échec ne faisaient
+  /// qu'une entrée, et le bilan annonçait « 1 échec » avec un total faux.
+  /// La raison n'était jamais lue (le journal la garde, rédigée au puits).
+  final List<String> failed;
 
   const ReloadBatchResult({required this.succeeded, required this.failed});
 
@@ -143,9 +157,9 @@ class ReloadBatchResult {
       return L10n.current.reloadBatchAllOk(succeeded.length);
     }
     if (succeeded.isEmpty) {
-      return L10n.current.reloadBatchAllFailed(failed.keys.join(', '));
+      return L10n.current.reloadBatchAllFailed(failed.join(', '));
     }
     return L10n.current.reloadBatchMixed(
-        succeeded.length, failed.length, failed.keys.join(', '));
+        succeeded.length, failed.length, failed.join(', '));
   }
 }

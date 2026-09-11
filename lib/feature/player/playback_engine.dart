@@ -67,8 +67,6 @@ class AetherPlaybackHealth {
     this.watched = Duration.zero,
   });
 
-  static const AetherPlaybackHealth empty = AetherPlaybackHealth();
-
   /// Une session sans lecture effective ne dit rien : ni bonne, ni mauvaise.
   bool get isMeaningful => watched.inSeconds >= 10;
 }

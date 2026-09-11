@@ -40,8 +40,8 @@ enum VideoFitMode {
         VideoFitMode.stretch => L10n.current.fitFillSub,
       };
 
-  /// Mode suivant dans le cycle (bouton inline du lecteur).
-  VideoFitMode get next => values[(index + 1) % values.length];
+  // Revue 2026-09-11, D2A-11 — `next` (cycle aveugle) n'était lu que par les
+  // tests : le lecteur passe par un MENU nommé (§videoFit). Retiré.
 }
 
 /// §videoFit — Mémorise le format choisi d'une vidéo à l'autre.

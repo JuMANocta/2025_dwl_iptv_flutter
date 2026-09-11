@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'light_palette.dart';
 import 'theme_service.dart';
 
 // ── Couleurs Neutres ────────────────────────────────────────────────────────
@@ -13,18 +14,71 @@ const Color kTextDarkSecondary = Color(0xFFE0E0E0);
 const Color kTextDarkPrimary = Color(0xFFFFFFFF);
 
 // ── Palette AetherStream (raw) ───────────────────────────────────────────────
-const Color kAetherPrimaryPurple  = Color(0xFF6A0DAD); // Violet historique (conservé pour compat)
+// Revue 2026-09-11, D4B-07 — `kAetherPrimaryPurple`, `kAetherVibrantMagenta`,
+// `kMatrixGreen`, `kProviderTag` et `kLangEpisode` n'avaient aucun lecteur :
+// retirés. La couleur principale se lit par `kAccentPrimary` (thème).
 const Color kAetherSecondaryCyan  = Color(0xFF00CED1); // Cyan/Turquoise
-const Color kAetherVibrantMagenta = Color(0xFFC71585); // Magenta
-const Color kMatrixGreen          = Color(0xFF00FF41); // Terminal Matrix green
 const Color kMatrixGreenDim       = Color(0xFF00C832); // Variante plus douce
+
+// ── Terminal « Matrix » (dialogue de mise à jour) ────────────────────────────
+/// Revue 2026-09-11, D3B-09 — §updateGreen : le dialogue de mise à jour garde
+/// un style terminal FIGÉ, indépendant du thème (choix de style assumé). Ses
+/// teintes vivaient en dur dans deux widgets ; elles sont nommées ici, valeurs
+/// inchangées.
+// Valeur de l'ancien `kMatrixGreen` (retiré par D4B-07, lot 6) : écrite ici,
+// le terminal étant son seul lecteur.
+const Color kTermGreen       = Color(0xFF00FF41);  // titres, boutons, filets
+const Color kTermGreenDim    = Color(0xFF00AA00);  // texte secondaire
+const Color kTermGreenYellow = Color(0xFFADFF2F);  // valeurs (taille, version)
+const Color kTermGreenBright = Color(0xFF33FF33);  // barre ASCII, partie qui change
+const Color kTermOlive       = Color(0xFF7A9A3F);  // préfixe commun atténué
+const Color kTermRed         = Color(0xFFFF5555);  // erreur
+const Color kTermBackground  = kBlack;             // fond du terminal (avec alpha)
+
+// ── Posé SUR UNE IMAGE (vignettes, hero, logos) ──────────────────────────────
+/// Revue 2026-09-11, D4A-16 — Texte, voiles et ombres posés sur une affiche.
+/// ⚠️ Volontairement FIXES, jamais dérivés du thème : une affiche est la même
+/// en thème clair et en thème sombre, et le voile qui rend le titre lisible
+/// ne doit pas s'éclaircir avec le fond de l'app (§lightTheme). Valeurs
+/// identiques aux littéraux qu'elles remplacent (aucun changement de rendu).
+const Color kOnImage         = kWhite;             // texte / icône sur image
+const Color kImageScrim      = kBlack;             // voile, ombre (avec alpha)
+const Color kImageScrim70    = Color(0xB3000000);  // pastille ⋯ d'une vignette
+const Color kImageScrim80    = Color(0xCC000000);  // ombre portée du hero
+const Color kImageScrimSoft  = Color(0x42000000);  // = Colors.black26
+const Color kOnImageFaint    = Color(0x1FFFFFFF);  // = Colors.white12
+const Color kOnImageSubtle   = Color(0x3DFFFFFF);  // = Colors.white24
+const Color kOnImageMuted    = Color(0x8AFFFFFF);  // = Colors.white54
+const Color kDisabledOnDark  = Color(0x62FFFFFF);  // = Colors.white38
+const Color kDisabledOnLight = Color(0x61000000);  // = Colors.black38
+/// Tranche de la carte active du hero : cinq ombres dures, du clair au sombre,
+/// sous une carte à bord blanc ([kHeroCardEdge]).
+const Color kHeroEdge1 = Color(0xFFEDEDED);
+const Color kHeroEdge2 = Color(0xFFD2D2D2);
+const Color kHeroEdge3 = Color(0xFFA8A8A8);
+const Color kHeroEdge4 = Color(0xFF7E7E7E);
+const Color kHeroEdge5 = Color(0xFF4A4A4A);
+const Color kHeroCardEdge = kWhite;
+/// Fond derrière le logo d'une chaîne dans le hero (un logo n'a pas de fond).
+const Color kHeroChannelBackdrop = Color(0xFF15171C);
 
 // ── Alias sémantiques dynamiques ─────────────────────────────────────────────
 // Getters lus depuis ThemeService à chaque build → réagissent aux changements
 // de thème in-app sans toucher les widgets. Changer le preset = toute l'UI se recolore.
-Color get kAccentPrimary   => ThemeService.config.value.primaryColor;
-Color get kAccentSecondary => ThemeService.config.value.accentColor;
-Color get kAccentTertiary  => ThemeService.config.value.tertiaryColor;
+///
+/// §lightTheme (2026-09-10) — ⚠️ Sur fond CLAIR, la valeur brute n'est pas
+/// utilisable : ces couleurs sont pensées pour du noir. Le vert Matrix
+/// `#00FF41` vaut 15,3:1 sur noir et **1,37:1 sur blanc**, soit onze fois
+/// moins que le minimum lisible. Elles sont donc ASSOMBRIES juste ce qu'il
+/// faut, teinte et saturation conservées (cf. `light_palette.dart`).
+/// ⛔ Ne pas contourner ce passage en lisant `ThemeService.config` en direct
+/// dans un widget : c'est précisément ce qui rendait le thème clair illisible.
+Color themedOnSurface(Color raw) =>
+    ThemeService.isLight ? readableOn(raw) : raw;
+
+Color get kAccentPrimary   => themedOnSurface(ThemeService.config.value.primaryColor);
+Color get kAccentSecondary => themedOnSurface(ThemeService.config.value.accentColor);
+Color get kAccentTertiary  => themedOnSurface(ThemeService.config.value.tertiaryColor);
 
 // ── Qualités vidéo (couleurs fixes — indépendantes du thème) ─────────────────
 const Color kQuality4K  = Color(0xFFE53935); // Rouge vif
@@ -41,11 +95,26 @@ const Color kQualityUnknown = Color(0xFFF0EAD6);
 /// en croyant prendre un flux normal.
 const Color kQualityCam = Color(0xFFFF6D00);
 
-/// §providerTag — Marqueur de tête du fournisseur (FR, US, IT, RU, PPV…).
-/// Gris-bleu NEUTRE, volontairement en dehors du code couleur des qualités :
-/// ce n'est ni une qualité ni une langue, et l'afficher comme telle était
-/// précisément le défaut corrigé.
-const Color kProviderTag = Color(0xFF7E8FA6);
+// ── Diffuseurs (pastilles « Diffusé par » de la fiche) ──────────────────────
+/// Revue 2026-09-11, D4A-08 — La couleur de MARQUE d'un diffuseur, par nom
+/// normalisé (cf. `_normalizePlatform` de la fiche). Déplacée ici depuis
+/// `details_page.dart` (« zéro couleur en dur dans un widget »). Couleur BRUTE :
+/// ⚠️ l'afficher passe par `brandReadableOn(…, surface)` — Canal+ et Peacock
+/// sont NOIRS, illisibles tels quels sur le thème sombre.
+Color platformBrandColor(String platform) {
+  switch (platform) {
+    case 'Netflix':      return const Color(0xFFE50914);
+    case 'Prime Video':  return const Color(0xFF00A8E1);
+    case 'HBO Max':      return const Color(0xFF5B2D8E);
+    case 'Apple TV+':    return const Color(0xFF555555);
+    case 'Starz':        return const Color(0xFF00B4D8);
+    case 'Paramount+':   return const Color(0xFF0064FF);
+    case 'Disney+':      return const Color(0xFF0063E5);
+    case 'Canal+':       return const Color(0xFF000000);
+    case 'Peacock':      return const Color(0xFF000000);
+    default:             return Colors.grey;
+  }
+}
 
 // ── Langues ─────────────────────────────────────────────────────────────────
 Color get kLangMulti     => kAccentPrimary;       // suit le thème
@@ -55,7 +124,6 @@ const Color kLangVF      = kAetherSecondaryCyan;  // Cyan
 /// VOSTFR (même nature : version originale + sous-titres), en plus sourd pour
 /// rester distinguable d'un coup d'œil.
 const Color kLangLeg     = Color(0xFFB8860B);     // Or sombre
-const Color kLangEpisode = kAetherSecondaryCyan;  // Cyan
 
 // ── Badges media type (player + fiches) ─────────────────────────────────────
 const Color kBadgeLive   = Color(0xFFE53935);       // Rouge direct
@@ -68,10 +136,10 @@ Color get kBadgeSeriesType => kAccentPrimary;       // suit le thème
 // ── Statuts / alertes ────────────────────────────────────────────────────────
 // §themePlus (2026-06-11) — les 4 couleurs d'état suivent désormais le thème
 // (personnalisables in-app via ThemeSettingsPage, définies par les presets).
-Color get kWarning  => ThemeService.config.value.warningColor;  // reprise/alertes
-Color get kFavorite => ThemeService.config.value.favoriteColor; // favori actif
-Color get kError    => ThemeService.config.value.errorColor;    // erreur/danger
-Color get kSuccess  => ThemeService.config.value.successColor;  // succès/confirmé
+Color get kWarning  => themedOnSurface(ThemeService.config.value.warningColor);  // reprise/alertes
+Color get kFavorite => themedOnSurface(ThemeService.config.value.favoriteColor); // favori actif
+Color get kError    => themedOnSurface(ThemeService.config.value.errorColor);    // erreur/danger
+Color get kSuccess  => themedOnSurface(ThemeService.config.value.successColor);  // succès/confirmé
 Color get kDispo    => kAccentPrimary;   // suit le thème
 
 // ── Dégradé principal (boutons, pills actives) ───────────────────────────────

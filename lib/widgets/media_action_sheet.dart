@@ -25,74 +25,7 @@ import 'package:aetherStream/widgets/quality_buttons.dart';
 import 'package:aetherStream/widgets/epg_block.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import '../l10n/l10n_ext.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sélecteur de version (films/séries avec plusieurs variantes)
-// ─────────────────────────────────────────────────────────────────────────────
-
-Future<M3uEntry?> showVersionSelector(BuildContext context, List<M3uEntry> versions) {
-  // §3c-4 — bifurque mobile/TV : bottom sheet sur mobile, Dialog centré sur TV.
-  return showAdaptiveActionSheet<M3uEntry>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (ctx) => Container(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text(context.l10n.sheetChooseVersion, style: Theme.of(context).textTheme.titleLarge),
-        ),
-        const Divider(height: 1),
-        Flexible(
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: versions.length,
-            separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
-            itemBuilder: (ctx, i) {
-              final v          = versions[i];
-              final year       = v.title.year;
-              final extraInfo  = v.title.versionLabel ?? L10n.current.sheetStandardUnknown;
-              final qChip      = qualityChip(v.title);
-              final langChips  = languageChips(v.title);
-              final allChips   = <Widget>[];
-
-              if (year != null) {
-                allChips.add(Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(border: Border.all(color: Theme.of(ctx).colorScheme.outline.withAlpha(150)), borderRadius: BorderRadius.circular(4)),
-                  child: Text(year, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Theme.of(ctx).colorScheme.onSurface)),
-                ));
-              }
-              if (qChip is! SizedBox) allChips.add(qChip);
-              allChips.addAll(langChips);
-
-              Widget titleWidget;
-              Widget? subtitleWidget;
-
-              if (allChips.isNotEmpty) {
-                titleWidget = Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: allChips);
-                if (extraInfo.isNotEmpty && extraInfo != L10n.current.sheetStandardUnknown) {
-                  subtitleWidget = Text(extraInfo, style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant));
-                }
-              } else {
-                titleWidget = Text(extraInfo, style: const TextStyle(fontWeight: FontWeight.bold));
-              }
-
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-                title: titleWidget,
-                subtitle: subtitleWidget,
-                trailing: Icon(Icons.check_circle_outline, color: Theme.of(ctx).colorScheme.onSurface.withAlpha(60), size: 20),
-                onTap: () => Navigator.pop(ctx, v),
-              );
-            },
-          ),
-        ),
-      ]),
-    ),
-  );
-}
+import 'sheet_close_tile.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Action sheet Films / Séries
@@ -317,7 +250,9 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
           if (entry.type == M3uContentType.tv && entry.streamId != null)
             ListTile(
               leading: const Icon(Icons.replay),
-              title: Text("Replay${entry.catchupDays != null ? ' (${entry.catchupDays}j)' : ''}"),
+              title: Text(entry.catchupDays != null
+                  ? context.l10n.sheetReplayDays(entry.catchupDays!)
+                  : context.l10n.sheetReplay),
               onTap: () async {
                 Navigator.pop(context);
                 final replayProgram = await showAdaptiveActionSheet<ReplayProgram>(
@@ -367,6 +302,8 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
               );
             },
           ),
+          // §tvOptionsBack — la feuille doit offrir de NE RIEN choisir.
+          const SheetCloseTile(),
           const SizedBox(height: 16),
         ]),
       ),
@@ -413,7 +350,18 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
           ))
       .toList();
 
-  void playVersion(M3uEntry v) {
+  Future<void> playVersion(M3uEntry v) async {
+    // Revue 2026-09-11, D4B-09 — §deviceCaps : la porte 4K est « une seule
+    // porte pour les TROIS points de lancement », mais cette feuille (celle
+    // du tap simple sur une chaîne) poussait le lecteur sans elle : une
+    // chaîne « 4K » refusée par le menu ⋯ de la carte partait ici en lecture,
+    // puis échouait au décodage. Même geste que `_launchPlayer` : fermer la
+    // feuille, demander à la porte sur le contexte RACINE (celui de la
+    // feuille meurt avec elle), puis lancer.
+    final BuildContext root = navigatorKey.currentContext ?? context;
+    Navigator.pop(context);
+    if (!await PlaybackGate.allow(root, v)) return;
+    if (!root.mounted) return;
     // Auto-ajout aux favoris au lancement de la lecture (§1d)
     FavoritesService.addEntry(v);
     // §1i — Mémoriser la dernière chaîne pour la tuile "Reprendre la chaîne".
@@ -423,8 +371,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
       tvgId: v.tvgId,
       logoUrl: v.logoUrl,
     );
-    Navigator.pop(context);
-    Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
+    Navigator.push(root, MaterialPageRoute(builder: (_) => PlayerPage(
       path: v.url,
       title: v.displayName,
       // §stallCount — rattache les blocages au fournisseur.
@@ -456,17 +403,30 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                   style: Theme.of(context).textTheme.headlineSmall,
                   maxLines: 2, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 12),
-              if (entry.tvgId != null)
-                EpgNowNextBlock(tvgId: entry.tvgId!, versions: versions, onPlayVersion: playVersion),
-              if (entry.tvgId == null)
-                QualityButtonsRow(versions: versions, onPlay: playVersion),
+              // Revue 2026-09-11, D4B-04 — les boutons de lecture d'abord, et
+              // TOUT DE SUITE : ils vivaient dans le bloc guide, qui n'affiche
+              // qu'une barre de chargement tant que l'EPG arrive (jusqu'à
+              // 12 s). Sur TV, le focus d'entrée tombe désormais sur eux.
+              QualityButtonsRow(versions: versions, onPlay: playVersion),
+              if (entry.tvgId != null) ...[
+                const SizedBox(height: 8),
+                EpgNowNextBlock(
+                  tvgId: entry.tvgId!,
+                  versions: versions,
+                  onPlayVersion: playVersion,
+                  showPlayButtons: false,
+                ),
+              ],
               const SizedBox(height: 4),
               // ── Favoris (toggle) ───────────────────────────────────────
               _FavoriteToggleTile(entry: entry),
               if (entryForReplay.streamId != null)
                 ListTile(
                   leading: const Icon(Icons.replay_circle_filled),
-                  title: Text("Replay${entryForReplay.catchupDays != null ? ' (${entryForReplay.catchupDays}j)' : ''}"),
+                  title: Text(entryForReplay.catchupDays != null
+                      ? context.l10n
+                          .sheetReplayDays(entryForReplay.catchupDays!)
+                      : context.l10n.sheetReplay),
                   onTap: () async {
                     Navigator.pop(context);
                     final replayProgram = await showAdaptiveActionSheet<ReplayProgram>(
@@ -509,6 +469,8 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                     }
                   },
                 ),
+              // §tvOptionsBack — la feuille doit offrir de NE RIEN choisir.
+              const SheetCloseTile(),
               const SizedBox(height: 8),
             ],
           ),

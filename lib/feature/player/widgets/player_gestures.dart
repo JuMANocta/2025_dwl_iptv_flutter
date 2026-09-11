@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../playback_engine.dart';
@@ -46,6 +47,12 @@ class PlayerGestures extends StatefulWidget {
   State<PlayerGestures> createState() => _PlayerGesturesState();
 }
 
+/// §playerReach — Gabarit de l'encart de retour visuel (seek, volume,
+/// luminosité). ⚠️ Les QUATRE types partagent ces bornes : un demi-disque plus
+/// large d'un côté que de l'autre se lirait comme deux composants différents.
+const double _kOverlayWidth = 104;
+const double _kOverlayHeight = 116;
+
 class _PlayerGesturesState extends State<PlayerGestures> {
   // Position du dernier double-tap (pour savoir gauche/droite).
   Offset? _doubleTapPos;
@@ -59,15 +66,36 @@ class _PlayerGesturesState extends State<PlayerGestures> {
   Offset? _dragStart;
   Duration _seekBase = Duration.zero;
 
+  /// §ctrlBlink (2026-09-09) — La disparition de l'encart, ANNULABLE.
+  ///
+  /// **Le défaut corrigé** (signalé pendant la recette : « si on laisse le
+  /// doigt appuyé, au bout d'un temps ça clignote ») : chaque mise à jour du
+  /// geste appelait `Future.delayed(900 ms)` — un `Future` **qu'on ne peut pas
+  /// annuler**. Un glissement continu en programmait donc des dizaines, et la
+  /// PREMIÈRE masquait l'encart alors que le doigt bougeait encore ; le
+  /// mouvement suivant le rallumait. D'où un clignotement qui n'apparaissait
+  /// qu'au bout d'un moment — le temps que la première échéance tombe.
+  ///
+  /// ⚠️ Un `Timer` annulable, pas un `Future.delayed` : le délai doit repartir
+  /// à CHAQUE mouvement, donc compter depuis le DERNIER, pas depuis le premier.
+  Timer? _overlayTimer;
+
   void _showOverlay(SeekOverlayType type, String label) {
+    _overlayTimer?.cancel();
     setState(() {
       _overlayType = type;
       _overlayLabel = label;
       _overlayVisible = true;
     });
-    Future.delayed(const Duration(milliseconds: 900), () {
+    _overlayTimer = Timer(const Duration(milliseconds: 900), () {
       if (mounted) setState(() => _overlayVisible = false);
     });
+  }
+
+  @override
+  void dispose() {
+    _overlayTimer?.cancel();
+    super.dispose();
   }
 
   void _handleDoubleTap() {
@@ -164,25 +192,31 @@ class _PlayerGesturesState extends State<PlayerGestures> {
           // Surface transparente pour capturer les events.
           const ColoredBox(color: Colors.transparent),
           // Feedback seek / volume / luminosité.
+          //
+          // §playerReach — ⚠️ Cet encart occupait **35 % de la largeur sur
+          // TOUTE la hauteur** (`width: size.width * 0.35`, `top: 0` +
+          // `bottom: 0`). En paysage sur téléphone, cela faisait une dalle
+          // sombre sur plus d'un tiers de l'écran pour une icône et deux
+          // chiffres — signalement du 2026-09-08, « leurs largeurs est a
+          // réduire ». Largeur FIXE et hauteur bornée au contenu : le repère
+          // reste du bon côté de l'écran (c'est lui qui dit quel geste est en
+          // cours) sans masquer l'image qu'on est justement en train de régler.
           if (_overlayVisible && _overlayType != null)
-            Positioned(
-              top: 0,
-              bottom: 0,
-              left: (_overlayType == SeekOverlayType.seekLeft ||
+            Align(
+              alignment: (_overlayType == SeekOverlayType.seekLeft ||
                       _overlayType == SeekOverlayType.brightness)
-                  ? 0
-                  : null,
-              right: (_overlayType == SeekOverlayType.seekLeft ||
-                      _overlayType == SeekOverlayType.brightness)
-                  ? null
-                  : 0,
-              width: MediaQuery.of(context).size.width * 0.35,
+                  ? Alignment.centerLeft
+                  : Alignment.centerRight,
               child: AnimatedOpacity(
                 opacity: _overlayVisible ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 150),
-                child: PlayerSeekOverlay(
-                  type: _overlayType!,
-                  label: _overlayLabel,
+                child: SizedBox(
+                  width: _kOverlayWidth,
+                  height: _kOverlayHeight,
+                  child: PlayerSeekOverlay(
+                    type: _overlayType!,
+                    label: _overlayLabel,
+                  ),
                 ),
               ),
             ),

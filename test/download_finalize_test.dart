@@ -93,6 +93,31 @@ void main() {
     expect(written, isNull);
   });
 
+  test('🔴 D3A-03 — fichier TRONQUÉ : le partiel RESTE (reprise possible) et '
+      'aucun film tronqué n\'apparaît', () async {
+    // Avant : `rename` PUIS contrôle de taille — un disque plein laissait un
+    // « film.mp4 » tronqué dans la galerie, et la reprise repartait de zéro.
+    final temp = await part('.film.aetherpart.mp4', size: 100);
+    await finalizeDownloadForTest(
+      tempPath: temp,
+      finalPath: '${dir.path}/film.mp4',
+      expectedSize: 999999,
+    );
+    expect(await File(temp).exists(), isTrue,
+        reason: 'le partiel est la reprise : il ne doit pas bouger');
+    expect(await File('${dir.path}/film.mp4').exists(), isFalse);
+  });
+
+  test('D3A-01 — un partiel VIDE n\'est jamais « terminé »', () async {
+    final temp = await part('.film.aetherpart.mp4', size: 0);
+    final written = await finalizeDownloadForTest(
+      tempPath: temp,
+      finalPath: '${dir.path}/film.mp4',
+    );
+    expect(written, isNull);
+    expect(await File('${dir.path}/film.mp4').exists(), isFalse);
+  });
+
   test('taille attendue SUPÉRIEURE tolérée (asymétrie voulue)', () async {
     // Un serveur sans `content-length` fiable ne doit pas faire échouer un
     // téléchargement complet.

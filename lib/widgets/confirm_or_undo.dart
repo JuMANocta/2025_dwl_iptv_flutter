@@ -4,6 +4,7 @@ import '../core/themes/colors.dart';
 import '../core/utils/app_snackbar.dart';
 import '../core/utils/platform_tv.dart';
 import 'tv/tv_adaptive_modal.dart';
+import '../l10n/l10n_ext.dart';
 
 /// §undoTv — Une action réversible, présentée selon l'appareil.
 ///
@@ -37,8 +38,13 @@ Future<bool> confirmOrUndo(
   required VoidCallback onUndo,
   bool destructive = true,
   bool? isTv,
+  // Recette S25 du 2026-09-11 — Demander AVANT sur tous les appareils : pour
+  // une perte coûteuse à refaire (une clé de ~220 caractères), une annulation
+  // de 5 s dans une snackbar se rate trop facilement (« pas eu d'Annuler
+  // possible, ça a détruit la clé »).
+  bool alwaysAsk = false,
 }) async {
-  if (isTv ?? PlatformTv.isTv) {
+  if (alwaysAsk || (isTv ?? PlatformTv.isTv)) {
     final bool ok = await showAppDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -50,7 +56,9 @@ Future<bool> confirmOrUndo(
                 // télécommande, OK est le geste réflexe.
                 autofocus: true,
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Annuler'),
+                // ⚠️ `L10n.current` et pas `context.l10n` : ce dialogue peut se
+                // construire sous un contexte sans `Localizations` (tests).
+                child: Text(L10n.current.commonCancel),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
@@ -77,7 +85,8 @@ Future<bool> confirmOrUndo(
     SnackBar(
       content: Text(doneMessage),
       duration: const Duration(seconds: 5),
-      action: SnackBarAction(label: 'Annuler', onPressed: onUndo),
+      action: SnackBarAction(
+          label: L10n.current.commonCancel, onPressed: onUndo),
     ),
   );
   return true;

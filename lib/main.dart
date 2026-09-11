@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'l10n/l10n_ext.dart';
+import 'core/utils/user_error.dart';
 import 'data/services/download_manager_service.dart';
 import 'data/models/download_task.dart';
 import 'data/services/transfer_notification_bridge.dart';
@@ -27,6 +28,7 @@ import 'data/services/hidden_regions_service.dart';
 import 'data/services/track_preferences_service.dart';
 import 'core/navigation/main_navigation.dart';
 import 'core/navigation/focus_route_memory.dart';
+import 'core/navigation/foreground_gate.dart';
 import 'data/services/expiration_alert_service.dart';
 import 'feature/accounts/accounts_page.dart';
 import 'feature/accounts/expiration_alert_dialog.dart';
@@ -34,6 +36,7 @@ import 'feature/onboarding/onboarding_page.dart';
 import 'feature/settings/backup_restore_flow.dart';
 import 'feature/settings/perf_suggest_dialog.dart';
 import 'core/boot/boot_status.dart';
+import 'core/boot/boot_outcome.dart';
 import 'feature/boot/boot_screen.dart';
 import 'feature/boot/boot_offline_screen.dart';
 import 'data/services/network_status_service.dart';
@@ -98,6 +101,18 @@ void main() async {
     await windowManager.ensureInitialized();
   }
 
+  // §dpadBack (2026-09-10) — ⚠️ AVANT `runApp`, et ce n'est pas cosmétique :
+  // `handlePopRoute` parcourt les observateurs dans l'ordre d'inscription et
+  // s'arrête au premier qui rend `true`. `_WidgetsAppState` s'inscrit dans son
+  // `initState`, donc après `runApp` — inscrit plus tard, celui-ci ne verrait
+  // jamais l'événement.
+  //
+  // Ce qu'il corrige, MESURÉ sur émulateur TV : un seul appui physique sur
+  // Retour dépilait DEUX routes, parce que l'appui arrive à la fois par la
+  // touche (captée par `dpad` → `AppBack.pop`) et par la plateforme
+  // (`onBackPressed` → `popRoute`), et que la seconde voie ne passait par aucun
+  // garde-fou. Détail et preuve dans `focus_route_memory.dart`.
+  WidgetsBinding.instance.addObserver(AppBack.platformObserver);
   // §tvLogs — Capture des logs AVANT tout le reste : sur TV il n'y a pas de
   // logcat accessible, ce tampon est le seul moyen de voir ce qui se passe
   // (consultable et exportable depuis la console web du téléphone).
@@ -124,10 +139,6 @@ void main() async {
   // `PlatformTv.isTv` de façon synchrone dès leur premier build.
   await PlatformTv.init();
   await ThemeService.load();
-  // §hostGate — La profondeur de file par fournisseur vient des réglages :
-  // 0 = déduire de `max_connections` quand on l'aura lu, sinon on force.
-  final int hmc = PerformanceSettingsService.config.value.hostMaxConcurrent;
-  if (hmc >= 1) HostGate.defaultLimit = hmc;
 
   // §3c-bis — Lock landscape global sur TV. La TV n'a pas de mode portrait
   // physique, mais Flutter peut quand même appliquer `setPreferredOrientations`
@@ -177,6 +188,17 @@ Future<void>? _servicesReady;
 
 Future<void> ensureServicesReady() => _servicesReady ??= _initServices();
 
+bool _hostLimitListening = false;
+
+/// §hostGate — Profondeur de file par fournisseur, depuis les réglages :
+/// `0` = déduire de `max_connections` quand on l'aura lu (repli : 1, la valeur
+/// sûre), toute autre valeur force. Ne vaut que pour les hôtes pas encore
+/// vus, et un `setLimit` posé d'après `max_connections` gagne toujours.
+void _applyHostLimit() {
+  final int hmc = PerformanceSettingsService.config.value.hostMaxConcurrent;
+  HostGate.defaultLimit = hmc >= 1 ? hmc : 1;
+}
+
 Future<void> _initServices() async {
   // L'ordre compte : `MediaStore.appFolder` doit être posé avant
   // `DownloadManagerService.init()`, qui réconcilie les tâches sur disque.
@@ -186,6 +208,20 @@ Future<void> _initServices() async {
   await StorageService.init();
   // Migration legacy d'abord (touche le secure storage des comptes).
   await StreamAccountService.migrateFromLegacyIfNeeded();
+  // D3L-01 — Les réglages AVANT les services qui les lisent. Chargés dans le
+  // `Future.wait` ci-dessous, ils arrivaient APRÈS le premier `pump()` des
+  // téléchargements (ordre des microtâches) : « Wi-Fi seulement » et le
+  // plafond parallèle étaient ignorés pour les tâches reprises au démarrage.
+  await PerformanceSettingsService.load(); // §perfSettings
+  // D3B-10 / D5B-16 — La profondeur de file par fournisseur (§hostGate) se lit
+  // APRÈS le chargement (avant, dans `main()`, elle lisait toujours la valeur
+  // par défaut) et se réapplique à chaque changement de réglage ou
+  // restauration `.aether`.
+  _applyHostLimit();
+  if (!_hostLimitListening) {
+    _hostLimitListening = true;
+    PerformanceSettingsService.config.addListener(_applyHostLimit);
+  }
   // §startupParallel — Ces init() sont des lectures de cache INDÉPENDANTES
   // (SharedPreferences / secure storage propres à chaque service). En parallèle,
   // le démarrage attend juste la plus lente au lieu d'additionner les temps.
@@ -202,7 +238,6 @@ Future<void> _initServices() async {
     PlaybackHealthService.init(),
     HiddenRegionsService.init(),
     TrackPreferencesService.init(),
-    PerformanceSettingsService.load(), // §perfSettings
     VideoFitPreference.load(), // §videoFit
     VideoStatsPreference.load(), // §videoStats
     MeasuredQualityService.init(), // §qualityTruth
@@ -228,9 +263,14 @@ Future<void> _initServices() async {
 Future<void> checkForUpdate() async {
   final info = await UpdateService.checkForUpdate();
   if (info == null) return;
-  final context = navigatorKey.currentContext;
-  if (context == null || !context.mounted) return;
-  await UpdateDialog.show(context, info);
+  // Revue 2026-09-11, D3B-13 — jamais par-dessus le lecteur : ce dialogue
+  // (non fermable par la barrière) s'ouvrait 10 s après l'accueil sur
+  // n'importe quel écran, et prenait le focus d'un film lancé entre-temps.
+  homeForeground.runOrDefer(() {
+    final context = navigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    unawaited(UpdateDialog.show(context, info));
+  });
 }
 
 /// Widget racine de l'application.
@@ -425,7 +465,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // appelants, mais l'un d'eux peut être une RECRÉATION de cet État.
     debugPrint('🚦 §restoreTrace — LaunchDecider.initState (hash $hashCode)');
     _checkOnboarding();
-    _initFuture = _initializeApp();
+    _initFuture = _startInitialization();
     // §offlineBoot — Sur l'écran hors ligne, le retour du réseau relance le
     // démarrage tout seul : pas besoin de trouver un bouton.
     NetworkStatusService.offline.addListener(_onNetworkChanged);
@@ -440,8 +480,31 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
   bool _showingOffline = false;
 
+  /// §offlineBoot — revue 2026-09-11, D3B-03 — Démarrages en cours.
+  ///
+  /// ⚠️ **Le défaut.** `_showingOffline` n'était remis à `false` que par le
+  /// `build` suivant, et `_initializeApp` rafraîchit l'état du réseau dès sa
+  /// première ligne : appuyer sur « Réessayer » juste après le retour du
+  /// réseau (avant le sondage de 15 s) faisait passer `offline` à `false`
+  /// PENDANT ce démarrage — `_onNetworkChanged` voyait encore l'écran hors
+  /// ligne et en relançait un SECOND : `BootStatus.reset` en plein boot, deux
+  /// dialogues d'expiration empilés, deux balayages de stockage.
+  int _initsInFlight = 0;
+
+  /// Lance `_initializeApp` en tenant le compte des démarrages en cours.
+  Future<({String path, String accountId, String accountName})?>
+      _startInitialization() {
+    _initsInFlight++;
+    return _initializeApp().whenComplete(() => _initsInFlight--);
+  }
+
   void _onNetworkChanged() {
-    if (!NetworkStatusService.offline.value && _showingOffline && mounted) {
+    // D3B-03 — un démarrage déjà en cours s'occupe de tout : on ne le double
+    // pas.
+    if (!NetworkStatusService.offline.value &&
+        _showingOffline &&
+        _initsInFlight == 0 &&
+        mounted) {
       debugPrint('🔌 §offlineBoot — réseau de retour : relance du démarrage');
       _retryInitialization();
     }
@@ -468,7 +531,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       // §restore — Une restauration `.aether` a pu créer des comptes pendant
       // l'onboarding. On relance l'init pour les charger (sinon l'écran
       // "aucun compte configuré" s'afficherait malgré la restauration).
-      _initFuture = _initializeApp();
+      _initFuture = _startInitialization();
     });
   }
 
@@ -481,14 +544,27 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // grosse playlist le boot dure plusieurs secondes, et un texte figé ne
     // permettait pas de distinguer « ça travaille » de « c'est bloqué ».
     BootStatus.reset();
+    // §bootEscape — revue 2026-09-11, D3B-05 — Les drapeaux d'un démarrage
+    // PRÉCÉDENT du même processus ne valent rien pour celui-ci.
+    // `_bootSkipRequested` est statique et n'était JAMAIS remis à zéro : après
+    // un seul « Entrer sans attendre », tout démarrage suivant (Réessayer,
+    // retour de Comptes, fin d'onboarding, retour du réseau) abandonnait
+    // chaque attente au bout de 500 ms. Et `_bootAnnouncing`, retombé à
+    // `false` à la fin d'un démarrage, rendait le suivant muet — donc
+    // « immobile » aux yeux de `_awaitWhileProgressing`.
+    _bootSkipRequested = false;
+    _bootAnnouncing = true;
     // §bootFast — Les services lourds sont initialisés ICI plutôt qu'avant
     // `runApp` : l'écran de démarrage est donc déjà à l'écran pendant qu'ils se
     // préparent, et leur durée est visible dans le journal. On déplace le point
     // d'attente, on ne le supprime pas : rien ne touche aux comptes avant.
-    BootStatus.set('// préparation des services…');
+    // Revue 2026-09-11, D3B-07 — les étapes du démarrage suivent la langue de
+    // l'appareil (elles échappaient au cliquet : un `//` DANS le littéral le
+    // faisait passer pour un commentaire).
+    BootStatus.set(L10n.current.bootStepServices);
     await ensureServicesReady();
 
-    BootStatus.set('// vérification du compte…');
+    BootStatus.set(L10n.current.bootStepAccount);
     final accounts = await StreamAccountService.listAccounts();
     // §reloadScope — Publié AVANT tout affichage : la fiche d'un film demande
     // « y a-t-il plusieurs listes ? » dès le premier build, et la réponse ne
@@ -512,15 +588,91 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       knownAccountIds: accounts.map((a) => a.id).toSet(),
     ));
 
-    // Téléchargement / vérification cache M3U du compte actif.
-    BootStatus.set('// lecture de la playlist…');
-    final path = await PlaylistService.getOrDownloadPlaylist(
+    // §dlPartSweep (2026-09-10) — Les fichiers PARTIELS d'un téléchargement
+    // n'étaient dans le périmètre d'aucun ménage : le balayage ci-dessus ne
+    // connaît que `.json`/`.m3u`/`.json.gz`, et il ne regarde que les deux
+    // dossiers privés — jamais le cache externe où vivent les partiels.
+    // Constaté sur le Galaxy S25 le 2026-09-09 : deux partiels de la veille.
+    //
+    // ⚠️ Un `.part` n'est PAS un déchet : c'est ce qui rend une reprise
+    // possible. Un partiel n'est orphelin que si AUCUNE tâche ne le désigne —
+    // et si la liste des tâches n'a pas pu être relue, elle arrive vide et le
+    // balayage se refuse à agir, exactement comme celui des comptes.
+    unawaited(StorageJanitor.sweepDownloadPartials(
+      liveTempPaths: DownloadManagerService()
+          .tasksNotifier
+          .value
+          .map((t) => t.tempPath)
+          .where((p) => p.isNotEmpty)
+          .toSet(),
+    ));
+
+    // §bootActiveCap (2026-09-09) — ⚠️ **Le compte PRINCIPAL n'avait AUCUNE
+    // borne.** Le filet de §bootProgress (attendre tant que ça bouge, plafond
+    // absolu) n'avait été câblé que sur `_hydrateInBoot`, c'est-à-dire les
+    // comptes SECONDAIRES. Sur ce chemin-ci, rien : ni délai, ni budget, ni
+    // plafond — alors que les délais internes s'additionnent (jusqu'à 6
+    // actions catalogue à 5 min de file + 2 min de réception chacune avant le
+    // repli `get.php`). Un panel lent pouvait donc retenir l'écran de
+    // démarrage plusieurs minutes, sans qu'aucun bouton ne permette d'en
+    // sortir : le seul recours était de tuer l'app.
+    //
+    // ⚠️ Ce qui déborde n'est PAS annulé — même règle que pour les secondaires.
+    // On cesse de l'attendre, l'app démarre, et le réconciliateur §fleetLoad
+    // (4 s après l'accueil) reprend le travail là où il en est. Annuler
+    // laisserait un `.part` orphelin ; relancer téléchargerait deux fois.
+    final DateTime activeDeadline = DateTime.now().add(_bootHydrateHardCap);
+    final acc = await StreamAccountService.getCurrentAccount();
+
+    BootStatus.set(L10n.current.bootStepReadPlaylist);
+    final Future<String> pathFuture = PlaylistService.getOrDownloadPlaylist(
       // Appelé seulement si le cache est absent/périmé → on distingue une
       // lecture disque instantanée d'un vrai téléchargement réseau.
       onDownloadStart: () =>
-          BootStatus.set('// téléchargement de la playlist…'),
+          BootStatus.set(L10n.current.bootStepDownloadPlaylist),
     );
-    final acc  = await StreamAccountService.getCurrentAccount();
+    // ⚠️ `catchError` posé TOUT DE SUITE : si on cesse d'attendre ce futur et
+    // qu'il échoue plus tard, une erreur non capturée ferait tomber la zone.
+    // L'erreur reste levée à l'`await` ci-dessous quand on l'attend vraiment.
+    final Future<void> pathWatch =
+        pathFuture.then<void>((_) {}).catchError((Object _) {});
+    if (acc != null &&
+        !await _awaitWhileProgressing(pathWatch, acc, activeDeadline)) {
+      debugPrint("⏳ §bootActiveCap — la liste principale n'avance plus.");
+      unawaited(pathFuture.catchError((Object e) {
+        debugPrint('⚠️ §bootActiveCap — la liste principale a fini par echouer : $e');
+        return '';
+      }));
+      // §bootEscape — ⚠️ Deux sorties, deux issues DIFFÉRENTES, et les
+      // confondre serait mentir à l'utilisateur :
+      //   • il a appuyé sur « Entrer sans attendre » → on l'y fait ENTRER. Le
+      //     chemin est laissé vide : `HomePage._ensureLoaded` résout alors la
+      //     playlist lui-même, et comme le téléchargement en vol est PARTAGÉ
+      //     (§bootActiveCap), il attend celui qui tourne déjà.
+      //   • personne n'a rien demandé, c'est le plafond qui a parlé → écran
+      //     d'erreur : quelque chose ne va pas, on ne fait pas semblant.
+      // (`acc` est non nul : la garde de ce bloc l'exige.)
+      // revue 2026-09-11, D3B-01 — La décision est PARTAGÉE avec la phase
+      // d'analyse ci-dessous (`decideBootWait`), pour qu'aucune des deux ne
+      // puisse plus mener à « aucun compte configuré ».
+      if (decideBootWait(finished: false, skipRequested: _bootSkipRequested) ==
+          BootWaitOutcome.enterNow) {
+        // revue 2026-09-11, D3B-02 — Entrer tôt ne doit pas sauter la suite
+        // du démarrage (réconciliateur, alertes, profil, guide des chaînes).
+        _schedulePostBoot(accounts);
+        return (path: '', accountId: acc.id, accountName: acc.label);
+      }
+      // ⚠️ **Surtout PAS `return null`** : le décideur en fait l'écran « aucun
+      // compte configuré », ce qui serait un MENSONGE — le compte existe, sa
+      // liste met simplement du temps. On lève un message déjà écrit pour
+      // l'utilisateur (§userError : `UserFacingException` n'est jamais
+      // retraduite), qui mène à l'écran d'erreur avec « Réessayer ».
+      // ⚠️ Ce « Réessayer » est sûr depuis §bootActiveCap : le téléchargement
+      // en vol est PARTAGÉ (`PlaylistService._inFlight`), un second appel
+      // attend le premier au lieu d'en lancer un autre sur le même `.part`.
+      throw UserFacingException(L10n.current.bootStalledBody);
+    }
+    final path = await pathFuture;
 
     // §initBoot — Parsing du M3U actif AWAITED ici (au lieu de le faire dans
     // `HomePage._ensureLoaded` plus tard) : la home se montait avec
@@ -541,16 +693,65 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       _prestartedDl =
           othersEarly.isEmpty ? null : _downloadPhase(othersEarly.first);
       _prestartedDlId = othersEarly.isEmpty ? null : othersEarly.first.id;
-      BootStatus.set('// analyse du catalogue…', progress: 0);
-      await ParsedPlaylistService.loadActive(
+      BootStatus.set(L10n.current.bootStepAnalysis, progress: 0);
+      // §bootActiveCap — même filet sur l'ANALYSE : c'est l'étape la plus
+      // longue (46 s par grosse liste, mesuré), et jusqu'ici la seule issue
+      // si elle se figeait était de tuer l'app. ⚠️ Elle publie sa progression
+      // ET son détail, donc `_awaitWhileProgressing` la voit vivre : une
+      // analyse longue mais qui AVANCE n'est jamais interrompue.
+      // revue 2026-09-11, D3B-01 — Le futur d'ORIGINE est gardé : l'attente
+      // surveille une copie qui avale les erreurs, mais une analyse RATÉE est
+      // relevée. Elle était jetée par `catchError` : un `.m3u` corrompu
+      // donnait un accueil vide, sans message ni « Réessayer ».
+      // D3B-02 — Les rappels se taisent une fois le démarrage rendu
+      // (`_bootAnnouncing`) : après une entrée anticipée, l'analyse continue
+      // en arrière-plan et n'a plus à écrire sur l'écran de boot.
+      final loadF = ParsedPlaylistService.loadActive(
         acc.id,
         acc.label,
         path,
-        onProgress: BootStatus.report,
+        onProgress: (double v) {
+          if (_bootAnnouncing) BootStatus.report(v);
+        },
         // §bootPercent — Le compteur d'entrées PROUVE que ça travaille, là où
         // un pourcentage se contente de l'affirmer.
-        onDetail: BootStatus.setDetail,
+        onDetail: (String d) {
+          if (_bootAnnouncing) BootStatus.setDetail(d);
+        },
       );
+      // ⚠️ `catchError` posé TOUT DE SUITE (même règle que `pathWatch`) : si
+      // on cesse d'attendre et que l'analyse échoue plus tard, l'erreur ne
+      // doit pas remonter à la zone.
+      final Future<void> parseWatch =
+          loadF.then<void>((_) {}).catchError((Object _) {});
+      final bool parsed =
+          await _awaitWhileProgressing(parseWatch, acc, activeDeadline);
+      switch (decideBootWait(
+          finished: parsed, skipRequested: _bootSkipRequested)) {
+        case BootWaitOutcome.enterNow:
+          // §bootEscape — L'utilisateur ENTRE, avec le chemin : l'accueil
+          // (`HomePage._ensureLoaded`) rejoint l'analyse en cours au lieu
+          // d'en relancer une seconde (§fleetSingle, revue D1L-02).
+          debugPrint("⏭️ §bootEscape — entree pendant l'analyse : elle se termine en arriere-plan.");
+          _schedulePostBoot(accounts);
+          return (path: path, accountId: acc.id, accountName: acc.label);
+        case BootWaitOutcome.stalled:
+          // ⛔ §bootEscape — surtout PAS `return null` : le décideur en fait
+          // « aucun compte configuré », un mensonge (le compte existe).
+          debugPrint("⏳ §bootActiveCap — l'analyse de la liste principale n'avance plus.");
+          throw UserFacingException(L10n.current.bootStalledBody);
+        case BootWaitOutcome.proceed:
+          try {
+            await loadF;
+          } on UserFacingException {
+            rethrow;
+          } catch (e) {
+            // §userError — L'erreur d'un parseur parle de format et d'octets,
+            // pas de ce que l'utilisateur peut faire : on dit le RÉSULTAT.
+            debugPrint('❌ §bootActiveCap — analyse de la liste principale en echec : $e');
+            throw UserFacingException(L10n.current.failExplainParse);
+          }
+      }
     }
 
     // Multi-comptes : charger les autres playlists pour que la recherche et la
@@ -565,7 +766,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       final others = accounts.where((a) => a.id != acc?.id).toList();
       // §bootStatus — Retour à une barre indéterminée : ce préchargement disque
       // n'expose pas de progression (quelques ms par compte).
-      BootStatus.set('// chargement des autres comptes…');
+      BootStatus.set(L10n.current.bootStepOtherAccounts);
       await ParsedPlaylistService.preloadOthersFromDisk(others);
       // §favReconcile — 1re passe sur ce qui est déjà en mémoire (compte actif
       // + préchargés disque). La passe FINALE (qui pose le flag one-shot) est
@@ -593,6 +794,44 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       FavoritesService.reconcileWithPlaylist(finalPass: true); // fire & forget
     }
 
+    _bootAnnouncing = false;
+    BootStatus.set(L10n.current.bootStepReady, progress: 1);
+    // revue 2026-09-11, D3B-02 — La suite du démarrage vit dans
+    // `_schedulePostBoot`, PARTAGÉE avec les entrées anticipées.
+    _schedulePostBoot(accounts);
+
+    return (
+      path:        path,
+      accountId:   acc?.id   ?? '',
+      accountName: acc?.label ?? '',
+    );
+  }
+
+  /// revue 2026-09-11, D3B-02 — Tout ce qui suit un démarrage qui REND des
+  /// données : qu'il soit allé au bout, ou que l'utilisateur soit entré sans
+  /// attendre.
+  ///
+  /// ⚠️ **Le défaut corrigé.** Les entrées anticipées (bouton « Entrer sans
+  /// attendre », en téléchargement comme en analyse) sortaient de
+  /// `_initializeApp` AVANT tout ceci : le réconciliateur §fleetLoad n'était
+  /// jamais programmé — les listes secondaires restaient absentes de la
+  /// mémoire, donc INVISIBLES, jusqu'au premier retour de fiche (qui ne
+  /// l'appelle que SANS réseau) —, aucun profil n'était choisi au premier
+  /// lancement, le guide des chaînes ne se chargeait pas, et
+  /// `_bootAnnouncing` restait vrai : une liste en arrière-plan continuait
+  /// d'écrire sur l'écran de boot disparu. Les commentaires promettaient
+  /// pourtant « le réconciliateur reprend ».
+  ///
+  /// ⚠️ Le préchargement disque et l'hydratation des secondaires ne sont PAS
+  /// rejoués ici : c'est précisément le travail du réconciliateur, 4 s plus
+  /// tard, réseau autorisé.
+  void _schedulePostBoot(List<StreamAccount> accounts) {
+    _bootAnnouncing = false;
+    // §bootLog — Le journal chronométré part dans le tampon de diagnostic : sur
+    // un téléviseur il n'y a pas de logcat, et l'écran de boot disparaît au
+    // moment précis où l'on voudrait lire ses chiffres.
+    BootStatus.dumpToLog();
+
     // §17b — Fetch background des AccountInfo pour TOUS les comptes
     // (alimente le cache `ExpirationAlertService.infos`). On déclenche
     // la popup d'alerte si au moins un compte expire <30 jours.
@@ -602,12 +841,6 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // (fire & forget, one-shot, seulement si la config perf est aux défauts).
     _suggestTvPerfProfile();
 
-    _bootAnnouncing = false;
-    BootStatus.set('// prêt.', progress: 1);
-    // §bootLog — Le journal chronométré part dans le tampon de diagnostic : sur
-    // un téléviseur il n'y a pas de logcat, et l'écran de boot disparaît au
-    // moment précis où l'on voudrait lire ses chiffres.
-    BootStatus.dumpToLog();
     // §fleetLoad — LA REPRISE QUI N'EXISTAIT PAS. Jusqu'ici, un compte qui
     // avait débordé du budget, échoué, ou été sauté au préchargement n'était
     // plus JAMAIS rechargé de la session : `_hydrateOne` n'était jamais
@@ -622,12 +855,6 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       const Duration(seconds: 3),
       () => XmltvService.ensureLoaded(),
     ); // fire & forget
-
-    return (
-      path:        path,
-      accountId:   acc?.id   ?? '',
-      accountName: acc?.label ?? '',
-    );
   }
 
   /// §17b — Vérifie les expirations en background et affiche la popup
@@ -645,9 +872,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       if (alerts.isEmpty) return;
       // Délai pour laisser le UI démarrer proprement.
       await Future.delayed(const Duration(seconds: 4));
-      final ctx = navigatorKey.currentContext;
-      if (ctx == null || !ctx.mounted) return;
-      await ExpirationAlertDialog.show(ctx, alerts);
+      // D3B-13 — seulement l'accueil à l'écran (jamais sur le lecteur).
+      homeForeground.runOrDefer(() {
+        final ctx = navigatorKey.currentContext;
+        if (ctx == null || !ctx.mounted) return;
+        unawaited(ExpirationAlertDialog.show(ctx, alerts));
+      });
     } catch (e) {
       // Échec silencieux — pas critique au boot.
     }
@@ -660,9 +890,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   Future<void> _suggestTvPerfProfile() async {
     try {
       await Future.delayed(const Duration(milliseconds: 2500));
-      final ctx = navigatorKey.currentContext;
-      if (ctx == null || !ctx.mounted) return;
-      await PerfSuggestDialog.maybeShow(ctx);
+      // D3B-13 — seulement l'accueil à l'écran (jamais sur le lecteur).
+      homeForeground.runOrDefer(() {
+        final ctx = navigatorKey.currentContext;
+        if (ctx == null || !ctx.mounted) return;
+        unawaited(PerfSuggestDialog.maybeShow(ctx));
+      });
     } catch (_) {
       // Échec silencieux — pas critique au boot.
     }
@@ -696,6 +929,28 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   /// réseau sont bornés à 30 + 60 s) — ou au plafond absolu de 5 min. Un
   /// panel mort ne retient donc plus le démarrage que le temps de son délai
   /// réseau, une analyse longue mais vivante reste sur le boot principal.
+  /// §bootEscape (2026-09-09) — L'utilisateur a demandé à ne plus attendre.
+  ///
+  /// **Le défaut corrigé** (signalé le 2026-09-08, instruit le 09) : l'écran de
+  /// chargement n'offrait AUCUN moyen d'interrompre. Le bouton « Réessayer »
+  /// n'apparaît que sur l'écran d'ERREUR, donc seulement après qu'une exception
+  /// a été levée — tant que le réseau ne répond ni ne tombe en erreur, la seule
+  /// issue était de tuer l'application. C'est exactement ce que l'utilisateur a
+  /// fait, en pensant à un blocage.
+  ///
+  /// ⚠️ Ce drapeau ne CANCELLE rien : comme pour le débordement de budget, le
+  /// travail continue en arrière-plan et le réconciliateur §fleetLoad le
+  /// rattrape. On cesse simplement de l'attendre. L'annuler laisserait un
+  /// `.part` orphelin, le relancer téléchargerait deux fois le même fichier.
+  static bool _bootSkipRequested = false;
+
+  static void requestBootSkip() {
+    if (_bootSkipRequested) return;
+    _bootSkipRequested = true;
+    debugPrint("⏭️ §bootEscape — l'utilisateur ne veut plus attendre : "
+        "on passe a l'app, le chargement continue en arriere-plan.");
+  }
+
   static const Duration _bootStallLimit = Duration(seconds: 20);
   static const Duration _bootDownloadStallLimit = Duration(seconds: 95);
   static const Duration _bootHydrateHardCap = Duration(minutes: 5);
@@ -719,6 +974,8 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     while (!done) {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       if (done) break;
+      // §bootEscape — la sortie manuelle prime sur tous les seuils.
+      if (_bootSkipRequested) return false;
       final String now = _bootSignature();
       if (now != sig) {
         sig = now;
@@ -817,13 +1074,14 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
             rest.id,
             AccountLoadState.notLoaded,
             kind: LoadFailureKind.deferred,
-            detail: 'budget de démarrage épuisé',
+            // Revue 2026-09-11, D3B-07 — plus de détail en dur : « Mise à jour
+            // reportée après le démarrage. » dit déjà tout, et traduit.
           );
         }
         break;
       }
       BootStatus.set(
-        '// mise à jour ${i + 1}/${pending.length} · ${acc.label}…',
+        L10n.current.bootStepUpdate(i + 1, pending.length, acc.label),
       );
       // §bootProgress — On attend tant que ça avance ; une liste immobile
       // rend la main (son travail continue, sans doublon : §fleetSingle) et
@@ -919,7 +1177,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     final String path = dl.path!;
     try {
       if (announce && _bootAnnouncing) {
-        BootStatus.set('// analyse · ${acc.label}…', progress: 0);
+        BootStatus.set(L10n.current.bootStepAnalysisOf(acc.label), progress: 0);
       }
       if (alreadyLoaded) {
         // Rien de neuf : la copie en mémoire est déjà la bonne.
@@ -954,10 +1212,29 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   }
 
   /// Permet de relancer la validation, typiquement après une action de l'utilisateur.
+  /// §bootEscape — L'utilisateur ne veut plus attendre le démarrage.
+  ///
+  /// ⚠️ On ne CANCELLE aucun téléchargement ni aucune analyse : les futurs en
+  /// cours continuent, et §fleetLoad les rattrape 4 s après l'accueil. Annuler
+  /// laisserait un `.part` orphelin ; relancer téléchargerait deux fois le
+  /// même fichier au même endroit.
+  void _skipBootWait() {
+    _LaunchDeciderState.requestBootSkip();
+    if (mounted) setState(() {});
+  }
+
   void _retryInitialization() {
+    // §themeReboot — revue 2026-09-11, D3B-14 — Appelé après un `await` ou
+    // depuis un rappel externe (retour du réseau) : l'aiguilleur peut avoir
+    // été démonté entre-temps, et `setState` lèverait.
+    if (!mounted) return;
     debugPrint('🚦 §restoreTrace — retryInitialization → ré-initialisation');
+    // §offlineBoot — revue 2026-09-11, D3B-03 — On quitte l'écran hors ligne
+    // MAINTENANT, pas au prochain `build` : sinon le retour du réseau, vu
+    // pendant ce démarrage, en relancerait un second (`_onNetworkChanged`).
+    _showingOffline = false;
     setState(() {
-      _initFuture = _initializeApp();
+      _initFuture = _startInitialization();
     });
   }
 
@@ -971,6 +1248,8 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   /// Navigue vers les paramètres et force une réinitialisation au retour.
   Future<void> _recheckAfterSettings() async {
     await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const AccountsPage()));
+    // revue 2026-09-11, D3B-14 — garde `mounted` après l'`await`.
+    if (!mounted) return;
     _retryInitialization();
   }
 
@@ -1011,7 +1290,10 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
         // §bootExit — fondu court vers l'accueil, au lieu du remplacement sec.
         final Widget screen;
         if (snapshot.connectionState == ConnectionState.waiting) {
-          screen = const BootLoadingScreen();
+          // §bootEscape — une sortie, révélée après un délai. Elle n'annule
+          // rien : elle relâche l'attente, l'app démarre et le réconciliateur
+          // §fleetLoad reprend le chargement là où il en est.
+          screen = BootLoadingScreen(onSkip: _skipBootWait);
         } else if (snapshot.hasError && _offlineWithFiles) {
           // §offlineBoot — hors ligne + des fichiers : on les montre.
           _showingOffline = true;

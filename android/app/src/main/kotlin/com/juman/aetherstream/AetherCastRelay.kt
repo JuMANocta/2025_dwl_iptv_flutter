@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.DataReader
 import androidx.media3.common.Format
@@ -85,8 +84,13 @@ class AetherCastRelay(private val context: Context) {
         fun onCompleted(outputPath: String)
 
         /**
-         * [userFacing] : le message est déjà écrit en français pour l'écran
-         * (refus motivé). Sinon c'est la cause technique, à ne pas afficher.
+         * [userFacing] : refus MOTIVÉ — [message] est alors un CODE de refus
+         * (ex. [REFUSAL_DV_PROFILE_5]) que Dart traduit dans la langue de
+         * l'écran (`relayFailureText`). Sinon c'est la cause technique, à ne
+         * pas afficher.
+         *
+         * Revue 2026-09-11, D2B-03 — ⚠️ Jamais une PHRASE ici : le Kotlin
+         * n'a pas la langue de l'écran, et le cliquet l10n ne lit que `lib/`.
          */
         fun onFailed(message: String, userFacing: Boolean)
     }
@@ -96,7 +100,7 @@ class AetherCastRelay(private val context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private var progressTicker: Runnable? = null
 
-    val isRunning: Boolean get() = transformer != null
+    // Revue 2026-09-11, D2B-10 — `isRunning` (lu nulle part) retiré.
 
     /** Chemin du fichier produit (existe dès les premiers fragments). */
     fun outputPath(): String? = outputFile?.absolutePath
@@ -147,7 +151,7 @@ class AetherCastRelay(private val context: Context) {
         } else {
             MediaItem.fromUri(url)
         }
-        if (startMs > 0) Log.i(TAG, "conversion démarrée à ${startMs / 1000} s")
+        if (startMs > 0) AetherLog.i(TAG, "conversion démarrée à ${startMs / 1000} s")
         val edited = EditedMediaItem.Builder(item).build()
         // `setTransmuxVideo` est laissé pour l'intention ; il est SANS EFFET sur
         // un élément unique (voir l'en-tête). La recopie vient de l'extracteur.
@@ -222,7 +226,7 @@ class AetherCastRelay(private val context: Context) {
                     // course ne doit pas envoyer « terminé » après « échoué ».
                     if (failed) return
                     failed = true
-                    Log.i(
+                    AetherLog.i(
                         TAG,
                         "conversion finie — vidéo ${describeProcess(result.videoConversionProcess)}, " +
                             "son ${describeProcess(result.audioConversionProcess)}, " +
@@ -239,7 +243,7 @@ class AetherCastRelay(private val context: Context) {
                     result: ExportResult,
                     exception: ExportException
                 ) {
-                    Log.w(TAG, "conversion échouée : ${exception.errorCodeName} ${exception.message}")
+                    AetherLog.w(TAG, "conversion échouée : ${exception.errorCodeName} ${exception.message}")
                     stopTicker()
                     if (!failed) {
                         failed = true
@@ -257,8 +261,8 @@ class AetherCastRelay(private val context: Context) {
         try {
             t.start(composition, out.absolutePath)
         } catch (e: Exception) {
-            // Sinon `transformer` reste non nul : `isRunning` mentirait et
-            // aucun arrêt ultérieur ne trouverait de quoi nettoyer.
+            // Sinon `transformer` reste non nul : l'instance passerait pour
+            // occupée et aucun arrêt ultérieur ne trouverait de quoi nettoyer.
             transformer = null
             failed = true
             callbacks.onFailed(e.message ?: "conversion impossible", false)
@@ -329,6 +333,9 @@ class AetherCastRelay(private val context: Context) {
 
     companion object {
         const val TAG = "AetherCastRelay"
+
+        /** D2B-03 — code de refus d'un Dolby Vision profil 5 (traduit côté Dart). */
+        const val REFUSAL_DV_PROFILE_5 = "dvProfile5"
     }
 }
 
@@ -417,7 +424,7 @@ private class RelayExtractorOutput(
      * donnerait une image aux couleurs fausses, on refuse en le disant.
      */
     private fun normalizeVideo(f: Format): Format {
-        Log.i(
+        AetherLog.i(
             AetherCastRelay.TAG,
             "source vidéo : ${f.sampleMimeType} ${f.width}x${f.height} " +
                 "codecs=${f.codecs} pixels=${f.pixelWidthHeightRatio}"
@@ -427,20 +434,18 @@ private class RelayExtractorOutput(
             val codecs = f.codecs ?: ""
             val profile = codecs.split('.').getOrNull(1)?.toIntOrNull()
             if (profile == 5) {
-                onUnsupported(
-                    "Ce film est en Dolby Vision profil 5 : sans décodeur Dolby " +
-                        "Vision, l'image aurait des couleurs fausses. Il ne peut pas " +
-                        "être converti pour le téléviseur."
-                )
+                // D2B-03 — un CODE : la phrase (« sans décodeur Dolby Vision,
+                // l'image aurait des couleurs fausses ») naît côté Dart.
+                onUnsupported(AetherCastRelay.REFUSAL_DV_PROFILE_5)
                 return f
             }
             val base = if (codecs.startsWith("dva")) MimeTypes.VIDEO_H264 else MimeTypes.VIDEO_H265
             b = f.buildUpon().setSampleMimeType(base).setCodecs(null)
-            Log.i(AetherCastRelay.TAG, "vidéo : Dolby Vision ($codecs) réétiqueté $base pour la recopie")
+            AetherLog.i(AetherCastRelay.TAG, "vidéo : Dolby Vision ($codecs) réétiqueté $base pour la recopie")
         }
         if (f.pixelWidthHeightRatio != 1f) {
             b = (b ?: f.buildUpon()).setPixelWidthHeightRatio(1f)
-            Log.i(
+            AetherLog.i(
                 AetherCastRelay.TAG,
                 "vidéo : rapport de pixels ${f.pixelWidthHeightRatio} forcé à 1 pour la recopie"
             )
@@ -455,7 +460,7 @@ private class RelayExtractorOutput(
      * maximum).
      */
     private fun tagAudio(f: Format, rank: Int): Format {
-        Log.i(
+        AetherLog.i(
             AetherCastRelay.TAG,
             "source audio #$rank : ${f.sampleMimeType} langue=${f.language} " +
                 "canaux=${f.channelCount} débit=${f.bitrate} flags=${f.selectionFlags}"

@@ -269,6 +269,15 @@ class _PlayerControlsState extends State<PlayerControls> {
           ),
         ),
 
+        // §playerReach — Play/Pause AU CENTRE de l'écran : le geste le plus
+        // fréquent se prend sans viser, et il n'a plus aucun voisin.
+        // ⚠️ Il ne vit QUE dans les contrôles complets : le mode verrou
+        // (`_buildLockOverlay`) ne montre que le cadenas, donc rien à exclure
+        // ici. ⚠️ Il couvre la zone centrale du double-tap de recul/avance
+        // (`PlayerGestures`), mais seulement quand les contrôles sont VISIBLES
+        // — barre cachée, la vidéo reprend toute la surface.
+        Center(child: _CenterPlayButton(playing: _playing, onTap: _togglePlayPause)),
+
         // Barre haute : retour + titre + buffering.
         Positioned(
           top: 0,
@@ -454,8 +463,14 @@ class _PlayerControlsState extends State<PlayerControls> {
                             _draggingSeek = true;
                             _seekValue = v;
                           }),
-                          onChanged: (v) =>
-                              setState(() => _seekValue = v),
+                          // §ctrlBlink — ⚠️ Réarmer PENDANT le glissement, pas
+                          // seulement à la fin : un déplacement lent dans un
+                          // film long dure bien plus que le délai de masquage,
+                          // et les contrôles s'effaçaient sous le doigt.
+                          onChanged: (v) {
+                            setState(() => _seekValue = v);
+                            widget.onInteraction();
+                          },
                           onChangeEnd: (v) {
                             setState(() => _draggingSeek = false);
                             _seekTo(v);
@@ -542,21 +557,18 @@ class _PlayerControlsState extends State<PlayerControls> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      // Play / Pause.
-                      GestureDetector(
-                        onTap: _togglePlayPause,
-                        child: Icon(
-                          _playing
-                              ? Icons.pause_circle_filled
-                              : Icons.play_circle_filled,
-                          color: Colors.white,
-                          size: 48,
-                        ),
-                      ),
+                      // §playerReach — ⚠️ Play/Pause N'EST PLUS ICI : il est
+                      // au CENTRE de l'écran (voir `_CenterPlayButton`).
+                      // Signalement du 2026-09-08 : « le bouton suivant est
+                      // vraiment pas au bon endroit, un miss click et hop ça
+                      // change d'épisode ». Les deux étaient voisins à 4 px —
+                      // le geste le PLUS fréquent du lecteur collé au SEUL
+                      // geste destructif de la barre (changer d'épisode n'a ni
+                      // confirmation ni retour arrière). Les séparer d'un
+                      // écran entier vaut mieux que les espacer de 20 px.
+                      const SizedBox(width: 12),
                       // §1i — Bouton épisode suivant (séries uniquement).
                       if (widget.onNextEpisode != null) ...[
-                        const SizedBox(width: 4),
                         _TapTarget(
                           tooltip: context.l10n.ctrlNextEpisode,
                           onTap: () {
@@ -566,9 +578,10 @@ class _PlayerControlsState extends State<PlayerControls> {
                           child: const Icon(
                             Icons.skip_next,
                             color: Colors.white,
-                            size: 36,
+                            size: 30,
                           ),
                         ),
+                        const SizedBox(width: 4),
                       ],
                       const SizedBox(width: 8),
                       // Bouton Fullscreen (Windows/Desktop).
@@ -600,6 +613,41 @@ class _PlayerControlsState extends State<PlayerControls> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// §playerReach — Le bouton Lecture/Pause, au centre de l'écran.
+///
+/// ⚠️ **Pas un `_TapTarget`** : celui-ci borne sa cible à 48 dp, alors qu'ici
+/// la cible EST le bouton (88 dp). Le disque sombre n'est pas décoratif — sur
+/// une image claire, une icône blanche seule devient invisible.
+class _CenterPlayButton extends StatelessWidget {
+  const _CenterPlayButton({required this.playing, required this.onTap});
+
+  final bool playing;
+  final VoidCallback onTap;
+
+  static const double _size = 88;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: _size,
+        height: _size,
+        decoration: BoxDecoration(
+          color: Colors.black.withAlpha(90),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+          color: Colors.white,
+          size: 56,
+        ),
+      ),
     );
   }
 }

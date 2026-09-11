@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -17,12 +19,89 @@ import '../../l10n/l10n_ext.dart';
 /// logique d'aiguillage.
 
 /// État nominal : le démarrage travaille, on montre où il en est.
-class BootLoadingScreen extends StatelessWidget {
-  const BootLoadingScreen({super.key});
+///
+/// §bootEscape (2026-09-09) — ⚠️ **Cet écran n'offrait AUCUNE issue.** Le seul
+/// bouton de reprise vit sur [BootErrorScreen], qui n'apparaît qu'après qu'une
+/// exception a été levée : tant que le réseau ne répond ni ne tombe en erreur,
+/// l'utilisateur n'avait d'autre recours que de tuer l'application — ce qu'il a
+/// fait, en pensant à un blocage (signalement du 2026-09-08).
+///
+/// ⚠️ Le bouton n'apparaît **qu'après un délai** ([_escapeAfter]). Proposé dès
+/// la première seconde, il inviterait à interrompre un démarrage parfaitement
+/// normal : sur un gros catalogue, l'analyse dure légitimement des dizaines de
+/// secondes. Il se montre quand l'attente commence à ressembler à une panne.
+class BootLoadingScreen extends StatefulWidget {
+  const BootLoadingScreen({super.key, this.onSkip});
+
+  /// Appelé quand l'utilisateur choisit de ne plus attendre. `null` = pas de
+  /// sortie proposée (l'appelant décide : il n'y en a pas toujours une qui ait
+  /// du sens).
+  final VoidCallback? onSkip;
+
+  /// Au bout de combien de temps la sortie est proposée.
+  static const Duration escapeAfter = Duration(seconds: 25);
 
   @override
-  Widget build(BuildContext context) =>
-      const BootShell(stateKey: 'loading', child: BootLog());
+  State<BootLoadingScreen> createState() => _BootLoadingScreenState();
+}
+
+class _BootLoadingScreenState extends State<BootLoadingScreen> {
+  bool _offerEscape = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.onSkip == null) return;
+    // ⚠️ Un `Timer`, jamais un ticker ni une animation : §bootCursorTimer a
+    // déjà coûté les deux tiers du CPU de l'analyse pour un curseur clignotant
+    // repeint à chaque vsync. Ici, un seul réveil.
+    _timer = Timer(BootLoadingScreen.escapeAfter, () {
+      if (mounted) setState(() => _offerEscape = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BootShell(
+      stateKey: 'loading',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const BootLog(),
+          if (_offerEscape && widget.onSkip != null) ...[
+            const SizedBox(height: 18),
+            Text(
+              context.l10n.bootSlowHint,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.sourceCodePro(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: PlatformTv.isTv ? 13 : 11.5,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _BootAction(
+              label: context.l10n.bootContinueAnyway,
+              icon: Icons.skip_next_rounded,
+              onTap: widget.onSkip!,
+              filled: false,
+              // ⚠️ PAS d'autofocus : sur TV, le focus arriverait sur « ne plus
+              // attendre » au moment précis où l'écran est le plus fragile.
+              accent: kAccentSecondary,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 /// État d'échec.
@@ -109,7 +188,9 @@ class BootNoAccountScreen extends StatelessWidget {
         // Sur mobile la Console web reste proposée en second (clavier de PC
         // confortable pour une longue URL) ; sur TV c'est la saisie manuelle.
         secondaryLabel:
-            isTv ? 'Saisir manuellement' : 'Configurer via Console web',
+            isTv
+                ? context.l10n.bootEnterManually
+                : context.l10n.bootConfigureWebConsole,
         secondaryIcon: isTv ? Icons.keyboard_alt_outlined : Icons.language,
         onSecondary: isTv ? onOpenAccounts : onOpenWebConsole,
         tertiaryLabel: context.l10n.bootRestoreBackup,

@@ -44,10 +44,17 @@ const Map<int, String> kTmdbGenreLabels = {
   // ── Séries ───────────────────────────────────────────────────────────────
   10759: 'Action', // Action & Adventure
   10762: 'Jeunesse',
-  10763: 'Documentaire', // News → le plus proche dans le vocabulaire de l'app
+  // Revue 2026-09-11, D1A-13 — « Actualités » existe depuis §catFix
+  // (`NEWS`/`NACHRICHTEN`/`NOTICIAS` → « Actualités ») : News donnait
+  // « Documentaire », donc deux rangées pour les séries d'information selon que
+  // la liste était riche ou pauvre.
+  10763: 'Actualités',
   10764: 'Téléréalité',
   10765: 'Sci-Fi', // Sci-Fi & Fantasy
   10766: 'Drame', // Soap
+  // Revue 2026-09-11, D1A-13 — « Talk-show » n'était ni émis par
+  // `contentCategoryLabel` ni traduit : il est désormais dans le vocabulaire
+  // (rangée `TALK SHOW` d'une liste riche, clé d'affichage `catTalkShow`).
   10767: 'Talk-show',
   10768: 'Guerre', // War & Politics
 };
@@ -67,6 +74,7 @@ String? tmdbGenreLabel(List<int> genreIds) {
   const priority = <String>[
     'Animation',
     'Documentaire',
+    'Actualités', // revue 2026-09-11, D1A-13 — ex-10763 « Documentaire »
     'Horreur',
     'Western',
     'Musical',

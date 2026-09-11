@@ -215,4 +215,79 @@ void main() {
       }
     });
   });
+
+  /// Revue 2026-09-11, D4B-01 + D4L-01 — Choisir un profil (à la main ou par
+  /// la sonde du premier lancement) remettait six réglages de confort aux
+  /// valeurs d'usine, dont « Wi-Fi seulement ».
+  group('PerfConfig — withProfileOf (§perfNotify, D4B-01)', () {
+    // Tous les réglages de confort à l'OPPOSÉ de leur défaut.
+    final comfy = PerfConfig.defaults.copyWith(
+      autoNextEpisode: false,
+      tmdbPostersFirst: true,
+      tmdbRowBecause: false,
+      tmdbRowTopRated: false,
+      tmdbRowProviders: false,
+      rowFoldMin: 1,
+      maxParallelDownloads: 4,
+      downloadsWifiOnly: true,
+    );
+
+    test('withProfileOf conserve autoNextEpisode, tmdbPostersFirst, tmdbRow*, '
+        'rowFoldMin, maxParallelDownloads, downloadsWifiOnly', () {
+      for (final p in PerfConfig.presets) {
+        final applied = comfy.withProfileOf(p.config);
+        expect(applied.autoNextEpisode, isFalse, reason: p.name);
+        expect(applied.tmdbPostersFirst, isTrue, reason: p.name);
+        expect(applied.tmdbRowBecause, isFalse, reason: p.name);
+        expect(applied.tmdbRowTopRated, isFalse, reason: p.name);
+        expect(applied.tmdbRowProviders, isFalse, reason: p.name);
+        expect(applied.rowFoldMin, 1, reason: p.name);
+        expect(applied.maxParallelDownloads, 4, reason: p.name);
+        expect(applied.downloadsWifiOnly, isTrue, reason: p.name);
+      }
+    });
+
+    test('a.withProfileOf(p) == p : le profil choisi devient le profil actif',
+        () {
+      // Rattrape un futur LEVIER de profil ajouté à `==` mais oublié dans
+      // withProfileOf : la puce du profil ne s'allumerait plus.
+      for (final p in PerfConfig.presets) {
+        for (final start in [PerfConfig.performance, comfy]) {
+          expect(start.withProfileOf(p.config), p.config, reason: p.name);
+        }
+      }
+    });
+
+    test('withOptimizationDefaults épargne la page TMDB et « Wi-Fi seulement »',
+        () {
+      final reset = comfy
+          .copyWith(maxItemsPerRow: 20, bufferSeconds: 60)
+          .withOptimizationDefaults();
+      expect(reset, PerfConfig.defaults);
+      expect(reset.tmdbPostersFirst, isTrue);
+      expect(reset.tmdbRowBecause, isFalse);
+      expect(reset.tmdbRowTopRated, isFalse);
+      expect(reset.tmdbRowProviders, isFalse);
+      expect(reset.downloadsWifiOnly, isTrue);
+      // Les réglages de confort de la page Optimisation, eux, reviennent.
+      expect(reset.autoNextEpisode, PerfConfig.defaults.autoNextEpisode);
+      expect(reset.rowFoldMin, PerfConfig.defaults.rowFoldMin);
+      expect(reset.maxParallelDownloads,
+          PerfConfig.defaults.maxParallelDownloads);
+    });
+
+    test('sameSettingsAs voit le confort, là où == ne le voit pas', () {
+      final onlyComfort = PerfConfig.defaults.copyWith(rowFoldMin: 1);
+      expect(onlyComfort == PerfConfig.defaults, isTrue);
+      expect(onlyComfort.sameSettingsAs(PerfConfig.defaults), isFalse);
+      // « Réinitialiser » a donc bien quelque chose à faire.
+      expect(
+          onlyComfort.sameSettingsAs(onlyComfort.withOptimizationDefaults()),
+          isFalse);
+      expect(
+          PerfConfig.defaults
+              .sameSettingsAs(PerfConfig.defaults.withOptimizationDefaults()),
+          isTrue);
+    });
+  });
 }

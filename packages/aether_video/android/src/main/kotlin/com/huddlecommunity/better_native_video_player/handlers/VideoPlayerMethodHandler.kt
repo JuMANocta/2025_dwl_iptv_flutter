@@ -2,7 +2,6 @@ package com.huddlecommunity.better_native_video_player.handlers
 
 import com.huddlecommunity.better_native_video_player.NpLog
 
-import android.app.Activity
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -70,10 +69,58 @@ class VideoPlayerMethodHandler(
     companion object {
         private const val TAG = "VideoPlayerMethod"
 
+        /**
+         * patch 19 (revue 2026-09-11, D2B-02) — Sonde des qualités HLS COUPÉE.
+         * Pour toute URL `.m3u8`, l'amont ouvrait une 2e connexion au panel
+         * (`URL.openConnection`, UA Dalvik, sans délai ni bypass TLS) : sur un
+         * abonnement « 1 / 1 » elle concurrençait la lecture (§hostGate), un
+         * panel qui filtre l'UA répondait 500 (§iptvUaCompat) — et
+         * l'`HttpURLConnection` lève alors `FileNotFoundException(url)`, que
+         * `NpLog.e` écrivait dans logcat EN RELEASE : `/live/USER/PASS/id.m3u8`.
+         * L'app n'exploite pas ces qualités (aucun `getAvailableQualities`,
+         * `qualitiesStream` ni `setQuality` dans `lib/`).
+         */
+        private const val FETCH_HLS_QUALITIES = false
+
         // Grace period before a plain pause abandons audio focus — long
         // enough to survive the background→PiP transition, short enough to
         // stay polite to other audio apps.
         private const val AUDIO_FOCUS_PAUSE_ABANDON_DELAY_MS = 30_000L
+
+        /**
+         * §engineVendor patch 2, amendé (revue 2026-09-11, D2B-13) — UN client
+         * OkHttp « trust-all » pour tout le processus, construit à la PREMIÈRE
+         * demande de bypass (jamais avant : un appareil qui ne lit que des flux
+         * au certificat valide ne le construit jamais).
+         *
+         * Il était reconstruit à CHAQUE chargement de flux — `SSLContext`,
+         * `SecureRandom`, client complet (pool de connexions, tâche de
+         * nettoyage) —, soit un par zap, puisque l'app demande le bypass pour
+         * tout flux distant ; et chaque pool abandonné gardait ses connexions
+         * inactives vers le panel jusqu'à 5 min. Un `OkHttpClient` est fait
+         * pour être partagé. Les en-têtes, elles, restent PAR FLUX : elles
+         * sont posées sur la fabrique (`setDefaultRequestProperties`), jamais
+         * sur le client.
+         *
+         * Attention : le périmètre ne change pas. Ce client n'est TOUJOURS
+         * utilisé que par `insecureHttpFactory`, donc par un flux distant qui
+         * l'a demandé ; le partager n'élargit pas le bypass, ça évite de le
+         * refaire.
+         */
+        private val insecureClient: OkHttpClient by lazy {
+            val trustAll: X509TrustManager = object : X509TrustManager {
+                override fun checkClientTrusted(c: Array<X509Certificate>?, a: String?) {}
+                override fun checkServerTrusted(c: Array<X509Certificate>?, a: String?) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+            }
+            val ctx = SSLContext.getInstance("TLS").apply {
+                init(null, arrayOf<TrustManager>(trustAll), java.security.SecureRandom())
+            }
+            OkHttpClient.Builder()
+                .sslSocketFactory(ctx.socketFactory, trustAll)
+                .hostnameVerifier { _, _ -> true }
+                .build()
+        }
 
         /**
          * Determines if a URL is an HLS stream (.m3u8 extension or common
@@ -205,8 +252,11 @@ class VideoPlayerMethodHandler(
     // le reproduire serait une régression silencieuse — un flux qui marche
     // aujourd'hui cesserait de marcher, sans message clair.
     //
-    // /!\ CE CLIENT N'EST CONSTRUIT QUE SUR DEMANDE EXPLICITE, par flux.
-    // Même discipline que `NetworkUtils.buildBaseDio(allowInvalidCertificate:)`
+    // /!\ CE CLIENT N'EST PRIS QUE SUR DEMANDE EXPLICITE, par flux (il est
+    // construit une seule fois, à la première demande : D2B-13, cf.
+    // `insecureClient`).
+    // Même discipline que `NetworkUtils.buildIptvBaseDio()` (patch 20, revue
+    // 2026-09-11, D1B-21 — ex-`buildBaseDio(allowInvalidCertificate:)`)
     // côté Dart : TMDB, GitHub et XMLTV gardent une validation stricte. Ne
     // JAMAIS le rendre global ni le passer par défaut — ce serait ouvrir toute
     // l'app à l'interception.
@@ -214,20 +264,10 @@ class VideoPlayerMethodHandler(
     // /!\ `DefaultHttpDataSource` n'expose aucun réglage SSL ; OkHttp est la
     // seule voie supportée qui n'altère pas la configuration du processus.
     private fun insecureHttpFactory(headers: Map<String, String>?): DataSource.Factory {
-        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun checkClientTrusted(c: Array<X509Certificate>?, a: String?) {}
-            override fun checkServerTrusted(c: Array<X509Certificate>?, a: String?) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        })
-        val ctx = SSLContext.getInstance("TLS").apply {
-            init(null, trustAll, java.security.SecureRandom())
-        }
-        val client = OkHttpClient.Builder()
-            .sslSocketFactory(ctx.socketFactory, trustAll[0] as X509TrustManager)
-            .hostnameVerifier { _, _ -> true }
-            .build()
+        // D2B-13 — le client est PARTAGÉ (cf. `insecureClient`) ; la fabrique,
+        // elle, reste neuve à chaque flux : c'est elle qui porte ses en-têtes.
         NpLog.w(TAG, "/!\\ Bypass SSL ACTIF pour ce flux (panel IPTV a certificat invalide)")
-        return OkHttpDataSource.Factory(client).apply {
+        return OkHttpDataSource.Factory(insecureClient).apply {
             if (headers != null) setDefaultRequestProperties(headers)
         }
     }
@@ -440,9 +480,8 @@ class VideoPlayerMethodHandler(
     }
 
     private var availableQualities: List<Map<String, Any>> = emptyList()
-    private var isAutoQuality = false
-    private var lastBitrateCheck = 0L
-    private val bitrateCheckInterval = 5000L // 5 seconds
+    // Patch 20 (revue 2026-09-11, D2B-09) — `isAutoQuality` (écrit, jamais
+    // lu), `lastBitrateCheck` et `bitrateCheckInterval` (jamais lus) retirés.
     private var currentVideoIsHls = false // Track if current video is HLS for quality switching
 
     // Ingredients of the last load, kept so sidecar subtitles can be attached
@@ -806,7 +845,9 @@ class VideoPlayerMethodHandler(
         }
 
         // Fetch qualities asynchronously for HLS streams
-        if (url.contains(".m3u8")) {
+        // patch 19 (revue 2026-09-11, D2B-02) — DÉSACTIVÉ : voir
+        // FETCH_HLS_QUALITIES dans le companion.
+        if (FETCH_HLS_QUALITIES && url.contains(".m3u8")) {
             CoroutineScope(Dispatchers.Main).launch {
                 availableQualities = VideoPlayerQualityHandler.fetchHLSQualities(url)
                 NpLog.d(TAG, "Fetched ${availableQualities.size} qualities")
@@ -1247,7 +1288,6 @@ class VideoPlayerMethodHandler(
         }
 
         val isAuto = qualityInfo["isAuto"] as? Boolean ?: false
-        isAutoQuality = isAuto
 
         if (isAuto) {
             // Lift the manual ceiling so ABR resumes. Use MAX rather than
@@ -1341,14 +1381,21 @@ class VideoPlayerMethodHandler(
         //
         // `stop()` (ci-dessus) est immédiat et coupe déjà l'image et le son ;
         // la libération lourde attend que la transition de sortie ait été
-        // dessinée. Le lecteur partagé reste inscrit ce court instant, ce qui
-        // est sans effet : le contrôleur Dart est déjà détruit et un nouveau
-        // lecteur reçoit un nouvel identifiant.
+        // dessinée. Le lecteur partagé reste inscrit ce court instant.
+        //
+        // ⚠️ Patch 15 (revue 2026-09-11, D2B-01) — ce paragraphe affirmait
+        // qu'« un nouveau lecteur reçoit un nouvel identifiant » : c'était
+        // FAUX, l'app donnait `7000` à tous ses lecteurs, et un zapping rapide
+        // laissait ce report arrêter puis libérer le lecteur SUIVANT. L'app
+        // attribue désormais un identifiant par moteur, et on ne libère ici
+        // que l'instance capturée au moment du `dispose` (comparaison par
+        // identité dans `removePlayerIfCurrent`).
         if (controllerId != null) {
             val id = controllerId
+            val target = player
             audioFocusHandler.postDelayed({
-                SharedPlayerManager.removePlayer(context, id)
-                NpLog.d(TAG, "Removed shared player for controller ID: $id (deferred, patch 14)")
+                SharedPlayerManager.removePlayerIfCurrent(context, id, target)
+                NpLog.d(TAG, "Deferred release for controller ID: $id (patch 14/15)")
             }, DEFERRED_RELEASE_MS)
         }
     }
@@ -1421,26 +1468,6 @@ class VideoPlayerMethodHandler(
         NpLog.d(TAG, "AirPlay disconnect requested but not supported on Android")
         // Simply return success - AirPlay is not available on Android
         result.success(null)
-    }
-
-    /**
-     * Helper method to get Activity from Context, handling ContextWrapper cases
-     * Same pattern as used in VideoPlayerView
-     */
-    private fun getActivity(ctx: Context?): Activity? {
-        if (ctx == null) {
-            return null
-        }
-
-        if (ctx is Activity) {
-            return ctx
-        }
-
-        if (ctx is android.content.ContextWrapper) {
-            return getActivity(ctx.baseContext)
-        }
-
-        return null
     }
 
 

@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import '../../core/utils/formatters.dart';
+
 /// Programme issu d'un fichier XMLTV (EPG).
 class XmltvProgram {
   final String channelId;
@@ -27,19 +29,15 @@ class XmltvProgram {
   /// Vrai si ce programme est diffusé à l'instant [t].
   bool isCurrentAt(DateTime t) => t.isAfter(start) && t.isBefore(stop);
 
-  bool get isNow => isCurrentAt(DateTime.now());
-
   String get timeRange {
     final fmt = DateFormat('HH:mm');
     return '${fmt.format(start)} – ${fmt.format(stop)}';
   }
 
-  String get durationLabel {
-    final d = stop.difference(start);
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60);
-    return h > 0 ? '${h}h${m.toString().padLeft(2, '0')}' : '${m}min';
-  }
+  /// Revue 2026-09-11, D1B-19 — même notation que le replay, dans la langue
+  /// de l'écran. ⚠️ Getter d'AFFICHAGE : jamais appelé dans l'isolate de
+  /// parsing du guide (`compute(_parseXml)`), qui ne connaît pas `L10n`.
+  String get durationLabel => formatShortDuration(stop.difference(start));
 
   /// Parse un timestamp XMLTV : "20260312200000 +0100"
   static DateTime parseDate(String s) {

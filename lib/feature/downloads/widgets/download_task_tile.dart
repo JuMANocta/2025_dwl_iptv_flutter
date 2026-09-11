@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/main.dart';
 import 'package:aetherStream/data/models/download_task.dart';
@@ -19,6 +20,7 @@ import 'package:aetherStream/l10n/app_localizations.dart';
 import 'package:aetherStream/core/utils/network_kind.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import '../../../l10n/l10n_ext.dart';
+import 'package:aetherStream/widgets/sheet_close_tile.dart';
 
 class DownloadTaskTile extends StatelessWidget {
   final DownloadTask task;
@@ -112,7 +114,7 @@ class DownloadTaskTile extends StatelessWidget {
           FilledButton.icon(
             style: FilledButton.styleFrom(
               backgroundColor: kWarning,
-              foregroundColor: kBlack,
+              foregroundColor: onColorFor(kWarning), // D4B-08
             ),
             icon: const Icon(Icons.stop_rounded),
             label: Text(ctx.l10n.dlStop),
@@ -145,6 +147,10 @@ class DownloadTaskTile extends StatelessWidget {
                 ),
                 onTap: () => Navigator.of(sheetCtx).pop(a),
               ),
+            // §tvOptionsBack — refermer sans rien déclencher. ⚠️ `pop()` SANS
+            // valeur : l'appelant teste `choice != null`, une valeur ici
+            // exécuterait une action.
+            SheetCloseTile(onTap: () => Navigator.of(sheetCtx).pop()),
           ],
         ),
       ),
@@ -211,7 +217,7 @@ class DownloadTaskTile extends StatelessWidget {
   static String _actionLabel(DownloadAction a) => switch (a) {
         DownloadAction.play => L10n.current.dlActionPlay,
         DownloadAction.monitor => L10n.current.dlActionMonitor,
-        DownloadAction.restart => 'Relancer',
+        DownloadAction.restart => L10n.current.dlActionRestart,
         DownloadAction.cancel => L10n.current.dlActionCancel,
         DownloadAction.delete => L10n.current.dlActionDelete,
       };
@@ -281,40 +287,50 @@ class DownloadTaskTile extends StatelessWidget {
 
     if (confirm == true) {
       await downloadManager.removeTask(task.id);
+      final files = filesToDeleteFor(task);
 
-      // §dlDirectWrite — Le fichier final est désormais écrit DIRECTEMENT dans
-      // le dossier public : on l'efface par son chemin. MediaStore reste
-      // ensuite appelé sur Android pour purger l'entrée d'index.
+      // Le partiel EN PREMIER (à côté du final, ou résidu du cache privé quand
+      // le repli a servi) : l'appel MediaStore plus bas peut ne jamais rendre
+      // la main (le plugin ne complète pas son `Result` sur exception).
       try {
-        final finalFile = File(task.finalPath);
-        if (await finalFile.exists()) await finalFile.delete();
-      } catch (e) {
-        debugPrint("⚠️ Suppression du fichier final échouée : $e");
-      }
-
-      if (Platform.isAndroid) {
-        // Suppression du fichier final via MediaStore (Android 10+)
-        try {
-          final fileName = task.finalPath.split('/').last;
-          if (fileName.isNotEmpty) {
-            await MediaStore().deleteFile(
-              fileName: fileName,
-              dirType: DirType.video,
-              dirName: DirName.movies,
-            );
-          }
-        } catch (e) {
-          debugPrint("⚠️ Suppression MediaStore échouée : $e");
+        final tempFile = File(files.partialPath);
+        if (files.partialPath.isNotEmpty && await tempFile.exists()) {
+          await tempFile.delete();
         }
-      }
-
-      // Suppression du fichier partiel (`.<nom>.part` à côté du final, ou
-      // résidu dans le cache privé quand le repli a servi).
-      try {
-        final tempFile = File(task.tempPath);
-        if (await tempFile.exists()) await tempFile.delete();
       } catch (e) {
         debugPrint("⚠️ Suppression fichier partiel échouée : $e");
+      }
+
+      // D3A-13 — Le fichier final seulement s'il est À CETTE TÂCHE (terminée).
+      final String? finalPath = files.finalPath;
+      if (finalPath != null) {
+        // §dlDirectWrite — Le fichier final est écrit DIRECTEMENT dans le
+        // dossier public : on l'efface par son chemin. MediaStore reste ensuite
+        // appelé pour purger l'entrée d'index (et couvrir les fichiers issus du
+        // repli).
+        try {
+          final finalFile = File(finalPath);
+          if (await finalFile.exists()) await finalFile.delete();
+        } catch (e) {
+          debugPrint("⚠️ Suppression du fichier final échouée : $e");
+        }
+
+        if (Platform.isAndroid) {
+          try {
+            final fileName = finalPath.split('/').last;
+            if (fileName.isNotEmpty) {
+              await MediaStore()
+                  .deleteFile(
+                    fileName: fileName,
+                    dirType: DirType.video,
+                    dirName: DirName.movies,
+                  )
+                  .timeout(const Duration(seconds: 10));
+            }
+          } catch (e) {
+            debugPrint("⚠️ Suppression MediaStore échouée : $e");
+          }
+        }
       }
     }
   }
@@ -372,10 +388,9 @@ class DownloadTaskTile extends StatelessWidget {
         return Icon(Icons.error, color: kError);
       case DownloadStatus.canceled:
         return Icon(Icons.cancel, color: kWarning);
+      // Revue 2026-09-11, D3A-15 — `paused` n'est jamais affecté : étiquette
+      // gardée pour l'exhaustivité, même rendu que la file d'attente.
       case DownloadStatus.paused:
-        // §dlTheme — était `Colors.blueGrey` : une couleur hors palette, qui
-        // ne bougeait pas d'un preset à l'autre.
-        return Icon(Icons.pause_circle, color: cs.onSurfaceVariant);
       case DownloadStatus.queued:
         return Icon(Icons.hourglass_top, color: cs.onSurfaceVariant);
       case DownloadStatus.finalizing:
@@ -578,7 +593,7 @@ class DownloadTaskTile extends StatelessWidget {
           child: _outlinedAction(
             context,
             icon: Icons.more_vert,
-            tooltip: 'Autres actions',
+            tooltip: context.l10n.dlMoreActions,
             color: Theme.of(context).colorScheme.onSurfaceVariant,
             onPressed: () => _openMenu(context),
           ),

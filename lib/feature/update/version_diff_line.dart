@@ -116,25 +116,25 @@ class _VersionDiffLineState extends State<VersionDiffLine> {
       children: [
         Text(
           '> CURRENT : ${widget.localVersion}',
-          style: mono.copyWith(color: const Color(0xFF00AA00)),
+          style: mono.copyWith(color: kTermGreenDim),
         ),
         const SizedBox(height: 2),
         RichText(
           text: TextSpan(
-            style: mono.copyWith(color: const Color(0xFFADFF2F)),
+            style: mono.copyWith(color: kTermGreenYellow),
             children: [
               const TextSpan(text: '> RELEASE : '),
               // Préfixe commun : atténué, il n'apporte rien.
               TextSpan(
                 text: _display.substring(0, min(common, _display.length)),
-                style: mono.copyWith(color: const Color(0xFF7A9A3F)),
+                style: mono.copyWith(color: kTermOlive),
               ),
               // ⚠️ La partie qui CHANGE, en vert vif + glow : c'est la seule
               // information que l'utilisateur cherche dans ces deux lignes.
               TextSpan(
                 text: _display.substring(min(common, _display.length)),
                 style: mono.copyWith(
-                  color: done ? kAccentPrimary : const Color(0xFF33FF33),
+                  color: done ? kAccentPrimary : kTermGreenBright,
                   fontWeight: FontWeight.bold,
                   shadows: done
                       ? [

@@ -233,7 +233,15 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    preset.name,
+                    // Revue 2026-09-11, lot 7 (recette en anglais) — trois
+                    // noms de préréglages sont des mots FRANÇAIS ; ils ne
+                    // servent qu'à l'affichage (aucune persistance par nom).
+                    switch (preset.name) {
+                      'Phosphore' => context.l10n.themePresetPhosphore,
+                      'Nordique' => context.l10n.themePresetNordique,
+                      'Minimaliste' => context.l10n.themePresetMinimaliste,
+                      _ => preset.name,
+                    },
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: active ? FontWeight.bold : FontWeight.normal,
@@ -535,7 +543,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            'Titre du Film',
+                            context.l10n.themePreviewTitle,
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -665,7 +673,7 @@ class _TvStepperRow extends StatelessWidget {
           icon: const Icon(Icons.remove_circle_outline),
           onPressed: _decrement,
           color: value > min ? color : color.withAlpha(70),
-          tooltip: 'Diminuer',
+          tooltip: context.l10n.commonDecrease,
         ),
         Expanded(
           child: Container(
@@ -692,7 +700,7 @@ class _TvStepperRow extends StatelessWidget {
           icon: const Icon(Icons.add_circle_outline),
           onPressed: _increment,
           color: value < max ? color : color.withAlpha(70),
-          tooltip: 'Augmenter',
+          tooltip: context.l10n.commonIncrease,
         ),
       ],
     );

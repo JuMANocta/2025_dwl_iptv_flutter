@@ -22,8 +22,8 @@ library;
 /// se pose **avant l'extension** — `Heroes S01 E02.mp4 (2)` ne serait plus
 /// reconnu comme une vidéo par MediaStore ni par les lecteurs.
 ///
-/// ⚠️ Un nom sans extension (le cas existe : `_ext()` rend une chaîne vide
-/// quand l'URL n'en porte pas) reçoit simplement le suffixe à la fin.
+/// ⚠️ Un nom sans extension (tâches enregistrées avant [downloadFileName])
+/// reçoit simplement le suffixe à la fin.
 String downloadNameCandidate(String fileName, int index) {
   if (index <= 0) return fileName;
   final int dot = fileName.lastIndexOf('.');
@@ -33,6 +33,59 @@ String downloadNameCandidate(String fileName, int index) {
   final String stem = fileName.substring(0, dot);
   final String ext = fileName.substring(dot); // point inclus
   return '$stem (${index + 1})$ext';
+}
+
+/// Caractères interdits dans un nom de fichier, remplacés par `_`.
+///
+/// ⚠️ `#` et `%` en font partie (revue 2026-09-11, D3A-10) : le repli
+/// MediaStore dérive le nom d'un `Uri.parse` du chemin, où `#` coupe le nom au
+/// fragment (« #Alive » → vide) et `%` lève une `FormatException`.
+String sanitizeFilename(String filename) =>
+    filename.replaceAll(RegExp(r'[\\/*?:"<>|#%]'), '_');
+
+/// Extension du fichier désigné par [url], lue sur le DERNIER SEGMENT du
+/// chemin (jamais sur la requête), en minuscules. `null` si ce segment n'en
+/// porte pas de plausible.
+///
+/// ⚠️ Revue 2026-09-11 (D3A-04) : l'ancienne lecture prenait tout ce qui
+/// suivait le dernier point de l'URL ENTIÈRE. Sur une URL sans extension
+/// (`http://1.2.3.4:8080/movie/u/p/123`), le « type de fichier » devenait
+/// « 4:8080/movie/u/p/123 » — l'hôte et les identifiants s'affichaient dans la
+/// boîte de confirmation et finissaient dans le nom du fichier.
+String? urlFileExtension(String url) {
+  final Uri? uri = Uri.tryParse(url);
+  if (uri == null) return null;
+  final List<String> segs =
+      uri.pathSegments.where((s) => s.isNotEmpty).toList();
+  if (segs.isEmpty) return null;
+  final String last = segs.last;
+  final int dot = last.lastIndexOf('.');
+  if (dot <= 0 || dot == last.length - 1) return null;
+  final String ext = last.substring(dot + 1).toLowerCase();
+  return RegExp(r'^[a-z0-9]{2,5}$').hasMatch(ext) ? ext : null;
+}
+
+/// Nom du fichier à écrire pour [name] (+ [year]) téléchargé depuis [url].
+///
+/// L'extension vient de l'URL (`mp4` à défaut) et est TOUJOURS posée, sauf si
+/// le nom se termine déjà par elle.
+///
+/// ⚠️ Revue 2026-09-11 (D3A-04) : l'ancien test « le nom a-t-il déjà une
+/// extension ? » regardait le DERNIER POINT du nom. « Mr. Robot S01 E01 » ou
+/// « … Vol. 2 (2017) » passaient donc pour déjà pourvus : fichier écrit SANS
+/// extension, partiel en `.Mr.aetherpart. Robot S01 E01` — la forme exacte
+/// que le stockage cloisonné refuse (§dlProbeShape), d'où le repli à 2× la
+/// taille du film puis un nom que MediaStore n'accepte pas comme vidéo.
+String downloadFileName({
+  required String name,
+  String? year,
+  required String url,
+}) {
+  String base = sanitizeFilename(name);
+  if (year != null && year.isNotEmpty) base = '$base ($year)';
+  final String ext = urlFileExtension(url) ?? 'mp4';
+  if (!base.toLowerCase().endsWith('.$ext')) base = '$base.$ext';
+  return base;
 }
 
 /// Le premier nom candidat que [taken] ne refuse pas.

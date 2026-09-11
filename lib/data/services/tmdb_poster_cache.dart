@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/diagnostics/prefs_probe.dart';
 import 'inferred_category_service.dart';
 import 'tmdb_api_service.dart';
 import 'tmdb_service.dart';
@@ -18,7 +19,9 @@ import 'tmdb_service.dart';
 ///
 /// Règles perf (grosse playlist) :
 /// - une seule recherche TMDB par (titre, type, année) — résultat **mis en
-///   cache même quand il est null** (évite de re-tenter à chaque scroll) ;
+///   cache même quand il est null** (évite de re-tenter à chaque scroll),
+///   pourvu que TMDB ait vraiment répondu : une erreur ou l'absence de clé
+///   ne sont PAS un « introuvable » (revue 2026-09-11, D1B-01) ;
 /// - les appels concurrents pour la même clé sont dédupliqués (`_inFlight`) ;
 /// - rien n'est tenté si aucune clé TMDB n'est configurée.
 class TmdbPosterCache {
@@ -66,6 +69,11 @@ class TmdbPosterCache {
   static Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      // Revue 2026-09-11, D1B-14 — Une ligne au démarrage : la taille réelle
+      // des préférences, ce cache compris. C'est la mesure qui décide de le
+      // sortir dans un fichier dédié (seuil de la revue : ~500 Ko). Non
+      // attendue : elle lit la taille du fichier, rien n'en dépend.
+      unawaited(PrefsProbe.logFootprint(prefs));
       final raw = prefs.getString(_prefsKey);
       if (raw == null) return;
       final decoded = jsonDecode(raw);
@@ -100,11 +108,37 @@ class TmdbPosterCache {
       _dirty = false;
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_prefsKey, jsonEncode(_cache));
+        // Revue 2026-09-11, D1B-14 — Même écriture, chronométrée : journalisée
+        // seulement si elle prend plus de 8 ms au thread UI.
+        await PrefsProbe.setStringTimed(
+            prefs, _prefsKey, () => jsonEncode(_cache),
+            tag: '§tmdbUrlPersist');
       } catch (e) {
         debugPrint('⚠️ §tmdbUrlPersist — écriture impossible : $e');
       }
     });
+  }
+
+  /// Revue 2026-09-11, D1B-01 — Oublie les seuls titres « introuvables »
+  /// (`null`), pas les affiches trouvées. Appelé quand la clé TMDB CHANGE
+  /// (page TMDB, restauration `.aether`, console web) : un négatif mémorisé
+  /// avant la bonne clé (ou persisté par une version antérieure à ce
+  /// correctif, qui mémorisait aussi les erreurs) laissait le titre sans
+  /// affiche après chaque redémarrage, sans un mot. Les affiches trouvées
+  /// restent valables quelle que soit la clé : les jeter relancerait une
+  /// vague de recherches pour rien.
+  static Future<void> forgetNegatives() async {
+    final int before = _cache.length;
+    _cache.removeWhere((_, v) => v == null);
+    final int dropped = before - _cache.length;
+    if (dropped == 0) return;
+    debugPrint('🧹 §tmdbUrlPersist — $dropped titres introuvables oubliés (clé TMDB changée)');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsKey, jsonEncode(_cache));
+    } catch (e) {
+      debugPrint('⚠️ §tmdbUrlPersist — écriture impossible : $e');
+    }
   }
 
   /// Oublie tout (entretien / changement de clé TMDB).
@@ -163,17 +197,37 @@ class TmdbPosterCache {
     final pending = _inFlight[k];
     if (pending != null) return pending;
 
-    final future =
-        _doResolve(query, isTv, year, groupTitle, categoryKey).then((url) {
-      // §tmdbUrlPersist — On mémorise AUSSI les échecs (`url == null`), et on
-      // les persiste : c'est ce qui empêche de re-chercher à chaque lancement
-      // un titre que TMDB ne connaît pas.
-      if (_cache.length < _maxEntries || _cache.containsKey(k)) {
-        _cache[k] = url;
+    final Future<String?> future =
+        _doResolve(query, isTv, year, groupTitle, categoryKey).then((r) {
+      // §tmdbUrlPersist — On mémorise AUSSI les titres introuvables
+      // (`url == null`), et on les persiste : c'est ce qui empêche de
+      // re-chercher à chaque lancement un titre que TMDB ne connaît pas.
+      //
+      // ⚠️ Revue 2026-09-11, D1B-01 — mais SEULEMENT si la réponse est
+      // DÉFINITIVE (TMDB a répondu « 0 résultat »). Sans clé, hors ligne, sur
+      // un 401 ou un 429, rien n'a été cherché : persister `null` laissait ces
+      // titres sans affiche après chaque redémarrage (jusqu'à 20 000), même
+      // une fois la bonne clé saisie. Une erreur se retente au prochain
+      // affichage.
+      if ((r.url != null || r.definitive) &&
+          (_cache.length < _maxEntries || _cache.containsKey(k))) {
+        _cache[k] = r.url;
         _schedulePersist();
       }
+      return r.url;
+    }).catchError((Object e) {
+      // Revue 2026-09-11, D1B-23 — une résolution qui LÈVE (lecture de la clé
+      // dans le trousseau, par exemple) : rien en cache, et surtout rien de
+      // coincé — sinon ce futur en erreur était rendu à tous les appels
+      // suivants de la session.
+      debugPrint('⚠️ §tmdbUrlPersist — résolution impossible : $e');
+      return null;
+    }).whenComplete(() {
+      // ⚠️ Corps en BLOC, jamais `() => _inFlight.remove(k)` : `remove` rend
+      // le futur retiré — CE futur-ci — et `whenComplete` attend le futur
+      // rendu par son rappel : il s'attendrait lui-même, pour toujours
+      // (interblocage trouvé par tmdb_poster_cache_negative_test).
       _inFlight.remove(k);
-      return url;
     });
     _inFlight[k] = future;
     return future;
@@ -186,9 +240,37 @@ class TmdbPosterCache {
   /// fait son travail. Sans clé TMDB configurée, il reste à zéro.
   static int _networkResolutions = 0;
 
-  static Future<String?> _doResolve(String query, bool isTv, String? year,
-      String? groupTitle, String? categoryKey) async {
-    if (!await TmdbApiService.hasApiKey()) return null;
+  /// Revue 2026-09-11 (relecture de D1B-01) — Présence de la clé TMDB,
+  /// mémorisée par génération de `TmdbService`. `resetInstance()` suit CHAQUE
+  /// écriture ou effacement de la clé (page TMDB, restauration `.aether`,
+  /// console web) et fait avancer `generation` : le mémo tombe tout seul.
+  ///
+  /// ⚠️ Pourquoi il existe : depuis D1B-01, « pas de clé » n'est plus mis en
+  /// cache comme un introuvable. Sans ce mémo, chaque vignette montée chez un
+  /// utilisateur SANS clé relisait le trousseau (canal natif), à chaque
+  /// défilement et à chaque session — là où un seul `null` persisté suffisait.
+  static int _keyCheckedGen = -1;
+  static bool _keyPresent = false;
+
+  static Future<bool> _hasKey() async {
+    final int gen = TmdbService.generation;
+    if (gen == _keyCheckedGen) return _keyPresent;
+    final bool present = await TmdbApiService.hasApiKey();
+    // Clé changée PENDANT la lecture : on ne mémorise pas une réponse périmée.
+    if (gen == TmdbService.generation) {
+      _keyPresent = present;
+      _keyCheckedGen = gen;
+    }
+    return present;
+  }
+
+  /// `definitive` : TMDB a vraiment répondu (cf. `fetchPosterAndGenre`). Sans
+  /// clé, rien n'est cherché — donc rien de définitif (D1B-01).
+  static Future<({String? url, bool definitive})> _doResolve(String query,
+      bool isTv, String? year, String? groupTitle, String? categoryKey) async {
+    if (!await _hasKey()) {
+      return (url: null, definitive: false);
+    }
     // Journalisé par paliers de 25 : une ligne par recherche noierait le
     // journal (des dizaines par seconde au défilement), et ce qui nous
     // intéresse est le VOLUME, pas le détail.
@@ -206,6 +288,6 @@ class TmdbPosterCache {
     // §inferredCat — On range le titre même quand TMDB n'a pas d'affiche : une
     // catégorie sans image reste utile, l'inverse aussi.
     InferredCategoryService.learn(categoryKey, r.category);
-    return r.posterUrl;
+    return (url: r.posterUrl, definitive: r.definitive);
   }
 }

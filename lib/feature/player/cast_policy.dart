@@ -85,6 +85,52 @@ bool castNeedsCors(String url) {
   return t == 'application/x-mpegURL' || t == 'application/dash+xml';
 }
 
+/// §castSend / §castLocal / §castRelay — revue 2026-09-11, D2A-04 — Ce que le
+/// téléviseur lit est-il LE contenu de cette page ?
+///
+/// **Le défaut réparé.** Le lecteur ne comparait que l'adresse envoyée au
+/// récepteur à `castUrlFor(chemin)`, ou le chemin mémorisé par la page QUI A
+/// LANCÉ la diffusion. Pour un fichier téléchargé, `castUrlFor` rend le
+/// chemin local tel quel alors que la télé lit `http://ip:port/local/…` ; pour
+/// un relais, `/relay.mp4`. Un lecteur ROUVERT pendant la diffusion (le
+/// geste naturel pour retrouver la télécommande) ne se reconnaissait donc
+/// pas : il proposait « Diffuser ce titre » sur le film déjà diffusé, et
+/// réécrivait toutes les 10 s sa position locale FIGÉE sous la clé de
+/// reprise, en alternance avec celle du téléviseur.
+///
+/// Critères, du plus direct au plus large :
+///   - l'adresse diffusée est celle du média ([castUrlFor]) ;
+///   - la page a lancé elle-même cette diffusion ([castMediaPath]) ;
+///   - la CLÉ DE REPRISE diffusée est celle du média — indépendante de
+///     l'URL, donc valable pour un flux, un fichier servi, un lecteur rouvert ;
+///   - l'adresse diffusée est celle sous laquelle NOTRE serveur sert ce
+///     fichier ([localFileUrl], `CastFileServer.urlFor`) ;
+///   - relais (sans clé de reprise, à dessein) : la télé lit l'adresse du
+///     relais ET le relais convertit ce chemin-là ([relaySourcePath]).
+bool castsThisMedia({
+  required String? castUrl,
+  required String? castProgressKey,
+  required String mediaPath,
+  required String resumeKey,
+  String? castMediaPath,
+  String? localFileUrl,
+  String? relayUrl,
+  String? relaySourcePath,
+}) {
+  if (castUrl == null) return false;
+  if (castUrl == castUrlFor(mediaPath)) return true;
+  if (castMediaPath != null && castMediaPath == mediaPath) return true;
+  if (castProgressKey != null && castProgressKey == resumeKey) return true;
+  if (localFileUrl != null && castUrl == localFileUrl) return true;
+  if (relayUrl != null &&
+      castUrl == relayUrl &&
+      relaySourcePath != null &&
+      relaySourcePath == mediaPath) {
+    return true;
+  }
+  return false;
+}
+
 // ── Éligibilité ─────────────────────────────────────────────────────────────
 
 /// Ce que la sonde réseau a observé en demandant l'URL **comme le récepteur le

@@ -55,11 +55,15 @@ class Person {
 
     filmographyList.sort((a, b) => b.year!.compareTo(a.year!));
 
+    // Revue 2026-09-11, D4A-11 — TMDB rend une chaîne VIDE (pas `null`) quand
+    // la biographie manque dans la langue demandée : la fiche affichait alors
+    // une zone vide au lieu de « biographie non disponible » (`?? repli`).
+    final String? rawBio = json['biography'] as String?;
     return Person(
       id: json['id'] as int,
       name: json['name'] as String,
       profilePath: json['profile_path'] as String?,
-      biography: json['biography'] as String?,
+      biography: (rawBio == null || rawBio.trim().isEmpty) ? null : rawBio,
       filmography: filmographyList,
       knownForDepartment: json['known_for_department'] as String?,
     );
@@ -101,7 +105,10 @@ class FilmographyEntry {
     final mediaType = rawType ?? (looksLikeMovie ? 'movie' : 'tv');
     final isMovie = mediaType == 'movie';
 
-    final title = (isMovie ? json['title'] : json['name']) as String? ?? 'Inconnu';
+    // Revue 2026-09-11, D1A-10 — vide plutôt que « Inconnu » (texte français
+    // en dur) : un crédit sans titre est ÉCARTÉ par `Person.fromJson`
+    // (`c.title.isNotEmpty`), il n'a rien à montrer.
+    final title = (isMovie ? json['title'] : json['name']) as String? ?? '';
     final originalTitle = (isMovie ? json['original_title'] : json['original_name']) as String?;
 
     // Déterminer la date de sortie pour obtenir l'année

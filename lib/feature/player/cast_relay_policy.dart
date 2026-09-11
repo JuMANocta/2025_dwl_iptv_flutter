@@ -31,15 +31,16 @@ enum CastRelayBlocker {
 }
 
 /// Ce que l'app doit décider avant de proposer une conversion.
+///
+/// Revue 2026-09-11, D2A-11 — Le champ `sourceAudio` (codec à remplacer)
+/// n'était lu que par les tests : le consentement ne nomme plus le codec
+/// depuis la décision du 2026-09-04 (« une phrase, sans jargon »). Retiré.
 typedef CastRelayPlan = ({
   /// `true` ⇒ on peut proposer le relais à l'utilisateur.
   bool offered,
 
   /// Renseigné quand [offered] est faux.
   CastRelayBlocker? blocker,
-
-  /// Codec de la piste audio à remplacer, pour le dire dans le message.
-  String? sourceAudio,
 });
 
 /// Peut-on proposer la conversion ?
@@ -53,75 +54,41 @@ CastRelayPlan castRelayPlan({
   required String url,
   required List<CastAudioTrack> tracks,
 }) {
-  String? worstCodec() {
-    for (final t in tracks) {
-      if (castAudioSupport(t.codec) == CastAudioSupport.no) {
-        return castAudioCodecName(t.codec);
-      }
-    }
-    return null;
-  }
-
   // §castLocal (2026-09-06) — Un fichier téléchargé se convertit comme un
   // flux : le convertisseur natif (Media3) lit un chemin local aussi bien
   // qu'une URL. `isLocalFile` ne bloque plus ; il reste dans la signature pour
   // le jour où une source ne serait ni l'un ni l'autre.
   if (isLocalFile && url.isEmpty) {
-    return (
-      offered: false,
-      blocker: CastRelayBlocker.localFile,
-      sourceAudio: worstCodec(),
-    );
+    return (offered: false, blocker: CastRelayBlocker.localFile);
   }
   final Uri? uri = Uri.tryParse(url);
   // §castLocal — un chemin local n'a pas de schéma : ce contrôle ne vaut que
   // pour une source réseau.
   if (!isLocalFile &&
       (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https'))) {
-    return (
-      offered: false,
-      blocker: CastRelayBlocker.unsupportedSource,
-      sourceAudio: worstCodec(),
-    );
+    return (offered: false, blocker: CastRelayBlocker.unsupportedSource);
   }
   if (isLive) {
-    return (
-      offered: false,
-      blocker: CastRelayBlocker.liveStream,
-      sourceAudio: worstCodec(),
-    );
+    return (offered: false, blocker: CastRelayBlocker.liveStream);
   }
   // Rien à convertir si le récepteur sait déjà lire une piste.
   if (tracks.isEmpty || castPreferredAudioIndex(tracks) != null) {
-    return (
-      offered: false,
-      blocker: CastRelayBlocker.notNeeded,
-      sourceAudio: null,
-    );
+    return (offered: false, blocker: CastRelayBlocker.notNeeded);
   }
-  return (offered: true, blocker: null, sourceAudio: worstCodec());
+  return (offered: true, blocker: null);
 }
 
-/// Phrase courte expliquant pourquoi la conversion n'est pas proposée.
-/// `null` quand il n'y a rien à dire (cas [CastRelayBlocker.notNeeded]).
-String? castRelayBlockerMessage(CastRelayBlocker blocker) {
-  return switch (blocker) {
-    CastRelayBlocker.notNeeded => null,
-    CastRelayBlocker.liveStream =>
-      L10n.current.relayBlockerLive,
-    CastRelayBlocker.localFile =>
-      L10n.current.relayBlockerLocal,
-    CastRelayBlocker.unsupportedSource =>
-      L10n.current.relayBlockerOther,
-  };
-}
+// Revue 2026-09-11, D2A-11 — `castRelayBlockerMessage` (le motif d'un refus)
+// et `castRelayProgressLabel` (l'avancement de la conversion) n'étaient
+// appelés que par les tests : aucun écran ne les affichait. Retirés avec leurs
+// clés l10n (`relayBlocker…`, `relayConverted…`, `relayProgress…`). Les
+// réécrire le jour où un écran en aura besoin, pas avant.
 
-/// Le texte de consentement : **ce que ça fait, ce que ça coûte, ce que ça ne
-/// fera pas**. Trois blocs, dans cet ordre, parce que c'est l'ordre dans
-/// lequel on décide.
+/// Le texte de consentement : ce que ça fait, ce que ça coûte, et ce que
+/// l'utilisateur peut faire de son téléphone pendant ce temps.
 ///
-/// [sourceAudio] — nom du codec remplacé (« AC3 (Dolby Digital) »), quand on
-/// le connaît.
+/// Revue 2026-09-11, D2A-11 — Le champ `limits` (toujours `const []` depuis
+/// §castResume) et le paramètre `sourceAudio` (jamais lu) sont retirés.
 typedef CastRelayConsent = ({
   String what,
   List<String> costs,
@@ -129,7 +96,6 @@ typedef CastRelayConsent = ({
   /// §castAwake — Ce que l'utilisateur peut faire de son téléphone pendant
   /// la diffusion (éteindre l'écran), maintenant que le service la tient.
   String awake,
-  List<String> limits,
   String confirmLabel,
   String cancelLabel,
 });
@@ -183,7 +149,6 @@ String? castBatteryWarning({int? percent, bool? charging}) {
 /// l'usage. Et **pas de diffusion muette** : on adapte, ou on annule.
 CastRelayConsent castRelayConsent({
   required String deviceName,
-  String? sourceAudio,
   int? batteryPercent,
   bool? charging,
 }) {
@@ -195,34 +160,7 @@ CastRelayConsent castRelayConsent({
     what: L10n.current.relayConsentWhat(device),
     costs: [castRelayBatteryNote(percent: batteryPercent, charging: charging)],
     awake: kCastRelayAwakeNote,
-    // §castResume — La conversion part désormais de la position courante :
-    // il n'y a plus de « toujours depuis le début » à annoncer.
-    limits: const [],
     confirmLabel: L10n.current.relayConsentConfirm,
     cancelLabel: L10n.current.commonCancel,
   );
-}
-
-/// Où en est la conversion, pour l'afficher pendant la diffusion.
-/// [ready] = durée déjà convertie, [total] = durée du film (peut être nulle).
-String castRelayProgressLabel({
-  required Duration ready,
-  Duration? total,
-  required bool playing,
-}) {
-  String mmss(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return h > 0 ? '$h:$m:$s' : '$m:$s';
-  }
-
-  final String avance = L10n.current.relayConvertedUpTo(mmss(ready));
-  if (total == null || total <= Duration.zero) return avance;
-  final int pct = ((ready.inMilliseconds / total.inMilliseconds) * 100)
-      .clamp(0, 100)
-      .round();
-  return playing
-      ? L10n.current.relayProgressPlaying(avance, '$pct')
-      : L10n.current.relayProgressPaused(avance, '$pct');
 }

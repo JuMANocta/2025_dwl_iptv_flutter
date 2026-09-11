@@ -1,12 +1,41 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/utils/lan_address.dart';
 import 'cast_service.dart';
 import 'fmp4_index.dart';
+import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_ext.dart';
+
+/// Revue 2026-09-11, D2B-03 — Code de refus remonté par `AetherCastRelay.kt`
+/// (`onFailed(message, userFacing = true)`) pour un Dolby Vision profil 5.
+///
+/// **Le défaut corrigé** : le natif remontait une PHRASE, écrite en français
+/// dans le Kotlin, que l'écran affichait telle quelle — en français sur un
+/// téléphone anglais, et hors de portée du cliquet l10n (qui ne lit que
+/// `lib/`). Le natif ne remonte plus qu'un CODE ; la phrase naît ici.
+const String kRelayRefusalDvProfile5 = 'dvProfile5';
+
+/// Le texte d'un échec de conversion, dans la langue de l'écran. Pure.
+///
+/// ⚠️ Un code INCONNU — ou une phrase, venue d'une version antérieure du
+/// natif — n'est JAMAIS affiché : il retombe sur le message générique. Le
+/// natif n'a pas la langue de l'écran.
+String relayFailureText(
+  String code, {
+  required bool userFacing,
+  AppLocalizations? l10n,
+}) {
+  final AppLocalizations l = l10n ?? L10n.current;
+  if (userFacing && code == kRelayRefusalDvProfile5) {
+    return l.relayDolbyVisionP5;
+  }
+  return l.relayFormatFailed;
+}
 
 /// §castRelay — Le téléphone au milieu : il convertit le son du film en AAC
 /// (côté natif, `AetherCastRelay.kt`) et **sert le résultat au téléviseur**
@@ -14,8 +43,12 @@ import '../../l10n/l10n_ext.dart';
 ///
 /// **Pourquoi un serveur** : le récepteur Chromecast va chercher l'adresse
 /// lui-même. Il lui faut donc une URL joignable sur le réseau local — d'où le
-/// même patron que la Console web (`HttpServer` sur `anyIPv4`, adresse LAN
-/// détectée sur l'interface WiFi).
+/// même patron que la Console web (adresse LAN détectée sur l'interface WiFi).
+/// Revue 2026-09-11, D2A-12 : le serveur est lié à CETTE adresse (plus à
+/// `0.0.0.0`), l'adresse doit être privée (RFC 1918, `lanIpv4`), et toutes les
+/// routes passent sous un jeton aléatoire de session (`/<jeton>/relay.mp4`) :
+/// elles étaient fixes et devinables, donc le film converti se téléchargeait
+/// depuis n'importe quel poste du réseau en connaissant le seul port.
 ///
 /// **Pourquoi progressif et non HLS** (mesuré le 2026-09-04) : le récepteur
 /// Philips rejette le HEVC servi en HLS (il télécharge init + 2 segments
@@ -99,6 +132,16 @@ abstract final class CastRelayService {
 
   static HttpServer? _server;
   static String? _filePath;
+
+  /// D2A-12 — Jeton de session, premier segment de toute route servie.
+  static String? _token;
+
+  /// D2A-04 — Le média (URL ou chemin) que ce relais convertit, pour qu'un
+  /// lecteur rouvert reconnaisse la diffusion en cours comme la sienne.
+  static String? _sourcePath;
+
+  /// Le média source de la conversion en cours, `null` sans relais.
+  static String? get sourcePath => _sourcePath;
   static RandomAccessFile? _raf;
   static Fmp4Index? _index;
   static Future<void>? _refreshing;
@@ -150,7 +193,7 @@ abstract final class CastRelayService {
     _ensureWired();
     final int gen = _generation;
 
-    final String? ip = await _detectLocalIp();
+    final String? ip = await lanIpv4();
     if (gen != _generation) throw const CastRelayCancelled();
     if (ip == null) {
       throw CastRelayException(
@@ -178,13 +221,15 @@ abstract final class CastRelayService {
       throw CastRelayException(L10n.current.relayStartFailed);
     }
     _filePath = path;
+    _sourcePath = sourceUrl;
+    _token = _newToken();
     _converting = true;
     _maxPosition = Duration.zero;
     _offset = begin;
     _index = Fmp4Index();
 
     try {
-      _server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
+      _server = await HttpServer.bind(InternetAddress(ip), 0);
     } catch (e) {
       debugPrint('❌ CastRelayService: bind impossible — $e');
       // `stop()` plutôt qu'un appel natif isolé : sinon `_filePath` et
@@ -210,9 +255,10 @@ abstract final class CastRelayService {
     // complet affichait l'image). On lui sert donc un flux progressif
     // continu (`/relay.mp4`), pas une liste de segments. Les endpoints HLS
     // restent servis, en repli/diagnostic.
-    final String url = 'http://$ip:${_server!.port}/relay.mp4';
-    debugPrint(
-        '🎞️ §castRelay — conversion démarrée, relais progressif sur $url');
+    final String url = 'http://$ip:${_server!.port}/$_token/relay.mp4';
+    // ⚠️ L'URL porte le jeton : on ne journalise que le port.
+    debugPrint('🎞️ §castRelay — conversion démarrée, relais progressif '
+        '(port ${_server!.port})');
     state.value =
         CastRelayState(url: url, percent: 0, done: false, offset: begin);
 
@@ -341,6 +387,8 @@ abstract final class CastRelayService {
       }
     }
     _filePath = null;
+    _sourcePath = null;
+    _token = null;
     _index = null;
     _converting = false;
     _maxPosition = Duration.zero;
@@ -389,7 +437,8 @@ abstract final class CastRelayService {
   /// journal, impossible de distinguer un manifeste refusé d'un flux jamais
   /// téléchargé — deux causes opposées.
   static Future<void> _handle(HttpRequest req) async {
-    final String path = req.uri.path;
+    // D2A-12 — Le jeton ne va jamais au journal : on n'en garde que la route.
+    final String path = _routeOf(req.uri) ?? '(jeton invalide)';
     req.response.done.then((_) {
       debugPrint('🌐 §castRelay — ${req.method} $path '
           '→ ${req.response.statusCode}');
@@ -399,8 +448,33 @@ abstract final class CastRelayService {
     return _serve(req);
   }
 
+  /// D2A-12 — La route servie (`/relay.mp4`, `/seg/3.m4s`…) une fois le jeton
+  /// de session vérifié et retiré, ou `null` si le jeton manque ou est faux.
+  /// Les références de la liste HLS sont RELATIVES (`init.mp4`, `seg/N.m4s`) :
+  /// servies sous `/<jeton>/relay.m3u8`, elles héritent du jeton d'elles-mêmes.
+  static String? _routeOf(Uri uri) {
+    final String? token = _token;
+    final List<String> segs = uri.pathSegments;
+    if (token == null || segs.length < 2 || segs.first != token) return null;
+    return '/${segs.skip(1).join('/')}';
+  }
+
+  static String _newToken() {
+    final Random rnd = Random.secure();
+    return List<String>.generate(
+            16, (_) => rnd.nextInt(256).toRadixString(16).padLeft(2, '0'))
+        .join();
+  }
+
   static Future<void> _serve(HttpRequest req) async {
     final HttpResponse res = req.response;
+    final String? route = _routeOf(req.uri);
+    if (route == null) {
+      try {
+        await _notFound(res);
+      } catch (_) {}
+      return;
+    }
     // CORS : le lecteur HLS du récepteur est du JavaScript qui télécharge
     // liste et segments par `fetch` — sans ces en-têtes il ne lit rien.
     res.headers.set('Access-Control-Allow-Origin', '*');
@@ -423,7 +497,7 @@ abstract final class CastRelayService {
     }
 
     try {
-      final String p = req.uri.path;
+      final String p = route;
       if (p == '/relay.mp4') {
         await _serveProgressive(req, res, path);
         return;
@@ -612,52 +686,17 @@ abstract final class CastRelayService {
           );
         case 'onRelayFailed':
           _converting = false;
-          final String msg =
-              (args['message'] as String?) ?? 'conversion impossible';
+          final String msg = (args['message'] as String?) ?? '';
           final bool userFacing = (args['userFacing'] as bool?) ?? false;
-          debugPrint('❌ §castRelay — $msg');
+          debugPrint('❌ §castRelay — ${msg.isEmpty ? 'motif inconnu' : msg}');
           if (current == null) return;
+          // Revue 2026-09-11, D2B-03 — le natif remonte un CODE, jamais une
+          // phrase à afficher (cf. `relayFailureText`).
           state.value = current.copyWith(
-            error: userFacing
-                ? msg
-                : L10n.current.relayFormatFailed,
+            error: relayFailureText(msg, userFacing: userFacing),
           );
       }
     });
-  }
-
-  /// Même détection que la Console web : on privilégie le WiFi.
-  static Future<String?> _detectLocalIp() async {
-    try {
-      final interfaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-        includeLoopback: false,
-        includeLinkLocal: false,
-      );
-      if (interfaces.isEmpty) return null;
-      String prioOf(String name) {
-        final n = name.toLowerCase();
-        if (n.startsWith('wlan') || n.contains('wifi')) return 'a';
-        if (n.startsWith('eth')) return 'b';
-        return 'c';
-      }
-
-      interfaces.sort((a, b) => prioOf(a.name).compareTo(prioOf(b.name)));
-      for (final iface in interfaces) {
-        for (final addr in iface.addresses) {
-          final ip = addr.address;
-          if (ip.startsWith('192.168.') ||
-              ip.startsWith('10.') ||
-              ip.startsWith('172.')) {
-            return ip;
-          }
-        }
-      }
-      return interfaces.first.addresses.first.address;
-    } catch (e) {
-      debugPrint('❌ CastRelayService._detectLocalIp: $e');
-      return null;
-    }
   }
 
   /// Tests uniquement.
@@ -671,6 +710,8 @@ abstract final class CastRelayService {
     _wired = false;
     _offset = Duration.zero;
     _filePath = null;
+    _sourcePath = null;
+    _token = null;
     _index = null;
     _converting = false;
     state.value = null;

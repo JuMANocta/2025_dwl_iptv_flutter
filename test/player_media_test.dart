@@ -85,15 +85,4 @@ void main() {
           episode(season: null).crossesSeasonTo(episode(season: null)), isFalse);
     });
   });
-
-  group('copyWith — utilisé par le retry .ts ↔ .m3u8', () {
-    test('change le chemin sans toucher aux métadonnées', () {
-      final base = episode(title: 'Le Bal', season: 3, path: 'a.m3u8');
-      final alt = base.copyWith(path: 'a.ts');
-      expect(alt.path, 'a.ts');
-      expect(alt.title, 'Le Bal');
-      expect(alt.seasonNumber, 3);
-      expect(alt.badgeType, base.badgeType);
-    });
-  });
 }

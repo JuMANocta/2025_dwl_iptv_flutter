@@ -1,13 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/platform/installer_service.dart';
+import '../../core/utils/user_error.dart';
 import '../../l10n/l10n_ext.dart';
+import 'update_policy.dart';
 
 /// Informations sur une release disponible.
 class UpdateInfo {
@@ -16,6 +20,14 @@ class UpdateInfo {
   final String? body;       // Markdown du changelog GitHub
   final String downloadUrl; // URL directe de l'APK
   final int? sizeBytes;
+
+  /// §updAbi — Nom de l'APK retenu pour CET appareil (`aetherstream_<abi>.apk`
+  /// ou l'universel), cf. [chooseUpdateApk].
+  final String assetName;
+
+  /// §updAbi — URL du `<apk>.sha256` publié par la CI. L'APK n'est passé à
+  /// l'installeur qu'après comparaison de son empreinte avec celle-ci.
+  final String sha256Url;
 
   /// §updateBanner — Version INSTALLÉE, pour la confronter à [tagName].
   ///
@@ -34,6 +46,8 @@ class UpdateInfo {
     this.body,
     required this.downloadUrl,
     this.sizeBytes,
+    required this.assetName,
+    required this.sha256Url,
     required this.localVersion,
     this.htmlUrl,
   });
@@ -110,23 +124,6 @@ class UpdateService {
       final releaseName = data['name'] as String? ?? tagName;
       final body = data['body'] as String?;
 
-      // Cherche l'asset correspondant à la plateforme (.exe pour Windows, .apk pour Android)
-      final assets = data['assets'] as List<dynamic>? ?? [];
-      final extension = Platform.isWindows ? '.exe' : '.apk';
-      final asset = assets.firstWhere(
-        (a) => (a['name'] as String?)?.toLowerCase().endsWith(extension) == true,
-        orElse: () => null,
-      );
-      if (asset == null) {
-        debugPrint('⚠️ UpdateService: aucun $extension dans la release $tagName');
-        return UpdateUnavailable(
-            Platform.isWindows
-                ? 'No .exe installer found in release $tagName'
-                : L10n.current.updNoApk(tagName));
-      }
-
-      final downloadUrl = asset['browser_download_url'] as String? ?? '';
-      final sizeBytes = asset['size'] as int?;
 
       // Lecture version locale
       final info = await PackageInfo.fromPlatform();
@@ -134,17 +131,82 @@ class UpdateService {
 
       debugPrint('🔍 UpdateService: local=$localVersion remote=$tagName');
 
-      if (!_isNewer(tagName, localVersion)) {
+      // §updAbi — La version AVANT les fichiers : une release déjà installée
+      // qui n'aurait pas d'APK pour cet appareil n'est pas une panne, c'est
+      // « à jour ».
+      if (!isNewerVersion(tagName, localVersion)) {
         debugPrint('✅ UpdateService: déjà à jour ($localVersion)');
         return const UpToDate();
       }
+
+      final List<ReleaseAsset> assets =
+          (data['assets'] as List<dynamic>? ?? const [])
+              .map(ReleaseAsset.fromJson)
+              .whereType<ReleaseAsset>()
+              .toList();
+      if (Platform.isWindows) {
+        final ReleaseAsset? exe = assets
+            .where((a) => a.name.toLowerCase().endsWith('.exe'))
+            .firstOrNull;
+        if (exe == null) {
+          debugPrint('⚠️ UpdateService: aucun .exe dans la release $tagName');
+          return UpdateUnavailable('No .exe installer found in release $tagName');
+        }
+        return UpdateAvailable(UpdateInfo(
+          tagName: tagName,
+          releaseName: releaseName,
+          body: body,
+          downloadUrl: exe.url,
+          sizeBytes: exe.size,
+          assetName: exe.name,
+          sha256Url: '',
+          localVersion: '${info.version}+${info.buildNumber}',
+          htmlUrl: data['html_url'] as String?,
+        ));
+      }
+
+      if (!assets.any((a) => a.name.toLowerCase().endsWith('.apk'))) {
+        debugPrint('⚠️ UpdateService: aucun APK dans la release $tagName');
+        return UpdateUnavailable(L10n.current.updNoApk(tagName));
+      }
+
+      // §updAbi — L'APK de CET appareil : la split de son ABI si la release
+      // en porte une, l'universel seulement depuis une installation
+      // universelle (cf. `update_policy.dart` — une split installée ne peut
+      // pas redescendre à l'universel, Android refuserait).
+      final int installedCode = int.tryParse(info.buildNumber) ?? 0;
+      final List<String> abis = await _supportedAbis();
+      final ReleaseAsset? apk = chooseUpdateApk(
+        assets: assets,
+        supportedAbis: abis,
+        installedVersionCode: installedCode,
+      );
+      if (apk == null) {
+        debugPrint('⚠️ UpdateService: aucun APK installable dans $tagName '
+            '(ABI $abis, versionCode $installedCode)');
+        return UpdateUnavailable(L10n.current.updNoApkForDevice(tagName));
+      }
+
+      // D1B-08 — Jamais d'installation sans empreinte ni hors des releases de
+      // ce dépôt : on ne PROPOSE pas ce qu'on refuserait d'installer.
+      final ReleaseAsset? checksum = checksumAssetFor(assets, apk);
+      if (checksum == null ||
+          !isTrustedReleaseDownloadUrl(apk.url) ||
+          !isTrustedReleaseDownloadUrl(checksum.url)) {
+        debugPrint('⚠️ UpdateService: ${apk.name} invérifiable '
+            '(empreinte ${checksum == null ? 'absente' : 'présente'})');
+        return UpdateUnavailable(L10n.current.updUnverifiable);
+      }
+      debugPrint('📦 UpdateService: APK retenu → ${apk.name} (ABI $abis)');
 
       return UpdateAvailable(UpdateInfo(
         tagName: tagName,
         releaseName: releaseName,
         body: body,
-        downloadUrl: downloadUrl,
-        sizeBytes: sizeBytes,
+        downloadUrl: apk.url,
+        sizeBytes: apk.size,
+        assetName: apk.name,
+        sha256Url: checksum.url,
         // §updateBanner — On renvoie le build complet (`1.2.0+45`) : c'est ce
         // qui distingue deux versions au même numéro public.
         localVersion: '${info.version}+${info.buildNumber}',
@@ -161,8 +223,15 @@ class UpdateService {
 
   /// Télécharge l'APK et lance l'installation.
   /// [onProgress] reçoit une valeur entre 0.0 et 1.0.
+  ///
+  /// D1B-08 / §updAbi — L'APK n'atteint l'installeur qu'après DEUX contrôles :
+  /// sa taille (celle annoncée par GitHub) et son empreinte SHA-256 (le
+  /// `.sha256` publié par la CI). Avant, un fichier tronqué par une coupure
+  /// partait tel quel à l'installeur, qui répondait par une erreur d'analyse
+  /// sans explication. Tout échec lève une [UserFacingException] : le dialogue
+  /// l'affiche par `describeError`, jamais par `toString()`.
   static Future<void> downloadAndInstall(
-    String url, {
+    UpdateInfo update, {
     void Function(double progress)? onProgress,
     CancelToken? cancelToken,
   }) async {
@@ -170,28 +239,90 @@ class UpdateService {
     final hasPermission = await InstallerService.ensurePermission();
     if (!hasPermission) {
       debugPrint('❌ UpdateService: permission d\'installation refusée');
-      throw Exception(L10n.current.updInstallDenied);
+      throw UserFacingException(L10n.current.updInstallDenied);
     }
 
+    // Défense en profondeur : l'objet vient de [checkForUpdateDetailed], qui a
+    // déjà filtré — mais c'est ICI qu'on installe.
+    if (!isTrustedReleaseDownloadUrl(update.downloadUrl)) {
+      throw UserFacingException(L10n.current.updUnverifiable);
+    }
+    if (Platform.isAndroid && !isTrustedReleaseDownloadUrl(update.sha256Url)) {
+      throw UserFacingException(L10n.current.updUnverifiable);
+    }
+
+    // §security — revue 2026-09-11, D2B-12 — L'APK vit dans `cache/updates/`,
+    // le SEUL dossier que le FileProvider rend partageable (`file_paths.xml`)
+    // et que le canal `install_apk` accepte.
     final cacheDir = await getTemporaryDirectory();
-    final updatePath = '${cacheDir.path}/aetherstream_update.${Platform.isWindows ? 'exe' : 'apk'}';
+    final updatesDir = Directory('${cacheDir.path}/updates');
+    await updatesDir.create(recursive: true);
+    final ext = Platform.isWindows ? 'exe' : 'apk';
+    final targetPath = '${updatesDir.path}/aetherstream_update.$ext';
+    final File targetFile = File(targetPath);
+    // Ancien emplacement (racine du cache) : plus jamais relu.
+    try {
+      final legacyFile = File('${cacheDir.path}/aetherstream_update.$ext');
+      if (await legacyFile.exists()) await legacyFile.delete();
+    } catch (_) {/* le système videra le cache */}
 
-    debugPrint('🚀 UpdateService: téléchargement → $url');
+    debugPrint('🚀 UpdateService: téléchargement → ${update.assetName}');
 
-    final dio = Dio();
+    // D1B-08 — `Dio()` nu n'avait AUCUN délai : un GitHub qui cesse de
+    // répondre laissait le dialogue sur « DOWNLOADING… » pour toujours.
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(minutes: 2),
+    ));
+
+    String? expectedSha;
+    if (Platform.isAndroid && update.sha256Url.isNotEmpty) {
+      // L'empreinte D'ABORD : quelques octets, et sans elle on n'installera pas
+      final Response<String> shaResponse = await dio.get<String>(
+        update.sha256Url,
+        cancelToken: cancelToken,
+        options: Options(responseType: ResponseType.plain),
+      );
+      expectedSha = parseSha256Digest(shaResponse.data ?? '');
+      if (expectedSha == null) {
+        debugPrint('❌ UpdateService: empreinte illisible pour ${update.assetName}');
+        throw UserFacingException(L10n.current.updUnverifiable);
+      }
+    }
+
+    // Un reste d'une tentative précédente ne doit jamais être installé.
+    if (await targetFile.exists()) await targetFile.delete();
     await dio.download(
-      url,
-      updatePath,
+      update.downloadUrl,
+      targetPath,
       cancelToken: cancelToken,
       onReceiveProgress: (received, total) {
         if (total > 0) onProgress?.call(received / total);
       },
     );
 
-    debugPrint('✅ UpdateService: téléchargement terminé → $updatePath');
+    final int actualSize = await targetFile.length();
+    final int? expectedSize = update.sizeBytes;
+    if (expectedSize != null && actualSize != expectedSize) {
+      debugPrint('❌ UpdateService: taille $actualSize ≠ $expectedSize annoncés');
+      await _discard(targetFile);
+      throw UserFacingException(L10n.current.updCorrupted);
+    }
+    if (expectedSha != null) {
+      final Digest actualSha = await sha256.bind(targetFile.openRead()).first;
+      if (actualSha.toString() != expectedSha) {
+        debugPrint('❌ UpdateService: empreinte ${actualSha.toString()} ≠ '
+            '$expectedSha attendue');
+        await _discard(targetFile);
+        throw UserFacingException(L10n.current.updCorrupted);
+      }
+      debugPrint('✅ UpdateService: téléchargement vérifié (SHA-256) → $targetPath');
+    } else {
+      debugPrint('✅ UpdateService: téléchargement terminé → $targetPath');
+    }
 
     // Lance l'installeur via le service multi-plateforme
-    await InstallerService.install(updatePath, downloadUrl: url);
+    await InstallerService.install(targetPath, downloadUrl: update.downloadUrl);
     debugPrint('📦 UpdateService: installation lancée');
   }
 
@@ -199,30 +330,25 @@ class UpdateService {
   // Internals
   // -------------------------------------------------------------------------
 
-  /// Retourne true si [remoteTag] ("v1.2.1") est plus récent que [localVersion] ("1.2.0").
-  /// Ignore le build number (+N) de la version locale — la comparaison porte
-  /// uniquement sur le triplet majeur.mineur.patch.
-  static bool _isNewer(String remoteTag, String localVersion) {
+  /// §updAbi — ABI de l'appareil, dans SON ordre de préférence
+  /// (`Build.SUPPORTED_ABIS`). Vide si illisible : [chooseUpdateApk] retombe
+  /// alors sur l'universel quand c'est permis.
+  static Future<List<String>> _supportedAbis() async {
+    if (!Platform.isAndroid) return const [];
     try {
-      // Retire le 'v' initial et le build number éventuel (+N)
-      final remoteClean = remoteTag.replaceFirst(RegExp(r'^v'), '').split('+').first;
-      final localClean  = localVersion.split('+').first;
-
-      final remote = remoteClean.split('.').map(int.parse).toList();
-      final local  = localClean .split('.').map(int.parse).toList();
-
-      debugPrint('🔍 UpdateService: remote=$remoteClean local=$localClean');
-
-      for (int i = 0; i < remote.length; i++) {
-        final r = remote[i];
-        final l = i < local.length ? local[i] : 0;
-        if (r > l) return true;
-        if (r < l) return false;
-      }
-      return false;
+      final AndroidDeviceInfo info = await DeviceInfoPlugin().androidInfo;
+      return info.supportedAbis;
     } catch (e) {
-      debugPrint('⚠️ UpdateService: comparaison version échouée → $e');
-      return false;
+      debugPrint('⚠️ UpdateService: ABI illisibles → $e');
+      return const [];
+    }
+  }
+
+  static Future<void> _discard(File f) async {
+    try {
+      if (await f.exists()) await f.delete();
+    } catch (e) {
+      debugPrint('⚠️ UpdateService: suppression de l\'APK rejeté impossible → $e');
     }
   }
 }

@@ -220,20 +220,20 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       switch (verdict) {
         case QualityVerdict.conforme:
           rows.add(_StatRow(
-            label: 'Annoncé',
+            label: context.l10n.statsAnnouncedLabel,
             value: context.l10n.statsAnnouncedOk(announced),
             valueColor: kSuccess,
           ));
         case QualityVerdict.survendu:
           rows.add(_StatRow(
-            label: 'Annoncé',
+            label: context.l10n.statsAnnouncedLabel,
             value: context.l10n.statsAnnouncedOversold(announced),
             valueColor: kError,
             alert: true,
           ));
         case QualityVerdict.sousEstime:
           rows.add(_StatRow(
-            label: 'Annoncé',
+            label: context.l10n.statsAnnouncedLabel,
             value: context.l10n.statsAnnouncedBetter(announced),
             valueColor: kAccentSecondary,
           ));

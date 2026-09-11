@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -28,14 +29,25 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
     setState(() => _refreshing = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      XmltvService.invalidate();
-      await XmltvService.ensureLoaded();
+      // Revue 2026-09-11, D1B-04 — `invalidate` + `ensureLoaded` relisait le
+      // fichier de moins de 24 h : aucune requête ne partait, et la page
+      // annonçait pourtant « Guide mis à jour ». `refresh()` télécharge
+      // vraiment et dit si un guide neuf est arrivé.
+      final bool fresh = await XmltvService.refresh();
       if (!mounted) return;
       messenger.clearSnackBars();
+      // D4B-08 — texte noir ou blanc selon le fond d'état (le thème impose
+      // du blanc, illisible sur un vert vif).
+      final Color tone = fresh ? kSuccess : kWarning;
       messenger.showSnackBar(
         SnackBar(
-          content: Text(context.l10n.xmltvUpdated),
-          backgroundColor: kSuccess,
+          content: Text(
+            fresh
+                ? context.l10n.xmltvUpdated
+                : context.l10n.xmltvUpdateUnavailable,
+            style: TextStyle(color: onColorFor(tone)),
+          ),
+          backgroundColor: tone,
         ),
       );
     } catch (e) {
@@ -43,7 +55,8 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
       messenger.clearSnackBars();
       messenger.showSnackBar(
         SnackBar(
-          content: Text(context.l10n.xmltvUpdateFailed(describeError(e))),
+          content: Text(context.l10n.xmltvUpdateFailed(describeError(e)),
+              style: TextStyle(color: onColorFor(kError))),
           backgroundColor: kError,
         ),
       );
@@ -142,7 +155,9 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
                             channels > 0
                                 ? context.l10n.xmltvChannelsAndAge(
                                     channels, _formatAge(loadedAt))
-                                : 'Cache vide',
+                                // D4B-05 — « Cache vide » : en dur, et de
+                                // la mécanique (§clientText).
+                                : context.l10n.xmltvNoGuide,
                             style: TextStyle(
                               color: cs.onSurfaceVariant,
                               fontSize: 12,
@@ -179,7 +194,7 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: kAccentSecondary,
-                    foregroundColor: Colors.black,
+                    foregroundColor: onColorFor(kAccentSecondary), // D4B-08
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),

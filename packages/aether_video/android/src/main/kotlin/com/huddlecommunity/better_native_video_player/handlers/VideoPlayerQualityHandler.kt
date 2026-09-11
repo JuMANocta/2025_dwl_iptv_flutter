@@ -28,7 +28,11 @@ object VideoPlayerQualityHandler {
      */
     suspend fun fetchHLSQualities(url: String): List<Map<String, Any>> = withContext(Dispatchers.IO) {
         try {
-            val connection = URL(url).openConnection()
+            // patch 19 (D2B-02) — Si la sonde est un jour réactivée : bornée.
+            val connection = URL(url).openConnection().apply {
+                connectTimeout = 8000
+                readTimeout = 8000
+            }
             val playlist = connection.getInputStream().bufferedReader().use { it.readText() }
 
             val qualities = mutableListOf<QualityLevel>()
@@ -112,7 +116,9 @@ object VideoPlayerQualityHandler {
             NpLog.d(TAG, "Parsed ${qualities.size} quality variants from HLS playlist")
             result
         } catch (e: Exception) {
-            NpLog.e(TAG, "Error fetching HLS qualities: ${e.message}", e)
+            // patch 19 (D2B-02) — ⚠️ `e.message` EST l'URL (identifiants
+            // Xtream) pour tout code ≥ 400 : jamais au journal, et filtré.
+            NpLog.w(TAG, "Error fetching HLS qualities (${e.javaClass.simpleName})")
             emptyList()
         }
     }

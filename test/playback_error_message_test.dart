@@ -1,4 +1,5 @@
 import 'package:aetherStream/feature/player/playback_error_message.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 
 /// §userError — Ce qui part de `Media3Engine._onActivity` finit À L'ÉCRAN.
@@ -73,6 +74,42 @@ void main() {
       );
       expect(s, isNot(contains('SECRETU')));
       expect(s, isNot(contains('SECRETP')));
+    });
+  });
+
+  // Revue 2026-09-11 (recette émulateur) — une erreur levée à l'OUVERTURE du
+  // flux arrivait à l'écran en « PlatformException(LOAD_ERROR, Source error,
+  // null, null) ».
+  group('openErrorMessage — erreur d\'ouverture du flux', () {
+    test('🔴 jamais « PlatformException(…) » à l\'écran', () {
+      final String s = openErrorMessage(PlatformException(
+          code: 'LOAD_ERROR', message: 'Source error'));
+      expect(s, isNot(contains('PlatformException')));
+      expect(s, isNot(contains('LOAD_ERROR')));
+      expect(s, playbackErrorMessage(codeName: null, rawMessage: 'Source error'));
+    });
+
+    test('un code Media3 dans les détails est lu comme sur errorStream', () {
+      final String s = openErrorMessage(PlatformException(
+        code: 'LOAD_ERROR',
+        message: 'Source error',
+        details: {'errorCodeName': 'ERROR_CODE_IO_BAD_HTTP_STATUS'},
+      ));
+      expect(s, contains('serveur'));
+    });
+
+    test('un code Media3 porté par `code` est reconnu aussi', () {
+      expect(
+        openErrorMessage(PlatformException(
+            code: 'ERROR_CODE_DECODING_FORMAT_UNSUPPORTED')),
+        contains('Codec'),
+      );
+    });
+
+    test('une autre exception passe par describeError', () {
+      final String s = openErrorMessage(StateError('boom'));
+      expect(s, isNot(contains('Bad state')));
+      expect(s, isNotEmpty);
     });
   });
 }

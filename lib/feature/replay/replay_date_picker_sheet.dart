@@ -6,7 +6,9 @@ import '../../data/services/xmltv_service.dart';
 import '../../data/models/xmltv_program.dart';
 import '../../widgets/tv/focusable_card.dart';
 import '../../widgets/tv/focusable_chip.dart';
+import '../../widgets/sheet_close_tile.dart';
 import '../../l10n/l10n_ext.dart';
+import 'replay_day_label.dart';
 
 /// Sheet permettant à l'utilisateur de choisir manuellement
 /// un jour, une heure et une durée pour lancer un replay.
@@ -186,7 +188,8 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
 
             // ---- Grille XMLTV ----
             if (hasXmltv) ...[
-              _sectionLabel(context, 'Programmes', Icons.tv_outlined),
+              _sectionLabel(
+                  context, context.l10n.replayPrograms, Icons.tv_outlined),
               const SizedBox(height: 10),
               _XmltvProgramList(
                 programs: _xmltvPrograms,
@@ -270,7 +273,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
                               color: kWhite, size: 22),
                           const SizedBox(width: 8),
                           Text(
-                            'Regarder  •  ${_buildLabel()}',
+                            context.l10n.replayWatchLabel(_buildLabel()),
                             style: const TextStyle(
                               color: kWhite,
                               fontWeight: FontWeight.bold,
@@ -284,6 +287,19 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+            // §tvOptionsBack — la feuille n'offrait aucune sortie neutre :
+            // la grille XMLTV lance directement un replay au tap, et le
+            // picker manuel ne mène qu'au bouton « Regarder » — il ne
+            // restait que la touche Retour (buguée : elle referme aussi une
+            // vidéo en cours ailleurs dans l'app, §dpadBack).
+            //
+            // ⚠️ En DERNIER, jamais en premier : `TvAutofocusFirst` focus le
+            // premier élément focusable du modal (le premier chip de la
+            // grille ou du sélecteur de jour) — « Fermer » en tête ferait de
+            // la fermeture l'action par défaut de la feuille qu'on vient
+            // d'ouvrir.
+            const SheetCloseTile(),
           ],
         ),
       ),
@@ -311,7 +327,8 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
   }
 
   String _buildLabel() {
-    final dayFmt = DateFormat('EEE d MMM', 'fr_FR').format(_selectedDay);
+    final dayFmt =
+        DateFormat('EEE d MMM', L10n.current.localeName).format(_selectedDay);
     final timeFmt = _selectedTime.format(context);
     final dur = _durationMinutes < 60
         ? '${_durationMinutes}min'
@@ -338,7 +355,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
     final label = _buildLabel();
     final stream = _selectedStream;
     Navigator.of(context).pop(ReplayProgram(
-      title: 'Replay — $label',
+      title: L10n.current.replayManualTitle(label), // D2A-08
       start: start,
       end: end,
       description: '',
@@ -509,9 +526,9 @@ class _XmltvProgramRow extends StatelessWidget {
                             color: kAccentTertiary.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text(
-                            '● EN COURS',
-                            style: TextStyle(
+                          child: Text(
+                            '● ${L10n.current.epgNow}',
+                            style: const TextStyle(
                               color: kWhite,
                               fontSize: 9,
                               fontWeight: FontWeight.w800,
@@ -606,18 +623,21 @@ class _DaySelector extends StatelessWidget {
           final isSelected = d.day == selected.day &&
               d.month == selected.month &&
               d.year == selected.year;
-          final isToday = d.day == today.day && d.month == today.month;
-          final isYesterday = d.day == today.day - 1 &&
-              d.month == today.month;
+          // Revue 2026-09-11, D2A-19 — dates calendaires complètes : l'ancien
+          // test sur le seul jour du mois ratait « Hier » le 1er de chaque
+          // mois (la puce sélectionnée par défaut), cf. `replay_day_label.dart`.
+          final ReplayDayLabelKind kind = replayDayLabelKind(d, today);
+          final isToday = kind == ReplayDayLabelKind.today;
+          final isYesterday = kind == ReplayDayLabelKind.yesterday;
           final hasEpg = daysWithData.contains(d);
 
           String label;
           if (isToday) {
-            label = "Aujourd'hui";
+            label = L10n.current.replayToday;
           } else if (isYesterday) {
-            label = 'Hier';
+            label = L10n.current.replayYesterday;
           } else {
-            label = DateFormat('EEE d', 'fr_FR').format(d);
+            label = DateFormat('EEE d', L10n.current.localeName).format(d);
           }
 
           return Padding(

@@ -6,6 +6,7 @@ import '../../../data/services/track_preferences_service.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
 import '../../../l10n/l10n_ext.dart';
+import 'player_options_sheet.dart' show BackToVideoRow;
 
 /// §5 — Sélecteur de pistes **audio** et **sous-titres** (libmpv expose tout
 /// via `player.state.tracks` / `setAudioTrack` / `setSubtitleTrack`). Ouvert
@@ -24,13 +25,21 @@ Future<void> showTrackSelector(
     // sans ça, beaucoup de pistes faisaient déborder la Column (RenderFlex
     // overflow sur mobile, où showAdaptiveActionSheet n'ajoute pas de scroll).
     scrollable: false,
-    builder: (_) => _TrackSelector(player: player),
+    builder: (sheetCtx) => _TrackSelector(
+      player: player,
+      onClose: () => Navigator.of(sheetCtx).pop(),
+    ),
   );
 }
 
 class _TrackSelector extends StatelessWidget {
   final AetherPlaybackEngine player;
-  const _TrackSelector({required this.player});
+
+  /// §tvOptionsBack — Ferme la feuille. Sans elle, la seule sortie à la
+  /// télécommande était la touche Retour.
+  final VoidCallback onClose;
+
+  const _TrackSelector({required this.player, required this.onClose});
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +69,7 @@ class _TrackSelector extends StatelessWidget {
                         color: kAccentSecondary, size: 22),
                     const SizedBox(width: 10),
                     Text(
-                      'Pistes',
+                      context.l10n.tracksTitle,
                       style: TextStyle(
                         color: cs.onSurface,
                         fontSize: 18,
@@ -70,7 +79,7 @@ class _TrackSelector extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      'audio & sous-titres',
+                      context.l10n.tracksSubtitle,
                       style:
                           TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
                     ),
@@ -80,7 +89,7 @@ class _TrackSelector extends StatelessWidget {
 
                 // ── AUDIO (accent vert) ────────────────────────────────────
                 _SectionBar(
-                    label: 'Audio',
+                    label: context.l10n.tracksAudio,
                     icon: Icons.graphic_eq_rounded,
                     accent: kAccentPrimary),
                 const SizedBox(height: 8),
@@ -93,7 +102,7 @@ class _TrackSelector extends StatelessWidget {
 
                 // ── SOUS-TITRES (accent cyan) ──────────────────────────────
                 _SectionBar(
-                    label: 'Sous-titres',
+                    label: context.l10n.tracksSubtitles,
                     icon: Icons.closed_caption_rounded,
                     accent: kAccentSecondary),
                 const SizedBox(height: 8),
@@ -101,6 +110,13 @@ class _TrackSelector extends StatelessWidget {
                   _emptyHint(context.l10n.tracksNoSubtitles, cs)
                 else
                   ...subs.map((t) => _subtitleRow(context, t, curSub)),
+
+                // §tvOptionsBack — Même manque que le panneau d'options : à la
+                // télécommande, rien ne permettait de refermer cette feuille.
+                // ⚠️ En DERNIER (`TvAutofocusFirst` focalise le premier
+                // élément : « fermer » ne doit pas être l'action par défaut).
+                const SizedBox(height: 18),
+                BackToVideoRow(onTap: onClose),
               ],
             ),
           ),
@@ -117,7 +133,7 @@ class _TrackSelector extends StatelessWidget {
         ? 'Auto'
         : isNo
             ? L10n.current.tracksNone
-            : (_langName(t.language) ?? t.title?.trim() ?? 'Piste ${t.id}');
+            : (_langName(t.language) ?? t.title?.trim() ?? L10n.current.tracksTrackN(t.id));
     final sub = (!isAuto &&
             !isNo &&
             t.title != null &&
@@ -151,7 +167,7 @@ class _TrackSelector extends StatelessWidget {
         ? L10n.current.tracksDisabled
         : isAuto
             ? 'Auto'
-            : (_langName(t.language) ?? t.title?.trim() ?? 'Piste ${t.id}');
+            : (_langName(t.language) ?? t.title?.trim() ?? L10n.current.tracksTrackN(t.id));
     final sub = (!isNo &&
             !isAuto &&
             t.title != null &&

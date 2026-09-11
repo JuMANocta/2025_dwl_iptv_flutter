@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/themes/aether_theme_extension.dart';
 import '../core/themes/colors.dart';
+import '../core/themes/light_palette.dart';
 
 /// Widget d'état vide unifié (§12).
 ///
@@ -116,7 +117,7 @@ class EmptyState extends StatelessWidget {
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: accent,
-                  foregroundColor: Colors.black,
+                  foregroundColor: onColorFor(accent), // D4B-08
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 ),
               ),

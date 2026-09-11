@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/quality_scale.dart';
 import '../../l10n/l10n_ext.dart';
+import 'package:intl/intl.dart';
 
 /// §videoStats — Ce que le moteur décode RÉELLEMENT, à un instant donné.
 ///
@@ -150,7 +151,7 @@ class VideoStatsSnapshot {
     final b = networkBitrate;
     if (b == null || b <= 0) return null;
     return b >= 1000000
-        ? '${(b / 1000000).toStringAsFixed(1).replaceAll('.', ',')} Mb/s'
+        ? '${_decimal(b / 1000000)} Mb/s'
         : '${(b / 1000).round()} kb/s';
   }
 
@@ -160,8 +161,9 @@ class VideoStatsSnapshot {
     if (n == null || n <= 0) return null;
     const mo = 1024 * 1024;
     return n >= 1024 * mo
-        ? '${(n / (1024 * mo)).toStringAsFixed(1).replaceAll('.', ',')} Go'
-        : '${(n / mo).round()} Mo';
+        ? L10n.current
+            .sizeGigabytes((n / (1024 * mo)).toStringAsFixed(1))
+        : L10n.current.sizeMegabytes('${(n / mo).round()}');
   }
 
   /// Piste audio lisible (« AAC · 5.1 · 48 kHz »).
@@ -236,7 +238,8 @@ class VideoStatsSnapshot {
   String? get definitionLabel {
     final h = height;
     if (h == null || h <= 0) return null;
-    return QualityScale.labelForHeight(h);
+    // §qualityScope — les deux dimensions (un FHD 2,40:1 fait 1920×800).
+    return QualityScale.labelFor(width: width ?? 0, height: h);
   }
 
   /// §qualityTruth — Confronte la qualité ANNONCÉE par la liste (parsing du
@@ -304,7 +307,7 @@ class VideoStatsSnapshot {
     final b = videoBitrate;
     if (b == null || b <= 0) return null;
     if (b >= 1000000) {
-      return '${(b / 1000000).toStringAsFixed(1).replaceAll('.', ',')} Mb/s';
+      return '${_decimal(b / 1000000)} Mb/s';
     }
     return '${(b / 1000).round()} kb/s';
   }
@@ -347,3 +350,10 @@ abstract final class VideoStatsPreference {
     });
   }
 }
+
+/// Un nombre a une décimale, avec le séparateur de la LANGUE de l'interface
+/// (la virgule française s'affichait aussi en anglais).
+String _decimal(double v) => NumberFormat.decimalPatternDigits(
+      locale: L10n.current.localeName,
+      decimalDigits: 1,
+    ).format(v);

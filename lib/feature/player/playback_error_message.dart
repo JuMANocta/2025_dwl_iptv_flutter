@@ -1,5 +1,32 @@
+import 'package:flutter/services.dart' show PlatformException;
+
 import '../../core/diagnostics/log_buffer.dart' show sanitizeForLog;
+import '../../core/utils/user_error.dart' show describeError;
 import '../../l10n/l10n_ext.dart';
+
+/// §userError — Phrase d'écran pour une erreur levée à l'OUVERTURE du flux
+/// (`initialize` / `loadUrl`), c'est-à-dire hors de `errorStream`.
+///
+/// Revue 2026-09-11 (trouvé en recette, émulateur téléphone) : l'écran
+/// d'erreur affichait « PlatformException(LOAD_ERROR, Source error, null,
+/// null) ». Le `catch` d'ouverture passait `e.toString()` au lecteur, puis
+/// `describeError` recevait une simple CHAÎNE : il n'avait plus rien à
+/// traduire et rendait le texte brut. Une `PlatformException` du moteur passe
+/// désormais par la même table que `errorStream` ([playbackErrorMessage]) :
+/// son code s'il en porte un, sinon la phrase générique.
+String openErrorMessage(Object error) {
+  if (error is PlatformException) {
+    final Object? details = error.details;
+    String? codeName;
+    if (details is Map && details['errorCodeName'] is String) {
+      codeName = details['errorCodeName'] as String;
+    } else if (error.code.toUpperCase().startsWith('ERROR_CODE_')) {
+      codeName = error.code;
+    }
+    return playbackErrorMessage(codeName: codeName, rawMessage: error.message);
+  }
+  return describeError(error);
+}
 
 /// §userError — Traduit une erreur Media3 en phrase française affichable.
 ///

@@ -104,7 +104,7 @@ class NextEpisodeOverlay extends StatelessWidget {
     switch (kind) {
       case EndOfPlaybackKind.countdown:
         return [
-          _eyebrow('ÉPISODE SUIVANT'),
+          _eyebrow(context.l10n.nextEpTitle),
           _title(context, nextTitle ?? ''),
           if (nextEpisodeTag != null) _subtitle(context, nextEpisodeTag!),
           const SizedBox(height: 20),
@@ -122,7 +122,7 @@ class NextEpisodeOverlay extends StatelessWidget {
 
       case EndOfPlaybackKind.manual:
         return [
-          _eyebrow('ÉPISODE SUIVANT'),
+          _eyebrow(context.l10n.nextEpTitle),
           _title(context, nextTitle ?? ''),
           if (nextEpisodeTag != null) _subtitle(context, nextEpisodeTag!),
           const SizedBox(height: 20),
@@ -130,7 +130,7 @@ class NextEpisodeOverlay extends StatelessWidget {
             primaryLabel: context.l10n.nextEpPlay,
             primaryIcon: Icons.play_arrow_rounded,
             onPrimary: onPlayNow,
-            secondaryLabel: 'Rester ici',
+            secondaryLabel: context.l10n.nextEpStayHere,
             secondaryIcon: Icons.close_rounded,
             onSecondary: onDismiss,
           ),
@@ -149,7 +149,7 @@ class NextEpisodeOverlay extends StatelessWidget {
             _subtitle(context, nextTitle!),
           const SizedBox(height: 20),
           _actions(
-            primaryLabel: 'Continuer',
+            primaryLabel: context.l10n.nextEpContinue,
             primaryIcon: Icons.skip_next_rounded,
             onPrimary: onPlayNow,
             secondaryLabel: context.l10n.nextEpBackToDetails,
@@ -167,7 +167,7 @@ class NextEpisodeOverlay extends StatelessWidget {
             primaryLabel: context.l10n.nextEpBackToDetails,
             primaryIcon: Icons.arrow_back_rounded,
             onPrimary: onLeave,
-            secondaryLabel: 'Rester ici',
+            secondaryLabel: context.l10n.nextEpStayHere,
             secondaryIcon: Icons.close_rounded,
             onSecondary: onDismiss,
           ),

@@ -88,6 +88,17 @@ bénéficiait déjà**, ne pas le reproduire aurait cassé des flux qui marchent
 configuration du processus.
 ⚠️ **Opt-in, par flux** (`load(allowInvalidCertificate: true)`), jamais global :
 même discipline que `NetworkUtils` côté Dart, TMDB/GitHub/XMLTV restent stricts.
+⚠️ **Amendé le 2026-09-11 (revue de code, lot 8b, D2B-13) : UN client pour tout
+le processus.** `insecureHttpFactory` construisait un `SSLContext` et un
+`OkHttpClient` complets (pool de connexions, tâche de nettoyage) à CHAQUE
+chargement de flux — un par zap, l'app demandant le bypass pour tout flux
+distant —, et chaque pool abandonné gardait ses connexions inactives vers le
+panel jusqu'à 5 min. Le client « trust-all » vit désormais dans le
+`companion object` (`insecureClient`, `by lazy` : construit à la première
+demande de bypass, jamais avant) ; seules les en-têtes varient, posées sur la
+fabrique (`OkHttpDataSource.Factory(client).setDefaultRequestProperties`), donc
+toujours PAR FLUX. Le périmètre ne change pas : le client n'est pris que par un
+flux distant qui le demande — le partager n'élargit pas le bypass.
 
 **Patch 1 — `LoudnessEnhancer` (§audio).** `player.volume` d'ExoPlayer est borné
 à 1.0 : il atténue, il n'amplifie pas. L'app monte à **200 %** et démarre à
@@ -181,6 +192,84 @@ ne coûte aucune capacité ; retirer du code en coûte.
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).
 
+## patch 21 — le canal de la notification de lecture parle la langue de l'appareil (2026-09-11, revue de code, lot 7)
+
+Numéroté 21 à la fusion : le lot 6 de la même revue a pris le patch 20 (voir
+plus bas).
+
+**D2B-17.** `VideoPlayerNotificationHandler.createNotificationChannel` et
+`VideoPlayerMediaSessionService.placeholderNotification` créaient le canal
+`CHANNEL_ID` sous les libellés amont « Video Player » / « Media playback
+controls », écrits en dur : un téléphone en français les montrait en anglais
+dans Paramètres > Notifications. Le nom et la description sont désormais lus
+dans les ressources de l'APPLICATION par leur nom
+(`getIdentifier("notif_channel_playback", "string", packageName)` et
+`notif_channel_playback_desc`), définies dans
+`android/app/src/main/res/values/strings.xml` (français, défaut) et
+`values-en/strings.xml`. La brique ne dépend pas de la classe `R` de l'app ;
+si la ressource manque, les libellés amont reviennent. `res/raw/keep.xml`
+(app) protège ces noms du rétrécissement des ressources en release.
+
+⚠️ Reprise d'une version amont : réappliquer ces deux lectures, ou le canal
+repasse en anglais.
+
+## patch 19 — plus de sonde HLS parallèle, erreurs sans pile en release (2026-09-11, revue de code, lot 4)
+
+**D2B-02.** `VideoPlayerMethodHandler` lançait, pour toute URL `.m3u8`,
+`VideoPlayerQualityHandler.fetchHLSQualities` : une **seconde connexion** au
+panel par `URL.openConnection()` — UA Dalvik, sans délai, sans bypass TLS. Sur
+un abonnement « 1 / 1 » elle concurrence la lecture (§hostGate) ; un panel qui
+filtre l'UA répond 500 (§iptvUaCompat), et `HttpURLConnection` lève alors
+`FileNotFoundException(url)` — le message EST l'URL `/live/USER/PASS/id.m3u8`,
+que `NpLog.e` écrivait dans logcat **y compris en release**. L'app n'utilise
+aucune de ces qualités (grep vide de `getAvailableQualities`, `qualitiesStream`,
+`setQuality` dans `lib/`) : la sonde est coupée par `FETCH_HLS_QUALITIES =
+false` (companion du handler). Si elle revient : délais de 8 s posés, et son
+échec part en `NpLog.w` (filtré) avec le seul nom de l'exception.
+
+**D2B-16.** `NpLog.e` restait émis avec la pile complète en release : la pile
+n'y est plus passée que sur un build débogable (le message, lui, reste).
+
+Numéroté 19 à la fusion : le lot 3 de la même revue a pris les patchs 15 à 18
+(voir plus bas).
+
+## patch 20 — code mort retiré du natif, restes versionnés supprimés (2026-09-11, revue de code, lot 6)
+
+Suppression pure : aucun comportement ne change. Chaque symbole a été regrepé
+dans `lib/`, `test/`, `android/` et `packages/` juste avant sa suppression
+(y compris noms de canaux et chaînes de méthode).
+
+**D2B-09 (a)** — `VideoPlayerNotificationHandler` : `startPositionUpdates` /
+`stopPositionUpdates` et leur `positionUpdateRunnable`. Le Runnable n'avait
+pour corps que `handler.postDelayed(this, 1000)` : un réveil du looper
+principal par seconde pendant toute la vie de la session, pour rien —
+`MediaSession` publie seule la position d'ExoPlayer. `handler` reste (deux
+autres usages).
+**(b)** — `bitmapToByteArray` : définition seule.
+**(c)** — `VideoPlayerMethodHandler` : `isAutoQuality` (écrit, jamais lu),
+`lastBitrateCheck` et `bitrateCheckInterval` (jamais lus), et le
+`getActivity(ctx)` privé qui ne s'appelait que lui-même (import `Activity`
+retiré avec lui).
+**(d)** — `NativeVideoPlayerPlugin.getAllViews()` : aucun appelant ; son
+commentaire « Used by MainActivity » était faux (le PiP passe par le canal
+maison `aetherstream/pip`, §pipPhone).
+⏳ **(e) NON traité** : le canal `native_video_player/assets`
+(`resolveAssetPath`) n'a aucun appelant Dart, mais c'est une API amont hors de
+la réserve §engineFeatures — à retirer seulement sur décision explicite.
+
+**D2B-19** — Restes versionnés supprimés :
+`android/src/test/kotlin/com/example/native_video_player/NativeVideoPlayerPluginTest.kt`
+(appelait `onMethodCall` et `getPlatformVersion`, qui n'existent pas : un
+`./gradlew test` du module ne compilait pas) et
+`packages/better_native_video_extractor/analysis_options.yaml` (seul fichier
+restant du sous-paquet supprimé le 2026-09-01, cf. « Écarts »).
+
+**D1B-21** — commentaires seulement : `load(allowInvalidCertificate:)` dans
+`native_video_player_controller.dart` et le bloc « client OkHttp tolérant »
+de `VideoPlayerMethodHandler.kt` citaient `NetworkUtils.buildBaseDio` ; il
+s'appelle désormais `buildIptvBaseDio()` côté app (le second oubli a été
+trouvé à la relecture).
+
 ## patch 14 — la libération du lecteur ne gèle plus la sortie (2026-09-06)
 
 `VideoPlayerMethodHandler.handleDispose` appelait `SharedPlayerManager.removePlayer`
@@ -227,3 +316,46 @@ exactement 5 s après le démarrage du service.
 Le service se déclare désormais TOUJOURS, avec une notification de repli
 minimale si besoin, et ne se retire qu'ensuite. Couvre aussi la course où
 `stop()` arrive avant `onStartCommand`.
+
+## patchs 15 à 18 — revue de code du 2026-09-11 (lot 3, lecteur et Cast)
+
+**Patch 15 — la libération différée ne libère que l'instance visée (D2B-01).**
+Le commentaire du patch 14 affirmait qu'« un nouveau lecteur reçoit un nouvel
+identifiant » : c'était **faux**, l'app construisait tous ses contrôleurs avec
+`id: 7000`. Or tout le natif est indexé par cet identifiant (lecteur partagé,
+gestionnaire de notification, canal d'événements du contrôleur). Zapping rapide
+(chaîne A, Retour, chaîne B en moins d'une seconde) : B pouvait récupérer
+l'ExoPlayer de A encore inscrit, que le report de 450 ms arrêtait puis libérait
+sous ses pieds ; ou le démontage du canal de A emportait celui de B.
+Deux moitiés :
+- côté app, `Media3Engine` attribue un identifiant **par moteur** (7000, 7001…) ;
+- côté natif, `handleDispose` et `disposeController` capturent l'`ExoPlayer`
+  inscrit au moment du `dispose`, et `SharedPlayerManager.removePlayerIfCurrent`
+  ne libère à l'échéance que si c'est **toujours lui** (`===`).
+⚠️ Le report de 450 ms reste légitime (patch 14) : seul son présupposé était faux.
+⚠️ Restant connu : `VideoPlayerNotificationHandler.release()` de l'ancien lecteur
+coupe le service `mediaPlayback` et la notification (id 1001, partagés) — si le
+suivant a déjà publié la sienne, elle disparaît jusqu'à sa prochaine transition
+lecture/pause. Le lecteur, lui, n'est plus touché.
+
+**Patch 16 — `CastSession.connect` ferme la session si le LAUNCH échoue (D2B-06).**
+Premier patch du Cast (jusqu'ici branché sans patch, §castSend). Sur délai
+dépassé ou `LAUNCH_ERROR`, l'`await` sortait en exception sans rien fermer ;
+l'appelant ne recevant jamais la session, le socket TLS restait ouvert et un
+PING partait toutes les 5 s pour la vie du processus (un de plus par essai).
+Test : `test/cast_session_connect_test.dart` (serveur TLS local muet).
+
+**Patch 17 — l'observateur de cycle de vie du contrôleur est retiré (D2B-05).**
+Ajouté à la construction, jamais retiré : chaque lecteur ouvert laissait un
+contrôleur mort retenu par `WidgetsBinding`. Gardé dans un champ, retiré au
+début de `dispose()`. La condition passe de `Platform.isAndroid` à
+`defaultTargetPlatform == TargetPlatform.android` (identique sur appareil,
+simulable en test). Test : `test/lifecycle_observer_leak_test.dart`.
+
+**Patch 18 — l'affiche de la notification de lecture est bornée (D2B-07).**
+`loadArtwork` n'avait ni délai (0 = infini), ni fermeture de flux, décodait en
+pleine résolution et ne s'annulait jamais. Même patron que
+`AetherCastService.downloadBitmap` : délais de 8 s, `use {}` + `disconnect()`,
+décodage sous-échantillonné vers ~512 px, tâche annulée par `release()` et par
+une affiche plus récente. ⚠️ L'UA de cette requête (§notifAudit P10) n'est PAS
+traité ici.

@@ -23,7 +23,12 @@ object NpLog {
         if (enabled) Log.w(tag, msg)
     }
 
+    /**
+     * patch 19 (revue 2026-09-11, D2B-16) — Les erreurs restent journalisées,
+     * mais la PILE complète seulement sur un build débogable : en release,
+     * le message seul.
+     */
     fun e(tag: String, msg: String, tr: Throwable? = null) {
-        Log.e(tag, msg, tr)
+        Log.e(tag, msg, if (enabled) tr else null)
     }
 }

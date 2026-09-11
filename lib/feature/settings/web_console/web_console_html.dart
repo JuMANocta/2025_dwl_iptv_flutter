@@ -190,10 +190,8 @@ String _shell(AppThemeConfig t, String title, String body) => '''
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
 <title>$title — AetherStream</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=VT323&family=Source+Code+Pro:wght@400;600;800&display=swap" rel="stylesheet">
 <style>${_css(t)}</style>
 </head><body>
 <div class="wrap">
@@ -303,8 +301,13 @@ String buildAbout(AppThemeConfig t, String token, String version) {
 ///
 /// Le contenu arrive **déjà expurgé** (rédaction faite côté Dart, au niveau du
 /// puits) : aucun identifiant IPTV ne transite sur le réseau local.
+///
+/// §tvLogsPersist — [prevLines] est le nombre de lignes retrouvées sur disque
+/// pour la session D'AVANT ce lancement (0 = aucune, premier démarrage ou
+/// persistance indisponible). Un second onglet bascule dessus : c'est le
+/// journal d'un démarrage tué avant d'avoir pu être consulté ici.
 String buildLogs(AppThemeConfig t, String token, String content, bool keyTrace,
-    int lineCount) {
+    int lineCount, int prevLines) {
   final tk = Uri.encodeQueryComponent(token);
   final body = '''
   ${_backLink(token)}
@@ -314,11 +317,22 @@ String buildLogs(AppThemeConfig t, String token, String content, bool keyTrace,
       Les identifiants (URLs de playlist, mots de passe) sont masqués avant
       d'arriver ici.</p>
     <div class="row">
+      <button class="btn tab active" id="tabCur" onclick="showSession('current')">🕐 Session actuelle</button>
+      <button class="btn tab" id="tabPrev" onclick="showSession('previous')"
+        ${prevLines == 0 ? 'disabled' : ''}>📼 Session précédente${prevLines > 0 ? ' ($prevLines)' : ''}</button>
+    </div>
+    <p class="muted hidden" id="prevHint">Ce que l'application a écrit avant ce
+      démarrage — utile si elle a été fermée pendant qu'un écran semblait
+      bloqué. Fixe : elle ne se rafraîchit plus.</p>
+    <div class="row" id="curActions">
       <button class="btn" id="autoBtn" onclick="toggleAuto()">⏸️ Auto : ON</button>
       <button class="btn" id="keyBtn" onclick="toggleKeys()">
         ${keyTrace ? '⌨️ Touches + focus : ON' : '⌨️ Touches + focus : OFF'}</button>
       <a class="btn" href="/logs.txt?t=$tk" download="aetherstream-log.txt">⬇️ Télécharger</a>
       <button class="btn" onclick="clearLogs()">🧹 Vider</button>
+    </div>
+    <div class="row hidden" id="prevActions">
+      <a class="btn" href="/logs.txt?t=$tk&session=previous" download="aetherstream-log-previous.txt">⬇️ Télécharger</a>
     </div>
     <p class="muted" id="meta">$lineCount lignes</p>
     <pre id="log" class="log">${esc(content)}</pre>
@@ -328,14 +342,18 @@ String buildLogs(AppThemeConfig t, String token, String content, bool keyTrace,
            word-break: break-word; font-size: 12px; line-height: 1.45;
            background: rgba(0,0,0,.45); border: 1px solid var(--bd);
            border-radius: 10px; padding: 10px; margin-top: 10px; }
+    .tab { opacity: .55; }
+    .tab.active { opacity: 1; box-shadow: var(--glow); }
   </style>
   <script>
     let auto = true;
     let keys = ${keyTrace ? 'true' : 'false'};
+    let session = 'current';
     const logEl = () => document.getElementById('log');
     function atBottom(){ const e = logEl();
       return e.scrollTop + e.clientHeight >= e.scrollHeight - 24; }
     async function refresh(){
+      if (session !== 'current') return; // la session précédente est figée
       try {
         const stick = atBottom();
         const r = await fetch('/logs.txt?t=' + encodeURIComponent(T));
@@ -346,6 +364,27 @@ String buildLogs(AppThemeConfig t, String token, String content, bool keyTrace,
           txt.split('\\n').length + ' lignes';
         if (stick) e.scrollTop = e.scrollHeight;
       } catch (err) {}
+    }
+    async function showSession(which){
+      if (which === session) return;
+      session = which;
+      const isPrev = which === 'previous';
+      document.getElementById('tabCur').classList.toggle('active', !isPrev);
+      document.getElementById('tabPrev').classList.toggle('active', isPrev);
+      document.getElementById('curActions').classList.toggle('hidden', isPrev);
+      document.getElementById('prevActions').classList.toggle('hidden', !isPrev);
+      document.getElementById('prevHint').classList.toggle('hidden', !isPrev);
+      if (isPrev) {
+        try {
+          const r = await fetch('/logs.txt?t=' + encodeURIComponent(T) + '&session=previous');
+          const txt = await r.text();
+          logEl().textContent = txt;
+          document.getElementById('meta').textContent =
+            (txt ? txt.split('\\n').length : 0) + ' lignes';
+        } catch (err) {}
+      } else {
+        refresh();
+      }
     }
     function toggleAuto(){
       auto = !auto;

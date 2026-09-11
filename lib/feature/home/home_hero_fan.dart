@@ -60,6 +60,19 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     _scheduleNext(); // re-court-circuite (ou relance) selon heroAutoRotate
   }
 
+  /// Revue 2026-09-11, D4A-12 — Le bandeau est construit SANS clé et survit
+  /// aux recompositions de `featured` (§tabPageKeep) ; `_scheduleNext` n'arme
+  /// le minuteur qu'à partir de deux cartes. Parti d'une seule carte (avant
+  /// l'arrivée des tendances), le hero ne tournait donc plus jusqu'au
+  /// prochain retour du lecteur ou changement de focus.
+  @override
+  void didUpdateWidget(covariant _HeroFanBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ((oldWidget.featured.length > 1) != (widget.featured.length > 1)) {
+      _scheduleNext();
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -439,7 +452,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
           width: active ? 18 : 6,
           height: 6,
           decoration: BoxDecoration(
-            color: active ? kAccentPrimary : Colors.white.withAlpha(120),
+            color: active ? kAccentPrimary : kOnImage.withAlpha(120),
             borderRadius: BorderRadius.circular(3),
             boxShadow: active
                 ? [BoxShadow(color: kAccentPrimary.withAlpha(180), blurRadius: 6)]
@@ -534,7 +547,13 @@ class _HeroFanCardState extends State<_HeroFanCard> {
       groupTitle: entry.groupTitle,
       categoryKey: contentGroupKey(entry),
     ).then((url) {
+      // Revue 2026-09-11, D4A-04 — même garde que `_HomeCard` : la clé du
+      // hero est un RANG (`hero_$i`), la carte peut donc porter un autre
+      // titre quand cette réponse arrive.
       if (!mounted || url == null) return;
+      if (widget.versions.isEmpty || widget.versions.first.url != entry.url) {
+        return;
+      }
       setState(() => _tmdbPoster = url);
     });
   }
@@ -577,14 +596,16 @@ class _HeroFanCardState extends State<_HeroFanCard> {
         ? const <BoxShadow>[
             // Tranche : 5 ombres "dures" (blurRadius=0) qui s'enchaînent en
             // diagonale → tranche d'une carte épaisse vue de 3/4.
-            BoxShadow(color: Color(0xFFEDEDED), offset: Offset(1, 1.5), blurRadius: 0),
-            BoxShadow(color: Color(0xFFD2D2D2), offset: Offset(2, 3), blurRadius: 0),
-            BoxShadow(color: Color(0xFFA8A8A8), offset: Offset(3, 4.5), blurRadius: 0),
-            BoxShadow(color: Color(0xFF7E7E7E), offset: Offset(4, 6), blurRadius: 0),
-            BoxShadow(color: Color(0xFF4A4A4A), offset: Offset(5, 7.5), blurRadius: 0),
+            // Revue 2026-09-11, D4A-16 — teintes nommées (`colors.dart`),
+            // valeurs inchangées.
+            BoxShadow(color: kHeroEdge1, offset: Offset(1, 1.5), blurRadius: 0),
+            BoxShadow(color: kHeroEdge2, offset: Offset(2, 3), blurRadius: 0),
+            BoxShadow(color: kHeroEdge3, offset: Offset(3, 4.5), blurRadius: 0),
+            BoxShadow(color: kHeroEdge4, offset: Offset(4, 6), blurRadius: 0),
+            BoxShadow(color: kHeroEdge5, offset: Offset(5, 7.5), blurRadius: 0),
             // Ombre portée principale (douce, sous le stack).
             BoxShadow(
-              color: Color(0xCC000000),
+              color: kImageScrim80,
               offset: Offset(8, 14),
               blurRadius: 24,
             ),
@@ -597,7 +618,7 @@ class _HeroFanCardState extends State<_HeroFanCard> {
             ? const <BoxShadow>[]
             : <BoxShadow>[
                 BoxShadow(
-                  color: Colors.black.withAlpha(140),
+                  color: kImageScrim.withAlpha(140),
                   offset: const Offset(4, 6),
                   blurRadius: 12,
                 ),
@@ -605,7 +626,7 @@ class _HeroFanCardState extends State<_HeroFanCard> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white, // → visible en tranche grâce au padding 3 px.
+        color: kHeroCardEdge, // → visible en tranche grâce au padding 3 px.
         borderRadius: BorderRadius.circular(14),
         boxShadow: shadows,
       ),
@@ -630,7 +651,7 @@ class _HeroFanCardState extends State<_HeroFanCard> {
               // hero est la plus grande image de l'accueil.
               type == M3uContentType.tv
                   ? Container(
-                      color: const Color(0xFF15171C),
+                      color: kHeroChannelBackdrop,
                       alignment: Alignment.center,
                       // §heroChannel — Le logo d'une chaîne est large et court ;
                       // la carte du hero, elle, est un portrait 2:3. En le
@@ -672,7 +693,7 @@ class _HeroFanCardState extends State<_HeroFanCard> {
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.transparent,
-                    Colors.black.withAlpha(210),
+                    kImageScrim.withAlpha(210),
                   ],
                 ),
               ),
@@ -697,14 +718,16 @@ class _HeroFanCardState extends State<_HeroFanCard> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.play_arrow, size: 14, color: Colors.black),
+                      // D4B-08 — le texte suit la pastille (accent).
+                      Icon(Icons.play_arrow,
+                          size: 14, color: onColorFor(kAccentSecondary)),
                       const SizedBox(width: 2),
                       Text(
                         context.l10n.homeResume,
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
-                          color: Colors.black,
+                          color: onColorFor(kAccentSecondary),
                           letterSpacing: 0.6,
                         ),
                       ),
@@ -721,14 +744,14 @@ class _HeroFanCardState extends State<_HeroFanCard> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Colors.white,
+                  color: kOnImage,
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                   height: 1.15,
                   shadows: [
                     Shadow(
                         blurRadius: 4,
-                        color: Colors.black.withAlpha(220)),
+                        color: kImageScrim.withAlpha(220)),
                   ],
                 ),
               ),
@@ -740,7 +763,7 @@ class _HeroFanCardState extends State<_HeroFanCard> {
                 bottom: 0,
                 child: LinearProgressIndicator(
                   value: progress.ratio,
-                  backgroundColor: Colors.black.withAlpha(130),
+                  backgroundColor: kImageScrim.withAlpha(130),
                   valueColor: AlwaysStoppedAnimation(kAccentSecondary),
                   minHeight: 4,
                 ),
@@ -766,7 +789,7 @@ class _HeroFanCardState extends State<_HeroFanCard> {
         ),
       ),
       child: Center(
-        child: Icon(icon, size: 70, color: Colors.white.withAlpha(80)),
+        child: Icon(icon, size: 70, color: kOnImage.withAlpha(80)),
       ),
     );
   }

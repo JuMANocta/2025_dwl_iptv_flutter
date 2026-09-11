@@ -2,14 +2,11 @@
   "@@locale": "fr",
   "downloadManagerTitle": "Gestion des Téléchargements",
   "noDownloads": "Aucun téléchargement",
-  "downloadDialogTitle": "Démarrer le téléchargement",
-  "downloadDialogFileNameLabel": "Nom du fichier",
   "downloadDialogFileSizeLabel": "Taille du fichier",
   "downloadDialogFileTypeLabel": "Type de fichier",
   "downloadDialogUnknownSize": "Inconnue",
   "cancel": "Annuler",
   "download": "Télécharger",
-  "denied": "Permission refusée. Le téléchargement ne peut pas commencer.",
   "terminalTitle": "//:FLUX_DOWNLOAD_INTERFACE",
   "terminalResumeMessage": "🔄 Reprise du téléchargement :\n🎞️ {fileName}",
   "terminalStartMessage": "ℹ️ Lancement du téléchargement :\n🎞️ {fileName}",
@@ -18,40 +15,21 @@
   "terminalSuccessMessage": "\n🟢 SUCCÈS : Téléchargement terminé !",
   "terminalFatalErrorMessage": "\n☣️ FATAL : Une erreur est survenue",
   "terminalSpeedMessage": "Vitesse",
-  "terminalRetryCountMessage": "Relances",
   "terminalEtaMessage": "Temps restant",
+  "terminalElapsedMessage": "Temps écoulé",
   "terminalCancelMessage": "\nℹ️ ABANDON : Téléchargement annulé par l'utilisateur",
   "terminalCloseButton": "[ FERMER ]",
   "terminalAbortingButton": "[ PAUSE... ]",
   "terminalAbortButton": "[ PAUSE ]",
-  "searchPageDownloadsTooltip": "Voir les téléchargements",
-  "searchPageReloadTooltip": "Recharger la playlist",
-  "searchPageAccountsTooltip": "Comptes et Paramètres",
-  "searchPageLoadingError": "Impossible de charger la playlist",
-  "searchPageRetryButton": "Réessayer",
-  "searchPageProcessingError": "Erreur de traitement de la playlist :",
-  "searchFieldHint": "Rechercher...",
-  "searchFilterFilms": "Films",
-  "searchFilterSeries": "Séries",
-  "searchFilterTv": "TV",
-  "searchNoResults": "Aucun résultat trouvé.",
-  "searchNoContent": "Aucun contenu à afficher.",
-  "actionSheetChooseVersion": "Choisir une version pour :",
-  "chipSeasons": "{count,plural, =1{1 Saison} other{{count} Saisons}}",
-  "chipEpisodes": "{count,plural, =1{1 Ép.} other{{count} Ép.}}",
-  "season": "Saison",
   "episode": "Épisode",
   "favoriteAdd": "Ajouter aux favoris",
   "favoriteRemove": "Retirer des favoris",
   "actionSheetPlay": "Lire",
-  "actionSheetPlaySubtitle": "Lance la lecture (mise en cache automatique).",
   "actionSheetDownload": "Télécharger en arrière-plan",
-  "actionSheetDownloadSubtitle": "Pour regarder plus tard sans connexion.",
   "deleteDialogTitle": "Supprimer le fichier ?",
   "deleteDialogSizeLabel": "Taille",
   "deleteDialogWarning": "Cette action est irréversible et le fichier sera définitivement effacé.",
   "deleteDialogConfirmButton": "Supprimer",
-  "deleteTooltip": "Supprimer définitivement",
   "taskStatusDownloading": "Téléchargement en cours...",
   "taskStatusRemaining": " • {remainingSize} restant",
   "taskStatusCompleted": "Terminé • {size} • {date}",
@@ -59,34 +37,14 @@
   "taskStatusCanceled": "Annulé {progressInfo} • Appuyer pour relancer",
   "taskStatusPending": "En attente • {date}",
   "taskStatusUnknownError": "Erreur inconnue",
-  "playlistCardSubtitleNone": "Aucune playlist téléchargée dans ce contexte.",
-  "playlistCardSubtitleLastFile": "Dernier fichier : {path}",
-  "playlistDownloadButton": "Télécharger / Mettre à jour",
-  "playlistDeleteButton": "Supprimer",
-  "playlistManagementTip": "Astuce : vous pouvez aussi recharger la playlist depuis la roue crantée ou via l'icône de rafraîchissement sur l'écran de recherche.",
   "accountsTitle": "Gestion des Comptes",
   "deleteAccountDialogTitle": "Supprimer le compte ?",
-  "deleteAccountDialogContent": "Cette action est définitive.",
   "deleteAccountConfirm": "Supprimer",
-  "playlistInfoChecking": "Vérification de la playlist...",
-  "playlistInfoUnavailable": "Aucune playlist disponible ou erreur de chargement.",
-  "playlistInfoTryReload": "Tenter un rechargement",
-  "playlistInfoLocalFile": "Fichier playlist local",
-  "playlistInfoSize": "Taille",
-  "playlistInfoLastUpdate": "Maj",
-  "playlistInfoEntries": "Entrées",
-  "playlistInfoReloadButton": "Recharger",
-  "playlistInfoDeleteButton": "Supprimer",
-  "accountsListEmpty": "Ajouter un compte",
-  "accountModeComplete": "Mode: URL complète — {host}",
-  "accountModeSeparate": "Mode: Séparé — {username}@{host}",
   "accountActionEdit": "Modifier",
   "accountActionDelete": "Supprimer",
-  "accountsFab": "Nouveau",
   "editAccountTitleAdd": "Ajouter un compte",
   "editAccountTitleEdit": "Modifier le compte",
   "editAccountNameLabel": "Nom du compte (ex: Salon, Vacances...)",
-  "editAccountNameHint": "Mon Compte IPTV",
   "editAccountNameRequired": "Requis",
   "editAccountModeUrl": "URL Complète",
   "editAccountModeCredentials": "Identifiants",
@@ -95,15 +53,7 @@
   "editAccountServerUrlLabel": "URL du serveur (ex: http://host:port)",
   "editAccountUsernameLabel": "Nom d'utilisateur",
   "editAccountPasswordLabel": "Mot de passe",
-  "editAccountPlaylistTypeLabel": "Type de playlist",
-  "editAccountPlaylistTypeM3u": "M3U (Standard)",
-  "editAccountPlaylistTypeSimple": "Simple (Lien unique)",
-  "editAccountCookiesLabel": "Cookies (optionnel)",
-  "editAccountCookiesHint": "ex: PHPSESSID=xxxxxx;",
   "editAccountSaveButton": "Enregistrer",
-  "playerGenericError": "Impossible de lire ce média.",
-  "playerLoading": "Initialisation du lecteur...",
-  "playerLoadingError": "Erreur de chargement: {error}",
   "settingsTitle": "Paramètres",
   "aboutTitle": "À propos",
   "backupTitle": "Sauvegarde",
@@ -405,10 +355,6 @@
   "@dlOrphanDeleteFailed": {
     "description": "Delete refused"
   },
-  "dlOrphanPlay": "Lire",
-  "@dlOrphanPlay": {
-    "description": "Play action"
-  },
   "commonDelete": "Supprimer",
   "@commonDelete": {
     "description": "Generic delete button"
@@ -460,6 +406,14 @@
   "tmdbKeyRemove": "Retirer la clé",
   "@tmdbKeyRemove": {
     "description": "Delete key button"
+  },
+  "tmdbKeyRemoveTitle": "Retirer la clé TMDB ?",
+  "@tmdbKeyRemoveTitle": {
+    "description": "Confirmation title before deleting the TMDB key"
+  },
+  "tmdbKeyRemoveQuestion": "Les affiches et infos TMDB ne se chargeront plus tant qu'une clé n'aura pas été saisie à nouveau.",
+  "@tmdbKeyRemoveQuestion": {
+    "description": "Confirmation body before deleting the TMDB key"
   },
   "tmdbKeyManualEntry": "Saisir à la télécommande",
   "@tmdbKeyManualEntry": {
@@ -626,6 +580,7 @@
     "description": "Confirm button of the reload-all dialog"
   },
   "reloadAllProgressTitle": "Rechargement en cours",
+  "reloadAllBackground": "Continuer en arrière-plan",
   "@reloadAllProgressTitle": {
     "description": "Title of the progress dialog while every list is reloaded"
   },
@@ -975,7 +930,7 @@
   },
   "capsDisplayUiNote": "Ce qu'Android annonce ici décrit l'interface, pas forcément la dalle : beaucoup de téléviseurs 4K affichent leurs menus en 1080p et la vidéo en 2160p. Seuls les décodeurs décident de la 4K.",
   "perfPurgeNothing": "Rien à récupérer — aucun fichier orphelin",
-  "perfPurgeDone": "🧹 {size} libérés ({count} fichier(s))",
+  "perfPurgeDone": "{count, plural, one{🧹 {size} libérés ({count} fichier)} other{🧹 {size} libérés ({count} fichiers)}}",
   "@perfPurgeDone": {
     "placeholders": {
       "size": {
@@ -990,7 +945,7 @@
   "perfResetQuestion": "Tous les réglages d'optimisation reviennent aux valeurs par défaut.",
   "perfResetConfirm": "Réinitialiser",
   "perfResetDone": "Réglages réinitialisés",
-  "perfFreeMemoryDone": "💤 {count} compte(s) secondaire(s) déchargé(s) de la mémoire",
+  "perfFreeMemoryDone": "{count, plural, one{💤 {count} compte secondaire déchargé de la mémoire} other{💤 {count} comptes secondaires déchargés de la mémoire}}",
   "@perfFreeMemoryDone": {
     "placeholders": {
       "count": {
@@ -1016,7 +971,7 @@
   "perfBufferSub": "Secondes de vidéo gardées d'avance. Monter aide sur un fournisseur qui bride — la lecture puise dans le tampon au lieu de s'arrêter — mais tient d'autant plus de flux en mémoire, ce qui compte sur une box. Le compteur « Blocages » de l'encart Infos vidéo dit si le réglage sert à quelque chose. Prend effet à la lecture suivante.",
   "perfSectionLists": "Listes",
   "perfKeepListsTitle": "Garder toutes les listes en mémoire",
-  "perfKeepListsSub": "Chaque compte reste chargé : recherche cross-comptes et changement de liste instantanés. Coûte de la mémoire (~50 à 150 Mo par liste) — à éteindre sur Fire Stick ou box à faible RAM.",
+  "perfKeepListsSub": "Chaque compte reste chargé : la recherche couvre tous les comptes et le changement de liste est instantané. Demande plus de mémoire — à éteindre sur un Fire Stick ou une box qui en a peu.",
   "perfUnloadAfterLabel": "Décharger après",
   "perfUnloadNever": "Jamais",
   "perfMinutesShort": "{count} min",
@@ -1037,7 +992,7 @@
   "perfSectionStorage": "Stockage",
   "perfStorageScanning": "Analyse du stockage…",
   "perfStorageNothing": "Rien à récupérer : chaque fichier appartient à un compte existant.",
-  "perfStorageReclaimable": "{size} occupés par des fichiers qui n'appartiennent plus à aucun compte ({count} fichier(s)) — playlists et caches laissés derrière eux par des comptes supprimés.",
+  "perfStorageReclaimable": "{count, plural, one{{size} occupés par {count} fichier dont plus personne n'a besoin : listes de comptes supprimés, et téléchargements interrompus qui ne peuvent plus reprendre.} other{{size} occupés par {count} fichiers dont plus personne n'a besoin : listes de comptes supprimés, et téléchargements interrompus qui ne peuvent plus reprendre.}}",
   "@perfStorageReclaimable": {
     "placeholders": {
       "size": {
@@ -1512,9 +1467,6 @@
       }
     }
   },
-  "relayBlockerLive": "Une chaîne en direct n'a pas de fin : la conversion non plus. Elle n'est proposée que sur un film ou un épisode.",
-  "relayBlockerLocal": "Un fichier déjà téléchargé ne peut pas être converti pour le téléviseur.",
-  "relayBlockerOther": "Cette source ne peut pas être relayée par le téléphone.",
   "relayBatteryPluggedOk": "Le téléphone est branché, parfait pour un film.",
   "relayBatteryPlugIfYouCan": "Branche le téléphone si tu peux : la conversion consomme beaucoup de batterie.",
   "relayBatteryLow": "Batterie à {percent} % — branche le téléphone, la diffusion en dépend.",
@@ -1544,25 +1496,6 @@
     }
   },
   "relayConsentConfirm": "Adapter et diffuser",
-  "relayConvertedUpTo": "Converti jusqu'à {position}",
-  "@relayConvertedUpTo": {
-    "placeholders": {
-      "position": {
-        "type": "String"
-      }
-    }
-  },
-  "relayProgressPaused": "{ahead} · {percent} % · en pause",
-  "@relayProgressPaused": {
-    "placeholders": {
-      "ahead": {
-        "type": "String"
-      },
-      "percent": {
-        "type": "String"
-      }
-    }
-  },
   "playerLastEpisode": "Dernier épisode disponible.",
   "playerAudioTrackSwitched": "Piste audio incompatible — bascule sur {track}",
   "@playerAudioTrackSwitched": {
@@ -1573,7 +1506,6 @@
     }
   },
   "playerNoAudioTrack": "Aucune piste audio lisible sur ce fichier — lecture sans son",
-  "playerResuming": "Reprise de la lecture…",
   "playerReconnecting": "Reconnexion dans 5 s… ({attempt}/{max})",
   "@playerReconnecting": {
     "placeholders": {
@@ -1700,17 +1632,6 @@
   "langKorean": "Coréen",
   "langTurkish": "Turc",
   "langPolish": "Polonais",
-  "statsRealDefinition": "réel {definition} ({resolution})",
-  "@statsRealDefinition": {
-    "placeholders": {
-      "definition": {
-        "type": "String"
-      },
-      "resolution": {
-        "type": "String"
-      }
-    }
-  },
   "statsDecoding": "Décodage",
   "statsHardwareWith": "matériel · {decoder}",
   "@statsHardwareWith": {
@@ -1722,7 +1643,6 @@
   },
   "statsHardware": "matériel",
   "statsResolution": "Résolution",
-  "statsAnnounced": "Annoncé",
   "statsAnnouncedOversold": "{announced} — la liste SURVEND",
   "@statsAnnouncedOversold": {
     "placeholders": {
@@ -1770,14 +1690,6 @@
   },
   "nextEpLoading": "Chargement de l'épisode suivant…",
   "nextEpTitle": "ÉPISODE SUIVANT",
-  "nextEpPlayNowIn": "Lire maintenant  ·  {seconds}s",
-  "@nextEpPlayNowIn": {
-    "placeholders": {
-      "seconds": {
-        "type": "int"
-      }
-    }
-  },
   "nextEpPlay": "Lire",
   "nextEpSeasonEnd": "FIN DE LA SAISON",
   "nextEpGoToSeason": "Passer à la saison {season} ?",
@@ -1810,22 +1722,19 @@
   "fitCoverSub": "Efface les bandes noires · rogne les bords",
   "fitFill": "Plein écran",
   "fitFillSub": "Remplit tout · image légèrement déformée",
-  "relayProgressPlaying": "{ahead} · {percent} %",
-  "@relayProgressPlaying": {
-    "placeholders": {
-      "ahead": {
-        "type": "String"
-      },
-      "percent": {
-        "type": "String"
-      }
-    }
-  },
   "ctrlCastActive": "Diffusion en cours",
   "ctrlLock": "Verrouiller",
   "ctrlBadgeLive": "DIRECT",
   "ctrlBadgeReplay": "REPLAY",
   "optTitle": "Options",
+  "optBackToVideo": "Revenir à la vidéo",
+  "sheetClose": "Fermer",
+  "bootSlowHint": "Le chargement est plus long que d'habitude. Tu peux entrer dans l'application : les listes finissent de se charger en arrière-plan.",
+  "bootContinueAnyway": "Entrer sans attendre",
+  "bootStalledBody": "Le chargement de la liste principale n'avance plus. Il continue en arrière-plan : réessaie dans un instant, ou vérifie le compte.",
+  "playlistNoTitles": "Cette liste ne contient aucun titre. Vérifie le compte, ou réessaie plus tard.",
+  "sheetCloseSub": "Referme sans rien changer",
+  "optBackToVideoSub": "Ferme ce panneau, la lecture continue",
   "optNextEpisode": "Épisode suivant",
   "optTracksTitle": "Pistes audio & sous-titres",
   "optSpeedTitle": "Vitesse de lecture",
@@ -1904,7 +1813,6 @@
   "bkPasswordMismatch": "Les deux mots de passe diffèrent.",
   "bkSave": "Sauvegarder",
   "bkCreated": "Sauvegarde créée",
-  "bkRememberPassword": "N'oublie pas le mot de passe — il n'est nulle part stocké.",
   "bkCreateTitle": "Créer une sauvegarde",
   "bkCreateSub": "Chiffre tes comptes, clé TMDB, thème, favoris et progression dans un fichier .aether.",
   "bkEncrypting": "Chiffrement en cours…",
@@ -1950,6 +1858,7 @@
   "themeModeSystem": "Système",
   "themePreviewPlay": "▶  Lire",
   "xmltvUpdated": "✅ Guide des chaînes mis à jour",
+  "xmltvUpdateUnavailable": "Le guide des chaînes n'a pas pu être mis à jour. Réessaie plus tard.",
   "xmltvUpdateFailed": "❌ Échec mise à jour : {reason}",
   "@xmltvUpdateFailed": {
     "placeholders": {
@@ -2008,8 +1917,9 @@
   },
   "consoleOpenAddress": "Ouvre cette adresse dans un navigateur\nsur un PC ou un téléphone du même réseau :",
   "consoleAddressCopied": "Adresse copiée",
-  "consoleBackgroundNote": "Le serveur reste actif en arrière-plan tant que tu utilises la télécommande, même après avoir quitté cet écran. Arrête-le ici quand tu as fini (sinon fermeture auto après 30 min).",
+  "consoleBackgroundNote": "Le serveur reste actif en arrière-plan tant que tu utilises la télécommande, même après avoir quitté cet écran. Arrête-le ici quand tu as fini (sinon il se ferme après 30 min sans utilisation).",
   "consoleStopServer": "Arrêter le serveur",
+  "consoleActiveBanner": "Console web ouverte : l'app est pilotable depuis le réseau local",
   "failNotLoaded": "NON CHARGÉ",
   "failNetwork": "ÉCHEC RÉSEAU",
   "failPanelBusy": "PANEL SATURÉ",
@@ -2055,6 +1965,7 @@
     }
   },
   "reloadDownloadFailed": "Téléchargement impossible (vérifie l'URL ou la connexion).",
+  "playlistNotAList": "Le serveur n'a pas renvoyé de liste exploitable. Vérifie l'adresse de la playlist.",
   "reloadParseFailed": "L'analyse de la liste a échoué.",
   "bkPartTmdbKey": "clé TMDB",
   "bkPartTheme": "thème",
@@ -2069,6 +1980,7 @@
   "bkPasswordEmptyError": "Le mot de passe ne peut pas être vide.",
   "bkNewerVersion": "Sauvegarde créée par une version plus récente de l'app ; mise à jour nécessaire.",
   "bkWrongPassword": "Mot de passe incorrect, ou fichier de sauvegarde altéré.",
+  "bkNoReadableAccount": "Aucun compte de cette sauvegarde n'a pu être lu : rien n'a été modifié.",
   "castDiscoveryFailed": "Recherche impossible sur ce réseau. Le téléphone doit être sur le même WiFi que le téléviseur, hors réseau invité.",
   "castDeviceNotResponding": "{device} ne répond pas. Vérifie qu'il est allumé et sur le même réseau.",
   "@castDeviceNotResponding": {
@@ -2121,6 +2033,9 @@
   "updTimeout": "GitHub n'a pas répondu à temps.",
   "updUnreachable": "Impossible de joindre GitHub. Vérifie la connexion.",
   "updInstallDenied": "Permission d'installation refusée",
+  "updNoApkForDevice": "La dernière release ({tag}) n'a pas de version pour cet appareil.",
+  "updUnverifiable": "Cette mise à jour ne peut pas être vérifiée : elle n'a pas été installée.",
+  "updCorrupted": "La mise à jour téléchargée est abîmée. Réessaie.",
   "failOnDisk": "SUR DISQUE",
   "failWaiting": "EN ATTENTE",
   "failCacheGone": "CACHE PERDU",
@@ -2340,14 +2255,12 @@
   "detStatusReturning": "En cours",
   "detStatusEnded": "Terminée",
   "detStatusCanceled": "Annulée",
-  "sheetChooseVersion": "Choisir une version",
-  "sheetStandardUnknown": "Standard / Inconnue",
   "sheetDetails": "Fiche Détaillée & Infos",
   "sheetReplayUnavailable": "Replay indisponible pour ce flux",
   "onbSkip": "Passer",
   "onbNext": "Suivant",
   "onbStart": "Commencer",
-  "termPreviousErrors": "{count} ERREUR(S) PRÉCÉDENTE(S)",
+  "termPreviousErrors": "{count, plural, one{{count} ERREUR PRÉCÉDENTE} other{{count} ERREURS PRÉCÉDENTES}}",
   "@termPreviousErrors": {
     "placeholders": {
       "count": {
@@ -2408,14 +2321,6 @@
   "expSeeDetails": "Voir détails",
   "memTitle": "MÉMOIRE & STOCKAGE",
   "memRefresh": "Rafraîchir",
-  "memParsed": "analysé {size}",
-  "@memParsed": {
-    "placeholders": {
-      "size": {
-        "type": "String"
-      }
-    }
-  },
   "memEntriesAndSize": "{count} entrées · {size}",
   "@memEntriesAndSize": {
     "placeholders": {
@@ -2491,8 +2396,6 @@
   "navExitHint": "💡 Pour quitter l'application : appuie 2 fois sur Retour",
   "navExitConfirm": "Appuie à nouveau sur Retour pour quitter",
   "settingsUsageReset": "🧹 Données d'usage réinitialisées",
-  "updNetworkError": "Erreur réseau",
-  "themePreviewMovieTitle": "Titre du Film",
   "errUnexpected": "Une erreur inattendue est survenue.",
   "errUnknown": "Une erreur inconnue est survenue.",
   "relayNothingReadable": "La conversion n'a rien produit de lisible.",
@@ -2524,7 +2427,6 @@
   },
   "detEpisodesBadSeriesId": "identifiant de série illisible",
   "detEpisodesNoAccount": "compte introuvable",
-  "castOverlayResyncFull": "Resynchroniser l'image et le son",
   "memSourceAndParsed": "source {source} · analysé {parsed}",
   "@memSourceAndParsed": {
     "placeholders": {
@@ -2598,6 +2500,7 @@
   "catSurvival": "Survie",
   "catTvMovie": "Téléfilm",
   "catRealityTv": "Téléréalité",
+  "catTalkShow": "Talk-show",
   "catThriller": "Thriller",
   "catSerialKiller": "Tueur en série",
   "catRevenge": "Vengeance",
@@ -2631,5 +2534,201 @@
   "regExYugoslavia": "Ex-Yougoslavie",
   "regDominicanRepublic": "Rép. Dominicaine",
   "regOriginalNonFrench": "VO (non-FR)",
-  "regLegendado": "Legendado (sous-titré PT)"
+  "regLegendado": "Legendado (sous-titré PT)",
+  "acctChipMain": "PRINCIPAL",
+  "bootEnterManually": "Saisir manuellement",
+  "bootConfigureWebConsole": "Configurer via Console web",
+  "searchPeople": "Personnes",
+  "personRoleDirector": "Réalisateur",
+  "personRoleActor": "Acteur",
+  "personRoleWriter": "Scénariste",
+  "personRoleProduction": "Production",
+  "personRoleMusic": "Musique",
+  "personRoleCamera": "Image",
+  "optSpeedTitle": "Vitesse",
+  "optSpeedCurrentNormal": "Normale (1.0×)",
+  "tracksTitle": "Pistes",
+  "tracksSubtitle": "audio & sous-titres",
+  "tracksAudio": "Audio",
+  "tracksSubtitles": "Sous-titres",
+  "epgNow": "EN COURS",
+  "epgNext": "ENSUITE",
+  "replayPrograms": "Programmes",
+  "replayToday": "Aujourd’hui",
+  "replayYesterday": "Hier",
+  "replayWatchLabel": "Regarder  •  {label}",
+  "@replayWatchLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "qualityWatch": "Regarder · {label}",
+  "@qualityWatch": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "actorBiography": "Biographie",
+  "actorBiographyMissing": "Biographie indisponible.",
+  "actorAvailableBadge": "DISPO",
+  "detMainCast": "Casting principal",
+  "detSimilarAvailable": "Titres similaires disponibles",
+  "detTrailerButton": "BANDE-ANNONCE",
+  "themePreviewTitle": "Titre du Film",
+  "sheetReplay": "Replay",
+  "sheetReplayDays": "Replay ({days}j)",
+  "@sheetReplayDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "memComputing": "Calcul en cours…",
+  "memRamProcess": "RAM process",
+  "memRamProcessValue": "{current} (pic {peak})",
+  "@memRamProcessValue": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      },
+      "peak": {
+        "type": "String"
+      }
+    }
+  },
+  "memImageCacheDisk": "Cache images (disque)",
+  "memImageCacheRam": "Cache images (RAM)",
+  "memImageCacheRamValue": "{used} / {max} · {count} / {maxCount} img",
+  "@memImageCacheRamValue": {
+    "placeholders": {
+      "used": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      },
+      "maxCount": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeBytes": "{n} octets",
+  "@sizeBytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeKilobytes": "{n} Ko",
+  "@sizeKilobytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeMegabytes": "{n} Mo",
+  "@sizeMegabytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeGigabytes": "{n} Go",
+  "@sizeGigabytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "dlActionRestart": "Relancer",
+  "dlMoreActions": "Autres actions",
+  "playerQuit": "Quitter",
+  "nextEpContinue": "Continuer",
+  "commonClear": "Effacer",
+  "statsAnnouncedLabel": "Annoncé",
+  "replayGuideUnavailable": "Guide indisponible",
+  "replayNotAvailable": "non disponible",
+  "detEnableTmdb": "Active TMDB",
+  "dlRestartUpper": "RELANCER",
+  "commonDecrease": "Diminuer",
+  "commonIncrease": "Augmenter",
+  "detEpisodesReasonNetwork": "le serveur ne répond pas",
+  "detEpisodesReasonBusy": "le fournisseur refuse : trop de connexions en même temps",
+  "detEpisodesReasonParse": "la réponse du serveur est illisible",
+  "detEpisodesReasonAccount": "les réglages du compte sont incomplets",
+  "failDetailTooLong": "(toujours pas prête après {delay})",
+  "failDetailCacheCleared": "(vidé à ta demande)",
+  "durationHoursMinutes": "{hours}h{minutes}",
+  "durationMinutes": "{count} min",
+  "durationSeconds": "{count} s",
+  "healthNoStalls": "aucun blocage",
+  "healthStalls": "{count, plural, one{{count} blocage} other{{count} blocages}}",
+  "healthPerHour": "{value}/h",
+  "healthWatched": "{duration} vues",
+  "bootDetailEntries": "{n, plural, one{{count} entrée} other{{count} entrées}}",
+  "bootDetailSection": "{section} · {done}/{total}",
+  "bootSectionLive": "chaînes",
+  "bootSectionMovies": "films",
+  "bootSectionSeries": "séries",
+  "bootStepInit": "// initialisation…",
+  "bootStepServices": "// préparation des services…",
+  "bootStepAccount": "// vérification du compte…",
+  "bootStepReadPlaylist": "// lecture de la playlist…",
+  "bootStepDownloadPlaylist": "// téléchargement de la playlist…",
+  "bootStepAnalysis": "// analyse du catalogue…",
+  "bootStepOtherAccounts": "// chargement des autres comptes…",
+  "bootStepReady": "// prêt.",
+  "bootStepUpdate": "// mise à jour {index}/{total} · {label}…",
+  "bootStepAnalysisOf": "// analyse · {label}…",
+  "playlistNoActiveAccount": "Aucun compte actif sélectionné. Choisis-en un dans les paramètres.",
+  "playlistInvalidUrl": "L’URL de la playlist du compte « {label} » est invalide. Vérifie sa configuration.",
+  "detRuntimeHoursMinutes": "{hours} h {minutes} min",
+  "castOverlayLive": "EN DIRECT",
+  "playerReconnectingNow": "Reconnexion… ({attempt}/{max})",
+  "nextEpStayHere": "Rester ici",
+  "nowPlayingLive": "En direct",
+  "nowPlayingReplay": "Replay",
+  "tracksTrackN": "Piste {id}",
+  "replayManualTitle": "Replay — {label}",
+  "relayDolbyVisionP5": "Ce film est en Dolby Vision profil 5 : sans décodeur Dolby Vision, l'image aurait des couleurs fausses. Il ne peut pas être converti pour le téléviseur.",
+  "dlNotifFinished": "Téléchargement terminé — appuyer pour ouvrir",
+  "dlNotifFailed": "Échec du téléchargement",
+  "castNotifStop": "Arrêter",
+  "dlNoticeAverage": "{percent} % en moyenne",
+  "termShow": "▼ AFFICHER",
+  "termHide": "▲ MASQUER",
+  "updDiffLine": "> DIFF    : voir la release sur GitHub",
+  "updViewChangelog": "[ VOIR LES NOUVEAUTÉS ]",
+  "updLater": "[ PLUS TARD ]",
+  "updAbort": "[ ANNULER ]",
+  "updInstall": "[ INSTALLER ]",
+  "updRetry": "[ RÉESSAYER ]",
+  "xmltvNoGuide": "Aucun guide enregistré",
+  "consoleCodeLabel": "Code : ",
+  "consoleCopyUrl": "Copier l'adresse",
+  "bkBackupFrom": "Sauvegarde du {date} (v{version}) :",
+  "qualityStreamN": "Flux {n}",
+  "searchVersionsCount": "{count, plural, one{{count} version} other{{count} versions}}",
+  "aboutVersionLabel": "VERSION",
+  "aboutMadeWith": "Fait avec {stack}",
+  "acctCardActions": "Actions du compte",
+  "infoRowLabel": "{label} :",
+  "detSynopsis": "Synopsis",
+  "detVotes": "{count, plural, one{{formatted} vote} other{{formatted} votes}}",
+  "actorJobDirecting": "Équipe de réalisation",
+  "themePresetPhosphore": "Phosphore",
+  "themePresetNordique": "Nordique",
+  "themePresetMinimaliste": "Minimaliste"
 }

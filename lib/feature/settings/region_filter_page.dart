@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/themes/colors.dart';
+import '../../core/themes/light_palette.dart';
 import '../../core/utils/user_error.dart';
 import '../../data/services/hidden_regions_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
@@ -63,9 +64,13 @@ class _RegionFilterPageState extends State<RegionFilterPage>
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-          content: Text(changed
-              ? context.l10n.regionApplied
-              : context.l10n.regionNoChange),
+          // Revue 2026-09-11, D4B-08 — le thème impose un texte BLANC aux
+          // snackbars : sur un fond d'état, le texte suit ce fond.
+          content: Text(
+              changed
+                  ? context.l10n.regionApplied
+                  : context.l10n.regionNoChange,
+              style: TextStyle(color: onColorFor(kSuccess))),
           backgroundColor: kSuccess,
         ));
       if (mounted) setState(() {});
@@ -74,7 +79,8 @@ class _RegionFilterPageState extends State<RegionFilterPage>
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-            content: Text(context.l10n.commonFailedWith(describeError(e))),
+            content: Text(context.l10n.commonFailedWith(describeError(e)),
+                style: TextStyle(color: onColorFor(kError))), // D4B-08
             backgroundColor: kError));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -132,7 +138,7 @@ class _RegionFilterPageState extends State<RegionFilterPage>
         floatingActionButton: (_dirty || _busy)
             ? FloatingActionButton.extended(
                 backgroundColor: kAccentPrimary,
-                foregroundColor: Colors.black,
+                foregroundColor: onColorFor(kAccentPrimary), // D4B-08
                 onPressed: _busy ? null : _apply,
                 icon: _busy
                     ? const SizedBox(

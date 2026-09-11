@@ -103,9 +103,9 @@ extension on DownloadFilter {
   /// annulations — deux états qui appellent la même réaction : relancer.
   bool matches(DownloadStatus s) => switch (this) {
         DownloadFilter.all => true,
+        // Revue 2026-09-11, D3A-15 — `paused` n'est jamais affecté.
         DownloadFilter.active => s == DownloadStatus.downloading ||
             s == DownloadStatus.queued ||
-            s == DownloadStatus.paused ||
             s == DownloadStatus.finalizing,
         DownloadFilter.completed => s == DownloadStatus.completed,
         DownloadFilter.errors =>
@@ -129,7 +129,9 @@ class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
 
   /// §12-c — Pull-to-refresh : recharge les tâches depuis disque + réconcilie
   /// les statuts (utile si une tâche s'est figée en `downloading` après crash).
-  Future<void> _refresh() => _downloadManager.init();
+  // D3A-05 — `refreshFromDisk` épargne les transferts en vol : `init()` les
+  // faisait passer « échec » sur un simple tirer-pour-rafraîchir.
+  Future<void> _refresh() => _downloadManager.refreshFromDisk();
 
   /// §dlOrphans — Le balayage MANUEL du dossier public (bouton ⟳ de la barre).
   /// Jamais muet : le résultat s'annonce, même quand il n'y a rien.

@@ -119,7 +119,15 @@ void main() {
       }
       expect(DiagnosticLog.lineCount, DiagnosticLog.maxLines);
       // La plus ancienne est partie, la plus récente est là.
-      expect(DiagnosticLog.dump(), isNot(contains('ligne 0 ')));
+      // D5A-13 (revue 2026-09-11, lot 9) — L'ancienne assertion cherchait
+      // « ligne 0 » suivie d'une ESPACE ; or `dump()` joint par des sauts de
+      // ligne, donc elle ne pouvait JAMAIS échouer : un tampon qui évincerait
+      // la fin au lieu du début passait. On ancre sur la fin de ligne, et on
+      // vérifie que la première ligne gardée est exactement la 250e.
+      expect(DiagnosticLog.dump(),
+          isNot(matches(RegExp(r' ligne 0$', multiLine: true))));
+      expect(DiagnosticLog.tail(DiagnosticLog.maxLines).first,
+          endsWith(' ligne 250'));
       expect(DiagnosticLog.dump(),
           contains('ligne ${DiagnosticLog.maxLines + 249}'));
     });

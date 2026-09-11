@@ -95,7 +95,16 @@ class MainActivity : FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 try {
-                    val file = File(path)
+                    val file = File(path).canonicalFile
+                    // Revue 2026-09-11, D2B-12 — Le canal acceptait N'IMPORTE
+                    // quel chemin : seul l'APK de mise à jour, dans
+                    // `cache/updates/`, a le droit de sortir par le
+                    // FileProvider (défense en profondeur avec file_paths.xml).
+                    val updatesDir = File(cacheDir, "updates").canonicalFile
+                    if (file.parentFile != updatesDir) {
+                        result.error("BAD_PATH", "APK hors du dossier des mises à jour", null)
+                        return@setMethodCallHandler
+                    }
                     val uri = FileProvider.getUriForFile(
                         this,
                         "${packageName}.fileprovider",
@@ -288,13 +297,17 @@ class MainActivity : FlutterActivity() {
         transferChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "startOrUpdate" -> {
-                    val title = call.argument<String>("title") ?: "Téléchargement"
+                    // Revue 2026-09-11, D3L-02 — libellés traduits par Dart ;
+                    // les ressources (res/values*/strings.xml) ne sont qu'un repli.
+                    val title = call.argument<String>("title")
+                        ?: getString(R.string.notif_download_title)
                     val text = call.argument<String>("text") ?: ""
                     val progress = call.argument<Int>("progress") ?: -1
                     val indeterminate = call.argument<Boolean>("indeterminate") ?: false
                     val cancelTaskId = call.argument<String>("cancelTaskId")
+                    val cancelLabel = call.argument<String>("cancelLabel")
                     AetherDownloadService.start(
-                        this, title, text, progress, indeterminate, cancelTaskId
+                        this, title, text, progress, indeterminate, cancelTaskId, cancelLabel
                     )
                     result.success(null)
                 }
@@ -304,9 +317,11 @@ class MainActivity : FlutterActivity() {
                 }
                 "postFinished" -> {
                     val id = call.argument<Int>("id") ?: 0
-                    val title = call.argument<String>("title") ?: "Téléchargement"
+                    val title = call.argument<String>("title")
+                        ?: getString(R.string.notif_download_title)
                     val success = call.argument<Boolean>("success") ?: false
-                    AetherDownloadService.postFinished(this, id, title, success)
+                    val text = call.argument<String>("text")
+                    AetherDownloadService.postFinished(this, id, title, success, text)
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -378,11 +393,18 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "show" -> {
                     val title = call.argument<String>("title") ?: "AetherStream"
-                    val text = call.argument<String>("text") ?: "Diffusion en cours"
+                    val text = call.argument<String>("text")
+                        ?: getString(R.string.notif_cast_running)
                     val playing = call.argument<Boolean>("playing") ?: true
                     val image = call.argument<String>("image")
                     val lowBattery = call.argument<Boolean>("lowBattery") ?: false
-                    AetherCastService.start(this, title, text, playing, image, lowBattery)
+                    // Revue 2026-09-11, D3L-02 — boutons traduits par Dart.
+                    AetherCastService.start(
+                        this, title, text, playing, image, lowBattery,
+                        pauseLabel = call.argument<String>("pauseLabel"),
+                        playLabel = call.argument<String>("playLabel"),
+                        stopLabel = call.argument<String>("stopLabel"),
+                    )
                     result.success(null)
                 }
                 "hide" -> {
@@ -431,11 +453,121 @@ class MainActivity : FlutterActivity() {
         newConfig: Configuration
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        val dismissed = !isInPictureInPictureMode && (isFinishing || isDestroyed)
+
+        // §pipStuck (2026-09-08) — ⚠️ `isFinishing || isDestroyed` NE SUFFIT
+        // PAS a reconnaitre la croix. Signalement : « si je clique sur la croix
+        // dans le picture in picture alors quand je relance l'application je
+        // suis dans le pip ». Selon le constructeur, fermer la fenetre PiP
+        // ARRETE l'activite au lieu de la terminer : `dismissed` restait donc
+        // faux, la lecture continuait, et surtout l'auto-PiP restait ARME —
+        // la tache etait alors rouverte dans son dernier mode de fenetre.
+        //
+        // Android documente le seul signal fiable : sortir du PiP par la croix
+        // envoie l'activite vers `onStop`, alors qu'un retour au plein ecran
+        // passe par `onResume`. On ne DECIDE donc rien ici : on note qu'on
+        // vient de quitter le PiP, et c'est le cycle de vie qui tranche.
+        // §pipStuck — ⚠️ MESURE du 2026-09-09 sur Galaxy S25, qui a REFUTE
+        // les deux criteres precedents :
+        //
+        //   onPipChanged inPip=true
+        //   onStop  justLeftPip=false finishing=false   <-- onStop D'ABORD
+        //   onPipChanged inPip=false finishing=false destroyed=false
+        //
+        // 1. `isFinishing || isDestroyed` sont FAUX : la croix n'termine pas
+        //    l'activite sur cet appareil, elle l'ARRETE. Le critere d'origine
+        //    ne pouvait donc jamais se declencher.
+        // 2. Et `onStop` arrive AVANT le changement de mode, pas apres : le
+        //    guet « horodatage de sortie + onStop » le manquait aussi.
+        //
+        // Le signal fiable, et INSENSIBLE A L'ORDRE, est l'etat du cycle de
+        // vie au moment ou l'on QUITTE le PiP : arretee = la croix ; encore
+        // demarree = un retour au plein ecran (l'`onResume` suit).
+        // L'etat « on est / on n'est plus en PiP » part TOUT DE SUITE : il ne
+        // depend d'aucune ambiguite, et le lecteur s'en sert pour masquer ses
+        // controles.
         pipChannel?.invokeMethod(
             "onPipChanged",
-            mapOf("active" to isInPictureInPictureMode, "dismissed" to dismissed)
+            mapOf("active" to isInPictureInPictureMode, "dismissed" to false)
         )
+
+        pendingDismiss?.let { pipHandler.removeCallbacks(it) }
+        pendingDismiss = null
+        if (isInPictureInPictureMode) return
+
+        // §pipStuck — ⚠️ DECISION DIFFEREE, et voici pourquoi (mesure du
+        // 2026-09-09 sur Galaxy S25, qui a refute DEUX criteres successifs) :
+        //
+        //   croix     : onStop -> onPipChanged(inPip=false, stopped=true)
+        //   agrandir  : onStop -> onPipChanged(inPip=false, stopped=true)
+        //
+        // Les deux sequences sont IDENTIQUES. Ni `isFinishing`/`isDestroyed`
+        // (tous deux faux : la croix ARRETE l'activite, elle ne la termine
+        // pas), ni l'etat « arretee » ne distinguent quoi que ce soit au
+        // moment ou l'on quitte le PiP.
+        //
+        // Le seul ecart reel est ce qui arrive APRES : un agrandissement
+        // enchaine sur `onResume` presque aussitot ; la croix laisse
+        // l'activite arretee. On attend donc brievement avant de trancher.
+        //
+        // ⚠️ Ne pas raccourcir ce delai sans mesurer : trop court, un
+        // agrandissement lent serait pris pour une fermeture et mettrait la
+        // lecture en pause alors que l'utilisateur vient de revenir dessus —
+        // c'est exactement le faux positif signale pendant la recette.
+        val decide = Runnable {
+            pendingDismiss = null
+            // Agrandissement : `onResume` a deja annule ce Runnable, mais on
+            // reverifie — un `removeCallbacks` peut arriver trop tard.
+            if (!isStopped) return@Runnable
+            autoPipEnabled = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try {
+                    setPictureInPictureParams(buildAutoPipParams())
+                } catch (e: Exception) {
+                    // Rien a faire cote app si le systeme refuse.
+                }
+            }
+            pipChannel?.invokeMethod(
+                "onPipChanged",
+                mapOf("active" to false, "dismissed" to true)
+            )
+        }
+        pendingDismiss = decide
+        pipHandler.postDelayed(decide, pipDismissDecisionMs)
+    }
+
+    private val pipHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingDismiss: Runnable? = null
+
+    /// Delai avant de trancher entre « croix » et « agrandissement ».
+    private val pipDismissDecisionMs = 900L
+
+    // §pipStuck — L'activite est-elle arretee ? Pose par onStart/onStop, et
+    // lu au moment ou l'on quitte le PiP : c'est LUI qui distingue la croix
+    // d'un retour au plein ecran (cf. la mesure dans onPictureInPictureModeChanged).
+    private var isStopped = false
+
+    override fun onStart() {
+        super.onStart()
+        isStopped = false
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // §pipStuck — Retour au plein ecran : ce n'etait pas la croix.
+        pendingDismiss?.let { pipHandler.removeCallbacks(it) }
+        pendingDismiss = null
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // §pipStuck — ⚠️ RIEN de plus ici. Un premier jet decidait la croix
+        // depuis `onStop` (via un horodatage de sortie de PiP) : sur Galaxy
+        // S25, `onStop` arrive AVANT le changement de mode, ce guet ne se
+        // declenchait donc jamais — et sur un appareil ou il arriverait apres,
+        // il ferait DOUBLE EMPLOI avec la decision differee de
+        // `onPictureInPictureModeChanged`, qui relit `isStopped` a l'echeance
+        // et couvre les deux ordres. Un seul juge.
+        isStopped = true
     }
 
     // §dlNotif — Enregistre en `onCreate`/`onDestroy`, PAS en `onStart`/
@@ -446,6 +578,8 @@ class MainActivity : FlutterActivity() {
     // désarmerait exactement quand il sert le plus.
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        // D2B-16 — Journal natif muet sur un APK non débogable (AetherLog.kt).
+        AetherLog.init(this)
         val filter = IntentFilter(AetherDownloadService.ACTION_CANCEL)
         // §castSend — Meme cycle de vie que le recepteur d'annulation, pour la
         // meme raison : les boutons servent quand l'app est en arriere-plan.
@@ -547,6 +681,15 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        // §pipStuck / revue 2026-09-11, D2B-15 — La décision différée de la
+        // croix du PiP (900 ms) ne doit pas survivre à l'activité : sur un
+        // constructeur qui TERMINE l'activité à la croix, le Runnable passait
+        // son test `isStopped` après la destruction, écrivait des paramètres
+        // PiP sur une activité morte et parlait à un moteur Flutter détaché,
+        // en retenant l'Activity jusqu'à son échéance. Le délai mesuré de
+        // 900 ms est inchangé : on retire seulement l'échéance en attente.
+        pendingDismiss?.let { pipHandler.removeCallbacks(it) }
+        pendingDismiss = null
         // ⚠️ **Sans ceci, une conversion survit à l'activité.** Le service de
         // premier plan garde le processus vivant alors qu'Android peut
         // détruire l'Activity : le `Transformer` continuait d'écrire (~1,3 Go

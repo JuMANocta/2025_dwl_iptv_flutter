@@ -10,11 +10,14 @@ import '../../../core/utils/app_snackbar.dart';
 import '../downloads_page.dart';
 import '../../../data/models/download_task.dart';
 import '../../../data/services/download_manager_service.dart';
+import '../../../data/services/download_range_policy.dart';
 import '../../../core/utils/network.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/platform/storage_service.dart';
 import '../../../widgets/terminal_download_dialog.dart';
+import 'direct_write_probe.dart';
 import 'download_naming.dart';
+import 'partial_sweep.dart' show downloadTmpPath, partialNameFor;
 import '../../../widgets/info_row.dart';
 import '../../../l10n/app_localizations.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
@@ -36,29 +39,9 @@ Future<String> _getTempDirectory() async {
   final basePath = (externalDirs != null && externalDirs.isNotEmpty)
       ? externalDirs.first.path
       : (await getTemporaryDirectory()).path;
-  final tmp = Directory("$basePath/dl_tmp");
+  final tmp = Directory(downloadTmpPath(basePath));
   if (!await tmp.exists()) await tmp.create(recursive: true);
   return tmp.path;
-}
-
-/// §dlDirectWrite — Le dossier accepte-t-il vraiment l'écriture ?
-///
-/// `Directory.exists()` ne suffit pas : sous scoped storage un dossier peut
-/// être listable sans être inscriptible. On écrit donc une sonde minuscule
-/// qu'on efface aussitôt — aucun résidu.
-Future<bool> _canWriteInto(String directory) async {
-  final probe = File('$directory/.aether_write_probe');
-  try {
-    await probe.writeAsString('x', flush: true);
-    return true;
-  } catch (e) {
-    debugPrint('⚠️ §dlDirectWrite: dossier non inscriptible ($directory) — $e');
-    return false;
-  } finally {
-    try {
-      if (await probe.exists()) await probe.delete();
-    } catch (_) {/* résidu inoffensif */}
-  }
 }
 
 /// §dlDirectWrite — Emplacement du fichier PARTIEL pendant le téléchargement.
@@ -73,15 +56,17 @@ Future<bool> _canWriteInto(String directory) async {
 /// Le manager déduit le mode à appliquer en comparant les dossiers parents —
 /// aucune migration des tâches déjà persistées n'est donc nécessaire.
 Future<String> _resolvePartPath(String finalDirectory, String fileName) async {
-  if (await _canWriteInto(finalDirectory)) {
-    return '$finalDirectory/.$fileName.part';
-  }
+  final String direct = '$finalDirectory/${partialNameFor(fileName)}';
+  // ⚠️ On sonde avec un nom construit COMME celui-là (même dossier, même
+  // chaîne d'extensions). La sonde d'origine écrivait un fichier SANS
+  // extension pour décider du sort d'un `.mkv.part` : sous stockage cloisonné,
+  // un dossier média décide fichier par fichier d'après l'extension, donc elle
+  // pouvait se tromper dans les deux sens. Cf. `DirectWriteProbe`.
+  if (await DirectWriteProbe.canWriteLike(direct)) return direct;
   final tempDirectory = await _getTempDirectory();
   debugPrint('↩️ §dlDirectWrite: repli cache privé → $tempDirectory');
   return '$tempDirectory/$fileName';
 }
-
-String sanitizeFilename(String filename) => filename.replaceAll(RegExp(r'[\\/*?:"<>|]'), "_");
 
 /// §dlEpisode — Premier nom LIBRE dans [directory], en évitant [takenPaths]
 /// (les chemins finaux des tâches déjà connues) et les fichiers réellement
@@ -105,11 +90,6 @@ Future<String> _freeFileName({
     return candidate;
   }
   return downloadNameCandidate(fileName, 99);
-}
-
-String _ext(String name) {
-  final i = name.lastIndexOf('.');
-  return (i >= 0 && i < name.length - 1) ? name.substring(i + 1).toLowerCase() : '';
 }
 
 Future<void> verifierEtTelecharger({
@@ -150,7 +130,9 @@ Future<void> verifierEtTelecharger({
         );
         return;
 
-    // CAS 2 : C'est déjà en cours, en attente ou en pause. On ouvre le moniteur.
+    // CAS 2 : C'est déjà en cours ou en attente. On ouvre le moniteur.
+    // (`paused` n'est jamais affecté — revue 2026-09-11, D3A-15 — : étiquette
+    // gardée pour l'exhaustivité du `switch`.)
       case DownloadStatus.downloading:
       case DownloadStatus.queued:
       case DownloadStatus.paused:
@@ -216,6 +198,9 @@ Future<int?> probeContentLength(Dio dio, String url) async {
       options: Options(
         responseType: ResponseType.stream, // TRÈS IMPORTANT: on ne télécharge pas tout le corps
         followRedirects: true,
+        // §dlRangeCheck (D3A-01) — Un 403/404 ne doit pas donner sa taille
+        // de page d'erreur comme taille du film.
+        validateStatus: isDownloadableStatus,
       ),
     ).then((response) {
       // Dès qu'on reçoit la réponse (les en-têtes sont arrivés)...
@@ -263,8 +248,9 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   // 2. On affiche l'AlertDialog de confirmation.
   if (!context.mounted) return;
 
-  // On prépare l'extension pour l'afficher dans le dialogue
-  final String extension = _ext(url).toUpperCase();
+  // On prépare l'extension pour l'afficher dans le dialogue. Lue sur le seul
+  // dernier segment du chemin : jamais l'hôte ni les identifiants (D3A-04).
+  final String extension = urlFileExtension(url)?.toUpperCase() ?? '';
 
   final bool? confirm = await showAppDialog<bool>(
     context: context,
@@ -350,14 +336,10 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   }
 
   // 6. CRÉATION DE LA TÂCHE AVEC LE BON CHEMIN
-  String baseFileName = sanitizeFilename(nom);
-  // Ajout de l'année au nom de fichier si disponible
-  if (releaseYear != null && releaseYear.isNotEmpty) {
-    baseFileName = '$baseFileName ($releaseYear)';
-  }
-
-  final fileExt = extension.isNotEmpty ? extension.toLowerCase() : 'mp4';
-  if (_ext(baseFileName).isEmpty) baseFileName = '$baseFileName.$fileExt';
+  // Nom assaini + année + extension TOUJOURS posée (D3A-04 : un point dans le
+  // titre la faisait sauter).
+  String baseFileName =
+      downloadFileName(name: nom, year: releaseYear, url: url);
 
   // §dlEpisode — Le nom ne doit heurter NI une autre tâche, NI un fichier déjà
   // posé dans le dossier public (il est partagé : l'utilisateur y met ce qu'il

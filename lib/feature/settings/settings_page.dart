@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/settings/about_page.dart';
@@ -177,7 +178,9 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
-        content: Text(context.l10n.settingsUsageReset),
+        // Revue 2026-09-11, D4B-08 — le texte suit le fond d'état.
+        content: Text(context.l10n.settingsUsageReset,
+            style: TextStyle(color: onColorFor(kSuccess))),
         backgroundColor: kSuccess,
       ));
   }

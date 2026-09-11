@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:dpad/dpad.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
+import '../../core/themes/light_palette.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../core/utils/formatters.dart' show formatCountFor;
 import '../../data/services/favorites_service.dart';
 import '../../data/services/tmdb_service.dart';
 import '../../data/services/tmdb_api_service.dart';
@@ -30,11 +33,17 @@ import '../../widgets/tv/section_beacon.dart';
 import 'actor_details_page.dart';
 import 'm3u_filter.dart';
 import 'details_facts.dart';
+import 'details_header_image.dart';
 import 'details_versions.dart';
 import '../../widgets/playback_gate.dart';
 import '../../widgets/media_chips.dart' show buildDownloadName;
 import 'version_dedup.dart';
+import 'episodes_failure.dart';
 import '../../l10n/l10n_ext.dart';
+
+/// Revue 2026-09-11, D4A-06 — un stub de série interrogé : le résultat du
+/// service, et l'échec constaté par la fiche avant tout appel (sinon `null`).
+typedef _StubOutcome = ({XtreamEpisodesResult r, EpisodesFailure? local});
 
 Color _qualityColor(String? quality) {
   return switch (quality) {
@@ -136,7 +145,9 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// aussi bien « la série n'a pas d'épisode » que « ton réseau est mort » :
   /// `fetchEpisodes` rendait `const []` dans les deux cas, et rien n'invitait
   /// à réessayer.
-  String? _episodesError;
+  /// Revue 2026-09-11, D4A-06 — la NATURE de l'échec, pas son texte : le
+  /// motif se compose à l'affichage, dans la langue de l'écran.
+  EpisodesFailure? _episodesFailure;
   /// §seriesMultiList — Stubs série (1 par compte) à fetcher via la JSON API,
   /// pour que chaque épisode porte les versions de TOUTES les listes qui ont
   /// la série (et pas juste le compte d'origine de la vignette).
@@ -210,10 +221,27 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     _currentEpisode = widget.entry;
-    _memorySignature = versionsSignature(_entriesFromMemory());
+    // Revue 2026-09-11, D4A-10 — UNE collecte en mémoire à l'ouverture, pas
+    // deux : l'empreinte, les versions d'un film et les épisodes d'une série
+    // la relisaient chacun (`byTypeWithPriority` concatène tous les comptes,
+    // puis `entriesOfTitle` balaie tout le type). Tout se passe dans ce même
+    // tour synchrone, la mémoire ne peut pas changer entre-temps : le
+    // résultat est celui qu'aurait donné chaque relecture.
+    final Stopwatch openSw = Stopwatch()..start();
+    final List<M3uEntry> fromMemory = _entriesFromMemory();
+    // Sonde D4A-10 : une ligne par ouverture de fiche (geste de l'utilisateur).
+    if (!kReleaseMode) {
+      debugPrint('⏱️ §detailsOpen : collecte mémoire ${openSw.elapsedMilliseconds} ms (${fromMemory.length} entrées du titre)');
+    }
+    _memorySignature = versionsSignature(fromMemory);
     ParsedPlaylistService.version.addListener(_onPlaylistChanged);
-    WidgetsBinding.instance.addObserver(this); // §exitCost — mesure de la rotation
-    _buildSeasonEpisodes();
+    // §exitCost — mesure de la rotation. Revue 2026-09-11, D4L-02 — hors
+    // release seulement : l'observateur ne sert QU'À ce chrono, et chaque
+    // rotation / clavier / PiP ajoutait une ligne au journal persistant
+    // (§logPersist), le seul canal de diagnostic d'un téléviseur. Debug et
+    // profile gardent la mesure, comme §exitCost la décrit.
+    if (!kReleaseMode) WidgetsBinding.instance.addObserver(this);
+    _buildSeasonEpisodes(memory: fromMemory);
 
     if (widget.entry.type == M3uContentType.series) {
       _uniqueVersions = _deduplicateVersions(widget.versions);
@@ -236,7 +264,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
       // que l'accueil a passée au moment du tap. Repli sur `widget.versions`
       // si le titre n'est pas (ou plus) en mémoire : fiche TMDB seule, liste
       // déchargée, entrée synthétique.
-      final fromMemory = _entriesFromMemory();
+      // D4A-10 — la collecte faite en tête d'`initState`.
       _uniqueVersions = _deduplicateVersions(
           fromMemory.isEmpty ? widget.versions : fromMemory);
       _selectedEntry  = _uniqueVersions.isNotEmpty ? _uniqueVersions.first : widget.entry;
@@ -295,11 +323,12 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     final entries = _entriesFromMemory();
     final sig = versionsSignature(entries);
     // §exitCost — mesure : ce balayage tourne a chaque bump de version.
-    debugPrint('\u23F1\uFE0F \u00A7detailsLive : balayage memoire ${sw.elapsedMilliseconds} ms (${entries.length} entrees du titre, change=${sig != _memorySignature})');
+    // D4L-02 — le chrono reste, la ligne de journal seulement hors release.
+    if (!kReleaseMode) debugPrint('\u23F1\uFE0F \u00A7detailsLive : balayage memoire ${sw.elapsedMilliseconds} ms (${entries.length} entrees du titre, change=${sig != _memorySignature})');
     if (sig == _memorySignature) return; // rien de neuf pour CE titre
     _memorySignature = sig;
     if (widget.entry.type == M3uContentType.series) {
-      _resyncSeries();
+      _resyncSeries(entries);
     } else {
       _resyncMovie(entries);
     }
@@ -324,13 +353,14 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// déjà rendus par la JSON API (ils ne sont pas dans la mémoire de la
   /// playlist) — sinon la liste des saisons se viderait le temps d'un nouveau
   /// fetch. La saison ouverte et l'épisode choisi sont restaurés.
-  void _resyncSeries() {
+  void _resyncSeries(List<M3uEntry> memory) {
     final previous = _flattenSeasonEpisodes();
     debugPrint('\u{1F504} \u00A7detailsLive : serie "${widget.entry.displayName}" '
         'relue (${previous.length} version(s) d episode deja affichees)');
     final openSeason = _selectedSeason;
     final wasSelected = _episodeSelected;
-    _buildSeasonEpisodes(); // remet `_selectedSeason` à null
+    // D4A-10 — la collecte que `_onPlaylistChanged` vient de faire (même tour).
+    _buildSeasonEpisodes(memory: memory); // remet `_selectedSeason` à null
     if (previous.isNotEmpty) {
       _seasonEpisodes =
           _regroupEpisodes([...previous, ..._flattenSeasonEpisodes()]);
@@ -383,28 +413,39 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// → chaque épisode porte les versions de toutes les listes. Remplace
   /// l'ancien fetch mono-compte qui ne montrait qu'un seul provider.
   Future<void> _fetchAllEpisodes() async {
-    final futures = _apiSeriesStubs.map((stub) async {
+    // Revue 2026-09-11, D4A-06 — chaque stub rend AUSSI l'échec constaté par
+    // la fiche elle-même (identifiant illisible, compte introuvable) : la
+    // `LoadFailureKind` seule ne distingue pas ces deux cas. Les motifs
+    // français restent ceux du JOURNAL (`episodesFailureReason`).
+    final futures = _apiSeriesStubs.map<Future<_StubOutcome>>((stub) async {
       final sid = _extractSeriesIdFromUrl(stub.url);
       if (sid == null) {
         return (
-          episodes: null,
-          error: 'identifiant de série illisible',
-          kind: LoadFailureKind.badAccount,
-        ) as XtreamEpisodesResult;
+          r: (
+            episodes: null,
+            error: 'identifiant de série illisible',
+            kind: LoadFailureKind.badAccount,
+          ),
+          local: EpisodesFailure.badSeriesId,
+        );
       }
       final acc = await StreamAccountService.getAccount(stub.accountId);
       if (acc == null) {
         return (
-          episodes: null,
-          error: 'compte introuvable',
-          kind: LoadFailureKind.badAccount,
-        ) as XtreamEpisodesResult;
+          r: (
+            episodes: null,
+            error: 'compte introuvable',
+            kind: LoadFailureKind.badAccount,
+          ),
+          local: EpisodesFailure.noAccount,
+        );
       }
-      return XtreamApiService.fetchEpisodes(acc, sid);
+      return (r: await XtreamApiService.fetchEpisodes(acc, sid), local: null);
     }).toList();
 
-    final results = await Future.wait(futures);
+    final outcomes = await Future.wait(futures);
     if (!mounted) return;
+    final results = <XtreamEpisodesResult>[for (final o in outcomes) o.r];
     final apiEpisodes =
         results.expand((r) => r.episodes ?? const <M3uEntry>[]).toList();
 
@@ -414,7 +455,14 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     // exploitable : qu'une liste secondaire soit injoignable pendant qu'une
     // autre rend les épisodes n'est pas une panne pour l'utilisateur.
     if (apiEpisodes.isEmpty) {
-      return _finishEpisodesLoading(error: episodesFailureReason(results));
+      final String? reason = episodesFailureReason(results);
+      if (reason != null) debugPrint('⚠️ Épisodes non chargés : $reason');
+      return _finishEpisodesLoading(
+        failure: episodesFailureOf(
+          results,
+          local: <EpisodesFailure?>[for (final o in outcomes) o.local],
+        ),
+      );
     }
 
     // Merge épisodes M3U déjà groupés + nouveaux épisodes API → regroupe tout.
@@ -475,15 +523,15 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// message "aucun épisode disponible" au lieu d'un spinner infini.
   /// [error] non nul = le chargement a ÉCHOUÉ (§episodeTruth) : la fiche
   /// affiche alors le motif et un bouton « Réessayer », pas « aucun épisode ».
-  void _finishEpisodesLoading({String? error}) {
+  void _finishEpisodesLoading({EpisodesFailure? failure}) {
     if (!mounted) {
       _episodesLoading = false;
-      _episodesError = error;
+      _episodesFailure = failure;
       return;
     }
     setState(() {
       _episodesLoading = false;
-      _episodesError = error;
+      _episodesFailure = failure;
     });
   }
 
@@ -493,7 +541,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     if (_episodesLoading || _apiSeriesStubs.isEmpty) return;
     setState(() {
       _episodesLoading = true;
-      _episodesError = null;
+      _episodesFailure = null;
     });
     _fetchAllEpisodes();
   }
@@ -599,7 +647,10 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     }
   }
 
-  void _buildSeasonEpisodes() {
+  /// [memory] : la collecte `_entriesFromMemory()` que l'appelant vient de
+  /// faire dans le MÊME tour synchrone (D4A-10) — identique à celle d'ici,
+  /// puisque le type de la fiche EST `series`. Absent : on la fait.
+  void _buildSeasonEpisodes({List<M3uEntry>? memory}) {
     if (widget.entry.type != M3uContentType.series) return;
     // §detailsLive — Le rapprochement (§23b clé de groupe normalisée +
     // §homonymYear : on ne mélange pas deux séries homonymes d'époques
@@ -612,12 +663,13 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     // Mesuré sur l'émulateur avec 4 listes : 323 373 entrées copiées à chaque
     // ouverture d'une fiche de série, pour n'en garder qu'une poignée. Les
     // séries seules en représentent environ un cinquième.
-    final all = entriesOfTitle(
-      ParsedPlaylistService.byTypeWithPriority(
-              widget.entry.accountId)[M3uContentType.series] ??
-          const <M3uEntry>[],
-      widget.entry,
-    );
+    final all = memory ??
+        entriesOfTitle(
+          ParsedPlaylistService.byTypeWithPriority(
+                  widget.entry.accountId)[M3uContentType.series] ??
+              const <M3uEntry>[],
+          widget.entry,
+        );
 
     // §seriesMultiList — On sépare : (a) épisodes M3U réels (SxxExx présents)
     // → groupés tout de suite ; (b) stubs série (un par compte, URL
@@ -685,7 +737,15 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     return null;
   }
 
+  /// Revue 2026-09-11, D4A-05 — Jeton du dernier `_loadData` lancé. OK sur
+  /// E03 puis tout de suite sur E04 : si la réponse E03 arrivait APRÈS celle
+  /// de E04, la fiche montrait titre, synopsis et image de E03 sous la puce
+  /// E04 — et « LIRE » ouvrait E04 avec le titre de E03 dans le lecteur et la
+  /// notification. Seule la réponse du DERNIER chargement s'applique.
+  int _loadSeq = 0;
+
   Future<void> _loadData() async {
+    final int seq = ++_loadSeq;
     final service  = TmdbService.instance;
     final isSeries = widget.entry.type == M3uContentType.series;
 
@@ -733,7 +793,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         ),
         if (seriesAlready == null) fetchFull(isTv: true),
       ]);
-      if (mounted) {
+      if (mounted && seq == _loadSeq) {
         setState(() {
           _episodeData = results[0] as Map<String, dynamic>?;
           if (seriesAlready == null) _tmdbData = results[1] as Media?;
@@ -744,7 +804,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
       }
     } else {
       final data = await fetchFull(isTv: isSeries || _currentEpisode.isSerie);
-      if (mounted) {
+      if (mounted && seq == _loadSeq) {
         setState(() {
           _tmdbData  = data;
           _isLoading = false;
@@ -793,6 +853,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// l'app) + proximité d'année (anti-homonyme). Exclut le titre courant.
   List<List<M3uEntry>> _matchRefs(List<MediaRef> refs, {int max = 18}) {
     if (refs.isEmpty) return const [];
+    final Stopwatch sw = Stopwatch()..start();
     final type = widget.entry.type;
     final entries =
         ParsedPlaylistService.byTypeWithPriority(widget.entry.accountId)[type] ??
@@ -800,6 +861,15 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     final byKey = <String, List<M3uEntry>>{};
     for (final e in entries) {
       byKey.putIfAbsent(contentGroupKey(e), () => []).add(e);
+    }
+    // Revue 2026-09-11, D4A-10 (b) — DIFFÉRÉ, sonde seulement. Partager cet
+    // index entre « Similaires » et « Saga » l'obligerait à survivre à l'appel
+    // réseau de la saga (`await getCollectionTitles`) : tout le catalogue du
+    // type retenu pendant une attente réseau, là où il était libéré aussitôt.
+    // Une ligne par rangée croisée (chargement TMDB d'une fiche), jamais par
+    // frame : elle donne le coût à comparer à cette rétention sur appareil.
+    if (!kReleaseMode) {
+      debugPrint('⏱️ §detailsRelated : index ${sw.elapsedMilliseconds} ms (${entries.length} entrées, ${byKey.length} groupes, ${refs.length} refs)');
     }
     final out = <List<M3uEntry>>[];
     final seen = <String>{contentGroupKey(widget.entry)};
@@ -940,7 +1010,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Active TMDB',
+                    Text(context.l10n.detEnableTmdb,
                         style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: cs.onSurface,
@@ -1016,17 +1086,18 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         ? stillPath
         : _tmdbData?.backdropPath;
     // §quickwin — fallback affiche playlist quand pas de backdrop TMDB.
-    // §23 — priorité au BACKDROP provider (champ v5 du catalogue JSON,
-    // format paysage = idéal pour le header), choisi selon la politique
-    // « plus grosse liste » ; sinon poster/logo (même politique) ; sinon
-    // épisode courant / entrée.
-    final String? playlistPoster = <String?>[
-      ParsedPlaylistService.bestBackdropUrl(_uniqueVersions),
-      widget.entry.backdropUrl,
-      ParsedPlaylistService.bestLogoUrl(_uniqueVersions),
-      _currentEpisode.logoUrl,
-      widget.entry.logoUrl,
-    ].firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
+    // §posterFlash — ⚠️ L'ordre a CHANGÉ le 2026-09-10, sur mesure appareil :
+    // le décor du fournisseur passait devant (format paysage, idéal pour un
+    // en-tête) et affichait donc un champ que la vignette d'accueil ne regarde
+    // JAMAIS — sur « Heroes », c'était l'affiche de Speed 2. Voir
+    // `details_header_image.dart` pour le récit et l'interdiction associée.
+    final String? playlistPoster = playlistHeaderImage(
+      groupLogo: ParsedPlaylistService.bestLogoUrl(_uniqueVersions),
+      episodeLogo: _currentEpisode.logoUrl,
+      entryLogo: widget.entry.logoUrl,
+      groupBackdrop: ParsedPlaylistService.bestBackdropUrl(_uniqueVersions),
+      entryBackdrop: widget.entry.backdropUrl,
+    );
     // §imgDiskCache — le backdrop demandait `original` (2000-3800 px, plusieurs
     // Mo) alors qu'il s'affiche sur 360 px de haut max (180-300 sur TV). Avec
     // un cache DISQUE, chaque fiche visitée serait stockée en pleine résolution
@@ -1167,11 +1238,14 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
             // §tmdbMore — la durée était CALCULÉE puis masquée pour
             // les séries (`&& !isSeries`) : « 45m/épisode » est une
             // info utile, on l'affiche aussi.
-            if (_tmdbData?.runtimeOrEpisodeLength != null) ...[
+            // Revue 2026-09-11, D1A-10 — la durée se compose ici, dans la
+            // langue de l'écran (« 45m/épisode » était écrit par le modèle).
+            if (_tmdbData?.runtimeLabel(context.l10n) case final String runtime)
+            ...[
               const SizedBox(width: 8),
               Text('•', style: TextStyle(color: cs.onSurfaceVariant)),
               const SizedBox(width: 8),
-              _buildMetaTag(_tmdbData!.runtimeOrEpisodeLength!, cs.onSurfaceVariant),
+              _buildMetaTag(runtime, cs.onSurfaceVariant),
             ],
             // §tmdbBadges — Certification d'âge (PEGI/CSA) au même
             // niveau que la date / durée / note.
@@ -1415,7 +1489,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                   // on choisit son épisode après avoir lu le pitch.
                   if (displayOverview?.isNotEmpty == true) ...[
                     SectionMark('Synopsis',
-                        child: Text('Synopsis',
+                        child: Text(context.l10n.detSynopsis,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -1481,8 +1555,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
 
                   // CASTING — vignettes acteurs avec photo (carrousel horizontal)
                   if (hasTmdb && _tmdbData!.castMembers.isNotEmpty) ...[
-                    SectionMark('Casting principal',
-                        child: Text('Casting principal',
+                    SectionMark(context.l10n.detMainCast,
+                        child: Text(context.l10n.detMainCast,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleSmall
@@ -1518,8 +1592,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                   ]
                   // Fallback : anciens noms seuls si pas de casting enrichi.
                   else if (hasTmdb && _tmdbData!.cast.isNotEmpty) ...[
-                    SectionMark('Casting principal',
-                        child: Text('Casting principal',
+                    SectionMark(context.l10n.detMainCast,
+                        child: Text(context.l10n.detMainCast,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleSmall
@@ -1590,7 +1664,12 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                             // Les noms viennent de TMDB (« Amazon Prime Video »,
                             // « MBS »…) : on les NORMALISE pour la couleur de
                             // marque seulement, et on affiche le nom d'origine.
-                            final color = _platformColor(_normalizePlatform(p));
+                            // Revue 2026-09-11, D4A-08 — rendue LISIBLE sur
+                            // la surface : Canal+/Peacock sont noirs, donc
+                            // noir sur noir en thème sombre (≈ 1:1).
+                            final color = brandReadableOn(
+                                platformBrandColor(_normalizePlatform(p)),
+                                cs.surface);
                             return Chip(
                               label: Text(p),
                               backgroundColor: color.withAlpha(40),
@@ -1626,7 +1705,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                       cs,
                     ),
                   if (_similar.isNotEmpty)
-                    _relatedRow('Titres similaires disponibles', _similar, cs),
+                    _relatedRow(
+                        context.l10n.detSimilarAvailable, _similar, cs),
 
                   // LOADING
                   if (_isLoading && !isSeries)
@@ -1722,7 +1802,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
               ],
             ),
           )
-        else if (!hasSeasons && _episodesError != null)
+        else if (!hasSeasons && _episodesFailure != null)
           // §episodeTruth — Le fetch a ÉCHOUÉ : on dit pourquoi, et on offre
           // de réessayer. Confondre ce cas avec « aucun épisode » laissait
           // l'utilisateur devant une série vide sans rien à tenter.
@@ -1734,7 +1814,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    context.l10n.detEpisodesError(_episodesError!),
+                    context.l10n.detEpisodesError(
+                        episodesFailureText(context.l10n, _episodesFailure!)),
                     style: TextStyle(
                         fontSize: 13, color: cs.onSurfaceVariant),
                   ),
@@ -2188,7 +2269,12 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60);
-    if (h > 0) return '${h}h${m.toString().padLeft(2, '0')}';
+    // Revue 2026-09-11, lot 7 (recette en anglais) — « RESUME · 1h00 » : la
+    // forme française sur un écran anglais. Même clé que les autres durées
+    // courtes (« 1h00 » en français, inchangé ; « 1h 00m » en anglais).
+    if (h > 0) {
+      return context.l10n.durationHoursMinutes(h, m.toString().padLeft(2, '0'));
+    }
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
@@ -2532,7 +2618,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     return _glowButton(
       color: kAccentTertiary,
       onPressed: _launchTrailer,
-      child: _btnContent(Icons.play_circle_outline, 'BANDE-ANNONCE'),
+      child: _btnContent(
+          Icons.play_circle_outline, context.l10n.detTrailerButton),
     );
   }
 
@@ -2615,21 +2702,6 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     return '';
   }
 
-  static Color _platformColor(String platform) {
-    switch (platform) {
-      case 'Netflix':      return const Color(0xFFE50914);
-      case 'Prime Video':  return const Color(0xFF00A8E1);
-      case 'HBO Max':      return const Color(0xFF5B2D8E);
-      case 'Apple TV+':    return const Color(0xFF555555);
-      case 'Starz':        return const Color(0xFF00B4D8);
-      case 'Paramount+':   return const Color(0xFF0064FF);
-      case 'Disney+':      return const Color(0xFF0063E5);
-      case 'Canal+':       return const Color(0xFF000000);
-      case 'Peacock':      return const Color(0xFF000000);
-      default:             return Colors.grey;
-    }
-  }
-
   Widget _buildMetaTag(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -2645,11 +2717,13 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   }
 
   /// §tmdbMore — « 12 400 votes » (séparateur d'espace, comme MemoryStatsCard).
+  ///
+  /// Revue 2026-09-11, D4B-05 — pluriel ICU, plus le « s » français en dur ;
+  /// et (relecture) le groupement suit la langue : « 12,400 votes » en
+  /// anglais, le français est inchangé.
   String _formatCount(int n) {
-    final s = n.toString();
-    final grouped =
-        s.replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]} ');
-    return '$grouped vote${n > 1 ? 's' : ''}';
+    final l10n = context.l10n;
+    return l10n.detVotes(n, formatCountFor(n, l10n));
   }
 
   /// §tmdbMore — Section « Infos » : remplace l'ancienne ligne brute
@@ -2771,20 +2845,22 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
       }
       // ⚠️ Une DIFFUSION annoncée, pas une disponibilité : la ligne ne mène
       // nulle part, et ne doit pas laisser croire qu'on peut la lancer.
-      final String? next = nextEpisodeLabel(m?.nextEpisode);
+      final String? next =
+          nextEpisodeLabel(m?.nextEpisode, lang: l10n.localeName);
       if (next != null) rows.add((l10n.infoNextEpisode, next, null));
       // ⚠️ Pas de ligne « Diffusé par » ici : le bloc de chips au-dessus
       // l'affiche déjà, et c'est exactement le doublon qu'on vient de retirer
       // pour le réalisateur. Une information, un endroit.
     } else {
       // ⚠️ TMDB met **0** quand il ne sait pas, jamais `null`.
-      final String? budget = moneyLabel(m?.budget);
+      final String lang = l10n.localeName;
+      final String? budget = moneyLabel(m?.budget, lang: lang);
       if (budget != null) rows.add((l10n.infoBudget, budget, null));
-      final String? revenue = moneyLabel(m?.revenue);
+      final String? revenue = moneyLabel(m?.revenue, lang: lang);
       if (revenue != null) rows.add((l10n.infoRevenue, revenue, null));
-      final String? salle = shortDate(m?.theatricalDate);
+      final String? salle = shortDate(m?.theatricalDate, lang: lang);
       if (salle != null) rows.add((l10n.infoTheatrical, salle, null));
-      final String? numerique = shortDate(m?.digitalDate);
+      final String? numerique = shortDate(m?.digitalDate, lang: lang);
       if (numerique != null) rows.add((l10n.infoDigital, numerique, null));
     }
     if (m?.productionCountries.isNotEmpty == true) {
@@ -2796,10 +2872,11 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     if (m?.status?.trim().isNotEmpty == true) {
       rows.add((l10n.infoStatus, _statusLabel(m!.status!), null));
     }
-    if (m?.runtimeOrEpisodeLength?.trim().isNotEmpty == true) {
+    final String? runtime = m?.runtimeLabel(l10n);
+    if (runtime != null) {
       rows.add((
         isSeries ? l10n.infoEpisodeLength : l10n.infoRuntime,
-        m!.runtimeOrEpisodeLength!,
+        runtime,
         null,
       ));
     }
@@ -2930,13 +3007,14 @@ class _ActionButtonState extends State<_ActionButton> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final lit = widget.active && widget.onPressed != null;
-    final dimmed = isDark ? Colors.white38 : Colors.black38;
+    // Revue 2026-09-11, D4A-16 — mêmes valeurs, constantes nommées.
+    final dimmed = isDark ? kDisabledOnDark : kDisabledOnLight;
     final filled = _focused && lit;
 
     // Rempli : fond à la couleur pleine, contenu en négatif pour le contraste.
     // Au repos : fond transparent, contour et texte colorés.
     final fg = filled
-        ? (isDark ? Colors.black : Colors.white)
+        ? (isDark ? kBlack : kWhite)
         : (lit ? widget.color : dimmed);
     final bg = filled ? widget.color : Colors.transparent;
     final border = lit ? widget.color : dimmed;

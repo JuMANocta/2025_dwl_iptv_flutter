@@ -121,6 +121,8 @@ String categoryDisplayLabel(String key, AppLocalizations l10n) {
       return l10n.catTvMovie;
     case 'Téléréalité':
       return l10n.catRealityTv;
+    case 'Talk-show': // revue 2026-09-11, D1A-13 — genre TMDB 10767
+      return l10n.catTalkShow;
     case 'Thriller':
       return l10n.catThriller;
     case 'Tueur en série':

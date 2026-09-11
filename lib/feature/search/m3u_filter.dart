@@ -72,6 +72,13 @@ const List<String> kHideableRegionLabels = [
   kVoRegionLabel, kLegRegionLabel,
 ];
 
+/// Revue 2026-09-11, D1A-11 — Hissées au niveau du fichier : `entryRegionLabels`
+/// est appelée pour CHAQUE entrée dès qu'un filtre de régions est actif, et
+/// reconstruisait ses deux expressions à chaque appel (même motif, mêmes
+/// options : l'objet est identique, seul le coût de construction disparaît).
+final RegExp _reEntryRegionPrefix = RegExp(r'^\s*\|([^|]{1,14})\|');
+final RegExp _reRegionTokenSep = RegExp(r'[-\s.]+');
+
 /// §langFilter — Régions d'une entrée À DES FINS DE FILTRAGE, déduites du
 /// préfixe `|XX|` de son NOM (rawTitle). Vide pour FR / sans préfixe / VOSTFR /
 /// Québec (jamais masqués).
@@ -85,13 +92,13 @@ const List<String> kHideableRegionLabels = [
 /// code « 4K » et `|VO.LEG.|` le code « VO.LEG. » : ni l'un ni l'autre n'était
 /// reconnu, donc ces titres échappaient au filtre.
 Set<String> entryRegionLabels(String rawTitle) {
-  final m = RegExp(r'^\s*\|([^|]{1,14})\|').firstMatch(rawTitle);
+  final m = _reEntryRegionPrefix.firstMatch(rawTitle);
   if (m == null) return const {}; // pas de préfixe → FR / MULTI → gardé
   final upper = rawTitle.toUpperCase();
   // VOSTFR (éclaté |VO|STFR| ou compact) → gardé (sous-titres FR).
   if (upper.contains('STFR') || upper.contains('VOSTFR')) return const {};
   final firstSeg = m.group(1)!.trim().toUpperCase();
-  final tokens = firstSeg.split(RegExp(r'[-\s.]+'))
+  final tokens = firstSeg.split(_reRegionTokenSep)
       .where((t) => t.isNotEmpty)
       .toList();
   if (tokens.isEmpty) return const {};
@@ -112,12 +119,6 @@ Set<String> entryRegionLabels(String rawTitle) {
   return byCode == null ? const {} : {byCode}; // code inconnu → gardé
 }
 
-/// Compatibilité : la PREMIÈRE région, ou `null`. Préférer [entryRegionLabels].
-String? entryRegionLabel(String rawTitle) {
-  final labels = entryRegionLabels(rawTitle);
-  return labels.isEmpty ? null : labels.first;
-}
-
 /// §langFilter — **Le prédicat unique du filtre régions.** Les trois points
 /// d'application (parse M3U, parse JSON, téléchargement Xtream) l'appellent :
 /// avant, chacun avait sa copie, et celle du téléchargement avait oublié la
@@ -129,11 +130,79 @@ bool isRegionHidden({
   required Set<String> hidden,
 }) {
   if (hidden.isEmpty) return false;
+  if (_nameRegionHidden(name, hidden)) return true;
+  final cat = contentCategoryLabel(groupTitle);
+  return cat != null && hidden.contains(cat);
+}
+
+/// Revue 2026-09-11, D1A-11 — Même prédicat que [isRegionHidden], pour un
+/// appelant qui a DÉJÀ la catégorie (`contentCategoryLabel(groupTitle)`) :
+/// les parseurs la calculent de toute façon pour l'entrée, et le chemin M3U
+/// la calculait une SECONDE fois ici dès qu'un filtre était actif.
+///
+/// ⚠️ [category] doit être exactement `contentCategoryLabel(groupTitle)` (ou
+/// la valeur d'un [CategoryLabelMemo], qui est la même) : c'est ce qui rend
+/// les deux fonctions interchangeables.
+bool isRegionHiddenForCategory({
+  required String name,
+  required String? category,
+  required Set<String> hidden,
+}) {
+  if (hidden.isEmpty) return false;
+  if (_nameRegionHidden(name, hidden)) return true;
+  return category != null && hidden.contains(category);
+}
+
+/// La voie TITRE du filtre (préfixe `|XX|` du nom), commune aux deux
+/// prédicats ci-dessus.
+bool _nameRegionHidden(String name, Set<String> hidden) {
   for (final label in entryRegionLabels(name)) {
     if (hidden.contains(label)) return true;
   }
-  final cat = contentCategoryLabel(groupTitle);
-  return cat != null && hidden.contains(cat);
+  return false;
+}
+
+/// Revue 2026-09-11, D1A-11 — Mémo de [contentCategoryLabel] le temps d'UNE
+/// analyse (parseur M3U, parseur JSON, filtre au téléchargement).
+///
+/// **Pourquoi.** La catégorie se calcule par entrée — 150 000 à 350 000 fois
+/// par liste — alors qu'une liste n'a que quelques centaines de `group-title`
+/// distincts. Chaque calcul replie les accents, passe la chaîne en capitales,
+/// y applique une dizaine d'expressions régulières et une cascade d'une
+/// centaine de tests. Mémorisé : un calcul par `group-title` distinct, puis une
+/// consultation de table.
+///
+/// **Strictement équivalent** : `contentCategoryLabel` est une fonction pure
+/// (aucun état, aucun réglage lu), donc rendre le résultat déjà calculé pour
+/// la même chaîne ne peut rien changer. L'instantané §parseSpeed (474 000
+/// titres réels) le vérifie.
+///
+/// Même durée de vie et même garde-fou que `StringPool` (§ramDiet) : local à
+/// une analyse, et on cesse d'alimenter la table au-delà de
+/// [maxEntries] valeurs distinctes (un fournisseur qui écrirait un
+/// `group-title` unique par entrée) — les suivantes sont calculées en direct,
+/// comme avant.
+class CategoryLabelMemo {
+  CategoryLabelMemo({this.maxEntries = 20000});
+
+  /// Plafond de la table (aligné sur `StringPool.maxDistinct`).
+  final int maxEntries;
+
+  final Map<String, String?> _labels = <String, String?>{};
+
+  /// `contentCategoryLabel(groupTitle)`, calculé une fois par valeur.
+  String? of(String? groupTitle) {
+    // Même court-circuit que `contentCategoryMatch` : rien à mémoriser.
+    if (groupTitle == null || groupTitle.isEmpty) return null;
+    final String? known = _labels[groupTitle];
+    if (known != null || _labels.containsKey(groupTitle)) return known;
+    final String? label = contentCategoryLabel(groupTitle);
+    if (_labels.length < maxEntries) _labels[groupTitle] = label;
+    return label;
+  }
+
+  /// Nombre de `group-title` distincts mémorisés — pour les journaux.
+  int get distinct => _labels.length;
 }
 
 /// Région étrangère depuis un préfixe `|XX|` en tête de group-title.
@@ -554,6 +623,13 @@ String? _keywordCategoryLabel(String g) {
       g.contains('HALLOWEEN')) { return 'Fêtes'; }
   if (g.contains('MÉDECINE') || g.contains('MEDECINE')) return 'Médecine';
   if (g.contains('RÉALITÉ') || g.contains('REALITE')) return 'Téléréalité';
+  // Revue 2026-09-11, D1A-13 — « Talk-show » est le libellé que
+  // `tmdb_genres.dart` donne au genre TMDB 10767 : il doit exister ICI aussi,
+  // sinon la rangée déduite d'une liste pauvre ne rejoindrait jamais celle
+  // d'une liste riche. Aucun group-title des six listes mesurées ne le porte
+  // (instantané inchangé) ; la règle attend le premier fournisseur qui l'écrit.
+  if (g.contains('TALK SHOW') || g.contains('TALK-SHOW') ||
+      g.contains('TALKSHOW')) { return 'Talk-show'; }
   if (g.contains('CRIME')) return 'Crime';
   // §catWords — « FILMS ART-MARTIAUX » (103) faisait une rangée à côté de
   // « Arts martiaux » (99) : la graphie au singulier et au trait d'union.
@@ -671,7 +747,7 @@ String tvGroupKey(String name) {
 ///
 /// **Stratégie** : clé `(qualité ?? versionLabel ?? rawTitle, accountId)` —
 /// on garde le premier rencontré (priorité du compte actif déjà appliquée
-/// par `ParsedPlaylistService.entriesWithPriority`). Multi-comptes : on
+/// par `ParsedPlaylistService.byTypeWithPriority`). Multi-comptes : on
 /// conserve une variante par compte pour que l'utilisateur puisse switcher.
 List<M3uEntry> dedupeTvVersions(List<M3uEntry> versions) {
   final seen = <String>{};

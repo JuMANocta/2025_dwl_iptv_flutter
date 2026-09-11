@@ -20,6 +20,7 @@ import 'package:aetherStream/main.dart' show checkForUpdate;
 import '../../l10n/app_localizations.dart';
 import '../themes/colors.dart';
 import 'package:aetherStream/widgets/offline_banner.dart';
+import 'package:aetherStream/widgets/web_console_banner.dart';
 import '../../l10n/l10n_ext.dart';
 
 /// Squelette de navigation principale (§1b — phases 1+4, §3c-6 TV).
@@ -128,9 +129,13 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
     // qui le détruisait.
     //
     // [PlaylistVisibility] généralise le principe à toute page qui montre des
-    // listes. Le test `HomePage.isForeground` est CONSERVÉ en plus (en OU) :
-    // `HomePage` ne prend pas encore de jeton, le retirer rouvrirait le bug
-    // d'origine.
+    // listes. `HomePage` prend désormais un jeton elle aussi (§fleetLoad) ; le
+    // test `HomePage.isForeground` est conservé en plus, par prudence.
+    // ⚠️ Revue 2026-09-11, D4A-01 : l'accueil reprenait son jeton juste après
+    // chaque route poussée (lecteur compris), si bien que ce timer sortait
+    // TOUJOURS ici — corrigé dans `HomePage.didChangeDependencies`.
+    // ⚠️ Reste ouvert : sur l'onglet Téléchargements, l'accueil (vivant dans
+    // l'`IndexedStack`) garde son jeton — rien n'y est déchargé.
     _idleUnloadTimer = Timer.periodic(_idleCheckInterval, (_) {
       final activeId = StreamAccountService.currentAccountIdNotifier.value ??
           widget.initialData.accountId;
@@ -239,6 +244,8 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
     final stack = Column(
       children: [
         const OfflineBanner(),
+        // D1B-02 — La console web ouverte hors de son écran se VOIT.
+        const WebConsoleBanner(),
         Expanded(
           child: IndexedStack(
             index: _stackIndex,

@@ -2,14 +2,11 @@
   "@@locale": "en",
   "downloadManagerTitle": "Download Manager",
   "noDownloads": "No downloads",
-  "downloadDialogTitle": "Start Download",
-  "downloadDialogFileNameLabel": "File name",
   "downloadDialogFileSizeLabel": "File size",
   "downloadDialogFileTypeLabel": "File type",
   "downloadDialogUnknownSize": "Unknown",
   "cancel": "Cancel",
   "download": "Download",
-  "denied": "Permission denied. The download cannot begin.",
   "terminalTitle": "//:FLUX_DOWNLOAD_INTERFACE",
   "terminalResumeMessage": "🔄 Resuming download:\n🎞️ {fileName}",
   "terminalStartMessage": "🤖 Starting download:\n🎞️ {fileName}",
@@ -18,40 +15,21 @@
   "terminalSuccessMessage": "\n🟢 SUCCESS: Download complete!",
   "terminalFatalErrorMessage": "\n☣️ FATAL: An error occurred",
   "terminalSpeedMessage": "Speed",
-  "terminalRetryCountMessage": "Retries",
   "terminalEtaMessage": "ETA",
+  "terminalElapsedMessage": "Elapsed",
   "terminalCancelMessage": "\nℹ️ ABORT: Download cancelled by user",
   "terminalCloseButton": "[ CLOSE ]",
   "terminalAbortingButton": "[ PAUSE... ]",
   "terminalAbortButton": "[ PAUSE ]",
-  "searchPageDownloadsTooltip": "See downloads",
-  "searchPageReloadTooltip": "Reload playlist",
-  "searchPageAccountsTooltip": "Accounts and Settings",
-  "searchPageLoadingError": "Could not load playlist",
-  "searchPageRetryButton": "Retry",
-  "searchPageProcessingError": "Error processing playlist:",
-  "searchFieldHint": "Search...",
-  "searchFilterFilms": "Movies",
-  "searchFilterSeries": "Series",
-  "searchFilterTv": "TV",
-  "searchNoResults": "No results found.",
-  "searchNoContent": "No content to display.",
-  "actionSheetChooseVersion": "Choose a version for:",
-  "chipSeasons": "{count,plural, =1{1 Season} other{{count} Seasons}}",
-  "chipEpisodes": "{count,plural, =1{1 Ep.} other{{count} Ep.}}",
-  "season": "Season",
   "episode": "Episode",
   "favoriteAdd": "Add to favorites",
   "favoriteRemove": "Remove from favorites",
   "actionSheetPlay": "Play",
-  "actionSheetPlaySubtitle": "Starts playback (automatic caching).",
   "actionSheetDownload": "Download in background",
-  "actionSheetDownloadSubtitle": "To watch later without a connection.",
   "deleteDialogTitle": "Delete file?",
   "deleteDialogSizeLabel": "Size",
   "deleteDialogWarning": "This action is irreversible and the file will be permanently deleted.",
   "deleteDialogConfirmButton": "Delete",
-  "deleteTooltip": "Delete permanently",
   "taskStatusDownloading": "Downloading...",
   "taskStatusRemaining": " • {remainingSize} left",
   "taskStatusCompleted": "Completed • {size} • {date}",
@@ -59,34 +37,14 @@
   "taskStatusCanceled": "Canceled {progressInfo} • Tap to retry",
   "taskStatusPending": "Pending • {date}",
   "taskStatusUnknownError": "Unknown error",
-  "playlistCardSubtitleNone": "No playlist downloaded in this context.",
-  "playlistCardSubtitleLastFile": "Last file: {path}",
-  "playlistDownloadButton": "Download / Update",
-  "playlistDeleteButton": "Delete",
-  "playlistManagementTip": "Tip: You can also reload the playlist from the settings gear or via the refresh icon on the search screen.",
   "accountsTitle": "Account Management",
   "deleteAccountDialogTitle": "Delete account?",
-  "deleteAccountDialogContent": "This action is permanent.",
   "deleteAccountConfirm": "Delete",
-  "playlistInfoChecking": "Checking playlist...",
-  "playlistInfoUnavailable": "No playlist available or loading error.",
-  "playlistInfoTryReload": "Try reloading",
-  "playlistInfoLocalFile": "Local playlist file",
-  "playlistInfoSize": "Size",
-  "playlistInfoLastUpdate": "Upd.",
-  "playlistInfoEntries": "Entries",
-  "playlistInfoReloadButton": "Reload",
-  "playlistInfoDeleteButton": "Delete",
-  "accountsListEmpty": "Add an account",
-  "accountModeComplete": "Mode: Full URL — {host}",
-  "accountModeSeparate": "Mode: Separate — {username}@{host}",
   "accountActionEdit": "Edit",
   "accountActionDelete": "Delete",
-  "accountsFab": "New",
   "editAccountTitleAdd": "Add Account",
   "editAccountTitleEdit": "Edit Account",
   "editAccountNameLabel": "Account name (e.g., Living Room, Vacation...)",
-  "editAccountNameHint": "My IPTV Account",
   "editAccountNameRequired": "Required",
   "editAccountModeUrl": "Full URL",
   "editAccountModeCredentials": "Credentials",
@@ -95,15 +53,7 @@
   "editAccountServerUrlLabel": "Server URL (e.g., http://host:port)",
   "editAccountUsernameLabel": "Username",
   "editAccountPasswordLabel": "Password",
-  "editAccountPlaylistTypeLabel": "Playlist type",
-  "editAccountPlaylistTypeM3u": "M3U (Standard)",
-  "editAccountPlaylistTypeSimple": "Simple (Single link)",
-  "editAccountCookiesLabel": "Cookies (optional)",
-  "editAccountCookiesHint": "e.g., PHPSESSID=xxxxxx;",
   "editAccountSaveButton": "Save",
-  "playerGenericError": "Unable to play this media.",
-  "playerLoading": "Initializing player...",
-  "playerLoadingError": "Loading error: {error}",
   "settingsTitle": "Settings",
   "aboutTitle": "About",
   "backupTitle": "Backup",
@@ -173,7 +123,7 @@
   "@settingsTheme": {
     "description": "Settings tile title"
   },
-  "settingsThemeSub": "Theme, colours, cyberpunk effects",
+  "settingsThemeSub": "Theme, colors, cyberpunk effects",
   "@settingsThemeSub": {
     "description": "Settings tile subtitle"
   },
@@ -193,7 +143,7 @@
   "@settingsBackup": {
     "description": "Settings tile title"
   },
-  "settingsBackupSub": "Export/import accounts, TMDB, theme, favourites (encrypted .aether)",
+  "settingsBackupSub": "Export/import accounts, TMDB, theme, favorites (encrypted .aether)",
   "@settingsBackupSub": {
     "description": "Settings tile subtitle"
   },
@@ -209,7 +159,7 @@
   "@settingsResetUsage": {
     "description": "Settings tile title"
   },
-  "settingsResetUsageSub": "Clears favourites, resume points & history (keeps accounts & theme)",
+  "settingsResetUsageSub": "Clears favorites, resume points & history (keeps accounts & theme)",
   "@settingsResetUsageSub": {
     "description": "Settings tile subtitle"
   },
@@ -217,7 +167,7 @@
   "@settingsResetTitle": {
     "description": "Reset confirmation dialog title"
   },
-  "settingsResetBody": "Clears favourites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.",
+  "settingsResetBody": "Clears favorites, resume points (movies & series), search history and the last watched channel.\n\nKeeps IPTV accounts, the TMDB key, the theme and the language/region filters.\n\nThis cannot be undone.",
   "@settingsResetBody": {
     "description": "Reset confirmation dialog body"
   },
@@ -337,7 +287,7 @@
   "@perfMinItemsTitle": {
     "description": "Optimisation setting title"
   },
-  "perfMinItemsSub": "Below this, the row folds into “Others” — never New or Favourites. 1 = never fold.",
+  "perfMinItemsSub": "Below this, the row folds into “Others” — never New or Favorites. 1 = never fold.",
   "@perfMinItemsSub": {
     "description": "Optimisation setting subtitle"
   },
@@ -405,10 +355,6 @@
   "@dlOrphanDeleteFailed": {
     "description": "Delete refused"
   },
-  "dlOrphanPlay": "Play",
-  "@dlOrphanPlay": {
-    "description": "Play action"
-  },
   "commonDelete": "Delete",
   "@commonDelete": {
     "description": "Generic delete button"
@@ -460,6 +406,14 @@
   "tmdbKeyRemove": "Remove the key",
   "@tmdbKeyRemove": {
     "description": "Delete key button"
+  },
+  "tmdbKeyRemoveTitle": "Remove the TMDB key?",
+  "@tmdbKeyRemoveTitle": {
+    "description": "Confirmation title before deleting the TMDB key"
+  },
+  "tmdbKeyRemoveQuestion": "Posters and info from TMDB will no longer load until a key is entered again.",
+  "@tmdbKeyRemoveQuestion": {
+    "description": "Confirmation body before deleting the TMDB key"
   },
   "tmdbKeyManualEntry": "Type it with the remote",
   "@tmdbKeyManualEntry": {
@@ -534,11 +488,11 @@
   "@tmdbPostersFirstTitle": {
     "description": "Posters-first switch title"
   },
-  "tmdbPostersFirstOn": "Carousel and favourites use the TMDB poster.",
+  "tmdbPostersFirstOn": "Carousel and favorites use the TMDB poster.",
   "@tmdbPostersFirstOn": {
     "description": "Posters-first switch subtitle, on"
   },
-  "tmdbPostersFirstOff": "Carousel and favourites keep your lists' poster.",
+  "tmdbPostersFirstOff": "Carousel and favorites keep your lists' poster.",
   "@tmdbPostersFirstOff": {
     "description": "Posters-first switch subtitle, off"
   },
@@ -626,6 +580,10 @@
     "description": "Confirm button of the reload-all dialog"
   },
   "reloadAllProgressTitle": "Reloading",
+  "reloadAllBackground": "Continue in the background",
+  "@reloadAllBackground": {
+    "description": "Dismisses the reload progress dialog while the batch keeps running."
+  },
   "@reloadAllProgressTitle": {
     "description": "Title of the progress dialog while every list is reloaded"
   },
@@ -952,7 +910,7 @@
     }
   },
   "perfDownloadsSection": "Downloads",
-  "perfParallelDownloadsTitle": "Simultaneous transfers",
+  "perfParallelDownloadsTitle": "Downloads at once",
   "perfParallelDownloadsSub": "One transfer at a time per subscription: providers accept a single connection, and the player keeps one. This number only applies across different subscriptions; the others wait their turn.",
   "taskStatusQueuedWhy": "Waiting: one transfer at a time per subscription",
   "perfWifiOnlyTitle": "Download on Wi-Fi only",
@@ -975,7 +933,7 @@
   },
   "capsDisplayUiNote": "What Android reports here describes the UI, not necessarily the panel: many 4K TVs render menus at 1080p and video at 2160p. Only the decoders decide about 4K.",
   "perfPurgeNothing": "Nothing to reclaim — no orphan files",
-  "perfPurgeDone": "🧹 {size} freed ({count} file(s))",
+  "perfPurgeDone": "{count, plural, one{🧹 {size} freed ({count} file)} other{🧹 {size} freed ({count} files)}}",
   "@perfPurgeDone": {
     "placeholders": {
       "size": {
@@ -990,7 +948,7 @@
   "perfResetQuestion": "All optimization settings return to their default values.",
   "perfResetConfirm": "Reset",
   "perfResetDone": "Settings reset",
-  "perfFreeMemoryDone": "💤 {count} secondary account(s) unloaded from memory",
+  "perfFreeMemoryDone": "{count, plural, one{💤 {count} secondary account unloaded from memory} other{💤 {count} secondary accounts unloaded from memory}}",
   "@perfFreeMemoryDone": {
     "placeholders": {
       "count": {
@@ -1016,7 +974,7 @@
   "perfBufferSub": "Seconds of video kept ahead. Raising it helps with a throttling provider — playback draws from the buffer instead of stalling — but holds that much more stream in memory, which matters on a set-top box. The “Stalls” counter in the Video info panel tells you whether the setting helps. Takes effect on the next playback.",
   "perfSectionLists": "Playlists",
   "perfKeepListsTitle": "Keep every playlist in memory",
-  "perfKeepListsSub": "Every account stays loaded: cross-account search and instant playlist switching. Costs memory (~50 to 150 MB per playlist) — turn it off on a Fire Stick or a low-RAM box.",
+  "perfKeepListsSub": "Every account stays loaded: search covers all accounts and switching playlists is instant. Uses more memory — turn it off on a Fire Stick or a box that has little.",
   "perfUnloadAfterLabel": "Unload after",
   "perfUnloadNever": "Never",
   "perfMinutesShort": "{count} min",
@@ -1037,7 +995,7 @@
   "perfSectionStorage": "Storage",
   "perfStorageScanning": "Scanning storage…",
   "perfStorageNothing": "Nothing to reclaim: every file belongs to an existing account.",
-  "perfStorageReclaimable": "{size} taken by files that no longer belong to any account ({count} file(s)) — playlists and caches left behind by deleted accounts.",
+  "perfStorageReclaimable": "{count, plural, one{{size} taken by {count} file nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.} other{{size} taken by {count} files nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.}}",
   "@perfStorageReclaimable": {
     "placeholders": {
       "size": {
@@ -1228,7 +1186,7 @@
       }
     }
   },
-  "acctAgeHours": "{count} h ago",
+  "acctAgeHours": "{count}h ago",
   "@acctAgeHours": {
     "placeholders": {
       "count": {
@@ -1310,7 +1268,7 @@
       }
     }
   },
-  "acctAgeMinutesShort": "{count}min",
+  "acctAgeMinutesShort": "{count}m",
   "@acctAgeMinutesShort": {
     "placeholders": {
       "count": {
@@ -1512,9 +1470,6 @@
       }
     }
   },
-  "relayBlockerLive": "A live channel has no end, and neither would the conversion. It is only offered on a movie or an episode.",
-  "relayBlockerLocal": "A file that is already downloaded cannot be converted for the TV.",
-  "relayBlockerOther": "This source cannot be relayed by the phone.",
   "relayBatteryPluggedOk": "The phone is plugged in, perfect for a movie.",
   "relayBatteryPlugIfYouCan": "Plug the phone in if you can: converting uses a lot of battery.",
   "relayBatteryLow": "Battery at {percent}% — plug the phone in, casting depends on it.",
@@ -1544,25 +1499,6 @@
     }
   },
   "relayConsentConfirm": "Adapt and cast",
-  "relayConvertedUpTo": "Converted up to {position}",
-  "@relayConvertedUpTo": {
-    "placeholders": {
-      "position": {
-        "type": "String"
-      }
-    }
-  },
-  "relayProgressPaused": "{ahead} · {percent}% · paused",
-  "@relayProgressPaused": {
-    "placeholders": {
-      "ahead": {
-        "type": "String"
-      },
-      "percent": {
-        "type": "String"
-      }
-    }
-  },
   "playerLastEpisode": "Last available episode.",
   "playerAudioTrackSwitched": "Incompatible audio track — switching to {track}",
   "@playerAudioTrackSwitched": {
@@ -1573,7 +1509,6 @@
     }
   },
   "playerNoAudioTrack": "No playable audio track in this file — playing without sound",
-  "playerResuming": "Resuming playback…",
   "playerReconnecting": "Reconnecting in 5 s… ({attempt}/{max})",
   "@playerReconnecting": {
     "placeholders": {
@@ -1700,17 +1635,6 @@
   "langKorean": "Korean",
   "langTurkish": "Turkish",
   "langPolish": "Polish",
-  "statsRealDefinition": "actual {definition} ({resolution})",
-  "@statsRealDefinition": {
-    "placeholders": {
-      "definition": {
-        "type": "String"
-      },
-      "resolution": {
-        "type": "String"
-      }
-    }
-  },
   "statsDecoding": "Decoding",
   "statsHardwareWith": "hardware · {decoder}",
   "@statsHardwareWith": {
@@ -1722,7 +1646,6 @@
   },
   "statsHardware": "hardware",
   "statsResolution": "Resolution",
-  "statsAnnounced": "Announced",
   "statsAnnouncedOversold": "{announced} — the playlist OVERSELLS",
   "@statsAnnouncedOversold": {
     "placeholders": {
@@ -1741,7 +1664,7 @@
   },
   "statsYes": "yes",
   "statsNo": "no",
-  "statsDropped": "Dropped",
+  "statsDropped": "Skipped",
   "statsBitrate": "Bitrate",
   "statsNetwork": "Network",
   "statsTransferred": "Transferred",
@@ -1770,14 +1693,6 @@
   },
   "nextEpLoading": "Loading the next episode…",
   "nextEpTitle": "NEXT EPISODE",
-  "nextEpPlayNowIn": "Play now  ·  {seconds}s",
-  "@nextEpPlayNowIn": {
-    "placeholders": {
-      "seconds": {
-        "type": "int"
-      }
-    }
-  },
   "nextEpPlay": "Play",
   "nextEpSeasonEnd": "END OF SEASON",
   "nextEpGoToSeason": "Go to season {season}?",
@@ -1810,22 +1725,19 @@
   "fitCoverSub": "Removes black bars · crops the edges",
   "fitFill": "Full screen",
   "fitFillSub": "Fills everything · slightly distorted picture",
-  "relayProgressPlaying": "{ahead} · {percent}%",
-  "@relayProgressPlaying": {
-    "placeholders": {
-      "ahead": {
-        "type": "String"
-      },
-      "percent": {
-        "type": "String"
-      }
-    }
-  },
   "ctrlCastActive": "Casting",
   "ctrlLock": "Lock",
   "ctrlBadgeLive": "LIVE",
   "ctrlBadgeReplay": "REPLAY",
   "optTitle": "Options",
+  "optBackToVideo": "Back to video",
+  "sheetClose": "Close",
+  "bootSlowHint": "Loading is taking longer than usual. You can go in now: your lists will finish loading in the background.",
+  "bootContinueAnyway": "Go in without waiting",
+  "bootStalledBody": "The main list has stopped making progress. It keeps loading in the background: try again in a moment, or check the account.",
+  "playlistNoTitles": "This list contains no titles. Check the account, or try again later.",
+  "sheetCloseSub": "Closes without changing anything",
+  "optBackToVideoSub": "Closes this panel, playback continues",
   "optNextEpisode": "Next episode",
   "optTracksTitle": "Audio & subtitle tracks",
   "optSpeedTitle": "Playback speed",
@@ -1838,7 +1750,7 @@
   "statsCodec": "Codec",
   "statsHdr": "HDR",
   "statsFps": "Frames/s",
-  "statsLost": "Dropped",
+  "statsLost": "Lost",
   "statsRendered": "Rendered",
   "statsBuffer": "Buffer",
   "statsAudio": "Audio",
@@ -1904,7 +1816,6 @@
   "bkPasswordMismatch": "The two passwords differ.",
   "bkSave": "Back up",
   "bkCreated": "Backup created",
-  "bkRememberPassword": "Do not forget the password — it is stored nowhere.",
   "bkCreateTitle": "Create a backup",
   "bkCreateSub": "Encrypts your accounts, TMDB key, theme, favorites and progress into a .aether file.",
   "bkEncrypting": "Encrypting…",
@@ -1950,6 +1861,7 @@
   "themeModeSystem": "System",
   "themePreviewPlay": "▶  Play",
   "xmltvUpdated": "✅ Channel guide updated",
+  "xmltvUpdateUnavailable": "The channel guide couldn't be updated right now. Try again later.",
   "xmltvUpdateFailed": "❌ Update failed: {reason}",
   "@xmltvUpdateFailed": {
     "placeholders": {
@@ -2008,8 +1920,9 @@
   },
   "consoleOpenAddress": "Open this address in a browser\non a PC or a phone on the same network:",
   "consoleAddressCopied": "Address copied",
-  "consoleBackgroundNote": "The server stays alive in the background as long as you use the remote, even after leaving this screen. Stop it here when you are done (otherwise it closes automatically after 30 min).",
+  "consoleBackgroundNote": "The server stays alive in the background as long as you use the remote, even after leaving this screen. Stop it here when you are done (otherwise it closes after 30 min without use).",
   "consoleStopServer": "Stop the server",
+  "consoleActiveBanner": "Web console open: the app can be controlled from your local network",
   "failNotLoaded": "NOT LOADED",
   "failNetwork": "NETWORK FAILED",
   "failPanelBusy": "PANEL BUSY",
@@ -2055,6 +1968,7 @@
     }
   },
   "reloadDownloadFailed": "Download failed (check the URL or the connection).",
+  "playlistNotAList": "The server did not return a usable playlist. Check the playlist address.",
   "reloadParseFailed": "Parsing the playlist failed.",
   "bkPartTmdbKey": "TMDB key",
   "bkPartTheme": "theme",
@@ -2069,6 +1983,7 @@
   "bkPasswordEmptyError": "The password cannot be empty.",
   "bkNewerVersion": "Backup created by a newer version of the app; an update is required.",
   "bkWrongPassword": "Wrong password, or the backup file is corrupted.",
+  "bkNoReadableAccount": "None of the accounts in this backup could be read: nothing was changed.",
   "castDiscoveryFailed": "Discovery failed on this network. The phone must be on the same Wi-Fi as the TV, outside a guest network.",
   "castDeviceNotResponding": "{device} is not answering. Check that it is on and on the same network.",
   "@castDeviceNotResponding": {
@@ -2121,6 +2036,16 @@
   "updTimeout": "GitHub did not answer in time.",
   "updUnreachable": "Cannot reach GitHub. Check your connection.",
   "updInstallDenied": "Installation permission denied",
+  "updNoApkForDevice": "The latest release ({tag}) has no version for this device.",
+  "@updNoApkForDevice": {
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  },
+  "updUnverifiable": "This update cannot be verified, so it was not installed.",
+  "updCorrupted": "The downloaded update is damaged. Try again.",
   "failOnDisk": "ON DISK",
   "failWaiting": "WAITING",
   "failCacheGone": "CACHE LOST",
@@ -2340,14 +2265,12 @@
   "detStatusReturning": "Returning",
   "detStatusEnded": "Ended",
   "detStatusCanceled": "Canceled",
-  "sheetChooseVersion": "Choose a version",
-  "sheetStandardUnknown": "Standard / Unknown",
   "sheetDetails": "Details & info",
   "sheetReplayUnavailable": "Replay unavailable for this stream",
   "onbSkip": "Skip",
   "onbNext": "Next",
   "onbStart": "Get started",
-  "termPreviousErrors": "{count} PREVIOUS ERROR(S)",
+  "termPreviousErrors": "{count, plural, one{{count} PREVIOUS ERROR} other{{count} PREVIOUS ERRORS}}",
   "@termPreviousErrors": {
     "placeholders": {
       "count": {
@@ -2408,14 +2331,6 @@
   "expSeeDetails": "See details",
   "memTitle": "MEMORY & STORAGE",
   "memRefresh": "Refresh",
-  "memParsed": "parsed {size}",
-  "@memParsed": {
-    "placeholders": {
-      "size": {
-        "type": "String"
-      }
-    }
-  },
   "memEntriesAndSize": "{count} entries · {size}",
   "@memEntriesAndSize": {
     "placeholders": {
@@ -2491,8 +2406,6 @@
   "navExitHint": "💡 To leave the app: press Back twice",
   "navExitConfirm": "Press Back again to leave",
   "settingsUsageReset": "🧹 Usage data reset",
-  "updNetworkError": "Network error",
-  "themePreviewMovieTitle": "Movie Title",
   "errUnexpected": "An unexpected error occurred.",
   "errUnknown": "An unknown error occurred.",
   "relayNothingReadable": "The conversion produced nothing playable.",
@@ -2524,7 +2437,6 @@
   },
   "detEpisodesBadSeriesId": "unreadable series identifier",
   "detEpisodesNoAccount": "account not found",
-  "castOverlayResyncFull": "Resynchronize picture and sound",
   "memSourceAndParsed": "source {source} · parsed {parsed}",
   "@memSourceAndParsed": {
     "placeholders": {
@@ -2598,6 +2510,7 @@
   "catSurvival": "Survival",
   "catTvMovie": "TV movie",
   "catRealityTv": "Reality TV",
+  "catTalkShow": "Talk shows",
   "catThriller": "Thriller",
   "catSerialKiller": "Serial killer",
   "catRevenge": "Revenge",
@@ -2631,5 +2544,392 @@
   "regExYugoslavia": "Former Yugoslavia",
   "regDominicanRepublic": "Dominican Republic",
   "regOriginalNonFrench": "Original (non-French)",
-  "regLegendado": "Legendado (PT subtitles)"
+  "regLegendado": "Legendado (PT subtitles)",
+  "acctChipMain": "MAIN",
+  "bootEnterManually": "Enter manually",
+  "bootConfigureWebConsole": "Set up via Web console",
+  "searchPeople": "People",
+  "personRoleDirector": "Director",
+  "personRoleActor": "Actor",
+  "personRoleWriter": "Writer",
+  "personRoleProduction": "Production",
+  "personRoleMusic": "Music",
+  "personRoleCamera": "Cinematography",
+  "optSpeedTitle": "Speed",
+  "optSpeedCurrentNormal": "Normal (1.0×)",
+  "tracksTitle": "Tracks",
+  "tracksSubtitle": "audio & subtitles",
+  "tracksAudio": "Audio",
+  "tracksSubtitles": "Subtitles",
+  "epgNow": "ON NOW",
+  "epgNext": "NEXT",
+  "replayPrograms": "Programmes",
+  "replayToday": "Today",
+  "replayYesterday": "Yesterday",
+  "replayWatchLabel": "Watch  •  {label}",
+  "@replayWatchLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "qualityWatch": "Watch · {label}",
+  "@qualityWatch": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "actorBiography": "Biography",
+  "actorBiographyMissing": "No biography available.",
+  "actorAvailableBadge": "AVAILABLE",
+  "detMainCast": "Main cast",
+  "detSimilarAvailable": "Similar titles available",
+  "detTrailerButton": "TRAILER",
+  "themePreviewTitle": "Movie Title",
+  "sheetReplay": "Replay",
+  "sheetReplayDays": "Replay ({days}d)",
+  "@sheetReplayDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "memComputing": "Calculating…",
+  "memRamProcess": "Process RAM",
+  "memRamProcessValue": "{current} (peak {peak})",
+  "@memRamProcessValue": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      },
+      "peak": {
+        "type": "String"
+      }
+    }
+  },
+  "memImageCacheDisk": "Image cache (disk)",
+  "memImageCacheRam": "Image cache (RAM)",
+  "memImageCacheRamValue": "{used} / {max} · {count} / {maxCount} img",
+  "@memImageCacheRamValue": {
+    "placeholders": {
+      "used": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      },
+      "maxCount": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeBytes": "{n} B",
+  "@sizeBytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeKilobytes": "{n} kB",
+  "@sizeKilobytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeMegabytes": "{n} MB",
+  "@sizeMegabytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeGigabytes": "{n} GB",
+  "@sizeGigabytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "dlActionRestart": "Restart",
+  "dlMoreActions": "More actions",
+  "playerQuit": "Quit",
+  "nextEpContinue": "Continue",
+  "commonClear": "Clear",
+  "statsAnnouncedLabel": "Declared",
+  "replayGuideUnavailable": "Guide unavailable",
+  "replayNotAvailable": "not available",
+  "detEnableTmdb": "Turn on TMDB",
+  "dlRestartUpper": "RESTART",
+  "commonDecrease": "Decrease",
+  "commonIncrease": "Increase",
+  "detEpisodesReasonNetwork": "the server is not responding",
+  "detEpisodesReasonBusy": "the provider refuses: too many connections at once",
+  "detEpisodesReasonParse": "the server's answer could not be read",
+  "detEpisodesReasonAccount": "the account settings are incomplete",
+  "failDetailTooLong": "(still not ready after {delay})",
+  "@failDetailTooLong": {
+    "placeholders": {
+      "delay": {
+        "type": "String"
+      }
+    }
+  },
+  "failDetailCacheCleared": "(cleared at your request)",
+  "durationHoursMinutes": "{hours}h {minutes}m",
+  "@durationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "durationMinutes": "{count} min",
+  "@durationMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "durationSeconds": "{count} s",
+  "@durationSeconds": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthNoStalls": "no stalls",
+  "healthStalls": "{count, plural, one{{count} stall} other{{count} stalls}}",
+  "@healthStalls": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthPerHour": "{value}/h",
+  "@healthPerHour": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "healthWatched": "{duration} watched",
+  "@healthWatched": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "bootDetailEntries": "{n, plural, one{{count} entry} other{{count} entries}}",
+  "@bootDetailEntries": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "bootDetailSection": "{section} · {done}/{total}",
+  "@bootDetailSection": {
+    "placeholders": {
+      "section": {
+        "type": "String"
+      },
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "bootSectionLive": "channels",
+  "bootSectionMovies": "movies",
+  "bootSectionSeries": "series",
+  "bootStepInit": "// starting…",
+  "bootStepServices": "// preparing services…",
+  "bootStepAccount": "// checking the account…",
+  "bootStepReadPlaylist": "// reading the playlist…",
+  "bootStepDownloadPlaylist": "// downloading the playlist…",
+  "bootStepAnalysis": "// parsing the catalog…",
+  "bootStepOtherAccounts": "// loading the other accounts…",
+  "bootStepReady": "// ready.",
+  "bootStepUpdate": "// updating {index}/{total} · {label}…",
+  "@bootStepUpdate": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "bootStepAnalysisOf": "// parsing · {label}…",
+  "@bootStepAnalysisOf": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistNoActiveAccount": "No active account selected. Choose one in the settings.",
+  "playlistInvalidUrl": "The playlist URL of the account “{label}” is invalid. Check its settings.",
+  "@playlistInvalidUrl": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "detRuntimeHoursMinutes": "{hours}h {minutes}m",
+  "@detRuntimeHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "castOverlayLive": "LIVE",
+  "playerReconnectingNow": "Reconnecting… ({attempt}/{max})",
+  "@playerReconnectingNow": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "nextEpStayHere": "Stay here",
+  "nowPlayingLive": "Live",
+  "nowPlayingReplay": "Replay",
+  "tracksTrackN": "Track {id}",
+  "@tracksTrackN": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "replayManualTitle": "Replay — {label}",
+  "@replayManualTitle": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "relayDolbyVisionP5": "This film is in Dolby Vision profile 5: without a Dolby Vision decoder, its colors would be wrong. It can't be converted for the TV.",
+  "dlNotifFinished": "Download complete — tap to open",
+  "dlNotifFailed": "Download failed",
+  "castNotifStop": "Stop",
+  "dlNoticeAverage": "{percent}% on average",
+  "@dlNoticeAverage": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "termShow": "▼ SHOW",
+  "termHide": "▲ HIDE",
+  "updDiffLine": "> DIFF    : see the release on GitHub",
+  "updViewChangelog": "[ VIEW CHANGELOG ]",
+  "updLater": "[ LATER ]",
+  "updAbort": "[ ABORT ]",
+  "updInstall": "[ INSTALL UPDATE ]",
+  "updRetry": "[ RETRY ]",
+  "xmltvNoGuide": "No guide saved",
+  "consoleCodeLabel": "Code: ",
+  "consoleCopyUrl": "Copy the address",
+  "bkBackupFrom": "Backup from {date} (v{version}):",
+  "@bkBackupFrom": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "qualityStreamN": "Stream {n}",
+  "@qualityStreamN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "searchVersionsCount": "{count, plural, one{{count} version} other{{count} versions}}",
+  "@searchVersionsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aboutVersionLabel": "VERSION",
+  "aboutMadeWith": "Made with {stack}",
+  "@aboutMadeWith": {
+    "placeholders": {
+      "stack": {
+        "type": "String"
+      }
+    }
+  },
+  "acctCardActions": "Account actions",
+  "infoRowLabel": "{label}:",
+  "@infoRowLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "detSynopsis": "Synopsis",
+  "detVotes": "{count, plural, one{{formatted} vote} other{{formatted} votes}}",
+  "@detVotes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "actorJobDirecting": "Directing team",
+  "themePresetPhosphore": "Phosphor",
+  "themePresetNordique": "Nordic",
+  "themePresetMinimaliste": "Minimalist"
 }

@@ -71,16 +71,18 @@ List<_Row>? _readDump() {
   return rows;
 }
 
+/// D5A-12 (revue 2026-09-11, lot 9) — Sans dump, les tests qui en dépendent
+/// sont SAUTÉS (`skip:`), et non plus « verts » par un `return` : le rapport de
+/// la CI comptait ces garde-fous comme passés, laissant croire que la borne
+/// « < 15 % par rangée » avait tourné. Même modèle que `parse_bench_test`.
+const String _skipNoDump =
+    'playlist_racine_2025-12.m3u absent (dump non versionné)';
+
 void main() {
-  final rows = _readDump();
+  final List<_Row>? dump = _readDump();
 
   test('§catMeter — audit du rangement des catégories (liste réelle)', () {
-    if (rows == null) {
-      // ignore: avoid_print
-      print('⏭️  playlist_racine_2025-12.m3u absent — audit ignoré '
-          '(dump non versionné).');
-      return;
-    }
+    final List<_Row> rows = dump!;
 
     final counts = <String, Map<String, int>>{
       'films': {},
@@ -188,14 +190,14 @@ void main() {
 
     // ignore: avoid_print
     print(buf);
-  });
+  }, skip: dump == null ? _skipNoDump : false);
 
   // ── Garde-fous chiffrés ────────────────────────────────────────────────
   // Ils échouent si le rangement se remet à écraser tout dans un seau, ou si
   // le repli littéral repart à la hausse. Les seuils viennent de la mesure
   // APRÈS §catFix, avec de la marge : ce sont des garde-fous, pas des cibles.
   test('§catFix — aucune rangée n\'avale plus de 15 % des séries', () {
-    if (rows == null) return;
+    final List<_Row> rows = dump!;
     final counts = <String, int>{};
     for (final row in rows.where((r) => r.kind == 'series')) {
       final match =
@@ -210,12 +212,14 @@ void main() {
     expect(
       pct,
       lessThan(15),
+      // D5A-12 — `$top.value` interpolait le MapEntry ENTIER puis ajoutait le
+      // texte « .value » : « (MapEntry(Paramount+: 52991).value/104287) ».
       reason: 'La rangée « ${top.key} » capte ${pct.toStringAsFixed(1)} % des '
-          'séries ($top.value/$total). Un test trop large et trop haut dans '
+          'séries (${top.value}/$total). Un test trop large et trop haut dans '
           'la cascade de contentCategoryLabel avale les genres — c\'était le '
           'cas de PARAMOUNT (51 %) avant §catFix.',
     );
-  });
+  }, skip: dump == null ? _skipNoDump : false);
 
   test('§catFix — une plateforme ne classe que si elle est seule', () {
     // Le cas RÉEL qui a produit les 51 % : le suffixe fournisseur.

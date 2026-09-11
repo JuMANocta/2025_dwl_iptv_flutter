@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/core/navigation/playlist_visibility.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
@@ -26,6 +27,7 @@ import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_chip.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
+import 'package:aetherStream/widgets/sheet_close_tile.dart';
 
 /// Page de gestion des comptes IPTV (§1g — refonte).
 ///
@@ -40,11 +42,9 @@ import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 ///   - Menu contextuel ⋯ par compte : Modifier · Vider le cache · Supprimer
 ///   - FAB "Ajouter" inchangé
 class AccountsPage extends StatefulWidget {
-  const AccountsPage({super.key, this.initialPlaylistPath});
-
-  /// Chemin pré-résolu de la playlist du compte courant — non utilisé dans
-  /// la version refondue mais conservé pour la rétro-compatibilité du call site.
-  final String? initialPlaylistPath;
+  // Revue 2026-09-11, D4B-07 — `initialPlaylistPath` (non utilisé depuis la
+  // refonte, passé par aucun appelant) : retiré.
+  const AccountsPage({super.key});
 
   @override
   State<AccountsPage> createState() => _AccountsPageState();
@@ -162,11 +162,52 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
     );
     if (result != null) {
       await StreamAccountService.saveAccount(result);
-      await StreamAccountService.setCurrentAccount(result.id);
+      // Recette S25 du 2026-09-11 — le nouveau nom va aussi aux pastilles de
+      // version des fiches (elles lisent la table des listes chargées).
+      if (initial != null) {
+        ParsedPlaylistService.renameAccount(result.id, result.label);
+      }
+      // Revue 2026-09-11, D4B-03 — seul un compte NOUVEAU devient principal.
+      // En édition, corriger le nom d'un secondaire le rendait principal sans
+      // le dire (et l'accueil se rechargeait sur lui) : aucun commentaire ne
+      // justifiait ce `setCurrentAccount`, il suivait création et édition.
+      if (initial == null) {
+        await StreamAccountService.setCurrentAccount(result.id);
+      }
       if (!mounted) return;
       _priorityChanged = true;
       _refresh();
+      // …et si ce qui sert à joindre le fournisseur a changé, le catalogue
+      // analysé (qui embarque les anciens identifiants) est rechargé.
+      if (initial != null && connectionChanged(initial, result)) {
+        unawaited(_reloadAfterEdit(result));
+      }
     }
+  }
+
+  /// Revue 2026-09-11, D4B-03 — Recharge la liste d'un compte dont l'URL ou
+  /// les identifiants viennent d'être modifiés. Même chemin que le bouton
+  /// « Recharger » de la carte (§reloadAll) ; le résultat est annoncé, un
+  /// échec garde l'ancienne liste (§cacheKeep).
+  Future<void> _reloadAfterEdit(StreamAccount acc) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
+    try {
+      await PlaylistReloadService.reloadAccount(
+        acc,
+        isPriority: acc.id == _priorityAccountId,
+      );
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(l10n.acctReloadedFor(acc.label))));
+    } catch (e) {
+      debugPrint('❌ D4B-03 — rechargement après édition : $e');
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content: Text(l10n.commonFailedWith(describeError(e)))));
+    }
+    if (mounted) _refresh();
   }
 
   /// §webConsoleOnly — Gestion des comptes depuis le téléphone via la Console
@@ -350,6 +391,9 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                   _delete(acc);
                 },
               ),
+              // §tvOptionsBack — une feuille dont la dernière ligne est
+              // DESTRUCTIVE doit d'autant plus offrir de n'en choisir aucune.
+              SheetCloseTile(onTap: () => Navigator.pop(ctx)),
               const SizedBox(height: 8),
             ],
           ),
@@ -411,7 +455,8 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
               icon: const Icon(Icons.add),
               label: Text(ctx.l10n.acctAdd),
               backgroundColor: kAccentPrimary,
-              foregroundColor: Colors.black,
+              // Revue 2026-09-11, D4B-08 — le texte suit le fond (Tron : blanc).
+              foregroundColor: onColorFor(kAccentPrimary),
             );
           },
         ),
@@ -703,7 +748,17 @@ class _AccountCardState extends State<_AccountCard> {
     // §17a — fetch infos Xtream (expiration / connexions). Marche aussi pour
     // les comptes completeUrl (extraction creds depuis l'URL). Renvoie null si
     // l'URL n'est pas Xtream-compatible.
-    _accountInfoFuture = StreamAccountService.fetchAccountInfo(widget.account);
+    //
+    // Revue 2026-09-11, D4B-10 — La requête que `_loadAccounts` vient de
+    // lancer pour ce compte (`ExpirationAlertService.fetchAll`, juste avant
+    // que la liste des cartes ne s'affiche), TANT QU'ELLE COURT, plutôt
+    // qu'une seconde identique sur la connexion unique du panel. Terminée (ou
+    // jamais lancée), la carte fait la sienne, comme avant : la liste est un
+    // `ListView.builder`, une carte remontée au défilement doit montrer des
+    // chiffres frais, pas ceux de l'ouverture de la page.
+    _accountInfoFuture =
+        ExpirationAlertService.pendingFor(widget.account.id) ??
+            StreamAccountService.fetchAccountInfo(widget.account);
   }
 
   String get _host {
@@ -726,6 +781,9 @@ class _AccountCardState extends State<_AccountCard> {
     if (await file.exists()) {
       final age = DateTime.now().difference(await file.lastModified());
       if (age.inHours < 24) {
+        // Revue 2026-09-11, D4B-11 — trois `await` depuis le tap : la carte
+        // a pu disparaître, et `_confirmReload` lit `context`.
+        if (!mounted) return;
         final ok = await _confirmReload(age);
         if (ok != true) return;
       }
@@ -743,10 +801,12 @@ class _AccountCardState extends State<_AccountCard> {
         isPriority: widget.isPriority,
       );
       if (!mounted) return;
+      // Revue 2026-09-11, D4B-08 — plus de fond d'accent : le thème impose un
+      // texte BLANC aux snackbars, et l'accent du préréglage Tron EST blanc
+      // (bande claire, texte illisible). Le fond du thème suffit.
       messenger..hideCurrentSnackBar()..showSnackBar(
         SnackBar(
           content: Text(context.l10n.acctReloadedFor(widget.account.label)),
-          backgroundColor: kAccentPrimary.withAlpha(180),
         ),
       );
       widget.onReloaded();
@@ -763,7 +823,9 @@ class _AccountCardState extends State<_AccountCard> {
     final h = age.inHours;
     final m = age.inMinutes % 60;
     final ageStr = h > 0
-        ? context.l10n.acctAgeHoursMinutes(h, m > 0 ? ' ${m}min' : '')
+        // Revue 2026-09-11, lot 7 — plus de « min » en dur (écran anglais).
+        ? context.l10n.acctAgeHoursMinutes(
+            h, m > 0 ? ' ${context.l10n.acctAgeMinutesShort(m)}' : '')
         : context.l10n.acctAgeMinutesShort(m);
     return showAppDialog<bool>(
       context: context,
@@ -1044,7 +1106,7 @@ class _AccountCardState extends State<_AccountCard> {
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: kAccentPrimary,
-                foregroundColor: Colors.black,
+                foregroundColor: onColorFor(kAccentPrimary), // D4B-08
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 // Coins alignés sur le halo de la chip (le stadium M3 par
                 // défaut laisserait le halo déborder dans les angles).
@@ -1062,7 +1124,7 @@ class _AccountCardState extends State<_AccountCard> {
             icon: Icon(Icons.more_vert,
                 color: cs.onSurfaceVariant.withAlpha(180)),
             onPressed: widget.onMore,
-            tooltip: 'Actions',
+            tooltip: context.l10n.acctCardActions, // D4B-05 (lu par TalkBack)
             style: IconButton.styleFrom(
               minimumSize: const Size(48, 48),
               side: BorderSide(color: cs.outline.withAlpha(60)),
@@ -1173,7 +1235,7 @@ class _AccountStateChips extends StatelessWidget {
   Widget _statusChip(AccountLoadState state, LoadFailure? failure) {
     if (isPriority && state == AccountLoadState.loaded) {
       return _Chip(
-        text: 'PRINCIPAL',
+        text: L10n.current.acctChipMain,
         color: kAccentPrimary,
         filled: true,
         glow: true,
@@ -1356,7 +1418,9 @@ class _PlaybackHealthLine extends StatelessWidget {
               Expanded(
                 child: Text(
                   [
-                    h.summary,
+                    // Revue 2026-09-11, D1B-07 — `summary` est le texte du
+                    // journal ; l'écran lit la version traduite.
+                    h.displaySummary(L10n.current),
                     if (startup != null)
                       L10n.current.acctStartupTime(
                           (startup.inMilliseconds / 1000).toStringAsFixed(1)),

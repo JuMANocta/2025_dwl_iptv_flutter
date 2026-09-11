@@ -221,14 +221,15 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // BIOGRAPHIE
-                        Text('Biographie',
+                        Text(context.l10n.actorBiography,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleLarge
                                 ?.copyWith(color: cs.onSurface)),
                         Divider(color: cs.outlineVariant),
                         Text(
-                          person.biography ?? 'Biographie indisponible.',
+                          person.biography ??
+                              context.l10n.actorBiographyMissing,
                           style: TextStyle(color: cs.onSurfaceVariant, height: 1.5),
                         ),
                         const SizedBox(height: 32),
@@ -280,7 +281,8 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus
                           final tile = ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: Text(
-                              credit.year?.toString() ?? 'N/A',
+                              // D4B-05 — un tiret, pas « N/A » (anglais en dur).
+                              credit.year?.toString() ?? '—',
                               style: TextStyle(color: cs.onSurfaceVariant),
                             ),
                             title: Text(
@@ -310,9 +312,14 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus
                                 // deux n'est renseigné (au lieu de « N/A »).
                                 if (credit.job != null)
                                   Text(
+                                    // Revue 2026-09-11, D4B-05 — `job` est
+                                    // l'ANGLAIS de TMDB (« First Assistant
+                                    // Director »…). Seul le département
+                                    // Réalisation entre ici (person_model) :
+                                    // un libellé traduit pour les autres.
                                     credit.job == 'Director'
                                         ? context.l10n.actorDirector
-                                        : credit.job!,
+                                        : context.l10n.actorJobDirecting,
                                     style: TextStyle(color: kAccentSecondary),
                                   )
                                 else if (credit.character?.trim().isNotEmpty ==
@@ -402,7 +409,7 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus
           ),
           const SizedBox(width: 3),
           Text(
-            'DISPO',
+            L10n.current.actorAvailableBadge,
             style: TextStyle(
                 fontSize: 10, fontWeight: FontWeight.bold, color: kDispo),
           ),

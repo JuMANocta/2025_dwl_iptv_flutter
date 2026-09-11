@@ -44,63 +44,13 @@ class SecureStorageService {
     };
   }
 
-  /// Écrit plusieurs clés d’un coup (utilisé pour sauver `cookies` après Set-Cookie).
-  /// N’écrit que les clés connues. Si valeur vide/null → supprime la clé.
-  Future<void> saveCredentials(Map<String, String?> updates) async {
-    for (final entry in updates.entries) {
-      final k = entry.key;
-      final v = entry.value?.trim();
+  // Revue 2026-09-11, D1B-20 — Les écritures du stockage legacy
+  // (`saveCredentials`, `saveCompleteUrl`, `saveSeparate`, `saveCookies`) et
+  // `getCookies` n'avaient plus aucun appelant : ce stockage n'est plus que LU
+  // (migration vers `StreamAccountService`, repli de §cookieScope) puis effacé.
+  // ⛔ Ne rien y réécrire : un compte vit dans `StreamAccountService`.
 
-      // Liste blanche des clés acceptées
-      if (k == 'completeUrl' || k == _kCompleteUrl) {
-        await _writeOrDelete(_kCompleteUrl, v);
-      } else if (k == 'url' || k == _kUrl) {
-        await _writeOrDelete(_kUrl, v);
-      } else if (k == 'm3u' || k == _kM3u) {
-        await _writeOrDelete(_kM3u, v);
-      } else if (k == 'baseUrl' || k == _kBaseUrl) {
-        await _writeOrDelete(_kBaseUrl, v);
-      } else if (k == 'username' || k == _kUsername) {
-        await _writeOrDelete(_kUsername, v);
-      } else if (k == 'login' || k == _kLogin) {
-        await _writeOrDelete(_kLogin, v);
-      } else if (k == 'password' || k == _kPassword) {
-        await _writeOrDelete(_kPassword, v);
-      } else if (k == 'cookies' || k == _kCookies) {
-        await _writeOrDelete(_kCookies, v);
-      } else {
-        // ignore clé inconnue
-      }
-    }
-  }
-
-  Future<void> _writeOrDelete(String key, String? value) async {
-    if (value == null || value.isEmpty) {
-      await _storage.delete(key: key);
-    } else {
-      await _storage.write(key: key, value: value);
-    }
-  }
-
-  /// Helpers ciblés (compat)
-  Future<void> saveCompleteUrl(String? url) async =>
-      _writeOrDelete(_kCompleteUrl, url?.trim());
-
-  Future<void> saveSeparate({
-    String? baseUrl,
-    String? username,
-    String? password,
-  }) async {
-    await _writeOrDelete(_kBaseUrl, baseUrl?.trim());
-    await _writeOrDelete(_kUsername, username?.trim());
-    await _writeOrDelete(_kPassword, password?.trim());
-  }
-
-  Future<void> saveCookies(String? cookies) async =>
-      _writeOrDelete(_kCookies, cookies?.trim());
-
-  Future<String?> getCookies() async => _storage.read(key: _kCookies);
-
+  /// Efface le stockage mono-compte, en fin de migration réussie (D1B-10).
   Future<void> clearLegacy() async {
     await _storage.delete(key: _kCompleteUrl);
     await _storage.delete(key: _kUrl);

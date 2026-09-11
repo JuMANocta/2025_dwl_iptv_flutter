@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../l10n/l10n_ext.dart';
+
 /// §bootStatus — Étape de démarrage en cours, publiée vers l'écran de boot.
 ///
 /// **Problème résolu** : l'écran de lancement affichait un texte FIGÉ
@@ -46,7 +48,16 @@ class BootStepDone {
 }
 
 abstract final class BootStatus {
-  static const BootStep _initial = BootStep('// initialisation…');
+  /// Revue 2026-09-11, D3B-07 — L'état d'attente, dans la langue de l'écran.
+  /// ⚠️ Un GETTER, plus une constante : `L10n.current` n'est lié qu'à la
+  /// première frame (repli français avant), il faut le relire à chaque
+  /// [reset].
+  static BootStep get _initial => BootStep(L10n.current.bootStepInit);
+
+  /// Vrai dès la première vraie étape : l'état d'attente n'est jamais
+  /// consigné dans [history]. ⚠️ Remplace la comparaison du libellé courant
+  /// au libellé initial, qui ne tient plus dès que ce libellé est traduit.
+  static bool _started = false;
 
   /// Écouté par l'écran de chargement via `ValueListenableBuilder`.
   static final ValueNotifier<BootStep> step = ValueNotifier<BootStep>(_initial);
@@ -60,7 +71,7 @@ abstract final class BootStatus {
   static final ValueNotifier<List<BootStepDone>> history =
       ValueNotifier<List<BootStepDone>>(const <BootStepDone>[]);
 
-  static String _label = _initial.label;
+  static String _label = step.value.label;
 
   /// Progression courante, mémorisée pour que [setDetail] ne l'écrase pas.
   static double? _progress;
@@ -89,12 +100,13 @@ abstract final class BootStatus {
   /// toute première (`// initialisation…`), qui n'est qu'un état d'attente.
   static void set(String label, {double? progress, String? detail}) {
     final DateTime now = DateTime.now();
-    if (_label != _initial.label) {
+    if (_started) {
       history.value = <BootStepDone>[
         ...history.value,
         BootStepDone(_label, now.difference(_startedAt)),
       ];
     }
+    _started = true;
     _label = label;
     _startedAt = now;
     _progress = progress;
@@ -169,21 +181,18 @@ abstract final class BootStatus {
     step.value = BootStep(_label, progress: _progress, detail: detail);
   }
 
-  /// Clôt la dernière étape sans en ouvrir de nouvelle (fin du démarrage).
-  static void complete(String label) {
-    set(label, progress: 1);
-  }
-
   /// Remet à l'état initial — le boot peut être rejoué (« Réessayer », fin
   /// d'onboarding, changement de compte).
   static void reset() {
-    _label = _initial.label;
+    final BootStep initial = _initial;
+    _started = false;
+    _label = initial.label;
     _startedAt = DateTime.now();
     _lastBucket = -1;
     _progress = null;
     _detail = null;
     history.value = const <BootStepDone>[];
-    step.value = _initial;
+    step.value = initial;
   }
 
   /// §bootLog — Recrache le journal chronométré vers `debugPrint`, donc vers le

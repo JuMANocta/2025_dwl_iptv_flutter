@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/web_console_service.dart';
@@ -66,14 +67,6 @@ class OnboardingService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_prefsKey, true);
-    } catch (_) {}
-  }
-
-  /// Debug : reset l'onboarding.
-  static Future<void> reset() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_prefsKey);
     } catch (_) {}
   }
 }
@@ -163,6 +156,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
   /// en arrière-plan, le téléphone peut poursuivre (TMDB, thème…) pendant que
   /// la TV bascule sur l'accueil.
   void _onConsoleEvent(WebConsoleEvent event) {
+    // revue 2026-09-11, D3B-14 — Rappel EXTERNE (serveur de la console) : il
+    // peut arriver après le démontage de la page, et `setState` lèverait.
+    if (!mounted) return;
     if (event.isAccountChange) {
       setState(() => _consoleStatus = L10n.current.onbPlaylistSaved);
       Future.delayed(const Duration(milliseconds: 1200), () {
@@ -271,7 +267,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       onPressed: _next,
                       style: FilledButton.styleFrom(
                         backgroundColor: kAccentPrimary,
-                        foregroundColor: Colors.black,
+                        foregroundColor: onColorFor(kAccentPrimary), // D4B-08
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),

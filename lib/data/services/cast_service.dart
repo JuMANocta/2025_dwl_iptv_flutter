@@ -252,15 +252,21 @@ abstract final class CastService {
     if (session == null ||
         !session.isConnected ||
         session.device.id != device.id) {
+      // §castSend / revue 2026-09-11, D2A-06 — La diffusion en cours (autre
+      // appareil) va être fermée : sa progression se sauve AVANT, comme dans
+      // la branche « même session » plus bas. Sans état, l'appel ne fait rien.
+      _saveProgress(force: true);
       await _closeSession();
       try {
         session = await nvp.CastSession.connect(device);
       } on TimeoutException {
+        _dropOrphanState();
         throw CastException(
           L10n.current.castDeviceNotResponding(device.displayName),
         );
       } catch (e) {
         debugPrint('❌ CastService.connect ${device.displayName} : $e');
+        _dropOrphanState();
         throw CastException(
           L10n.current.castConnectFailed(device.displayName),
         );
@@ -537,6 +543,24 @@ abstract final class CastService {
     _awaitingStart = false;
     await _closeSession();
     debugPrint('📡 CastService.stop');
+  }
+
+  /// §castSend / revue 2026-09-11, D2A-06 — La session précédente vient
+  /// d'être fermée par [_closeSession] et la nouvelle n'a pas pu s'ouvrir.
+  ///
+  /// ⚠️ Sans ceci, `state` gardait l'ANCIENNE diffusion, que plus aucun
+  /// abonnement ne pouvait remettre à nul : panneau et notification figés sur
+  /// la télé 1 (Pause et ±30 s sans effet, `_session` étant nul) pendant que
+  /// le snackbar disait « la télé 2 ne répond pas ». On publie donc la vérité :
+  /// plus rien n'est diffusé.
+  static void _dropOrphanState() {
+    if (state.value == null) return;
+    // Une seule ligne : le cliquet §l10nAll n'exempte que la ligne qui porte
+    // `debugPrint(`, une suite accentuée serait comptée comme texte d'écran.
+    debugPrint('📡 CastService : connexion impossible, ancienne diffusion retirée (session déjà fermée)');
+    state.value = null;
+    _started = false;
+    _awaitingStart = false;
   }
 
   static Future<void> _closeSession() async {

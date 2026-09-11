@@ -16,6 +16,33 @@ void main() {
       expect(QualityScale.labelForHeight(576), 'SD');
     });
 
+    // §qualityScope (signalé par l'utilisateur) — la hauteur seule classait
+    // tous les films au format large un palier trop bas.
+    test('format large : la LARGEUR tient le palier', () {
+      expect(QualityScale.labelFor(width: 1920, height: 800), 'FHD'); // 2,40:1
+      expect(QualityScale.labelFor(width: 1920, height: 1040), 'FHD'); // 1,85:1
+      expect(QualityScale.labelFor(width: 2048, height: 858), 'FHD'); // 2K scope
+      expect(QualityScale.labelFor(width: 1280, height: 536), 'HD'); // HD scope
+      expect(QualityScale.labelFor(width: 3840, height: 1600), '4K');
+      expect(QualityScale.labelFor(width: 3840, height: 1392), '4K'); // 2,76:1
+      expect(QualityScale.labelFor(width: 4096, height: 1716), '4K'); // DCI scope
+    });
+
+    test('4:3 et pillarbox : la HAUTEUR tient le palier', () {
+      expect(QualityScale.labelFor(width: 1440, height: 1080), 'FHD');
+      expect(QualityScale.labelFor(width: 960, height: 720), 'HD');
+      expect(QualityScale.labelFor(width: 720, height: 576), 'SD');
+      expect(QualityScale.labelFor(width: 1024, height: 576), 'SD');
+    });
+
+    test('un FHD 1920×800 n\'est plus « survendu »', () {
+      final m = MeasuredQuality(
+          width: 1920, height: 800, measuredAt: DateTime(2026, 9, 11));
+      expect(m.definitionLabel, 'FHD');
+      expect(m.verdictFor('FHD'), QualityVerdict.conforme);
+      expect(m.verdictFor('4K'), QualityVerdict.survendu);
+    });
+
     test('CAM n\'a pas de rang : ce n\'est pas une définition', () {
       // §camQuality désigne le TYPE de source. Un rip de salle peut être encodé
       // en 1080p : lui donner un rang produirait un faux « survendu » sur

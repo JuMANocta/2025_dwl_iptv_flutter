@@ -2,11 +2,14 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
 import 'package:dio/dio.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import '../models/download_task.dart';
 import 'download_stall_policy.dart';
+import 'download_retry_policy.dart';
+import 'download_range_policy.dart';
+import '../../core/utils/user_error.dart';
 import '../../feature/downloads/logic/download_naming.dart';
 import '../../core/settings/performance_settings_service.dart';
 import '../../core/utils/network_kind.dart';
@@ -14,6 +17,7 @@ import '../../feature/downloads/logic/download_scheduler.dart';
 import '../../core/utils/log_sanitizer.dart';
 import '../../core/utils/network.dart';
 import '../../core/platform/storage_service.dart';
+import 'network_status_service.dart';
 
 /// Service pour gérer la liste des tâches de téléchargement.
 /// Il utilise SharedPreferences pour la persistance et un ValueNotifier
@@ -72,7 +76,16 @@ class DownloadManagerService {
   /// (MediaStorePlusPlugin.kt), ce qui laissait la tâche figée en `finalizing`.
   static const Duration _finalizeTimeout = Duration(minutes: 30);
 
-  /// Doit être appelé une seule fois au démarrage de l'application (dans main.dart).
+  /// Entrées de la liste persistée qu'on n'a pas su relire, mises de côté
+  /// plutôt qu'écrasées par la prochaine sauvegarde (D3A-14).
+  static const _unreadableKey = 'download_tasks_unreadable';
+
+  /// `true` une fois l'écouteur des réglages posé : [init] peut être rejoué
+  /// sans l'empiler (D3A-05).
+  bool _listening = false;
+
+  /// Au démarrage de l'application (dans main.dart). Rejouable sans risque :
+  /// les transferts EN VOL ne sont ni relus depuis le disque ni réconciliés.
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     _loadTasksFromDisk();
@@ -82,23 +95,57 @@ class DownloadManagerService {
     // §dlWifi — Et un réglage qui change (Wi-Fi seulement, plafond) se
     // relit tout de suite : sinon décocher « Wi-Fi seulement » laisserait
     // la file retenue jusqu'au prochain sondage.
-    PerformanceSettingsService.config.addListener(pump);
+    if (!_listening) {
+      _listening = true;
+      PerformanceSettingsService.config.addListener(pump);
+    }
     pump();
   }
 
+  /// Relit la liste depuis le disque (tirer pour rafraîchir).
+  ///
+  /// ⚠️ Revue 2026-09-11 (D3A-05) : la page appelait [init], qui basculait
+  /// TOUTE tâche `downloading`/`finalizing` en échec — y compris celles en
+  /// cours — d'où une fausse notification d'échec et le service de premier
+  /// plan coupé sur un simple geste. Les tâches en vol gardent désormais leur
+  /// état en mémoire.
+  Future<void> refreshFromDisk() => init();
+
   void _loadTasksFromDisk() {
     final jsonString = _prefs.getString(_storageKey);
-    if (jsonString != null) {
+    if (jsonString == null) return;
+    final List<dynamic> jsonList;
+    try {
+      jsonList = jsonDecode(jsonString) as List<dynamic>;
+    } catch (e) {
+      // Illisible en bloc : on le met de côté et on garde la mémoire. Avant,
+      // la liste repartait vide et la sauvegarde suivante effaçait tout.
+      debugPrint("❌ Liste des téléchargements illisible, mise de côté : $e");
+      _prefs.setString(_unreadableKey, jsonString);
+      return;
+    }
+    // Un transfert en vol : sa version en mémoire est la vérité.
+    final Map<String, DownloadTask> inFlight = {
+      for (final t in tasksNotifier.value)
+        if (_inFlight.containsKey(t.id)) t.id: t,
+    };
+    final loaded = <DownloadTask>[];
+    final unreadable = <dynamic>[];
+    for (final json in jsonList) {
       try {
-        final List<dynamic> jsonList = jsonDecode(jsonString);
-        tasksNotifier.value = jsonList
-            .map((json) => DownloadTask.fromJson(json as Map<String, dynamic>))
-            .toList();
+        final t = DownloadTask.fromJson(json as Map<String, dynamic>);
+        loaded.add(inFlight.remove(t.id) ?? t);
       } catch (e) {
-        debugPrint("❌ Erreur lors du chargement des tâches : $e");
-        tasksNotifier.value = [];
+        // D3A-14 — Une entrée illisible ne fait plus disparaître les autres.
+        debugPrint("⚠️ Tâche de téléchargement illisible, mise de côté : $e");
+        unreadable.add(json);
       }
     }
+    loaded.insertAll(0, inFlight.values);
+    if (unreadable.isNotEmpty) {
+      _prefs.setString(_unreadableKey, jsonEncode(unreadable));
+    }
+    tasksNotifier.value = loaded;
   }
 
   /// Au démarrage, réinitialise les tâches qui étaient "en cours" car elles ne peuvent pas survivre à un redémarrage.
@@ -108,7 +155,11 @@ class DownloadManagerService {
 
     // On crée une nouvelle liste avec les statuts mis à jour
     final reconciledTasks = tasks.map((task) {
-      debugPrint("🔍 [DEBUG-PATH] Tâche '${task.displayName}' -> Chemin: ${task.finalPath}");
+      if (kDebugMode) {
+        debugPrint("🔍 [DEBUG-PATH] Tâche '${task.displayName}' -> Chemin: ${task.finalPath}");
+      }
+      // D3A-05 — Un transfert réellement en vol n'est pas « interrompu ».
+      if (_inFlight.containsKey(task.id)) return task;
       // §dlStuckFinalizing — `finalizing` DOIT être réinitialisé lui aussi :
       // il n'était pas traité ici, donc une finalisation interrompue (ou un
       // `saveFile` natif qui n'a jamais rendu la main) laissait la tâche figée
@@ -162,6 +213,16 @@ class DownloadManagerService {
   /// place (§dlErgo) ou pour la file elle-même.
   Future<void> enqueue(DownloadTask task) async {
     if (_inFlight.containsKey(task.id)) return;
+    // D3A-17 — Reprendre à la main un échec ou une annulation rend son crédit
+    // de remises en file réseau : sinon la première micro-coupure suivante
+    // tombait directement en échec. (§dlLoop : l'historique des relances
+    // AUTOMATIQUES, lui, n'est pas touché.)
+    final DownloadStatus current = tasksNotifier.value
+        .firstWhere((t) => t.id == task.id, orElse: () => task)
+        .status;
+    if (current == DownloadStatus.failed || current == DownloadStatus.canceled) {
+      _networkRequeues.remove(task.id);
+    }
     if (task.status != DownloadStatus.queued) {
       await updateTask(task.id, status: DownloadStatus.queued);
     }
@@ -212,8 +273,11 @@ class DownloadManagerService {
     }
     // §dlWifi — Le réseau n'est regardé que s'il y a quelque chose à faire
     // partir : un appel natif de moins par fin de transfert.
-    final perf = PerformanceSettingsService.config.value;
     final NetState net = await currentNetState();
+    // D3L-01 — Les réglages sont lus APRÈS l'attente : lus avant, un réglage
+    // chargé pendant ce temps (démarrage) n'était pas vu et « Wi-Fi seulement »
+    // était ignoré pour les tâches qui partaient à ce tour.
+    final perf = PerformanceSettingsService.config.value;
     final DownloadHold? h = downloadHoldFor(
       wifiOnly: perf.downloadsWifiOnly,
       kind: net.kind,
@@ -250,7 +314,13 @@ class DownloadManagerService {
   Future<void> startDownloadTask(DownloadTask task) {
     // 0. Sécurité anti-doublon
     if (_cancelTokens.containsKey(task.id)) return Future.value();
-    final run = _runDownload(task);
+    // D3A-06 — Le jeton est posé ICI, de façon synchrone. Posé après
+    // l'`await buildDio` de `_runDownload`, une annulation ou une suppression
+    // arrivée pendant cette attente ne trouvait aucun jeton : le transfert
+    // partait quand même, jusqu'au renommage du film sans tâche associée.
+    final CancelToken token = CancelToken();
+    _cancelTokens[task.id] = token;
+    final run = _runDownload(task, token);
     _inFlight[task.id] = run;
     run.whenComplete(() {
       if (identical(_inFlight[task.id], run)) _inFlight.remove(task.id);
@@ -270,11 +340,37 @@ class DownloadManagerService {
   /// `RandomAccessFile` (ouvert en `append`) doit être refermé, sinon deux
   /// handles écrivent en parallèle dans le même fichier partiel — corruption
   /// silencieuse, et une taille lue trop courte fausserait la reprise.
-  Future<void> restartTask(DownloadTask task) async {
+  Future<void> restartTask(DownloadTask task) {
+    // D3A-06 — Une relance à la fois par tâche : relance manuelle et relance
+    // automatique simultanées ouvraient deux flux `append` sur le même partiel.
+    final Future<void>? pending = _restarting[task.id];
+    if (pending != null) return pending;
+    late final Future<void> f;
+    f = _restartTaskImpl(task).whenComplete(() {
+      if (identical(_restarting[task.id], f)) _restarting.remove(task.id);
+    });
+    _restarting[task.id] = f;
+    return f;
+  }
+
+  final Map<String, Future<void>> _restarting = {};
+
+  Future<void> _restartTaskImpl(DownloadTask task) async {
     // §dlWatchdog — Le compteur est incrémenté AVANT l'annulation, pas après :
     // `cancelTask` publie `canceled`, et c'est à cet instant que le moniteur
     // décide quoi écrire. Bumpé après, il affichait « ABORT : annulé par
     // l'utilisateur » — alors que l'utilisateur venait de demander l'inverse.
+    // Une finalisation ne se relance pas : le partiel est en train de devenir
+    // le fichier final, repartir referait le film depuis zéro.
+    final DownloadStatus? now = tasksNotifier.value
+        .where((t) => t.id == task.id)
+        .map((t) => t.status)
+        .firstOrNull;
+    if (now == DownloadStatus.finalizing || now == DownloadStatus.completed) {
+      debugPrint('↩️ Relance ignorée : « ${task.displayName} » est ${now!.name}');
+      return;
+    }
+
     final bumped = _bumpRetryCount(task.id) ?? task;
 
     final previous = _inFlight[task.id];
@@ -303,11 +399,31 @@ class DownloadManagerService {
     await enqueue(bumped);
   }
 
-  Future<void> _runDownload(DownloadTask task) async {
+  Future<void> _runDownload(DownloadTask task, CancelToken cancelToken) async {
+    // Le jeton n'est rendu que s'il est encore le NÔTRE : après une relance
+    // dont l'attente a expiré (8 s), le transfert suivant a déjà posé le sien,
+    // et l'effacer rouvrirait la porte aux doublons.
+    void releaseToken() {
+      if (identical(_cancelTokens[task.id], cancelToken)) {
+        _cancelTokens.remove(task.id);
+      }
+    }
 
-    final dio = await NetworkUtils.buildDio(task.url);
-    final cancelToken = CancelToken();
-    _cancelTokens[task.id] = cancelToken;
+    final Dio dio;
+    try {
+      dio = await NetworkUtils.buildDio(task.url);
+    } catch (e) {
+      releaseToken();
+      if (!cancelToken.isCancelled) await _failOrRequeue(task.id, e);
+      return;
+    }
+    // D3A-06 — Annulée ou supprimée pendant l'attente : on ne touche à rien.
+    if (cancelToken.isCancelled ||
+        !tasksNotifier.value.any((t) => t.id == task.id)) {
+      debugPrint('🛑 Départ abandonné (annulé pendant la préparation) : ${task.id}');
+      releaseToken();
+      return;
+    }
 
     final tempFile = File(task.tempPath);
 
@@ -324,7 +440,10 @@ class DownloadManagerService {
 
     // Cas spécial de sécurité : Fichier déjà complet localement
     if (task.totalSize > 0 && resumedBytes >= task.totalSize) {
-      debugPrint("✅ Fichier déjà complet dans le cache, finalisation...");
+      debugPrint("✅ Fichier déjà complet dans le cache, finalisation via MediaStore...");
+      // D3A-07 — `finalizing` affiché ici aussi : sinon la tâche restait
+      // `queued` pendant la copie et « Annuler » restait proposé.
+      await updateTask(task.id, status: DownloadStatus.finalizing);
       // On appelle directement la fonction de déplacement
       final written = await _finalizeDownload(
         tempPath: task.tempPath,
@@ -337,7 +456,7 @@ class DownloadManagerService {
       } else {
         await updateTask(task.id, status: DownloadStatus.failed);
       }
-      _cancelTokens.remove(task.id);
+      releaseToken();
       return;
     }
 
@@ -357,8 +476,42 @@ class DownloadManagerService {
           headers: {
             'range': 'bytes=$resumedBytes-', // Instruction de reprise explicite
           },
+          // §dlRangeCheck (D3A-01) — 2xx seulement. Le Dio IPTV accepte tout
+          // ce qui est < 500 : un `403 Too many connections` voyait son corps
+          // AJOUTÉ au partiel, puis la tâche finissait « Terminé ». Un 4xx lève
+          // désormais (`badResponse`, classé « source »), et le `416` atteint
+          // enfin sa branche du `catch`.
+          validateStatus: isDownloadableStatus,
         ),
       );
+
+      // §dlRangeCheck (D3A-01) — Un serveur qui ignore `Range` renvoie le
+      // fichier ENTIER : l'ajouter derrière le partiel le dupliquerait.
+      final RangeVerdict verdict = rangeResponseVerdict(
+        statusCode: response.statusCode,
+        resumedBytes: resumedBytes,
+        contentRangeStart: parseContentRangeStart(
+            response.headers.value(HttpHeaders.contentRangeHeader)),
+      );
+      if (verdict == RangeVerdict.reject) {
+        // Le corps n'a pas été lu : on ferme le flux avant de lever.
+        try {
+          await response.data?.stream.listen(null).cancel();
+        } catch (_) {}
+        throw DioException(
+          requestOptions: response.requestOptions,
+          response: response,
+          type: DioExceptionType.badResponse,
+          // Diagnostic seulement : l'écran passe par `describeError`, qui
+          // lit le statut HTTP, jamais ce texte.
+          message: 'range-mismatch ${response.statusCode}',
+        );
+      }
+      final bool restartFromZero = verdict == RangeVerdict.restartFromZero;
+      if (restartFromZero) {
+        debugPrint("↩️ §dlRangeCheck : le serveur ignore Range — reprise depuis zéro ($resumedBytes octets écartés)");
+        resumedBytes = 0;
+      }
 
       // 3. Écriture manuelle et sécurisée du flux dans le fichier
       // On ouvre le fichier en mode APPEND (ajout à la fin). C'est la clé pour éviter la corruption.
@@ -370,7 +523,8 @@ class DownloadManagerService {
       // (§dlQueue) échouait en `PathNotFoundException`. On recrée le dossier ;
       // le transfert repart alors de zéro (l'offset lu plus haut est 0).
       await tempFile.parent.create(recursive: true);
-      final raf = await tempFile.open(mode: FileMode.append);
+      final raf = await tempFile.open(
+          mode: restartFromZero ? FileMode.write : FileMode.append);
       int receivedThisSession = 0;
 
       // §dlRestartFix — Fermeture IDEMPOTENTE du handle. Trois chemins peuvent
@@ -391,11 +545,32 @@ class DownloadManagerService {
       final segmentSize = int.tryParse(contentLengthHeader ?? '0') ?? 0;
       final definitiveTotal = segmentSize > 0 ? (resumedBytes + segmentSize) : task.totalSize;
 
+      // D3A-03 — Une écriture qui échoue (disque plein) lève DANS `onData` :
+      // l'exception partait à la zone, l'abonnement continuait, et `onDone`
+      // finalisait un fichier dont une partie n'avait jamais été écrite.
+      bool writeFailed = false;
+
       // Le `listen` s'abonne au flux de données. Il reçoit les données par segments (chunks).
-      final streamSubscription = response.data!.stream.listen(
+      late final StreamSubscription<List<int>> streamSubscription;
+      streamSubscription = response.data!.stream.listen(
             (chunk) {
+          if (writeFailed) return;
           // Écrit le segment reçu à la fin du fichier.
-          raf.writeFromSync(chunk);
+          try {
+            raf.writeFromSync(chunk);
+          } catch (e) {
+            writeFailed = true;
+            debugPrint("💀 Écriture du partiel impossible : $e");
+            unawaited(() async {
+              await streamSubscription.cancel();
+              await closeRaf();
+              // Le partiel reste en place : la reprise repartira de ce qui a
+              // réellement été écrit.
+              await _failOrRequeue(task.id, e);
+              if (!completer.isCompleted) completer.complete();
+            }());
+            return;
+          }
           receivedThisSession += chunk.length;
 
           final actualReceived = resumedBytes + receivedThisSession;
@@ -442,7 +617,8 @@ class DownloadManagerService {
           if (e is DioException && e.type == DioExceptionType.cancel) {
             debugPrint("🛑 Flux annulé par l'utilisateur : ${task.id}");
           } else {
-            await updateTask(task.id, status: DownloadStatus.failed);
+            // §dlNetRetry — une coupure réseau repart en file, pas en échec.
+            await _failOrRequeue(task.id, e);
           }
           if (!completer.isCompleted) completer.completeError(e);
         },
@@ -470,6 +646,7 @@ class DownloadManagerService {
     } on DioException catch (e) {
       if (e.response?.statusCode == 416) {
         debugPrint("⚠️ Erreur 416 (Range) -> Fichier considéré comme déjà complet. Forçage de la finalisation...");
+        await updateTask(task.id, status: DownloadStatus.finalizing);
         final String? written = await _finalizeDownload(
           tempPath: task.tempPath,
           finalPath: task.finalPath,
@@ -485,19 +662,32 @@ class DownloadManagerService {
         }
       } else if (e.type != DioExceptionType.cancel) {
         debugPrint("💀 Erreur Dio initiale: ${e.message}");
-        await updateTask(task.id, status: DownloadStatus.failed, errorMessage: e.message);
+        await _failOrRequeue(task.id, e);
       }
     } catch (e) {
       debugPrint("💀 Erreur Système non gérée : $e");
-      await updateTask(task.id, status: DownloadStatus.failed, errorMessage: e.toString());
+      await _failOrRequeue(task.id, e);
     } finally {
-      _cancelTokens.remove(task.id);
+      releaseToken();
       _clearProgressThrottle(task.id);
     }
   }
 
   /// Annule un téléchargement en cours.
+  ///
+  /// D3A-07 — Sans effet pendant la FINALISATION : le transfert réseau est
+  /// fini, le partiel devient le fichier final. La tuile retirait déjà
+  /// « Annuler » dans cet état, mais la notification et le moniteur le
+  /// proposaient encore — et `canceled` était ensuite écrasé par la fin.
   Future<void> cancelTask(String taskId) async {
+    final DownloadStatus? status = tasksNotifier.value
+        .where((t) => t.id == taskId)
+        .map((t) => t.status)
+        .firstOrNull;
+    if (status == DownloadStatus.finalizing) {
+      debugPrint('↩️ Annulation ignorée pendant la finalisation : $taskId');
+      return;
+    }
     // On annule le token Dio s'il existe, pour stopper le processus réseau.
     if (_cancelTokens.containsKey(taskId)) {
       _cancelTokens[taskId]?.cancel();
@@ -616,6 +806,69 @@ class DownloadManagerService {
   final Map<String, DateTime> _lastAutoRestart = {};
   final Map<String, int> _bytesAtLastAutoRestart = {};
 
+  /// §dlNetRetry — Remises en file déjà accordées à chaque tâche.
+  ///
+  /// En mémoire seulement, et c'est assez : au redémarrage de l'app la tâche
+  /// est de toute façon reconciliée (`_reconcileTasksOnStartup`), et un
+  /// compteur qui repart de zéro une fois par lancement ne fait pas une boucle.
+  final Map<String, int> _networkRequeues = {};
+
+  /// §dlNetRetry — Aiguille une tâche interrompue : remise en FILE si le
+  /// réseau a lâché, échec sinon.
+  ///
+  /// **Le défaut corrigé** : toute erreur de flux tombait en `failed`, et la
+  /// file ne regarde que les `queued` — une coupure d'une minute condamnait
+  /// donc un transfert déjà à 90 %. La reprise `Range` existait déjà ; il ne
+  /// manquait que de ne pas fermer la porte.
+  ///
+  /// ⚠️ Le plafond (`kMaxNetworkRequeues`) n'est pas décoratif : une source qui
+  /// coupe la connexion à chaque tentative RESSEMBLE à une panne réseau vue de
+  /// l'app. Sans lui, elle serait martelée toute la nuit.
+  ///
+  /// D3A-09 — Le message gardé sur la tâche (et affiché par la tuile) passe par
+  /// `describeError` : c'était le texte BRUT de l'exception, en anglais, avec
+  /// le nom d'hôte ou le chemin complet. Le brut reste dans le journal, rédigé
+  /// au puits.
+  Future<void> _failOrRequeue(String taskId, Object error) async {
+    final DownloadFailureKind kind = classifyDownloadFailure(error);
+    if (kind == DownloadFailureKind.canceled) return;
+
+    final int already = _networkRequeues[taskId] ?? 0;
+    if (shouldRequeueAfterFailure(kind: kind, requeues: already)) {
+      _networkRequeues[taskId] = already + 1;
+      debugPrint('🔌 §dlNetRetry — reseau perdu, tache remise en file '
+          '(${already + 1}/$kMaxNetworkRequeues) : $taskId');
+      // ⚠️ `updateTask` et non `enqueue` : `enqueue` refuse une tâche encore
+      // en vol (`_inFlight`), et nous sommes précisément en train d'en sortir.
+      // Le `pump()` du `whenComplete` de `startDownloadTask` la fera partir.
+      await updateTask(taskId, status: DownloadStatus.queued);
+      // Le réseau est peut-être déjà revenu : que la file le constate.
+      unawaited(NetworkStatusService.refresh());
+      return;
+    }
+    await updateTask(taskId,
+        status: DownloadStatus.failed, errorMessage: describeError(error));
+  }
+
+  /// Rejoue l'aiguillage d'une erreur, sans réseau ni fichier (tests).
+  @visibleForTesting
+  Future<void> failOrRequeueForTest(String taskId, Object error) =>
+      _failOrRequeue(taskId, error);
+
+  /// Marque une tâche comme en vol, sans transfert réel (tests).
+  @visibleForTesting
+  void markInFlightForTest(String taskId, Future<void> run) =>
+      _inFlight[taskId] = run;
+
+  /// Oublie les transferts marqués en vol par [markInFlightForTest].
+  @visibleForTesting
+  void clearInFlightForTest() => _inFlight.clear();
+
+  /// Arrête le sondage de la file retenue (tests) : sans ça, son `Timer`
+  /// périodique survivrait au test qui l'a armé.
+  @visibleForTesting
+  void resetQueueForTest() => _setHold(null);
+
   /// §dlWatchdog — Relance automatiquement un transfert qui décroche.
   ///
   /// C'est ce qui rend le bouton « Relancer » inutile : l'utilisateur n'a plus
@@ -716,6 +969,7 @@ class DownloadManagerService {
   void _clearRestartPolicy(String taskId) {
     _lastAutoRestart.remove(taskId);
     _bytesAtLastAutoRestart.remove(taskId);
+    _networkRequeues.remove(taskId); // §dlNetRetry
   }
 
   /// Met à jour une tâche existante et notifie l'UI.
@@ -823,6 +1077,19 @@ Future<String?> _finalizeDownload({
     return null;
   }
 
+  // D3A-03 — La taille se contrôle AVANT tout renommage. Contrôlée après,
+  // un partiel tronqué (disque plein) devenait un film visible dans la
+  // galerie, la reprise était perdue et « Relancer » repartait de zéro.
+  final int size = await file.length();
+  if (size == 0) {
+    debugPrint("⚠️ Fichier partiel vide : rien à finaliser");
+    return null;
+  }
+  if (expectedSize > 0 && size < expectedSize) {
+    debugPrint("⚠️ Fichier tronqué : $size / $expectedSize octets — partiel conservé");
+    return null;
+  }
+
   // Le partiel est-il déjà dans le dossier de destination ? On le déduit des
   // dossiers parents plutôt que d'un champ du modèle : les tâches DÉJÀ
   // persistées (partiel en cache) prennent ainsi automatiquement le repli,
@@ -836,12 +1103,7 @@ Future<String?> _finalizeDownload({
       // PARTAGÉ — un fichier a pu y apparaître entre-temps (autre tâche,
       // copie manuelle, §dlOrphans). On ne remplace donc jamais : on se pousse.
       final String target = await _freeFinalPath(finalPath);
-      final renamed = await file.rename(target);
-      final size = await renamed.length();
-      if (expectedSize > 0 && size < expectedSize) {
-        debugPrint("⚠️ Fichier tronqué : $size / $expectedSize octets");
-        return null;
-      }
+      await file.rename(target);
       debugPrint("⚡ Finalisation instantanée (rename) — $target");
       return target;
     } catch (e) {
@@ -859,9 +1121,37 @@ Future<String?> _finalizeDownload({
     return success ? finalPath : null;
   }
 
-  // ⚠️ Le repli MediaStore choisit lui-même le nom en cas de doublon : on ne
-  // peut que rendre le chemin attendu.
-  return await _copyToMediaStore(tempPath) ? finalPath : null;
+  // D3A-10 — Le repli MediaStore REMPLACE un fichier de même nom (il efface
+  // avant d'insérer) et tire ce nom de celui du partiel. On lui donne donc un
+  // nom LIBRE, en renommant le partiel dans son propre dossier ; en cas
+  // d'échec il reprend son nom, pour que la reprise le retrouve.
+  final String target = await _freeFinalPath(finalPath);
+  final String wantedName = target.substring(target.lastIndexOf('/') + 1);
+  final int slash = tempPath.lastIndexOf('/');
+  final String currentName = tempPath.substring(slash + 1);
+  String source = tempPath;
+  if (currentName != wantedName) {
+    final String renamed =
+        slash >= 0 ? '${tempPath.substring(0, slash)}/$wantedName' : wantedName;
+    try {
+      await file.rename(renamed);
+      source = renamed;
+    } catch (e) {
+      debugPrint("⚠️ Partiel non renommé avant MediaStore ($e)");
+    }
+  }
+  final bool ok = await _copyToMediaStore(source);
+  if (!ok) {
+    if (source != tempPath) {
+      try {
+        await File(source).rename(tempPath);
+      } catch (_) {}
+    }
+    return null;
+  }
+  // Nom libre effectivement donné à MediaStore → chemin exact ; sinon
+  // (renommage impossible) le chemin attendu, comme avant.
+  return (source != tempPath || currentName == wantedName) ? target : finalPath;
 }
 
 /// §dlEpisode — [finalPath] s'il est libre, sinon le premier « nom (N).ext »

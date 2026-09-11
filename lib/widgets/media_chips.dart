@@ -39,21 +39,6 @@ List<Widget> languageChips(TitleMetadata meta) {
   return chips;
 }
 
-Widget episodeMetaChip(TitleMetadata meta) {
-  final season  = meta.seasonNumber?.toString().padLeft(2, '0') ?? '--';
-  final episode = meta.episodeNumber?.toString().padLeft(2, '0') ?? '--';
-  return tagChip('S$season E$episode', kLangEpisode);
-}
-
-Chip episodeChip(M3uEntry ep) {
-  return Chip(
-    label: Text("S${ep.saison} E${ep.episode}"),
-    visualDensity: VisualDensity.compact,
-    padding: EdgeInsets.zero,
-    backgroundColor: Colors.grey.withAlpha(25),
-  );
-}
-
 /// Extrait le titre lisible d'un épisode depuis le rawTitle (ce qui suit SxxExx).
 String episodeName(M3uEntry entry) {
   final regex = RegExp(r"S\s*\d{1,2}\s*E\s*\d{1,2}", caseSensitive: false);
@@ -64,39 +49,6 @@ String episodeName(M3uEntry entry) {
     if (rest.isNotEmpty && rest.length > 2) return rest.replaceAll(RegExp(r'^[-_.]'), '').trim();
   }
   return entry.displayName;
-}
-
-/// Chips qualité + langue dédupliqués pour un groupe de versions.
-/// Corrige le problème multi-comptes : Widget != par identité, on déduplique
-/// donc par valeur (label) avant de construire les widgets.
-List<Widget> uniqueChipsForVersions(List<M3uEntry> versions) {
-  final qualities = versions.map((v) => v.title.quality).whereType<String>().toSet();
-  final languages = versions.expand((v) => v.title.languages).toSet();
-  final providerTags =
-      versions.map((v) => v.title.providerTag).whereType<String>().toSet();
-  return [
-    for (final q in qualities)
-      switch (q) {
-        '4K'  => tagChip('4K',  kQuality4K),
-        'FHD' => tagChip('FHD', kQualityFHD),
-        'HD'  => tagChip('HD',  kQualityHD),
-        'SD'  => tagChip('SD',  kQualitySD),
-        'CAM' => tagChip('CAM', kQualityCam), // §camQuality
-        _     => null,
-      },
-    // §providerTag — Marqueur du fournisseur (FR, US, IT…) dans sa PROPRE
-    // pastille : il distinguait déjà les versions, mais en squattant le slot
-    // qualité. Couleur neutre = on voit tout de suite que ce n'en est pas une.
-    for (final t in providerTags) tagChip(t, kProviderTag),
-    for (final l in languages)
-      switch (l) {
-        'MULTI'  => tagChip('MULTI',  kLangMulti),
-        'VOSTFR' => tagChip('VOSTFR', kLangVOSTFR),
-        'VF'     => tagChip('VF',     kLangVF),
-        'LEG'    => tagChip('LEG',    kLangLeg),
-        _        => null,
-      },
-  ].whereType<Widget>().toList();
 }
 
 /// Construit un nom de fichier riche pour le téléchargement.

@@ -5,64 +5,89 @@ on:
     tags:
       - 'v*.*.*'
 
-# Le jeton n'a besoin que d'écrire la release : dit explicitement, il survit
-# à un changement du réglage « permissions par défaut » du dépôt.
+# D5A-05 (revue 2026-09-11, lot 9) — LECTURE SEULE par défaut. Avant, tout le
+# workflow héritait de `contents: write`, y compris les jobs qui exécutent du
+# code tiers (SDK Flutter, Gradle) et qui SIGNENT l'APK. Seul `release` écrit.
 permissions:
-  contents: write
+  contents: read
 
 env:
   # ⚠️ La MÊME version que la machine de recette (émulateurs + Galaxy S25) : un
   # APK compilé avec un autre framework/moteur n'est pas celui qu'on a mesuré
-  # (§jankMeter, §homeMeter, §exitCost). Monter les deux ENSEMBLE.
+  # (§jankMeter, §homeMeter, §exitCost). ⚠️ Et la même que `ci.yml` : le job
+  # `version` ci-dessous échoue si les deux fichiers divergent.
   FLUTTER_VERSION: '3.44.0'
 
 jobs:
-  check:
-    name: Analyse + tests
+  # D5A-06 — Le tag ne RÉÉCRIT plus le pubspec : il doit lui correspondre.
+  # Avant, un tag poussé avant le bump publiait « 1.18.19+151 » — le même
+  # versionCode que la release précédente, sous un nom que la doc ne
+  # connaissait pas. Job court, en tête : il échoue avant 20 min de build.
+  version:
+    name: Tag ↔ pubspec
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - name: Checkout du code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-          pub-cache: true
-          # ⚠️ pubspec.lock est gitignoré : sans pubspec.yaml dans le hachage la
-          # clé serait constante (« pub-- », vu au premier run).
-          pub-cache-key: pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
+      - name: Vérifier la cohérence des versions
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PUB_FULL=$(grep -m1 '^version:' pubspec.yaml | sed 's/^version:[[:space:]]*//; s/[[:space:]]*$//')
+          case "$PUB_FULL" in
+            *+*) ;;
+            *) echo "::error::pubspec « $PUB_FULL » sans numéro de build (+N)"; exit 1 ;;
+          esac
+          PUB_VERSION="${PUB_FULL%%+*}"
+          PUB_BUILD="${PUB_FULL#*+}"
+          # Un build non numérique ferait sortir `[ -ge ]` en erreur SANS
+          # arrêter le script (un test dans un `if` échappe à `bash -e`).
+          case "$PUB_BUILD" in
+            ''|*[!0-9]*) echo "::error::build « $PUB_BUILD » non numérique dans le pubspec"; exit 1 ;;
+          esac
+          if [ "$PUB_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME ≠ pubspec $PUB_FULL — bumper AVANT de taguer"
+            exit 1
+          fi
+          # §updAbi — Le versionCode d'une split vaut codeAbi × 1000 + build :
+          # au-delà de 999, les splits de deux ABI se chevaucheraient et la mise
+          # à jour in-app ne distinguerait plus une split d'un universel.
+          if [ "$PUB_BUILD" -ge 1000 ]; then
+            echo "::error::build $PUB_BUILD ≥ 1000 : incompatible avec --split-per-abi"
+            exit 1
+          fi
+          read_flutter() {
+            grep -m1 -E "^[[:space:]]+FLUTTER_VERSION:" "$1" | sed -E "s/.*FLUTTER_VERSION:[[:space:]]*//; s/['\"]//g; s/[[:space:]]+$//"
+          }
+          CI_FLUTTER=$(read_flutter .github/workflows/ci.yml)
+          REL_FLUTTER=$(read_flutter .github/workflows/release.yml)
+          if [ -z "$CI_FLUTTER" ] || [ "$CI_FLUTTER" != "$REL_FLUTTER" ]; then
+            echo "::error::FLUTTER_VERSION ci.yml ($CI_FLUTTER) ≠ release.yml ($REL_FLUTTER)"
+            exit 1
+          fi
+          echo "✅ Version APK : $PUB_FULL (tag=$GITHUB_REF_NAME, Flutter $REL_FLUTTER)"
 
-      - name: Installer les dépendances
-        run: flutter pub get
-
-      # `--no-fatal-infos` : le lint `package_names` (aetherStream) est une info
-      # permanente ; les erreurs et les avertissements redeviennent BLOQUANTS
-      # (avant : `|| true`, l'analyse ne bloquait jamais rien).
-      - name: Analyser le code
-        run: flutter analyze --no-fatal-infos
-
-      # 780 tests (cliquet l10n, invariant redactUrl, règles Cast, delta de
-      # l'accueil…). Vérifié le 2026-09-06 : la suite passe sans les dumps de
-      # lib/iptv_exemple/ (non versionnés) — les tests qui en dépendent se
-      # sautent d'eux-mêmes.
-      - name: Tests
-        run: flutter test
+  # D5L-01 — Le MÊME job que sur chaque push de branche, appelé tel quel.
+  check:
+    name: Analyse + tests
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
 
   build:
     name: Build + signature
+    needs: version
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Deux compilations AOT complètes (universel + par ABI) : ~2× l'ancien job.
+    timeout-minutes: 45
     environment: aetherstream
     steps:
       - name: Checkout du code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Setup Java 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '21'
@@ -71,128 +96,192 @@ jobs:
           cache: gradle
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
           pub-cache: true
-          # ⚠️ pubspec.lock est gitignoré : sans pubspec.yaml dans le hachage la
-          # clé serait constante (« pub-- », vu au premier run).
+          # pubspec.lock est VERSIONNÉ (et imposé ci-dessous) : c'est lui qui
+          # fait la clé du cache.
           pub-cache-key: pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
 
-      - name: Synchroniser pubspec.yaml avec le tag git
+      # D5A-04 — Le lock versionné fait foi : un pubspec modifié sans lock
+      # régénéré fait ÉCHOUER le build au lieu d'embarquer des versions de
+      # dépendances jamais testées.
+      - name: Installer les dépendances (lock imposé)
+        run: flutter pub get --enforce-lockfile
+
+      # §apkDiet + build de production (décision utilisateur, revue 2026-09-11) :
+      # R8 (actif par défaut, cf. android/app/proguard-rules.pro) + obfuscation
+      # Dart + un APK PAR ABI. Le retrait de x86_64 se fait au PACKAGING
+      # (build.gradle.kts).
+      #
+      # ⚠️ L'UNIVERSEL est gardé, et rangé EN PREMIER par son NOM (cf. l'étape
+      # de release) : les versions déjà installées prennent le premier `.apk`
+      # de la release. Il porte le
+      # versionCode du pubspec (ex. 152) ; les splits `codeAbi × 1000 + build`
+      # (1152, 2152) — cf. lib/data/services/update_policy.dart.
+      #
+      # ⚠️ `--split-debug-info` : les symboles Dart ne sont PAS dans l'APK. Sans
+      # eux, une pile Dart de production est illisible → artefact ci-dessous.
+      - name: Build APK universel (obfusqué)
         run: |
-          # Extrait "1.2.7" depuis le tag "v1.2.7"
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          # Conserve le build number existant dans pubspec.yaml
-          CURRENT_BUILD=$(grep '^version:' pubspec.yaml | grep -oP '\+\K[0-9]+')
-          NEW_VERSION="${TAG_VERSION}+${CURRENT_BUILD}"
-          sed -i "s/^version: .*/version: ${NEW_VERSION}/" pubspec.yaml
-          echo "✅ Version APK : ${NEW_VERSION} (tag=${GITHUB_REF_NAME})"
+          flutter build apk --release \
+            --target-platform android-arm,android-arm64 \
+            --obfuscate --split-debug-info=build/symbols/universal
+          mkdir -p dist/unsigned dist/mapping/universal
+          cp build/app/outputs/flutter-apk/app-release.apk dist/unsigned/aetherstream.apk
+          cp build/app/outputs/mapping/release/mapping.txt dist/mapping/universal/mapping.txt
 
-      - name: Installer les dépendances
-        run: flutter pub get
-
-      # §apkDiet — le release ne contient que armeabi-v7a + arm64-v8a (téléphones,
-      # box, Fire Stick, téléviseurs). Le retrait de x86_64 se fait au PACKAGING
-      # (build.gradle.kts) : sans `--target-platform`, Flutter compilait quand
-      # même le snapshot x86_64, jeté ensuite — une compilation AOT sur trois.
-      - name: Build APK (armeabi-v7a + arm64-v8a)
-        run: >
-          flutter build apk --release
-          --target-platform android-arm,android-arm64
-        # Produit : build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Décoder le keystore PKCS12
-        run: echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/aetherstream_raw.p12
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-
-      - name: Re-encoder le keystore en format compatible Java (PBE-SHA1-3DES)
+      - name: Build APK par ABI (obfusqués)
         run: |
+          flutter build apk --release --split-per-abi \
+            --target-platform android-arm,android-arm64 \
+            --obfuscate --split-debug-info=build/symbols/split
+          mkdir -p dist/mapping/split
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/unsigned/aetherstream_armeabi-v7a.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/unsigned/aetherstream_arm64-v8a.apk
+          cp build/app/outputs/mapping/release/mapping.txt dist/mapping/split/mapping.txt
+
+      # D5A-07 — La clé vit dans $RUNNER_TEMP (umask 077) et le mot de passe
+      # passe par l'ENVIRONNEMENT (`env:`), plus jamais par la ligne de commande
+      # (lisible dans /proc/*/cmdline). L'effacement est garanti plus bas.
+      - name: Préparer la clé de signature (PKCS12 compatible Java)
+        run: |
+          umask 077
+          KS_DIR="$RUNNER_TEMP/keystore"
+          mkdir -p "$KS_DIR"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$KS_DIR/raw.p12"
           # OpenSSL 3.x crée des PKCS12 avec des OIDs modernes (tag ASN.1 > 30)
           # incompatibles avec le parser DER de Java → re-export en algorithmes legacy
-          openssl pkcs12 -in /tmp/aetherstream_raw.p12 \
-            -passin pass:"$STORE_PASSWORD" \
-            -nodes -out /tmp/aetherstream_key.pem
+          openssl pkcs12 -in "$KS_DIR/raw.p12" \
+            -passin env:STORE_PASSWORD \
+            -nodes -out "$KS_DIR/key.pem"
           openssl pkcs12 -export \
-            -in /tmp/aetherstream_key.pem \
-            -passout pass:"$STORE_PASSWORD" \
+            -in "$KS_DIR/key.pem" \
+            -passout env:STORE_PASSWORD \
             -keypbe PBE-SHA1-3DES \
             -certpbe PBE-SHA1-3DES \
             -macalg SHA1 \
             -name "$KEY_ALIAS" \
-            -out /tmp/aetherstream.p12
-          rm /tmp/aetherstream_key.pem /tmp/aetherstream_raw.p12
+            -out "$KS_DIR/aetherstream.p12"
+          rm -f "$KS_DIR/key.pem" "$KS_DIR/raw.p12"
         env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ vars.KEY_ALIAS }}
 
-      - name: Signer l'APK avec apksigner
+      - name: Signer les APK avec apksigner
         run: |
           BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
           echo "Build tools: $BUILD_TOOLS"
-          $BUILD_TOOLS/apksigner sign \
-            --ks /tmp/aetherstream.p12 \
-            --ks-key-alias "$KEY_ALIAS" \
-            --ks-pass pass:"$STORE_PASSWORD" \
-            --key-pass pass:"$STORE_PASSWORD" \
-            --out build/app/outputs/flutter-apk/aetherstream.apk \
-            build/app/outputs/flutter-apk/app-release.apk
-          # La signature est vérifiée AVANT de publier : un APK mal signé
-          # échouerait à l'installation chez l'utilisateur, pas ici.
-          $BUILD_TOOLS/apksigner verify --print-certs \
-            build/app/outputs/flutter-apk/aetherstream.apk
+          mkdir -p dist/apk
+          for f in aetherstream.apk aetherstream_armeabi-v7a.apk aetherstream_arm64-v8a.apk; do
+            "$BUILD_TOOLS/apksigner" sign \
+              --ks "$RUNNER_TEMP/keystore/aetherstream.p12" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass env:STORE_PASSWORD \
+              --key-pass env:STORE_PASSWORD \
+              --out "dist/apk/$f" \
+              "dist/unsigned/$f"
+            # La signature est vérifiée AVANT de publier : un APK mal signé
+            # échouerait à l'installation chez l'utilisateur, pas ici.
+            "$BUILD_TOOLS/apksigner" verify --print-certs "dist/apk/$f"
+          done
         env:
           KEY_ALIAS: ${{ vars.KEY_ALIAS }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
 
-      - name: Empreinte SHA-256
-        run: |
-          cd build/app/outputs/flutter-apk
-          sha256sum aetherstream.apk > aetherstream.apk.sha256
-          cat aetherstream.apk.sha256
-          ls -la aetherstream.apk
+      - name: Effacer la clé de signature
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keystore"
 
-      - name: Conserver l'APK pour le job de release
-        uses: actions/upload-artifact@v6
+      # §updAbi — La mise à jour in-app REFUSE d'installer un APK sans son
+      # `.sha256` : chaque APK a le sien, au nom exact `<apk>.sha256`.
+      - name: Empreintes SHA-256
+        run: |
+          cd dist/apk
+          for f in aetherstream.apk aetherstream_armeabi-v7a.apk aetherstream_arm64-v8a.apk; do
+            sha256sum "$f" > "$f.sha256"
+            cat "$f.sha256"
+          done
+          ls -la
+
+      - name: Conserver les APK pour le job de release
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: apk
           path: |
-            build/app/outputs/flutter-apk/aetherstream.apk
-            build/app/outputs/flutter-apk/aetherstream.apk.sha256
+            dist/apk/*.apk
+            dist/apk/*.apk.sha256
           retention-days: 3
+          if-no-files-found: error
+
+      # D2B-04 — Les tables de désobfuscation : `mapping.txt` de R8 (piles
+      # Java/Kotlin, `retrace`) et `build/symbols` de Dart (`flutter
+      # symbolize`), une paire par build. ⛔ JAMAIS dans la release : elles
+      # décrivent le code. ⚠️ 90 jours est le plafond GitHub pour un dépôt
+      # public — récupérer l'artefact à chaque release pour le garder au-delà.
+      - name: Archiver les symboles de désobfuscation
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: symboles-${{ github.ref_name }}
+          path: |
+            build/symbols/
+            dist/mapping/
+          retention-days: 90
           if-no-files-found: error
 
   release:
     name: Release GitHub
-    # Pas de release si un test échoue, même avec un APK prêt.
+    # Pas de release si un test échoue, même avec des APK prêts.
     needs: [check, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
-      - name: Récupérer l'APK signé
-        uses: actions/download-artifact@v7
+      - name: Récupérer les APK signés
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: apk
 
       - name: Corps de la release
         run: |
+          sha() { cut -d' ' -f1 "$1.sha256"; }
           {
-            echo "**APK** : \`aetherstream.apk\` — SHA-256 \`$(cut -d' ' -f1 aetherstream.apk.sha256)\`"
+            echo "**Quel APK ?** La mise à jour intégrée choisit toute seule. Pour une première installation :"
+            echo ""
+            echo "- \`aetherstream_arm64-v8a.apk\` — téléphones, tablettes et box récents · SHA-256 \`$(sha aetherstream_arm64-v8a.apk)\`"
+            echo "- \`aetherstream_armeabi-v7a.apk\` — Fire TV Stick et appareils 32 bits · SHA-256 \`$(sha aetherstream_armeabi-v7a.apk)\`"
+            echo "- \`aetherstream.apk\` — universel, en cas de doute · SHA-256 \`$(sha aetherstream.apk)\`"
             echo ""
             echo "Flutter ${{ env.FLUTTER_VERSION }} · armeabi-v7a + arm64-v8a"
           } > body.md
           cat body.md
 
-      - name: Créer la release GitHub et uploader l'APK
-        uses: softprops/action-gh-release@v3
+      # ⚠️ Les versions déjà installées (≤ 1.18.18) prennent le PREMIER `.apk`
+      # de la release : ce doit être l'universel (une split arm64 ne
+      # s'installe pas sur un Fire TV Stick 32 bits). Or l'API GitHub rend les
+      # fichiers TRIÉS PAR NOM, pas dans l'ordre d'envoi (mesuré le 2026-09-11
+      # sur cli/cli et ripgrep) : l'ordre des étapes ou de cette liste ne
+      # garantit RIEN. Ce sont les NOMS qui le garantissent — `aetherstream.apk`
+      # passe devant `aetherstream_<abi>.apk` (« . » 0x2E < « _ » 0x5F).
+      # ⛔ Ne jamais nommer une split `aetherstream-<abi>.apk` : « - » (0x2D)
+      # la rangerait AVANT l'universel. Tenu par test/update_asset_choice_test.
+      - name: Créer la release et téléverser les APK
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           name: AetherStream ${{ github.ref_name }}
           files: |
             aetherstream.apk
             aetherstream.apk.sha256
+            aetherstream_arm64-v8a.apk
+            aetherstream_arm64-v8a.apk.sha256
+            aetherstream_armeabi-v7a.apk
+            aetherstream_armeabi-v7a.apk.sha256
+          fail_on_unmatched_files: true
           body_path: body.md
           append_body: true
           generate_release_notes: true

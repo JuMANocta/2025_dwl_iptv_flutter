@@ -57,8 +57,14 @@ abstract final class DeviceCapsService {
   /// Mesure (ou re-mesure) l'appareil. Rend `null` si le natif ne répond pas.
   static Future<DeviceCaps?> probe() async {
     try {
+      // Revue 2026-09-11, D2B-14 — Sonde : la mesure native tourne sur le
+      // thread PRINCIPAL Android (gestionnaire de canal). Ce chrono en donne la
+      // durée, aller-retour du canal compris — à relever sur appareil AVANT de
+      // la déplacer sur un fil d'arrière-plan (§feedback_instrument_first).
+      final Stopwatch nativeSw = Stopwatch()..start();
       final Map<Object?, Object?>? m =
           await _channel.invokeMethod<Map<Object?, Object?>>('caps');
+      final int nativeMs = nativeSw.elapsedMilliseconds;
       if (m == null) return null;
       final now = DateTime.now();
       final measured = DeviceCaps.fromMap(m, measuredAt: now);
@@ -66,7 +72,7 @@ abstract final class DeviceCapsService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kCaps, jsonEncode(measured.toMap()));
       await prefs.setInt(_kMeasuredAt, now.millisecondsSinceEpoch);
-      debugPrint('\u{1F50E} §deviceCaps : ${describe(measured)}');
+      debugPrint('\u{1F50E} §deviceCaps : ${describe(measured)} — sonde native $nativeMs ms');
       return measured;
     } catch (e) {
       debugPrint('⚠️ §deviceCaps probe : $e');
@@ -87,7 +93,14 @@ abstract final class DeviceCapsService {
           PerformanceSettingsService.config.value != PerfConfig.defaults;
       final suggested = measured.suggestedProfile;
       if (!userAlreadyChose) {
-        await PerformanceSettingsService.save(_configFor(suggested));
+        // Revue 2026-09-11, D4L-01 : `userAlreadyChose` compare par `==`, qui
+        // ignore le confort — une sauvegarde `.aether` restaurée dans
+        // l'onboarding (« Wi-Fi seulement », rangées TMDB coupées…) passait
+        // donc pour « rien de choisi », et le preset BRUT l'écrasait. On
+        // n'applique plus que les leviers de profil (§perfNotify).
+        await PerformanceSettingsService.save(PerformanceSettingsService
+            .config.value
+            .withProfileOf(_configFor(suggested)));
         autoProfile.value = suggested;
         debugPrint('\u{1F3AF} §autoProfile : profil ${suggested.name} choisi par la sonde');
       }

@@ -46,7 +46,7 @@ PW_FILE = os.path.join(ROOT, ".claude", "skills", "run-aetherstream",
                        "backup_password.txt")
 
 # §iptvUaCompat — les panels Xtream répondent 500 EN SILENCE aux UA navigateur.
-# Ce profil est celui de `NetworkUtils.buildBaseDio` ; ne pas y ajouter de
+# Ce profil est celui de `NetworkUtils.buildIptvBaseDio` ; ne pas y ajouter de
 # Referer ni d'Origin.
 HEADERS = {
     "User-Agent": "IPTVSmartersPro",

@@ -56,6 +56,7 @@ import java.net.URL
 class AetherCastService : Service() {
 
     companion object {
+        private const val TAG = "AetherCastService"
         private const val CHANNEL_ID = "aether_cast"
         private const val ONGOING_NOTIFICATION_ID = 2002
         const val ACTION_TOGGLE = "com.juman.aetherstream.action.CAST_TOGGLE"
@@ -68,6 +69,9 @@ class AetherCastService : Service() {
             playing: Boolean,
             image: String? = null,
             lowBattery: Boolean = false,
+            pauseLabel: String? = null,
+            playLabel: String? = null,
+            stopLabel: String? = null,
         ) {
             val intent = Intent(context, AetherCastService::class.java).apply {
                 putExtra("title", title)
@@ -75,11 +79,23 @@ class AetherCastService : Service() {
                 putExtra("playing", playing)
                 putExtra("image", image)
                 putExtra("lowBattery", lowBattery)
+                // Revue 2026-09-11, D3L-02 — libellés des boutons, traduits
+                // par Dart ; repli sur les ressources s'ils manquent.
+                putExtra("pauseLabel", pauseLabel)
+                putExtra("playLabel", playLabel)
+                putExtra("stopLabel", stopLabel)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
+            try {
+                // §fgsSafeStart (2026-09-10) — ⚠️ `startForegroundService` arme
+                // un compte à rebours de 5 s ; le service détruit avant sa
+                // promotion = **processus tué**. Mesuré sur Galaxy S25 le
+                // 2026-09-05 pendant une conversion Cast : le service mettait
+                // 4,95 s à être créé, le téléphone étant occupé à convertir.
+                // Le paquet vendoré a été corrigé (patch 13), pas celui-ci.
+                @Suppress("DEPRECATION")
                 context.startService(intent)
+            } catch (e: Exception) {
+                AetherLog.w(TAG, "démarrage du service refusé (${e.javaClass.simpleName})")
             }
         }
 
@@ -113,6 +129,18 @@ class AetherCastService : Service() {
     /// téléphone porte la diffusion, s'il s'éteint tout s'arrête.
     private var lowBattery: Boolean = false
 
+    /// Revue 2026-09-11, D3L-02 — libellés des boutons, venus de Dart (langue
+    /// de l'écran). ⚠️ Lus aussi par le thread de l'affiche (`maybeLoadPoster`
+    /// repose la notification) : `@Volatile`, comme `poster`.
+    @Volatile
+    private var pauseLabel: String? = null
+
+    @Volatile
+    private var playLabel: String? = null
+
+    @Volatile
+    private var stopLabel: String? = null
+
     /// §castAwake — Verrou CPU : sans lui, écran éteint, le téléphone se
     /// suspend et la diffusion avec. Non compté par référence : un seul
     /// `acquire` quel que soit le nombre de mises à jour de la notification,
@@ -131,17 +159,14 @@ class AetherCastService : Service() {
         super.onCreate()
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createChannel()
+        // §fgsSafeStart — Se déclarer dès la CRÉATION, avec un repli.
+        promoteToForeground(
+            buildNotification("AetherStream", getString(R.string.notif_cast_running), true)
+        )
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val title = intent?.getStringExtra("title") ?: "AetherStream"
-        val text = intent?.getStringExtra("text") ?: "Diffusion en cours"
-        val playing = intent?.getBooleanExtra("playing", true) ?: true
-        val image = intent?.getStringExtra("image")
-        lowBattery = intent?.getBooleanExtra("lowBattery", false) ?: false
-        maybeLoadPoster(image, title, text, playing)
-
-        val notification = buildNotification(title, text, playing)
+    /// Déclare le service en premier plan. ⚠️ Ne lève jamais.
+    private fun promoteToForeground(notification: Notification) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
@@ -153,14 +178,27 @@ class AetherCastService : Service() {
                 startForeground(ONGOING_NOTIFICATION_ID, notification)
             }
         } catch (e: Exception) {
-            // Android 12+ : ForegroundServiceStartNotAllowedException si l'app
-            // est en arrière-plan au DÉMARRAGE du service. La diffusion démarre
-            // toujours depuis le lecteur (au premier plan) : ce cas ne devrait
-            // pas se produire ; s'il arrive, la diffusion continue sans
-            // notification, comme §dlNotif.
-            stopSelf()
-            return START_NOT_STICKY
+            AetherLog.w(TAG, "startForeground refusé (${e.javaClass.simpleName})")
         }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val title = intent?.getStringExtra("title") ?: "AetherStream"
+        val text = intent?.getStringExtra("text") ?: getString(R.string.notif_cast_running)
+        val playing = intent?.getBooleanExtra("playing", true) ?: true
+        val image = intent?.getStringExtra("image")
+        lowBattery = intent?.getBooleanExtra("lowBattery", false) ?: false
+        pauseLabel = intent?.getStringExtra("pauseLabel")
+        playLabel = intent?.getStringExtra("playLabel")
+        stopLabel = intent?.getStringExtra("stopLabel")
+        maybeLoadPoster(image, title, text, playing)
+
+        // §fgsSafeStart — Déjà promu dans `onCreate` ; on remplace le repli.
+        // ⛔ Plus de `stopSelf()` en rattrapage : se retirer sans s'être
+        // déclaré est exactement ce qui tue le processus. Et ici ce serait
+        // pire qu'ailleurs — `stopSelf()` emportait aussi §castAwake, donc la
+        // diffusion mourait dès l'écran éteint.
+        promoteToForeground(buildNotification(title, text, playing))
         // §castAwake — APRÈS `startForeground` : c'est le statut de premier
         // plan qui rend le verrou honoré en mode Sommeil. Idempotent : chaque
         // mise à jour de la notification repasse ici.
@@ -247,10 +285,11 @@ class AetherCastService : Service() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        if (notificationManager.getNotificationChannel(CHANNEL_ID) != null) return
+        // Revue 2026-09-11, D2B-17 — recréé à chaque fois : Android met alors
+        // à jour le NOM du canal, qui suit la langue de l'appareil.
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Diffusion Chromecast",
+            getString(R.string.notif_channel_cast),
             NotificationManager.IMPORTANCE_LOW
         )
         notificationManager.createNotificationChannel(channel)
@@ -285,8 +324,21 @@ class AetherCastService : Service() {
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setContentIntent(contentPending)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(0, if (playing) "Pause" else "Lecture", togglePending)
-            .addAction(0, "Arrêter", stopPending)
+            // D3L-02 — libellés traduits par Dart, repli sur les ressources.
+            .addAction(
+                0,
+                if (playing) {
+                    pauseLabel?.takeIf { it.isNotBlank() } ?: getString(R.string.notif_pause)
+                } else {
+                    playLabel?.takeIf { it.isNotBlank() } ?: getString(R.string.notif_play)
+                },
+                togglePending
+            )
+            .addAction(
+                0,
+                stopLabel?.takeIf { it.isNotBlank() } ?: getString(R.string.notif_stop),
+                stopPending
+            )
         if (lowBattery) {
             // Fond coloré (autorisé pour un service de premier plan média) :
             // l'alerte se voit sans lire le texte.

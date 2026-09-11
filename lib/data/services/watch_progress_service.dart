@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/diagnostics/prefs_probe.dart';
+
 /// Snapshot d'une progression de lecture.
 class WatchProgress {
   /// URL utilisée comme identifiant unique de l'entrée VOD lue (films/séries).
@@ -60,8 +62,59 @@ class WatchProgressService {
   /// Durée minimale d'une entrée pour sauvegarder (filtre les pubs/intros < 60s).
   static const Duration _minDuration = Duration(seconds: 60);
 
+  /// Revue 2026-09-11, D1A-17 — **Plafond de la table.**
+  ///
+  /// Elle n'en avait aucun : une entrée par film ou épisode entamé, gardée à
+  /// vie (URL d'abonnements supprimés comprises), et RÉÉCRITE EN ENTIER toutes
+  /// les 10 s de lecture — une table qui ne fait que grossir rend chaque
+  /// sauvegarde plus lourde que la précédente, et gonfle le `.aether`.
+  /// Au-delà, on oublie les reprises les plus ANCIENNES (`lastWatched`), comme
+  /// `MeasuredQualityService` et `InferredCategoryService` bornent déjà les
+  /// leurs. Le hero « Reprendre » n'en montre que les plus récentes : intact.
+  static const int maxEntries = 500;
+
   static final Map<String, WatchProgress> _cache = {};
   static bool _loaded = false;
+
+  /// D1A-17 — Les clés à oublier pour ramener [m] à [max] entrées : les plus
+  /// anciennes par `lastWatched`, et à égalité la PREMIÈRE insérée (ordre de
+  /// la table). [keep] n'est jamais proposée : c'est la reprise qu'on vient
+  /// d'enregistrer, qu'une horloge reculée ne doit pas faire oublier aussitôt.
+  ///
+  /// Fonction pure : c'est elle qu'on teste.
+  @visibleForTesting
+  static List<String> keysBeyondCap(Map<String, WatchProgress> m, int max,
+      {String? keep}) {
+    if (m.length <= max) return const <String>[];
+    final List<MapEntry<String, WatchProgress>> entries =
+        m.entries.where((MapEntry<String, WatchProgress> e) => e.key != keep).toList();
+    final List<int> order = List<int>.generate(entries.length, (int i) => i);
+    order.sort((int a, int b) {
+      final int c = entries[a]
+          .value
+          .lastWatched
+          .compareTo(entries[b].value.lastWatched);
+      return c != 0 ? c : a.compareTo(b);
+    });
+    return <String>[
+      for (final int i in order.take(m.length - max)) entries[i].key,
+    ];
+  }
+
+  /// D1A-17 — Applique le plafond à la table en mémoire. Rend le nombre de
+  /// reprises oubliées (0 dans l'immense majorité des appels).
+  static int _applyCap({String? keep}) {
+    final List<String> drop = keysBeyondCap(_cache, maxEntries, keep: keep);
+    for (final String k in drop) {
+      _cache.remove(k);
+    }
+    if (drop.isNotEmpty) {
+      // Une ligne par titre NOUVEAU au-delà du plafond (jamais par sauvegarde
+      // périodique : mettre à jour une reprise existante ne fait pas grossir).
+      debugPrint('🧹 WatchProgress — ${drop.length} reprise(s) la/les plus ancienne(s) oubliée(s) (plafond $maxEntries)');
+    }
+    return drop.length;
+  }
 
   /// Bumpe à chaque modification — écouter via `ValueListenableBuilder`.
   static final ValueNotifier<int> version = ValueNotifier(0);
@@ -81,6 +134,12 @@ class WatchProgressService {
             entry.value as Map<String, dynamic>,
           );
         }
+        // D1A-17 — Sonde (une ligne au démarrage) + plafond appliqué à une
+        // table héritée d'avant le plafond. Rien n'est réécrit ici : la table
+        // réduite part au disque à la prochaine sauvegarde.
+        debugPrint('✅ WatchProgress — ${_cache.length} reprises restaurées '
+            '(${(raw.length / 1024).toStringAsFixed(1)} Ko)');
+        _applyCap();
       }
     } catch (e) {
       debugPrint('❌ WatchProgressService: erreur chargement — $e');
@@ -94,7 +153,9 @@ class WatchProgressService {
       final map = {
         for (final p in _cache.entries) p.key: p.value.toJson(),
       };
-      await prefs.setString(_prefsKey, jsonEncode(map));
+      // D1A-17 — Même écriture, chronométrée (journalisée au-delà de 8 ms).
+      await PrefsProbe.setStringTimed(prefs, _prefsKey, () => jsonEncode(map),
+          tag: 'WatchProgress');
     } catch (e) {
       debugPrint('❌ WatchProgressService: erreur persistence — $e');
     }
@@ -150,6 +211,9 @@ class WatchProgressService {
       duration: duration,
       lastWatched: DateTime.now(),
     );
+    // D1A-17 — Ne fait quelque chose que pour un titre NOUVEAU au-delà du
+    // plafond ; la reprise qu'on vient d'enregistrer n'est jamais oubliée.
+    _applyCap(keep: url);
     version.value++;
     await _persist();
   }
@@ -171,6 +235,14 @@ class WatchProgressService {
     await _persist();
   }
 
+  /// Tests : oublie la table en mémoire pour rejouer un chargement depuis
+  /// les préférences simulées.
+  @visibleForTesting
+  static void resetForTest() {
+    _cache.clear();
+    _loaded = false;
+  }
+
   /// Remplace l'intégralité du cache de progressions en une seule opération.
   /// Utilisé par le BackupService (§10) pour l'import.
   static Future<void> replaceAll(Map<String, WatchProgress> progresses) async {
@@ -178,6 +250,8 @@ class WatchProgressService {
     _cache
       ..clear()
       ..addAll(progresses);
+    // D1A-17 — Une sauvegarde d'avant le plafond peut en porter davantage.
+    _applyCap();
     version.value++;
     await _persist();
   }

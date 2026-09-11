@@ -93,7 +93,9 @@ class _HomeCardState extends State<_HomeCard> {
   ///
   /// ⚠️ Idempotent : `TmdbPosterCache` dédoublonne les appels concurrents et
   /// met même les résultats négatifs en cache, donc être rappelé plusieurs fois
-  /// pour un même titre ne coûte rien.
+  /// pour un même titre ne coûte rien. (Revue 2026-09-11, D1B-01 : négatifs
+  /// DÉFINITIFS seulement — une panne ou l'absence de clé se retente, la
+  /// présence de la clé étant mémorisée côté cache.)
   void _resolveTmdbPosterIfNeeded() {
     if (_tmdbPoster != null) return;
     if (widget.type == M3uContentType.tv) return; // les chaînes ont leur logo
@@ -119,7 +121,16 @@ class _HomeCardState extends State<_HomeCard> {
       // soit le compte d'où elles viennent.
       categoryKey: contentGroupKey(entry),
     ).then((url) {
+      // Revue 2026-09-11, D4A-04 — la carte a pu être RECYCLÉE pour un autre
+      // titre pendant la résolution (recherche qui change à chaque frappe,
+      // « Voir tout ») : `didUpdateWidget` a relancé la sienne, parfois servie
+      // en synchrone par le cache, puis cette réponse-ci arrivait et posait
+      // l'affiche de l'ANCIEN titre sous le nouveau libellé (§posterFlash :
+      // une mauvaise image est pire que rien).
       if (!mounted || url == null) return;
+      if (widget.versions.isEmpty || widget.versions.first.url != entry.url) {
+        return;
+      }
       setState(() => _tmdbPoster = url);
     });
   }
@@ -263,7 +274,7 @@ class _HomeCardState extends State<_HomeCard> {
                       subtitle: LinearProgressIndicator(
                         value: progress.ratio,
                         minHeight: 3,
-                        backgroundColor: Colors.white12,
+                        backgroundColor: kOnImageFaint, // D4A-16 (= white12)
                         valueColor: AlwaysStoppedAnimation(kAccentSecondary),
                       ),
                       onTap: () => play(from: progress.position),
@@ -373,6 +384,10 @@ class _HomeCardState extends State<_HomeCard> {
                 );
               },
             ),
+            // §tvOptionsBack — le menu d'appui long est le raccourci PRINCIPAL
+            // de l'app : sans ligne neutre, en sortir demandait la touche
+            // Retour, qui est justement le geste en défaut sur TV.
+            const SheetCloseTile(),
             const SizedBox(height: 8),
           ],
         ),
@@ -450,7 +465,7 @@ class _HomeCardState extends State<_HomeCard> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withAlpha(80),
+                    color: kImageScrim.withAlpha(80),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -492,7 +507,7 @@ class _HomeCardState extends State<_HomeCard> {
                             stops: const [0.55, 1.0],
                             colors: [
                               Colors.transparent,
-                              Colors.black.withAlpha(220),
+                              kImageScrim.withAlpha(220),
                             ],
                           ),
                         ),
@@ -515,10 +530,10 @@ class _HomeCardState extends State<_HomeCard> {
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                              color: kOnImage,
                               height: 1.2,
                               shadows: [
-                                Shadow(color: Colors.black, blurRadius: 4),
+                                Shadow(color: kImageScrim, blurRadius: 4),
                               ],
                             ),
                           ),
@@ -529,10 +544,10 @@ class _HomeCardState extends State<_HomeCard> {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.white.withAlpha(190),
+                                color: kOnImage.withAlpha(190),
                                 height: 1.3,
                                 shadows: const [
-                                  Shadow(color: Colors.black, blurRadius: 4),
+                                  Shadow(color: kImageScrim, blurRadius: 4),
                                 ],
                               ),
                             ),
@@ -573,13 +588,13 @@ class _HomeCardState extends State<_HomeCard> {
                             child: Center(
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
-                                  color: Color(0xB3000000),
+                                  color: kImageScrim70,
                                   shape: BoxShape.circle,
                                 ),
                                 child: Padding(
                                   padding: EdgeInsets.all(4),
                                   child: Icon(Icons.more_horiz,
-                                      size: 16, color: Colors.white),
+                                      size: 16, color: kOnImage),
                                 ),
                               ),
                             ),
@@ -606,7 +621,7 @@ class _HomeCardState extends State<_HomeCard> {
                             return LinearProgressIndicator(
                               value: p.ratio,
                               minHeight: 3,
-                              backgroundColor: Colors.white24,
+                              backgroundColor: kOnImageSubtle, // = white24
                               valueColor: AlwaysStoppedAnimation(kAccentSecondary),
                             );
                           },

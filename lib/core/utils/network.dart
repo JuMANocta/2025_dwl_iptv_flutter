@@ -11,52 +11,39 @@ import '../../data/models/stream_account.dart';
 ///
 /// **Sécurité SSL** : par défaut Dio refuse les certificats invalides.
 /// Le contournement SSL n'est activé QUE pour les requêtes vers les
-/// serveurs IPTV de l'utilisateur (via [buildDio] ou en passant
-/// `allowInvalidCertificate: true` à [buildBaseDio]).
+/// serveurs IPTV de l'utilisateur (via [buildDio] ou [buildIptvBaseDio]).
 ///
-/// Les requêtes vers TMDB, GitHub, XMLTV, etc. ne doivent **jamais** activer
-/// cette option : leurs certificats sont valides et les ignorer ouvrirait
-/// la porte à du MITM.
+/// Les requêtes vers TMDB, GitHub, XMLTV, etc. ne passent **jamais** par
+/// cette classe : elles ont leur propre Dio, certificats vérifiés (ignorer
+/// un certificat valide ouvrirait la porte à du MITM).
 class NetworkUtils {
 
-  /// Construit une instance de Dio avec une configuration de base (User-Agent, etc.).
+  /// Construit le Dio de base d'un **serveur IPTV de l'utilisateur** : profil
+  /// de requête §iptvUaCompat ET contournement du certificat TLS.
   ///
-  /// [allowInvalidCertificate] : si `true`, accepte n'importe quel certificat
-  /// SSL. À n'utiliser QUE pour les serveurs IPTV mal configurés. Défaut `false`.
-  static Dio buildBaseDio({
-    String? referer,
-    String? origin,
-    bool allowInvalidCertificate = false,
-  }) {
-    // §iptvUaCompat — Profil de requête piloté par `allowInvalidCertificate` :
-    //   - `true`  = appel vers serveur IPTV utilisateur → User-Agent
-    //               **IPTVSmartersPro** (whitelisté par les panels Xtream qui
-    //               renvoient 500 silencieux aux UAs non IPTV connus),
-    //               pas de Referer/Origin (anti-embed), Accept-Encoding gzip.
-    //   - `false` = appel vers une API publique (TMDB, GitHub, XMLTV…) →
-    //               UA navigateur Chrome standard + Referer/Origin classiques.
+  /// Revue 2026-09-11, D1B-21 — S'appelait `buildBaseDio({referer, origin,
+  /// allowInvalidCertificate = false})` : le MÊME booléen pilotait le
+  /// contournement TLS et le profil d'en-têtes, et sa branche `false` (UA
+  /// Chrome figé + Referer/Origin) n'avait aucun appelant — les deux appels
+  /// passaient `true`. Branche et paramètres retirés, nom explicite.
+  /// ⛔ Ne jamais l'utiliser pour une API publique : le certificat n'y est
+  /// pas vérifié.
+  static Dio buildIptvBaseDio() {
+    // §iptvUaCompat — User-Agent **IPTVSmartersPro** (whitelisté par les
+    // panels Xtream qui renvoient 500 silencieux aux UAs non IPTV connus),
+    // pas de Referer/Origin (anti-embed), Accept-Encoding gzip.
     // Découvert via capture PCAP de ZenIPTV : sans `IPTVSmartersPro`, les
     // panels ouèrent `get.php` en mode dégradé → PHP timeout 30s → 500 vide.
-    final isIptvProfile = allowInvalidCertificate;
-    // §iptvUaCompat — Headers MINIMAUX pour le profil IPTV : on copie pile poil
-    // ce que ZenIPTV envoie (vu dans le PCAP). Pas de `Connection: keep-alive`
-    // (Dart HTTP/1.1 gère ça implicitement, et certains panels rejettent les
-    // requêtes qui en ont un explicite — c'est leur heuristique pour distinguer
-    // les "vrais clients IPTV" des "scrapers/curl/wget").
-    final Map<String, dynamic> headers = isIptvProfile
-        ? {
-            'User-Agent': 'IPTVSmartersPro',
-            'Accept': '*/*',
-            'Accept-Encoding': 'gzip',
-          }
-        : {
-            'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': '*/*',
-            'Connection': 'keep-alive',
-            'Referer': referer,
-            'Origin': origin,
-          };
+    // §iptvUaCompat — Headers MINIMAUX : on copie pile poil ce que ZenIPTV
+    // envoie (vu dans le PCAP). Pas de `Connection: keep-alive` (Dart
+    // HTTP/1.1 gère ça implicitement, et certains panels rejettent les
+    // requêtes qui en ont un explicite — c'est leur heuristique pour
+    // distinguer les "vrais clients IPTV" des "scrapers/curl/wget").
+    final Map<String, dynamic> headers = {
+      'User-Agent': 'IPTVSmartersPro',
+      'Accept': '*/*',
+      'Accept-Encoding': 'gzip',
+    };
     final dio = Dio(
       BaseOptions(
         connectTimeout: const Duration(seconds: 30),
@@ -68,19 +55,17 @@ class NetworkUtils {
       ),
     );
 
-    if (allowInvalidCertificate) {
-      // ⚠️ Bypass certificat SSL : strictement réservé aux providers IPTV
-      // utilisateur (souvent self-signed). Ne PAS étendre aux APIs publiques.
-      // §iptvUaCompat — On force aussi le `userAgent` au niveau du HttpClient :
-      // sans ça Dart ajoute "Dart/3.x (dart:io)" par défaut, ce qui peut être
-      // détecté côté serveur en plus de notre UA dans les headers.
-      (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
-        final client = HttpClient();
-        client.userAgent = 'IPTVSmartersPro';
-        client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
-        return client;
-      };
-    }
+    // ⚠️ Bypass certificat SSL : strictement réservé aux providers IPTV
+    // utilisateur (souvent self-signed). Ne PAS étendre aux APIs publiques.
+    // §iptvUaCompat — On force aussi le `userAgent` au niveau du HttpClient :
+    // sans ça Dart ajoute "Dart/3.x (dart:io)" par défaut, ce qui peut être
+    // détecté côté serveur en plus de notre UA dans les headers.
+    (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+      final client = HttpClient();
+      client.userAgent = 'IPTVSmartersPro';
+      client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+      return client;
+    };
 
     return dio;
   }
@@ -101,17 +86,24 @@ class NetworkUtils {
   /// vides — et une réponse vide est indiscernable d'un catalogue vide
   /// (§catalogTruth). Le paramètre `url` n'était d'ailleurs **jamais lu**.
   static Future<Dio> buildDio(String url, {StreamAccount? account}) async {
-    // §iptvUaCompat — `allowInvalidCertificate: true` active le profil "IPTV"
-    // dans buildBaseDio : UA `IPTVSmartersPro` + Accept-Encoding gzip,
-    // sans Referer/Origin. Le profil est appliqué à TOUTES les requêtes IPTV
-    // (téléchargement playlist, médias, player_api.php, replay…).
-    final dio = buildBaseDio(allowInvalidCertificate: true);
+    // §iptvUaCompat — profil "IPTV" de buildIptvBaseDio : UA `IPTVSmartersPro`
+    // + Accept-Encoding gzip, sans Referer/Origin. Le profil est appliqué à
+    // TOUTES les requêtes IPTV (téléchargement playlist, médias,
+    // player_api.php, replay…).
+    final dio = buildIptvBaseDio();
 
     // Le compte explicite gagne toujours ; le repli sur le compte courant n'est
     // là que pour les chemins qui ne savent pas de quel compte ils dépendent
     // (téléchargement d'un média depuis une URL nue).
     final acc = account ?? await StreamAccountService.getCurrentAccount();
-    final legacy = await SecureStorageService().getCredentials();
+    // Revue 2026-09-11, D1B-15 — Le stockage legacy (8 lectures du trousseau,
+    // chiffré, par le canal natif) n'est lu que s'il peut servir : depuis
+    // D1B-10, `cookiesFor` ne le regarde QUE sans compte. Avant, il était relu
+    // à CHAQUE requête IPTV (chaque action player_api, chaque téléchargement)
+    // pour être ignoré. Résultat de `cookiesFor` strictement identique.
+    final Map<String, String?> legacy = acc == null
+        ? await SecureStorageService().getCredentials()
+        : const <String, String?>{};
     final cookies = cookiesFor(acc, legacy);
 
     // On ajoute les cookies uniquement s'ils existent
@@ -123,11 +115,18 @@ class NetworkUtils {
   }
 
   /// §cookieScope — Choix des cookies à envoyer, extrait pour être testable
-  /// sans appareil : le compte porte les siens, sinon on retombe sur le
-  /// stockage legacy mono-compte. Rend `''` quand il n'y en a pas.
+  /// sans appareil. Rend `''` quand il n'y en a pas.
+  ///
+  /// Revue 2026-09-11, D1B-10 — Un compte connu envoie SES cookies, et rien
+  /// d'autre : le repli sur le stockage legacy mono-compte ne vaut plus que
+  /// SANS compte du tout (installation d'avant la migration). Avant, tout
+  /// compte sans cookies recevait ceux du legacy — c'est-à-dire la session du
+  /// panel de l'ère mono-compte envoyée à un AUTRE fournisseur, exactement la
+  /// fuite que §cookieScope voulait fermer (la migration copie déjà ces
+  /// cookies dans le compte migré, qui n'y perd rien).
+  /// Testé : `test/cookie_scope_test.dart`.
   static String cookiesFor(StreamAccount? account, Map<String, dynamic> legacy) {
-    final String own = (account?.cookies ?? '').trim();
-    if (own.isNotEmpty) return own;
+    if (account != null) return (account.cookies ?? '').trim();
     return (legacy['cookies'] ?? '').toString().trim();
   }
 }

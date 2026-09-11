@@ -380,8 +380,9 @@ class _SeeAllTile extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.arrow_forward,
-                      color: Colors.black, size: 22),
+                  // D4B-08 — l'icône suit l'accent (Tron : fond blanc).
+                  child: Icon(Icons.arrow_forward,
+                      color: onColorFor(kAccentPrimary), size: 22),
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -494,7 +495,7 @@ class _CategoryListPageState extends State<CategoryListPage> with TvInitialFocus
       floatingActionButton: _showScrollTop
           ? FloatingActionButton.small(
               backgroundColor: kAccentPrimary,
-              foregroundColor: Colors.black,
+              foregroundColor: onColorFor(kAccentPrimary), // D4B-08
               onPressed: () => _scrollController.animateTo(
                 0,
                 duration: const Duration(milliseconds: 400),

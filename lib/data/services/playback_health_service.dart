@@ -1,7 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/utils/formatters.dart';
+import '../../l10n/app_localizations.dart';
 
 /// §stallCount — Ce que chaque fournisseur a réellement servi, par compte.
 ///
@@ -168,6 +172,21 @@ class AccountPlaybackHealth {
       stalls == 0 ? 'aucun blocage' : '$stalls blocage${stalls > 1 ? 's' : ''}',
       if (stallsPerHour != null) '${stallsPerHour!.toStringAsFixed(1)}/h',
       '${_hm(watched)} vues',
+    ];
+    return parts.join(' · ');
+  }
+
+  /// Revue 2026-09-11, D1B-07 — Le MÊME résumé, pour l'ÉCRAN (carte de compte) :
+  /// dans la langue de l'appareil, avec un vrai pluriel. [summary] reste le
+  /// texte du JOURNAL — il n'était pas fait pour être lu à côté de libellés
+  /// anglais (« 3 blocages · 1.2/h · 2h10 vues »).
+  String displaySummary(AppLocalizations l) {
+    final double? perHour = stallsPerHour;
+    final parts = <String>[
+      stalls == 0 ? l.healthNoStalls : l.healthStalls(stalls),
+      if (perHour != null)
+        l.healthPerHour(NumberFormat('0.0', l.localeName).format(perHour)),
+      l.healthWatched(formatShortDuration(watched, l)),
     ];
     return parts.join(' · ');
   }

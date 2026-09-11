@@ -1,3 +1,5 @@
+import '../../core/utils/log_sanitizer.dart' show xtreamPathCredentialIndexes;
+
 /// Mode d’authentification
 /// - [completeUrl] : l’utilisateur fournit directement l’URL .m3u complète.
 /// - [separate]   : on construit l’URL à partir de baseUrl + username + password (style Xtream Codes).
@@ -61,7 +63,13 @@ class StreamAccount {
     final base = hasSlash ? b.substring(0, b.length - 1) : b;
     final String typeValue = playlistType == PlaylistType.simple ? 'simple' : 'm3u_plus';
 
-    return "$base/get.php?username=$u&password=$p&type=$typeValue&output=ts";
+    // §tourFix — revue 2026-09-11, D1A-16 — Identifiant et mot de passe
+    // ENCODÉS, comme le fait déjà `XtreamApiService._baseUrl`. Interpolés
+    // bruts, un mot de passe « ab&cd#1 » partait en `password=ab` (le `&`
+    // ouvre un autre paramètre, le `#` coupe l'URL) : le repli get.php
+    // échouait à tous les coups. Sans effet sur un identifiant alphanumérique.
+    return "$base/get.php?username=${Uri.encodeQueryComponent(u)}"
+        "&password=${Uri.encodeQueryComponent(p)}&type=$typeValue&output=ts";
 
   }
 
@@ -183,7 +191,12 @@ class StreamAccount {
       username: j['username'] as String?,
       password: j['password'] as String?,
       cookies: j['cookies'] as String?,
-      playlistType: PlaylistType.values.byName(j['playlistType'] ?? 'm3u'),
+      // revue 2026-09-11, D1B-05 — `byName` LEVAIT sur une valeur inconnue :
+      // un compte écrit par une version future (nouveau type) devenait
+      // illisible, et une restauration `.aether` le perdait. Repli sur `m3u`,
+      // le seul type que l'app crée encore (`buildXtreamUrl` force m3u_plus).
+      playlistType: PlaylistType.values.asNameMap()[j['playlistType']] ??
+          PlaylistType.m3u,
       createdAt: DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
     );
   }
@@ -220,6 +233,28 @@ class StreamAccount {
       'StreamAccount(id=$id, label=$label, mode=$mode, usable=$isUsable)';
 }
 
+/// Revue 2026-09-11, D4B-03 — Vrai si ce qui sert à JOINDRE le fournisseur a
+/// changé entre deux versions d'un compte : le mode, puis, selon le mode,
+/// l'URL complète ou le trio serveur / identifiant / mot de passe, et le type
+/// de liste. Le NOM ne compte pas : renommer un compte ne doit rien
+/// retélécharger. Les champs de l'autre mode sont ignorés (le formulaire les
+/// remet à `null`, un vieux compte peut encore les porter).
+///
+/// Pourquoi ça compte : le catalogue analysé EMBARQUE les identifiants dans
+/// les URL de flux Xtream. Après un changement de mot de passe, toutes les
+/// lectures échouaient jusqu'au rafraîchissement de 24 h. **Pure** — testée.
+bool connectionChanged(StreamAccount before, StreamAccount after) {
+  String n(String? s) => (s ?? '').trim();
+  if (before.mode != after.mode) return true;
+  if (before.playlistType != after.playlistType) return true;
+  if (after.mode == StreamAuthMode.completeUrl) {
+    return n(before.completeUrl) != n(after.completeUrl);
+  }
+  return n(before.baseUrl) != n(after.baseUrl) ||
+      n(before.username) != n(after.username) ||
+      n(before.password) != n(after.password);
+}
+
 /// §17a — Helper d'extraction des credentials Xtream depuis une URL "complète".
 ///
 /// Couvre les 2 formats les plus courants :
@@ -254,25 +289,21 @@ class XtreamCredentials {
     // Format 2 : path Xtream `/{user}/{pass}/{stream_id}[.ext]`.
     // On accepte `/live/`, `/movie/`, `/series/`, `/timeshift/` comme préfixe
     // optionnel, puis 2 segments user/pass, puis au moins 1 segment de plus.
+    //
+    // §tourFix — revue 2026-09-11, D5A-02 — La règle vit dans
+    // `log_sanitizer.dart` (`xtreamPathCredentialIndexes`) et `redactUrl`
+    // applique LA MÊME : ce qu'on extrait ici est garanti masqué dans les
+    // journaux. Comportement d'extraction inchangé (déplacé à l'identique).
     final segments = uri.pathSegments
         .where((s) => s.isNotEmpty)
         .toList(growable: false);
-    if (segments.length >= 3) {
-      const prefixes = {'live', 'movie', 'series', 'timeshift'};
-      int startIdx = 0;
-      if (prefixes.contains(segments.first.toLowerCase())) startIdx = 1;
-      if (segments.length >= startIdx + 3) {
-        final u = segments[startIdx];
-        final p = segments[startIdx + 1];
-        // Heuristique anti-faux-positif : user et pass ne ressemblent pas à
-        // un chemin de fichier (pas d'extension `.m3u8`, pas de point).
-        if (u.isNotEmpty &&
-            p.isNotEmpty &&
-            !u.contains('.') &&
-            !p.contains('.')) {
-          return (host: origin, username: u, password: p);
-        }
-      }
+    final idx = xtreamPathCredentialIndexes(segments);
+    if (idx != null) {
+      return (
+        host: origin,
+        username: segments[idx.user],
+        password: segments[idx.pass],
+      );
     }
 
     return null;

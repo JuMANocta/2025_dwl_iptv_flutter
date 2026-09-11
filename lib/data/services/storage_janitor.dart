@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../feature/downloads/logic/partial_sweep.dart';
+import '../../l10n/l10n_ext.dart';
+
 /// §acctPurge — Le ménage du stockage : ce qui n'appartient plus à personne.
 ///
 /// ## Le constat qui a créé ce fichier (2026-09-02, sur le téléphone de test)
@@ -59,6 +62,11 @@ class StorageJanitor {
   /// 2026-09-01. Le plugin n'existe plus, donc plus rien ne les crée ni ne les
   /// relit ; 267 fichiers traînaient encore sur l'appareil de test.
   static const String legacyEnginePrefix = 'com.alexmercerind.media_kit.';
+
+  /// §dlPartSweep — Sous-dossier public des films téléchargés
+  /// (`/Movies/AetherStream/`). Même valeur que `MediaStore.appFolder`
+  /// (`main.dart`) et que `StorageService._appName`.
+  static const String publicMediaFolder = 'AetherStream';
 
   // ── Emplacements ──────────────────────────────────────────────────────────
   // Android : documents = `<data>/app_flutter` (playlists téléchargées),
@@ -190,6 +198,146 @@ class StorageJanitor {
         dryRun: true,
       );
 
+  // ── 3. Les partiels de téléchargement (§dlPartSweep) ─────────────────────
+
+  /// Dossier public des films téléchargés, ou `null` s'il est introuvable.
+  ///
+  /// ⚠️ Volontairement SANS `permission_handler` : ce balayage tourne au
+  /// démarrage, et rien ne justifie d'y faire surgir une demande de permission.
+  /// Si le dossier n'est pas lisible, la liste échoue et on l'ignore — les
+  /// partiels du cache privé, eux, restent toujours accessibles.
+  static Future<Directory?> _publicMoviesDir() async {
+    try {
+      final dirs =
+          await getExternalStorageDirectories(type: StorageDirectory.movies);
+      if (dirs == null || dirs.isEmpty) return null;
+      final String root = dirs.first.path.split('/Android/').first;
+      return Directory('$root/Movies/$publicMediaFolder');
+    } catch (e) {
+      debugPrint('⚠️ §dlPartSweep — dossier public introuvable : $e');
+      return null;
+    }
+  }
+
+  /// Dossier des fichiers partiels, sous le cache de l'application.
+  ///
+  /// ⚠️ **Duplique la résolution de `download_initiator._getTempDirectory`** —
+  /// même raison que les préfixes de playlist ci-dessus : un balayeur travaille
+  /// sur des emplacements, il ne peut pas les demander à celui qui écrit. Le
+  /// NOM du dossier, lui, a une définition unique ([kDownloadTmpDirName]), et
+  /// `test/download_partial_sweep_test.dart` vérifie l'accord.
+  static Future<Directory?> _downloadTmpDir() async {
+    try {
+      final external = await getExternalCacheDirectories();
+      final String base = (external != null && external.isNotEmpty)
+          ? external.first.path
+          : (await getTemporaryDirectory()).path;
+      return Directory(downloadTmpPath(base));
+    } catch (e) {
+      debugPrint('⚠️ §dlPartSweep — cache de téléchargement introuvable : $e');
+      return null;
+    }
+  }
+
+  /// Supprime les fichiers partiels qu'aucune tâche ne peut plus reprendre.
+  ///
+  /// [liveTempPaths] doit être l'ensemble COMPLET des `tempPath` des tâches
+  /// connues, **tous statuts confondus** : `failed` et `canceled` désignent des
+  /// transferts que « Relancer » reprend à l'octet près.
+  ///
+  /// ## ⚠️ Le garde-fou, identique à celui de [sweepOrphans]
+  ///
+  /// Si la liste des tâches n'a pas pu être relue (préférences qui hoquettent),
+  /// [liveTempPaths] arrive **vide** et TOUT devient orphelin — y compris un
+  /// téléchargement de plusieurs gigaoctets en attente de reprise. Le balayage
+  /// automatique refuse donc de tourner sur un ensemble vide ; seule une action
+  /// explicite de l'utilisateur peut passer [allowEmptyTaskList].
+  static Future<StorageSweepResult> sweepDownloadPartials({
+    required Set<String> liveTempPaths,
+    bool allowEmptyTaskList = false,
+    Duration minimumAge = defaultMinimumAge,
+    bool dryRun = false,
+    DateTime? now,
+    // ⚠️ Réservés aux tests : `getExternalCacheDirectories` et
+    // `getExternalStorageDirectories` lèvent hors Android AVANT d'atteindre le
+    // canal, donc aucun simulacre ne peut les couvrir. Injecter les dossiers
+    // est le seul moyen d'exercer le balayage sur de vrais fichiers.
+    @visibleForTesting Directory? tmpDirectory,
+    @visibleForTesting Directory? publicDirectory,
+  }) async {
+    if (liveTempPaths.isEmpty && !allowEmptyTaskList) {
+      debugPrint("🛑 §dlPartSweep — balayage REFUSÉ : aucune tâche connue. Une liste qui n'a pas pu être relue ne doit pas effacer des reprises en attente.");
+      return const StorageSweepResult.refused();
+    }
+
+    final List<PartialFile> orphans = <PartialFile>[];
+    try {
+      final Directory? tmp = tmpDirectory ?? await _downloadTmpDir();
+      final Directory? public = publicDirectory ?? await _publicMoviesDir();
+
+      orphans.addAll(orphanPartials(
+        inPrivateCache: await _scan(tmp),
+        inPublicFolder: await _scan(public),
+        liveTempPaths: liveTempPaths.map(_slash).toSet(),
+        now: now ?? DateTime.now(),
+        minimumAge: minimumAge,
+      ));
+
+      if (!dryRun) {
+        for (final PartialFile f in orphans) {
+          await _deleteIfExists(File(f.path));
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ §dlPartSweep — balayage : $e');
+    }
+
+    final int bytes =
+        orphans.fold<int>(0, (int acc, PartialFile f) => acc + f.bytes);
+    if (orphans.isNotEmpty) {
+      debugPrint('🧹 §dlPartSweep — ${dryRun ? 'récupérables' : 'libérés'} : ${_mo(bytes)} sur ${orphans.length} partiel(s) abandonné(s)');
+      for (final PartialFile f in orphans) {
+        debugPrint('   • ${f.fileName} (${_mo(f.bytes)})');
+      }
+    }
+    return StorageSweepResult(fileCount: orphans.length, bytes: bytes);
+  }
+
+  /// Sépare toujours par `/`, quelle que soit la plateforme.
+  ///
+  /// ⚠️ Appliqué aux DEUX côtés de la comparaison (fichiers trouvés ET
+  /// `tempPath` des tâches) : normaliser un seul côté ferait passer un partiel
+  /// VIVANT pour un orphelin sous Windows, où tournent les tests.
+  /// ⚠️ L'antislash est construit par son code : écrit en littéral, il ne
+  /// survit pas à la couche d'édition (constaté trois fois sur ce projet).
+  static final String _sep = String.fromCharCode(92);
+  static String _slash(String path) => path.replaceAll(_sep, '/');
+
+  /// Le contenu d'un dossier, ou rien s'il est absent ou illisible.
+  static Future<List<PartialFile>> _scan(Directory? dir) async {
+    if (dir == null) return const <PartialFile>[];
+    final List<PartialFile> out = <PartialFile>[];
+    try {
+      if (!await dir.exists()) return out;
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is! File) continue;
+        try {
+          final FileStat stat = await entity.stat();
+          out.add(PartialFile(
+            path: _slash(entity.path),
+            bytes: stat.size,
+            modified: stat.modified,
+          ));
+        } catch (_) {
+          // Un fichier illisible ne doit pas faire échouer le balayage entier.
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ §dlPartSweep — lecture de ${dir.path} : $e');
+    }
+    return out;
+  }
+
   // ── Utilitaires ───────────────────────────────────────────────────────────
 
   static Future<int> _deleteIfExists(File f) async {
@@ -237,10 +385,13 @@ class StorageJanitor {
   /// de 300 Ko donnerait l'impression qu'il n'y a rien à perdre.
   static String humanBytes(int bytes) {
     if (bytes >= 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
+      return L10n.current
+          .sizeMegabytes((bytes / (1024 * 1024)).toStringAsFixed(1));
     }
-    if (bytes >= 1024) return '${(bytes / 1024).round()} Ko';
-    return '$bytes octets';
+    if (bytes >= 1024) {
+      return L10n.current.sizeKilobytes('${(bytes / 1024).round()}');
+    }
+    return L10n.current.sizeBytes('$bytes');
   }
 
   static String _mo(int bytes) => humanBytes(bytes);
@@ -265,6 +416,6 @@ class StorageSweepResult {
   bool get isEmpty => fileCount == 0;
 
   String get label => bytes >= 1024 * 1024
-      ? '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo'
-      : '${(bytes / 1024).toStringAsFixed(0)} Ko';
+      ? L10n.current.sizeMegabytes((bytes / (1024 * 1024)).toStringAsFixed(1))
+      : L10n.current.sizeKilobytes((bytes / 1024).toStringAsFixed(0));
 }
