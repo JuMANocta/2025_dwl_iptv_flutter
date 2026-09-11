@@ -213,7 +213,19 @@ class CastSession {
       'appId': _appId,
       'requestId': session._nextRequestId(),
     });
-    await session._launched!.future.timeout(timeout);
+    // §engineVendor patch 16 (AetherStream, revue 2026-09-11, D2B-06) — un
+    // LAUNCH refusé ou resté sans réponse doit FERMER la session. Amont :
+    // l'`await` sortait en exception sans rien fermer, et comme l'appelant ne
+    // reçoit jamais la session, personne ne pouvait le faire à sa place — le
+    // socket TLS restait ouvert et un PING partait toutes les 5 s pour toute
+    // la vie du processus (un de plus à chaque nouvel essai, typiquement vers
+    // un Chromecast en veille qui accepte le TLS mais ne répond pas).
+    try {
+      await session._launched!.future.timeout(timeout);
+    } catch (_) {
+      session._shutdown();
+      rethrow;
+    }
     return session;
   }
 

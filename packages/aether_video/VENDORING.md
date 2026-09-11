@@ -227,3 +227,46 @@ exactement 5 s après le démarrage du service.
 Le service se déclare désormais TOUJOURS, avec une notification de repli
 minimale si besoin, et ne se retire qu'ensuite. Couvre aussi la course où
 `stop()` arrive avant `onStartCommand`.
+
+## patchs 15 à 18 — revue de code du 2026-09-11 (lot 3, lecteur et Cast)
+
+**Patch 15 — la libération différée ne libère que l'instance visée (D2B-01).**
+Le commentaire du patch 14 affirmait qu'« un nouveau lecteur reçoit un nouvel
+identifiant » : c'était **faux**, l'app construisait tous ses contrôleurs avec
+`id: 7000`. Or tout le natif est indexé par cet identifiant (lecteur partagé,
+gestionnaire de notification, canal d'événements du contrôleur). Zapping rapide
+(chaîne A, Retour, chaîne B en moins d'une seconde) : B pouvait récupérer
+l'ExoPlayer de A encore inscrit, que le report de 450 ms arrêtait puis libérait
+sous ses pieds ; ou le démontage du canal de A emportait celui de B.
+Deux moitiés :
+- côté app, `Media3Engine` attribue un identifiant **par moteur** (7000, 7001…) ;
+- côté natif, `handleDispose` et `disposeController` capturent l'`ExoPlayer`
+  inscrit au moment du `dispose`, et `SharedPlayerManager.removePlayerIfCurrent`
+  ne libère à l'échéance que si c'est **toujours lui** (`===`).
+⚠️ Le report de 450 ms reste légitime (patch 14) : seul son présupposé était faux.
+⚠️ Restant connu : `VideoPlayerNotificationHandler.release()` de l'ancien lecteur
+coupe le service `mediaPlayback` et la notification (id 1001, partagés) — si le
+suivant a déjà publié la sienne, elle disparaît jusqu'à sa prochaine transition
+lecture/pause. Le lecteur, lui, n'est plus touché.
+
+**Patch 16 — `CastSession.connect` ferme la session si le LAUNCH échoue (D2B-06).**
+Premier patch du Cast (jusqu'ici branché sans patch, §castSend). Sur délai
+dépassé ou `LAUNCH_ERROR`, l'`await` sortait en exception sans rien fermer ;
+l'appelant ne recevant jamais la session, le socket TLS restait ouvert et un
+PING partait toutes les 5 s pour la vie du processus (un de plus par essai).
+Test : `test/cast_session_connect_test.dart` (serveur TLS local muet).
+
+**Patch 17 — l'observateur de cycle de vie du contrôleur est retiré (D2B-05).**
+Ajouté à la construction, jamais retiré : chaque lecteur ouvert laissait un
+contrôleur mort retenu par `WidgetsBinding`. Gardé dans un champ, retiré au
+début de `dispose()`. La condition passe de `Platform.isAndroid` à
+`defaultTargetPlatform == TargetPlatform.android` (identique sur appareil,
+simulable en test). Test : `test/lifecycle_observer_leak_test.dart`.
+
+**Patch 18 — l'affiche de la notification de lecture est bornée (D2B-07).**
+`loadArtwork` n'avait ni délai (0 = infini), ni fermeture de flux, décodait en
+pleine résolution et ne s'annulait jamais. Même patron que
+`AetherCastService.downloadBitmap` : délais de 8 s, `use {}` + `disconnect()`,
+décodage sous-échantillonné vers ~512 px, tâche annulée par `release()` et par
+une affiche plus récente. ⚠️ L'UA de cette requête (§notifAudit P10) n'est PAS
+traité ici.

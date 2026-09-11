@@ -8,6 +8,7 @@ import '../../widgets/tv/focusable_card.dart';
 import '../../widgets/tv/focusable_chip.dart';
 import '../../widgets/sheet_close_tile.dart';
 import '../../l10n/l10n_ext.dart';
+import 'replay_day_label.dart';
 
 /// Sheet permettant à l'utilisateur de choisir manuellement
 /// un jour, une heure et une durée pour lancer un replay.
@@ -622,9 +623,12 @@ class _DaySelector extends StatelessWidget {
           final isSelected = d.day == selected.day &&
               d.month == selected.month &&
               d.year == selected.year;
-          final isToday = d.day == today.day && d.month == today.month;
-          final isYesterday = d.day == today.day - 1 &&
-              d.month == today.month;
+          // Revue 2026-09-11, D2A-19 — dates calendaires complètes : l'ancien
+          // test sur le seul jour du mois ratait « Hier » le 1er de chaque
+          // mois (la puce sélectionnée par défaut), cf. `replay_day_label.dart`.
+          final ReplayDayLabelKind kind = replayDayLabelKind(d, today);
+          final isToday = kind == ReplayDayLabelKind.today;
+          final isYesterday = kind == ReplayDayLabelKind.yesterday;
           final hasEpg = daysWithData.contains(d);
 
           String label;

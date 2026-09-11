@@ -99,10 +99,29 @@ class Media3Engine implements AetherPlaybackEngine {
   /// fournisseur d'une dizaine de blocages qu'il n'a pas causés.
   static const Duration _seekAmnesty = Duration(seconds: 4);
 
+  /// §exitCost / revue 2026-09-11, D2B-01 — UN identifiant natif PAR moteur.
+  ///
+  /// ⚠️ Tous les lecteurs partageaient `7000`, alors que le natif indexe TOUT
+  /// par cet identifiant (lecteur partagé, notification, canal d'événements)
+  /// et que le patch 14 DIFFÈRE la libération de 450 ms. Zapping rapide (A,
+  /// Retour, B en moins d'une seconde) : soit B récupérait l'ExoPlayer de A
+  /// encore inscrit, que le `disposeController` de A arrêtait puis libérait
+  /// sous ses pieds ; soit le démontage du canal de A emportait celui de B.
+  /// B restait noir jusqu'au chien de garde. Le commentaire du patch 14
+  /// supposait déjà « un nouveau lecteur reçoit un nouvel identifiant » :
+  /// c'est désormais vrai. Aucun code natif ne dépend de la valeur 7000
+  /// (vérifié par recherche) ; le natif vérifie en plus qu'il libère bien
+  /// l'instance qu'il visait (patch 15).
+  static int _nextControllerId = 7000;
+
+  /// Identifiant natif de ce moteur — tests uniquement.
+  @visibleForTesting
+  int get controllerId => _c.id;
+
   Media3Engine() {
     _applyBufferProfile();
     _c = NativeVideoPlayerController(
-      id: 7000,
+      id: _nextControllerId++,
       autoPlay: true,
       // Les contrôles natifs captureraient le D-pad et empileraient un second
       // spinner par-dessus les nôtres. L'app dessine tout elle-même.

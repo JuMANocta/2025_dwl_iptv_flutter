@@ -1341,14 +1341,21 @@ class VideoPlayerMethodHandler(
         //
         // `stop()` (ci-dessus) est immédiat et coupe déjà l'image et le son ;
         // la libération lourde attend que la transition de sortie ait été
-        // dessinée. Le lecteur partagé reste inscrit ce court instant, ce qui
-        // est sans effet : le contrôleur Dart est déjà détruit et un nouveau
-        // lecteur reçoit un nouvel identifiant.
+        // dessinée. Le lecteur partagé reste inscrit ce court instant.
+        //
+        // ⚠️ Patch 15 (revue 2026-09-11, D2B-01) — ce paragraphe affirmait
+        // qu'« un nouveau lecteur reçoit un nouvel identifiant » : c'était
+        // FAUX, l'app donnait `7000` à tous ses lecteurs, et un zapping rapide
+        // laissait ce report arrêter puis libérer le lecteur SUIVANT. L'app
+        // attribue désormais un identifiant par moteur, et on ne libère ici
+        // que l'instance capturée au moment du `dispose` (comparaison par
+        // identité dans `removePlayerIfCurrent`).
         if (controllerId != null) {
             val id = controllerId
+            val target = player
             audioFocusHandler.postDelayed({
-                SharedPlayerManager.removePlayer(context, id)
-                NpLog.d(TAG, "Removed shared player for controller ID: $id (deferred, patch 14)")
+                SharedPlayerManager.removePlayerIfCurrent(context, id, target)
+                NpLog.d(TAG, "Deferred release for controller ID: $id (patch 14/15)")
             }, DEFERRED_RELEASE_MS)
         }
     }

@@ -29,6 +29,9 @@ import 'widgets/video_stats_overlay.dart';
 import 'widgets/next_episode_overlay.dart';
 import 'player_media.dart';
 import 'player_action_handlers.dart';
+import 'player_progress_policy.dart';
+import 'playback_error_message.dart';
+import 'next_resolver.dart';
 import 'package:dpad/dpad.dart';
 import '../../core/navigation/focus_route_memory.dart';
 import '../../core/utils/platform_tv.dart';
@@ -193,6 +196,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   /// Vrai pendant l'attente de `onRequestNext` (affiche « chargement… »).
   bool _loadingNext = false;
+
+  /// §episodeMeta / revue 2026-09-11, D2A-13 — L'appel `onRequestNext` EN VOL,
+  /// partagé : ⏭ dans la dernière seconde puis la fin de lecture ne lancent
+  /// plus deux requêtes (deux avancées de la fiche = un épisode sauté, et
+  /// l'encart de fin affiché sur l'épisode qui vient de démarrer).
+  final NextResolver<PlayerMedia?> _nextResolver = NextResolver<PlayerMedia?>();
+
+  /// §castSend / revue 2026-09-11, D2L-01 — Le téléviseur a cessé de lire CE
+  /// contenu (fin, arrêt depuis la télé, connexion perdue) et le lecteur local
+  /// n'a pas rejoué depuis : sa position est celle du LANCEMENT de la
+  /// diffusion, périmée. Tant qu'il est levé, la page n'écrit pas de reprise —
+  /// `CastService` a déjà écrit la vraie (ou l'a effacée en fin de film).
+  /// Baissé quand le lecteur local rejoue, par « Reprendre sur le téléphone »
+  /// (qui le repositionne) et à la bascule d'épisode.
+  bool _castHandedBack = false;
 
   bool _controlsVisible = true;
   Timer? _hideTimer;
@@ -419,6 +437,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // diffusion lancée avant d'ouvrir cette page (autre contenu, ou retour
     // dans le lecteur) s'affiche immédiatement comme telle.
     _cast = CastService.state.value;
+    // §castResume / revue 2026-09-11, D2A-05 — lu dès l'ouverture, comme
+    // `_cast` : sans ça, `_relay` restait nul jusqu'au premier signal du relais.
+    _relay = CastRelayService.state.value;
     CastService.state.addListener(_onCastStateChanged);
     CastRelayService.state.addListener(_onRelayStateChanged);
     _castMsgSub = CastService.messages.listen((m) {
@@ -477,7 +498,22 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// `CastService.state` a changé : reflète l'état global dans la page.
   void _onCastStateChanged() {
     if (!mounted) return;
+    // §castSend / revue 2026-09-11, D2L-01 — lu AVANT de remplacer `_cast` :
+    // c'est la bascule « le téléviseur lisait CE contenu → plus maintenant »
+    // qui dit que la position locale est devenue périmée.
+    final bool wasCastingThis = _castsThisMedia;
     setState(() => _cast = CastService.state.value);
+    final bool handedBack = castHandedBackAfter(
+      previous: _castHandedBack,
+      wasCastingThis: wasCastingThis,
+      castsThisNow: _castsThisMedia,
+    );
+    if (handedBack && !_castHandedBack) {
+      // Une seule ligne : le cliquet §l10nAll n'exempte que la ligne qui
+      // porte `debugPrint(` (une suite accentuée compterait comme texte).
+      debugPrint('📡 D2L-01 — diffusion de ce contenu terminée côté télé : la reprise locale se tait jusqu’à la prochaine lecture locale');
+    }
+    _castHandedBack = handedBack;
     _syncAutoPip(); // §pipPhone — pas de fenêtre flottante pendant une diffusion
   }
 
@@ -576,6 +612,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // on l'y replace avant de relancer.
     await _ctrl.seek(at);
     if (!mounted) return;
+    // Revue 2026-09-11, D2L-01 — `CastService.stop()` ci-dessus a levé
+    // `_castHandedBack` (la télé a cessé de lire CE contenu). Mais le lecteur
+    // local vient d'être replacé sur la position de la télé, comme dans
+    // `_stopCast` : il redevient la vérité pendant la nouvelle préparation
+    // (6 à 60 s). Un relais n'a PAS de clé de reprise côté service : sans
+    // ceci, rien n'écrirait la reprise jusqu'à la nouvelle diffusion, ni même
+    // à la sortie du lecteur pendant cette préparation.
+    _castHandedBack = false;
     await _startCastWithRelay(device);
   }
 
@@ -725,11 +769,18 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // Sinon `_castsThisMedia` resterait vrai pour un média qui n'est plus
     // diffusé, et la position du téléviseur irait sous la mauvaise clé.
     _castMediaPath = null;
+    // Revue 2026-09-11, D2L-01 — Entre cet effacement et le repositionnement
+    // ci-dessous, le lecteur local est encore à la position du LANCEMENT de la
+    // diffusion : la minuterie de 10 s ne doit pas l'écrire (`CastService.stop`
+    // sauve la position de la télé, c'est elle qui fait foi).
+    _castHandedBack = true;
     await CastService.stop();
     if (!mounted) return;
     if (pos != null && pos > Duration.zero && !_skipProgress) {
       await _ctrl.seek(pos);
     }
+    // Le lecteur local est désormais à la bonne place : il peut écrire.
+    _castHandedBack = false;
     await _ctrl.play();
     _showControls();
   }
@@ -771,6 +822,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   void _listenPlaybackForWakelock() {
     _playingSub = _ctrl.playingStream.listen((playing) {
       if (playing) {
+        // Revue 2026-09-11, D2L-01 — le lecteur LOCAL rejoue : sa position
+        // redevient la vérité, la reprise peut de nouveau l'écrire.
+        _castHandedBack = false;
         _acquireWakelock();
         // §liveRecover — La lecture est repartie : les compteurs de secours
         // repartent avec elle.
@@ -889,26 +943,42 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // §endOfMovie — Après la fin, `dispose()` rappelle `_saveProgress` : sans
     // ce garde-fou, il réécrivait une progression sur un titre qu'on venait
     // d'effacer, et le film repassait en « Reprendre ».
-    if (_finished || _skipProgress) return;
     // §castSend — Pendant une diffusion de CE contenu, la position vraie est
     // celle du téléviseur, pas celle du lecteur local mis en pause.
     final bool viaCast = _castsThisMedia;
-    // §castResume — Le flux d'un relais repart à zéro : sans le décalage,
-    // un film repris à 45 min s'enregistrerait comme vu depuis le début.
-    final Duration castPos = _relay != null
-        ? _relay!.offset + _cast!.position
-        : (viaCast ? _cast!.position : Duration.zero);
-    final pos = viaCast ? castPos : _ctrl.position;
-    // La durée d'un flux converti n'est pas celle du film : on garde la
-    // durée LOCALE, seule fiable, sinon la règle des 95 % se déclenche à tort.
-    final dur = (viaCast && _relay == null)
-        ? (_cast!.duration ?? _ctrl.duration)
-        : _ctrl.duration;
-    if (dur <= Duration.zero) return;
+    // Revue 2026-09-11, D2L-01 — et quand le téléviseur vient de rendre la
+    // main, la position LOCALE est périmée : `CastService` a déjà écrit la
+    // vraie (ou effacé la reprise en fin de film). Voir `_castHandedBack`.
+    if (!shouldWriteLocalProgress(
+      castsThisMedia: viaCast,
+      handedBack: _castHandedBack,
+      finished: _finished,
+      skip: _skipProgress,
+    )) {
+      return;
+    }
+    // Revue 2026-09-11, D2A-01 — `_cast` n'est lu QUE s'il existe. L'ancien
+    // calcul faisait `_relay!.offset + _cast!.position` dès qu'un relais
+    // existait : or pendant l'écran « Préparation » d'un relais, le relais
+    // existe et la diffusion PAS ENCORE. Le « Null check » levé ici — y
+    // compris depuis `dispose()` — empêchait la libération du moteur et la
+    // restauration de l'orientation. La décision vit dans
+    // `player_progress_policy.dart` (§castResume : décalage du relais, durée
+    // LOCALE pour un flux converti, sinon la règle des 95 % se trompe).
+    final CastState? cast = _cast;
+    final PlayerResumeProgress p = resumeProgressFor(
+      castsThisMedia: viaCast,
+      castPosition: cast?.position,
+      castDuration: cast?.duration,
+      relayOffset: _relay?.offset,
+      localPosition: _ctrl.position,
+      localDuration: _ctrl.duration,
+    );
+    if (p.duration <= Duration.zero) return;
     // §episodeMeta — clé du contenu COURANT, pas celle du widget : après une
     // bascule d'épisode, écrire sur l'ancienne clé fausserait les reprises.
     // saveProgress applique ses propres règles (min duration, threshold 95%, etc.).
-    WatchProgressService.saveProgress(_media.resumeKey, pos, dur);
+    WatchProgressService.saveProgress(_media.resumeKey, p.position, p.duration);
   }
 
   // ── §episodeMeta / §autoNextEp — Enchaînement d'épisodes ─────────────────
@@ -944,14 +1014,28 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   /// Résout le prochain contenu (une seule fois — le résultat est mis en cache,
   /// cf. [PlayerPage.onRequestNext]).
+  ///
+  /// Revue 2026-09-11, D2A-13 — **et une seule fois EN VOL** : ⏭ dans la
+  /// dernière seconde puis `completed` appelaient chacun `onRequestNext`, qui
+  /// fait avancer la fiche. Le second appel reçoit désormais le même `Future`
+  /// ([NextResolver]).
   Future<PlayerMedia?> _resolveNext() async {
     if (_pendingNext != null) return _pendingNext;
     final request = widget.onRequestNext;
     if (request == null) return null;
+    return _nextResolver.run(() => _requestNextFrom(request));
+  }
+
+  /// L'appel réel à `onRequestNext`, derrière [_nextResolver].
+  Future<PlayerMedia?> _requestNextFrom(
+      Future<PlayerMedia?> Function() request) async {
+    // Le contenu pour lequel on demande la suite : si une bascule survient
+    // pendant l'attente, ce résultat ne vaut plus pour le contenu courant.
+    final PlayerMedia origin = _media;
     if (mounted) setState(() => _loadingNext = true);
     try {
       final next = await request();
-      _pendingNext = next;
+      if (identical(_media, origin)) _pendingNext = next;
       return next;
     } catch (e) {
       debugPrint('⚠️ §episodeMeta onRequestNext : $e');
@@ -991,6 +1075,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _media = next;
       _finished = false; // §endOfMovie — nouvel épisode, nouvelle progression
       _pendingNext = null;
+      _nextResolver.reset(); // D2A-13 — la suite de N ne vaut pas pour N+1
+      // D2L-01 — la position locale du nouvel épisode n'est pas « périmée ».
+      _castHandedBack = false;
       _endOfPlayback = null;
       _currentPath = next.path; // sinon un retry .ts/.m3u8 de l'épisode
       _retryCount = 0; //        précédent contaminerait le suivant
@@ -1016,6 +1103,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   Future<void> _onPlaybackCompleted() async {
     _handlingCompletion = true;
+    // Revue 2026-09-11, D2A-13 — le contenu dont c'est LA fin. Un ⏭ appuyé
+    // dans la dernière seconde peut basculer sur N+1 pendant les attentes
+    // ci-dessous : l'encart de fin de N ne doit alors pas s'afficher sur N+1.
+    final PlayerMedia ended = _media;
     try {
       // §endOfMovie — On SAIT que le contenu est fini : on efface la reprise
       // ICI, sans dépendre de la règle des 95 % de `saveProgress`.
@@ -1025,10 +1116,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _finished = true;
       // ⚠️ TOUTES les versions du titre (§resumeUnify) : n'effacer que la
       // version lue laissait ressortir la vieille reprise d'une autre.
-      for (final String key in _media.allResumeKeys) {
+      for (final String key in ended.allResumeKeys) {
         await WatchProgressService.clearProgress(key);
       }
       if (!mounted) return;
+      // D2A-13 — ⏭ a déjà basculé sur la suite pendant ces écritures : la fin
+      // de N ne concerne pas N+1 (ni fermeture du lecteur, ni encart).
+      if (!identical(_media, ended)) return;
 
       // §endOfMovie — ⚠️ Un FILM n'a PAS de suite : `widget.onRequestNext` est
       // nul, et la méthode s'arrêtait ICI (`if (... == null) return;`). Le
@@ -1041,15 +1135,20 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         Navigator.of(context).maybePop();
         return;
       }
-      await _resolveAndShowEndOverlay();
+      await _resolveAndShowEndOverlay(ended);
     } finally {
       _handlingCompletion = false;
     }
   }
 
-  Future<void> _resolveAndShowEndOverlay() async {
+  Future<void> _resolveAndShowEndOverlay(PlayerMedia ended) async {
     final next = await _resolveNext();
     if (!mounted) return;
+    // Revue 2026-09-11, D2A-13 — le ⏭ appuyé juste avant la fin a reçu le
+    // MÊME résultat et a déjà basculé sur N+1 : afficher ici l'encart de fin
+    // (et son compte à rebours vers N+2) le poserait sur l'épisode qui vient
+    // de démarrer.
+    if (!identical(_media, ended)) return;
 
     if (next == null) {
       // Fin de série : rien à enchaîner.
@@ -1147,7 +1246,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       // par-dessus. Le panneau propose d'envoyer CE contenu à son tour.
       if (CastService.isActive && mounted) await _ctrl.pause();
     } catch (e) {
-      _handleError(e.toString());
+      // §userError / revue 2026-09-11 — le texte brut reste au journal
+      // (rédigé au puits) ; l'écran reçoit une phrase, jamais
+      // « PlatformException(LOAD_ERROR, Source error, null, null) ».
+      debugPrint('⚠️ PlayerPage: échec à l’ouverture du flux — $e');
+      _handleError(openErrorMessage(e));
     }
   }
 
@@ -1458,6 +1561,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   void _handleSeek(Duration delta) {
+    // §castSend / revue 2026-09-11, D2A-16 — Pendant une diffusion, avancer ou
+    // reculer commande le TÉLÉVISEUR, comme `_togglePlayPause`/`_setPlaying`.
+    // `_handleSeek` est aussi le `seek` de la télécommande web (§webConsole)
+    // et des flèches d'un clavier : il déplaçait le lecteur local EN PAUSE
+    // (badge « +10s » à l'écran, rien sur la télé).
+    if (_cast != null) {
+      CastService.seekBy(delta);
+      return;
+    }
     final pos = _ctrl.position + delta;
     _ctrl.seek(pos.isNegative ? Duration.zero : pos);
     _showControls();
@@ -1490,6 +1602,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   void _handleVolumeChange(double delta) {
+    // Revue 2026-09-11, D2A-16 — Pendant une diffusion, le son est celui du
+    // téléviseur : régler le lecteur local (en pause, muet pour l'utilisateur)
+    // ne produirait qu'une surprise au retour sur le téléphone.
+    if (_cast != null) return;
     _volume = (_volume + delta).clamp(0.0, AetherVolume.max);
     _ctrl.setVolume(_volume);
     // §ctrlBlink — un geste EN COURS repousse le masquage.
@@ -1612,8 +1728,22 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _castMsgSub?.cancel();
     unawaited(PlatformPip.setAutoEnter(enabled: false));
     RemoteControlService.instance.clearPlayer(_remoteHandlers);
-    _saveProgress(); // dernière sauvegarde à la sortie du player
-    _recordPlaybackHealth();
+    // Revue 2026-09-11, D2A-01 — Une écriture COMPTABLE ne doit jamais
+    // interrompre `dispose()` : tout ce qui suit libère le moteur, retire
+    // l'observateur, rend le wakelock et restaure l'orientation. Une exception
+    // ici (le « Null check » du relais en préparation, avant correction)
+    // laissait le décodeur et la session tenus, le téléphone en paysage et
+    // immersif, et `super.dispose()` jamais appelé.
+    try {
+      _saveProgress(); // dernière sauvegarde à la sortie du player
+    } catch (e) {
+      debugPrint('⚠️ PlayerPage.dispose — sauvegarde de reprise : $e');
+    }
+    try {
+      _recordPlaybackHealth();
+    } catch (e) {
+      debugPrint('⚠️ PlayerPage.dispose — bilan de lecture : $e');
+    }
     _playingSub?.cancel();
     _videoParamsSub?.cancel();
     _errorSub?.cancel();
@@ -1668,15 +1798,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // lecteur s'efface, et la fiche arrive déjà en portrait. `dispose()`
     // redemande la même orientation : c'est idempotent, sans effet.
     return PopScope(
-      onPopInvokedWithResult: (bool didPop, Object? _) {
-        if (!didPop) return;
-        debugPrint('\u23F1\uFE0F \u00A7exitCost \u2014 retour demande');
-        if (isTv || PlayerPage.suppressOrientationRestore) return;
-        SystemChrome.setPreferredOrientations(const [
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.portraitDown,
-        ]);
-      },
+      onPopInvokedWithResult: _onPlayerPop,
       child: Scaffold(
       backgroundColor: Colors.black,
       // §dpadNav — La zone vidéo est un `DpadFocusable` (autofocus) qui capte la
@@ -1843,8 +1965,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                 // §castAudio — Sous « Infos vidéo » : ce que le récepteur dit
                 // avoir trouvé comme pistes. Les stats LOCALES n'ont rien à
                 // dire pendant une diffusion, celle-ci si.
-                isRelay: _relay != null,
-                onRestartRelay: _relay == null ? null : _restartRelay,
+                // §castResume / revue 2026-09-11, D2A-05 — « Resynchroniser »
+                // relance la conversion de `_media.path` depuis la position de
+                // la télé : seulement si la télé lit bien CE contenu. `_relay`
+                // suit l'état GLOBAL du relais, quel que soit le film ouvert —
+                // sur un autre lecteur, le bouton convertissait le mauvais film
+                // à la position du premier.
+                isRelay: _relay != null && _castsThisMedia,
+                onRestartRelay:
+                    (_relay != null && _castsThisMedia) ? _restartRelay : null,
                 diagnostics: _statsEnabled
                     ? castReceiverTracksSummary([
                         for (final t in _cast!.status.mediaTracks)
@@ -1927,8 +2056,28 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     );
   }
 
+  /// §exitRotate — Sortie du lecteur : sur TÉLÉPHONE, la rotation vers le
+  /// portrait part AU MOMENT du Retour (voir le commentaire de [build]).
+  ///
+  /// Revue 2026-09-11, D2A-17 — factorisé pour que l'écran d'erreur passe
+  /// par le MÊME chemin : il contournait le `PopScope` de la branche normale,
+  /// et la fiche restait ~1,4 s en paysage après « Quitter » (le défaut que
+  /// §exitRotate avait corrigé).
+  void _onPlayerPop(bool didPop, Object? _) {
+    if (!didPop) return;
+    debugPrint('⏱️ §exitCost — retour demande');
+    if (PlatformTv.isTv || PlayerPage.suppressOrientationRestore) return;
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
+
   Widget _buildErrorScreen() {
-    return Scaffold(
+    // Revue 2026-09-11, D2A-17 — même `PopScope` que la lecture (§exitRotate).
+    return PopScope(
+      onPopInvokedWithResult: _onPlayerPop,
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: Center(
         child: Padding(
@@ -1956,7 +2105,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                   ),
                   const SizedBox(width: 12),
                   TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    // §dpadBack / D2A-17 — même chemin que le bouton retour
+                    // des contrôles (garde anti-double pop partagée) : un
+                    // `pop()` direct dépilait sans aucun garde-fou.
+                    onPressed: AppBack.popFromUi,
                     child: Text(
                       context.l10n.playerQuit,
                       style: const TextStyle(color: Colors.white70),
@@ -1967,6 +2119,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             ],
           ),
         ),
+      ),
       ),
     );
   }

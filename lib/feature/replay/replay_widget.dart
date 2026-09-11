@@ -9,18 +9,39 @@ import '../../widgets/tv/focusable_card.dart';
 import '../../l10n/l10n_ext.dart';
 
 /// Feuille affichant les programmes en replay pour un stream donné.
-class ReplaySheet extends StatelessWidget {
+///
+/// §hostGate / revue 2026-09-11, D2A-18 — **Stateful, et la requête part UNE
+/// fois, dans `initState`.** Le `Future` était créé dans `build()`, sous un
+/// `SafeArea` qui dépend de `MediaQuery` : chaque rotation, apparition du
+/// clavier, changement de thème ou de langue relançait `player_api.php` vers
+/// un panel souvent mono-connexion (§hostGate), et ramenait la liste au
+/// spinner.
+class ReplaySheet extends StatefulWidget {
   final int streamId;
   final String? streamUrl;
   const ReplaySheet({super.key, required this.streamId, this.streamUrl});
 
   @override
+  State<ReplaySheet> createState() => _ReplaySheetState();
+}
+
+class _ReplaySheetState extends State<ReplaySheet> {
+  late final Future<List<ReplayProgram>> _programs;
+
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('ReplaySheet: Reçu streamId: ${widget.streamId}, '
+        'streamUrl: ${redactUrl(widget.streamUrl)}');
+    _programs = ReplayService()
+        .fetchShortEpg(widget.streamId, streamUrl: widget.streamUrl);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    debugPrint('ReplaySheet: Reçu streamId: $streamId, streamUrl: ${redactUrl(streamUrl)}');
-    final service = ReplayService();
     return SafeArea(
       child: FutureBuilder<List<ReplayProgram>>(
-        future: service.fetchShortEpg(streamId, streamUrl: streamUrl),
+        future: _programs,
         builder: (context, snap) {
           debugPrint('ReplaySheet FutureBuilder: ConnectionState: ${snap.connectionState}, hasError: ${snap.hasError}, hasData: ${snap.hasData}');
           if (snap.connectionState != ConnectionState.done) {

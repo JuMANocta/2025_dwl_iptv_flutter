@@ -25,9 +25,12 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLConnection
 
 /**
  * Handles MediaSession and notification controls for lock screen and notification area
@@ -43,7 +46,16 @@ class VideoPlayerNotificationHandler(
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "video_player_channel"
         private var sessionCounter = 0
+
+        /** Patch 18 — délai de connexion ET de lecture de l'affiche. */
+        private const val ARTWORK_TIMEOUT_MS = 8000
+
+        /** Patch 18 — côté visé au décodage : une icône, pas un poster. */
+        private const val ARTWORK_TARGET_PX = 512
     }
+
+    /** Patch 18 — téléchargement d'affiche en cours, annulable. */
+    private var artworkJob: Job? = null
 
     /**
      * The status-bar small icon must be a flat, alpha-only drawable — Android tints it, so a
@@ -396,21 +408,57 @@ class VideoPlayerNotificationHandler(
 
     /**
      * Loads artwork from URL
+     *
+     * §engineVendor patch 18 (AetherStream, revue 2026-09-11, D2B-07) — même
+     * patron que `AetherCastService.downloadBitmap` côté app. Amont : aucun
+     * délai (0 = infini), flux jamais fermé, image décodée en PLEINE
+     * résolution pour une icône, coroutine jamais annulée. Une affiche sur un
+     * hôte muet bloquait un thread IO indéfiniment en retenant ce
+     * gestionnaire ; une affiche TMDB « original » de plusieurs Mpx était
+     * décodée en entier.
+     * - délais de connexion et de lecture bornés ([ARTWORK_TIMEOUT_MS]) ;
+     * - flux fermé (`use`) et connexion rendue (`disconnect`) ;
+     * - décodage sous-échantillonné vers ~[ARTWORK_TARGET_PX] px ;
+     * - tâche gardée : annulée par [release] et par une affiche plus récente.
      */
     private fun loadArtwork(url: String, callback: (Bitmap?) -> Unit) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val connection = URL(url).openConnection()
-                val bitmap = BitmapFactory.decodeStream(connection.getInputStream())
-                withContext(Dispatchers.Main) {
-                    callback(bitmap)
-                }
+        artworkJob?.cancel()
+        artworkJob = CoroutineScope(Dispatchers.IO).launch {
+            val bitmap = try {
+                downloadArtwork(url)
             } catch (e: Exception) {
                 NpLog.e(TAG, "Error loading artwork: ${e.message}", e)
-                withContext(Dispatchers.Main) {
-                    callback(null)
-                }
+                null
             }
+            // Annulée pendant le téléchargement (release, autre affiche) :
+            // `withContext` lève et le rappel n'a pas lieu.
+            withContext(Dispatchers.Main) {
+                callback(bitmap)
+            }
+        }
+    }
+
+    /** Patch 18 — téléchargement borné + décodage sous-échantillonné. */
+    private fun downloadArtwork(url: String): Bitmap? {
+        var connection: URLConnection? = null
+        try {
+            connection = URL(url).openConnection().apply {
+                connectTimeout = ARTWORK_TIMEOUT_MS
+                readTimeout = ARTWORK_TIMEOUT_MS
+            }
+            val bytes = connection.getInputStream().use { it.readBytes() }
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= ARTWORK_TARGET_PX &&
+                bounds.outHeight / (sample * 2) >= ARTWORK_TARGET_PX
+            ) {
+                sample *= 2
+            }
+            val options = BitmapFactory.Options().apply { inSampleSize = sample }
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        } finally {
+            (connection as? HttpURLConnection)?.disconnect()
         }
     }
 
@@ -448,6 +496,9 @@ class VideoPlayerNotificationHandler(
      * Releases MediaSession and hides notification
      */
     fun release() {
+        // Patch 18 — plus aucune affiche ne doit arriver après la libération.
+        artworkJob?.cancel()
+        artworkJob = null
         stopPositionUpdates()
         player.removeListener(playerListener)
         VideoPlayerMediaSessionService.stop(context, removeNotification = true)

@@ -89,13 +89,32 @@ class NativeVideoPlayerController {
     }
 
     // Set up app lifecycle listener for Android to hide overlay before PiP
-    if (!kIsWeb && Platform.isAndroid) {
-      WidgetsBinding.instance.addObserver(_AppLifecycleObserver(this));
+    //
+    // §engineVendor patch 17 (AetherStream, revue 2026-09-11, D2B-05) —
+    // l'observateur est GARDÉ pour être retiré dans `dispose()`. Amont, il
+    // n'était jamais retiré : chaque lecteur ouvert laissait un contrôleur mort
+    // (flux fermés, moteur de sous-titres, état) retenu par `WidgetsBinding`
+    // et réveillé à chaque changement de cycle de vie — cumulatif sur un
+    // téléviseur jamais redémarré. `defaultTargetPlatform` plutôt que
+    // `Platform.isAndroid` : identique sur appareil, et c'est ce qui rend ce
+    // chemin vérifiable sous `flutter test` (plateforme simulable).
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final observer = _AppLifecycleObserver(this);
+      _lifecycleObserver = observer;
+      WidgetsBinding.instance.addObserver(observer);
     }
 
     // Set up controller-level event channel for persistent events (PiP, AirPlay)
     _controllerChannelSetupFuture = _setupControllerEventChannel();
   }
+
+  /// §engineVendor patch 17 — l'observateur de cycle de vie inscrit par le
+  /// constructeur (Android), retiré par [dispose]. `null` ailleurs.
+  WidgetsBindingObserver? _lifecycleObserver;
+
+  /// Tests uniquement (patch 17) : l'observateur inscrit, s'il y en a un.
+  @visibleForTesting
+  WidgetsBindingObserver? get debugLifecycleObserver => _lifecycleObserver;
 
   /// Initialize the controller and wait for the platform view to be created
   Future<void> initialize() async {
@@ -2721,6 +2740,14 @@ class NativeVideoPlayerController {
 
     // Mark as disposed immediately to prevent new events from being added
     _isDisposed = true;
+
+    // §engineVendor patch 17 — l'observateur inscrit par le constructeur ne
+    // doit pas survivre au contrôleur (il le retiendrait à vie).
+    final WidgetsBindingObserver? lifecycleObserver = _lifecycleObserver;
+    if (lifecycleObserver != null) {
+      WidgetsBinding.instance.removeObserver(lifecycleObserver);
+      _lifecycleObserver = null;
+    }
 
     // Stop the Android PiP status poll.
     _androidPipPollTimer?.cancel();

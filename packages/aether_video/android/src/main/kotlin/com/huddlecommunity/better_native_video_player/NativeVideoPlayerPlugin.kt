@@ -183,10 +183,14 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                         // doit couper image et son, immédiatement — sinon le
                         // lecteur continue de tourner les 450 ms du report
                         // (journal de la TV de l'utilisateur, 1.18.8).
-                        SharedPlayerManager.getPlayer(controllerId)?.stop()
+                        // Patch 15 (revue 2026-09-11, D2B-01) — l'instance
+                        // visée est capturée MAINTENANT : à l'échéance, on ne
+                        // libère que si c'est toujours elle.
+                        val target = SharedPlayerManager.getPlayer(controllerId)
+                        target?.stop()
                         result.success(null)
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                            SharedPlayerManager.removePlayer(applicationContext, controllerId)
+                            SharedPlayerManager.removePlayerIfCurrent(applicationContext, controllerId, target)
                         }, 450L)
                     } else {
                         result.error("INVALID_ARGUMENT", "Controller ID is required", null)

@@ -657,6 +657,15 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        // §pipStuck / revue 2026-09-11, D2B-15 — La décision différée de la
+        // croix du PiP (900 ms) ne doit pas survivre à l'activité : sur un
+        // constructeur qui TERMINE l'activité à la croix, le Runnable passait
+        // son test `isStopped` après la destruction, écrivait des paramètres
+        // PiP sur une activité morte et parlait à un moteur Flutter détaché,
+        // en retenant l'Activity jusqu'à son échéance. Le délai mesuré de
+        // 900 ms est inchangé : on retire seulement l'échéance en attente.
+        pendingDismiss?.let { pipHandler.removeCallbacks(it) }
+        pendingDismiss = null
         // ⚠️ **Sans ceci, une conversion survit à l'activité.** Le service de
         // premier plan garde le processus vivant alors qu'Android peut
         // détruire l'Activity : le `Transformer` continuait d'écrire (~1,3 Go
