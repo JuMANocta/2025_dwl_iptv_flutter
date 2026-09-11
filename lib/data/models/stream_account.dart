@@ -183,7 +183,12 @@ class StreamAccount {
       username: j['username'] as String?,
       password: j['password'] as String?,
       cookies: j['cookies'] as String?,
-      playlistType: PlaylistType.values.byName(j['playlistType'] ?? 'm3u'),
+      // revue 2026-09-11, D1B-05 — `byName` LEVAIT sur une valeur inconnue :
+      // un compte écrit par une version future (nouveau type) devenait
+      // illisible, et une restauration `.aether` le perdait. Repli sur `m3u`,
+      // le seul type que l'app crée encore (`buildXtreamUrl` force m3u_plus).
+      playlistType: PlaylistType.values.asNameMap()[j['playlistType']] ??
+          PlaylistType.m3u,
       createdAt: DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
     );
   }

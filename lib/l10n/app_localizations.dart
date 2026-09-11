@@ -3842,6 +3842,12 @@ abstract class AppLocalizations {
   /// **'The main list has stopped making progress. It keeps loading in the background: try again in a moment, or check the account.'**
   String get bootStalledBody;
 
+  /// No description provided for @playlistNoTitles.
+  ///
+  /// In en, this message translates to:
+  /// **'This list contains no titles. Check the account, or try again later.'**
+  String get playlistNoTitles;
+
   /// No description provided for @sheetCloseSub.
   ///
   /// In en, this message translates to:
@@ -4592,6 +4598,12 @@ abstract class AppLocalizations {
   /// **'Download failed (check the URL or the connection).'**
   String get reloadDownloadFailed;
 
+  /// No description provided for @playlistNotAList.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not return a usable playlist. Check the playlist address.'**
+  String get playlistNotAList;
+
   /// No description provided for @reloadParseFailed.
   ///
   /// In en, this message translates to:
@@ -4633,6 +4645,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Wrong password, or the backup file is corrupted.'**
   String get bkWrongPassword;
+
+  /// No description provided for @bkNoReadableAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'None of the accounts in this backup could be read: nothing was changed.'**
+  String get bkNoReadableAccount;
 
   /// No description provided for @castDiscoveryFailed.
   ///

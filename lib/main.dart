@@ -35,6 +35,7 @@ import 'feature/onboarding/onboarding_page.dart';
 import 'feature/settings/backup_restore_flow.dart';
 import 'feature/settings/perf_suggest_dialog.dart';
 import 'core/boot/boot_status.dart';
+import 'core/boot/boot_outcome.dart';
 import 'feature/boot/boot_screen.dart';
 import 'feature/boot/boot_offline_screen.dart';
 import 'data/services/network_status_service.dart';
@@ -439,7 +440,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // appelants, mais l'un d'eux peut être une RECRÉATION de cet État.
     debugPrint('🚦 §restoreTrace — LaunchDecider.initState (hash $hashCode)');
     _checkOnboarding();
-    _initFuture = _initializeApp();
+    _initFuture = _startInitialization();
     // §offlineBoot — Sur l'écran hors ligne, le retour du réseau relance le
     // démarrage tout seul : pas besoin de trouver un bouton.
     NetworkStatusService.offline.addListener(_onNetworkChanged);
@@ -454,8 +455,31 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
 
   bool _showingOffline = false;
 
+  /// §offlineBoot — revue 2026-09-11, D3B-03 — Démarrages en cours.
+  ///
+  /// ⚠️ **Le défaut.** `_showingOffline` n'était remis à `false` que par le
+  /// `build` suivant, et `_initializeApp` rafraîchit l'état du réseau dès sa
+  /// première ligne : appuyer sur « Réessayer » juste après le retour du
+  /// réseau (avant le sondage de 15 s) faisait passer `offline` à `false`
+  /// PENDANT ce démarrage — `_onNetworkChanged` voyait encore l'écran hors
+  /// ligne et en relançait un SECOND : `BootStatus.reset` en plein boot, deux
+  /// dialogues d'expiration empilés, deux balayages de stockage.
+  int _initsInFlight = 0;
+
+  /// Lance `_initializeApp` en tenant le compte des démarrages en cours.
+  Future<({String path, String accountId, String accountName})?>
+      _startInitialization() {
+    _initsInFlight++;
+    return _initializeApp().whenComplete(() => _initsInFlight--);
+  }
+
   void _onNetworkChanged() {
-    if (!NetworkStatusService.offline.value && _showingOffline && mounted) {
+    // D3B-03 — un démarrage déjà en cours s'occupe de tout : on ne le double
+    // pas.
+    if (!NetworkStatusService.offline.value &&
+        _showingOffline &&
+        _initsInFlight == 0 &&
+        mounted) {
       debugPrint('🔌 §offlineBoot — réseau de retour : relance du démarrage');
       _retryInitialization();
     }
@@ -482,7 +506,7 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       // §restore — Une restauration `.aether` a pu créer des comptes pendant
       // l'onboarding. On relance l'init pour les charger (sinon l'écran
       // "aucun compte configuré" s'afficherait malgré la restauration).
-      _initFuture = _initializeApp();
+      _initFuture = _startInitialization();
     });
   }
 
@@ -495,6 +519,16 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // grosse playlist le boot dure plusieurs secondes, et un texte figé ne
     // permettait pas de distinguer « ça travaille » de « c'est bloqué ».
     BootStatus.reset();
+    // §bootEscape — revue 2026-09-11, D3B-05 — Les drapeaux d'un démarrage
+    // PRÉCÉDENT du même processus ne valent rien pour celui-ci.
+    // `_bootSkipRequested` est statique et n'était JAMAIS remis à zéro : après
+    // un seul « Entrer sans attendre », tout démarrage suivant (Réessayer,
+    // retour de Comptes, fin d'onboarding, retour du réseau) abandonnait
+    // chaque attente au bout de 500 ms. Et `_bootAnnouncing`, retombé à
+    // `false` à la fin d'un démarrage, rendait le suivant muet — donc
+    // « immobile » aux yeux de `_awaitWhileProgressing`.
+    _bootSkipRequested = false;
+    _bootAnnouncing = true;
     // §bootFast — Les services lourds sont initialisés ICI plutôt qu'avant
     // `runApp` : l'écran de démarrage est donc déjà à l'écran pendant qu'ils se
     // préparent, et leur durée est visible dans le journal. On déplace le point
@@ -590,7 +624,14 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       //   • personne n'a rien demandé, c'est le plafond qui a parlé → écran
       //     d'erreur : quelque chose ne va pas, on ne fait pas semblant.
       // (`acc` est non nul : la garde de ce bloc l'exige.)
-      if (_bootSkipRequested) {
+      // revue 2026-09-11, D3B-01 — La décision est PARTAGÉE avec la phase
+      // d'analyse ci-dessous (`decideBootWait`), pour qu'aucune des deux ne
+      // puisse plus mener à « aucun compte configuré ».
+      if (decideBootWait(finished: false, skipRequested: _bootSkipRequested) ==
+          BootWaitOutcome.enterNow) {
+        // revue 2026-09-11, D3B-02 — Entrer tôt ne doit pas sauter la suite
+        // du démarrage (réconciliateur, alertes, profil, guide des chaînes).
+        _schedulePostBoot(accounts);
         return (path: '', accountId: acc.id, accountName: acc.label);
       }
       // ⚠️ **Surtout PAS `return null`** : le décideur en fait l'écran « aucun
@@ -630,19 +671,58 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       // si elle se figeait était de tuer l'app. ⚠️ Elle publie sa progression
       // ET son détail, donc `_awaitWhileProgressing` la voit vivre : une
       // analyse longue mais qui AVANCE n'est jamais interrompue.
-      final Future<void> parseFuture = ParsedPlaylistService.loadActive(
+      // revue 2026-09-11, D3B-01 — Le futur d'ORIGINE est gardé : l'attente
+      // surveille une copie qui avale les erreurs, mais une analyse RATÉE est
+      // relevée. Elle était jetée par `catchError` : un `.m3u` corrompu
+      // donnait un accueil vide, sans message ni « Réessayer ».
+      // D3B-02 — Les rappels se taisent une fois le démarrage rendu
+      // (`_bootAnnouncing`) : après une entrée anticipée, l'analyse continue
+      // en arrière-plan et n'a plus à écrire sur l'écran de boot.
+      final loadF = ParsedPlaylistService.loadActive(
         acc.id,
         acc.label,
         path,
-        onProgress: BootStatus.report,
+        onProgress: (double v) {
+          if (_bootAnnouncing) BootStatus.report(v);
+        },
         // §bootPercent — Le compteur d'entrées PROUVE que ça travaille, là où
         // un pourcentage se contente de l'affirmer.
-        onDetail: BootStatus.setDetail,
-      ).then<void>((_) {}).catchError((Object _) {});
-      if (!await _awaitWhileProgressing(parseFuture, acc, activeDeadline)) {
-        debugPrint("⏳ §bootActiveCap — l'analyse de la liste principale "
-            "n'avance plus : on demarre, elle se termine en arriere-plan.");
-        return null;
+        onDetail: (String d) {
+          if (_bootAnnouncing) BootStatus.setDetail(d);
+        },
+      );
+      // ⚠️ `catchError` posé TOUT DE SUITE (même règle que `pathWatch`) : si
+      // on cesse d'attendre et que l'analyse échoue plus tard, l'erreur ne
+      // doit pas remonter à la zone.
+      final Future<void> parseWatch =
+          loadF.then<void>((_) {}).catchError((Object _) {});
+      final bool parsed =
+          await _awaitWhileProgressing(parseWatch, acc, activeDeadline);
+      switch (decideBootWait(
+          finished: parsed, skipRequested: _bootSkipRequested)) {
+        case BootWaitOutcome.enterNow:
+          // §bootEscape — L'utilisateur ENTRE, avec le chemin : l'accueil
+          // (`HomePage._ensureLoaded`) rejoint l'analyse en cours au lieu
+          // d'en relancer une seconde (§fleetSingle, revue D1L-02).
+          debugPrint("⏭️ §bootEscape — entree pendant l'analyse : elle se termine en arriere-plan.");
+          _schedulePostBoot(accounts);
+          return (path: path, accountId: acc.id, accountName: acc.label);
+        case BootWaitOutcome.stalled:
+          // ⛔ §bootEscape — surtout PAS `return null` : le décideur en fait
+          // « aucun compte configuré », un mensonge (le compte existe).
+          debugPrint("⏳ §bootActiveCap — l'analyse de la liste principale n'avance plus.");
+          throw UserFacingException(L10n.current.bootStalledBody);
+        case BootWaitOutcome.proceed:
+          try {
+            await loadF;
+          } on UserFacingException {
+            rethrow;
+          } catch (e) {
+            // §userError — L'erreur d'un parseur parle de format et d'octets,
+            // pas de ce que l'utilisateur peut faire : on dit le RÉSULTAT.
+            debugPrint('❌ §bootActiveCap — analyse de la liste principale en echec : $e');
+            throw UserFacingException(L10n.current.failExplainParse);
+          }
       }
     }
 
@@ -686,6 +766,44 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       FavoritesService.reconcileWithPlaylist(finalPass: true); // fire & forget
     }
 
+    _bootAnnouncing = false;
+    BootStatus.set('// prêt.', progress: 1);
+    // revue 2026-09-11, D3B-02 — La suite du démarrage vit dans
+    // `_schedulePostBoot`, PARTAGÉE avec les entrées anticipées.
+    _schedulePostBoot(accounts);
+
+    return (
+      path:        path,
+      accountId:   acc?.id   ?? '',
+      accountName: acc?.label ?? '',
+    );
+  }
+
+  /// revue 2026-09-11, D3B-02 — Tout ce qui suit un démarrage qui REND des
+  /// données : qu'il soit allé au bout, ou que l'utilisateur soit entré sans
+  /// attendre.
+  ///
+  /// ⚠️ **Le défaut corrigé.** Les entrées anticipées (bouton « Entrer sans
+  /// attendre », en téléchargement comme en analyse) sortaient de
+  /// `_initializeApp` AVANT tout ceci : le réconciliateur §fleetLoad n'était
+  /// jamais programmé — les listes secondaires restaient absentes de la
+  /// mémoire, donc INVISIBLES, jusqu'au premier retour de fiche (qui ne
+  /// l'appelle que SANS réseau) —, aucun profil n'était choisi au premier
+  /// lancement, le guide des chaînes ne se chargeait pas, et
+  /// `_bootAnnouncing` restait vrai : une liste en arrière-plan continuait
+  /// d'écrire sur l'écran de boot disparu. Les commentaires promettaient
+  /// pourtant « le réconciliateur reprend ».
+  ///
+  /// ⚠️ Le préchargement disque et l'hydratation des secondaires ne sont PAS
+  /// rejoués ici : c'est précisément le travail du réconciliateur, 4 s plus
+  /// tard, réseau autorisé.
+  void _schedulePostBoot(List<StreamAccount> accounts) {
+    _bootAnnouncing = false;
+    // §bootLog — Le journal chronométré part dans le tampon de diagnostic : sur
+    // un téléviseur il n'y a pas de logcat, et l'écran de boot disparaît au
+    // moment précis où l'on voudrait lire ses chiffres.
+    BootStatus.dumpToLog();
+
     // §17b — Fetch background des AccountInfo pour TOUS les comptes
     // (alimente le cache `ExpirationAlertService.infos`). On déclenche
     // la popup d'alerte si au moins un compte expire <30 jours.
@@ -695,12 +813,6 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // (fire & forget, one-shot, seulement si la config perf est aux défauts).
     _suggestTvPerfProfile();
 
-    _bootAnnouncing = false;
-    BootStatus.set('// prêt.', progress: 1);
-    // §bootLog — Le journal chronométré part dans le tampon de diagnostic : sur
-    // un téléviseur il n'y a pas de logcat, et l'écran de boot disparaît au
-    // moment précis où l'on voudrait lire ses chiffres.
-    BootStatus.dumpToLog();
     // §fleetLoad — LA REPRISE QUI N'EXISTAIT PAS. Jusqu'ici, un compte qui
     // avait débordé du budget, échoué, ou été sauté au préchargement n'était
     // plus JAMAIS rechargé de la session : `_hydrateOne` n'était jamais
@@ -715,12 +827,6 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       const Duration(seconds: 3),
       () => XmltvService.ensureLoaded(),
     ); // fire & forget
-
-    return (
-      path:        path,
-      accountId:   acc?.id   ?? '',
-      accountName: acc?.label ?? '',
-    );
   }
 
   /// §17b — Vérifie les expirations en background et affiche la popup
@@ -1083,9 +1189,17 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   }
 
   void _retryInitialization() {
+    // §themeReboot — revue 2026-09-11, D3B-14 — Appelé après un `await` ou
+    // depuis un rappel externe (retour du réseau) : l'aiguilleur peut avoir
+    // été démonté entre-temps, et `setState` lèverait.
+    if (!mounted) return;
     debugPrint('🚦 §restoreTrace — retryInitialization → ré-initialisation');
+    // §offlineBoot — revue 2026-09-11, D3B-03 — On quitte l'écran hors ligne
+    // MAINTENANT, pas au prochain `build` : sinon le retour du réseau, vu
+    // pendant ce démarrage, en relancerait un second (`_onNetworkChanged`).
+    _showingOffline = false;
     setState(() {
-      _initFuture = _initializeApp();
+      _initFuture = _startInitialization();
     });
   }
 
@@ -1099,6 +1213,8 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   /// Navigue vers les paramètres et force une réinitialisation au retour.
   Future<void> _recheckAfterSettings() async {
     await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const AccountsPage()));
+    // revue 2026-09-11, D3B-14 — garde `mounted` après l'`await`.
+    if (!mounted) return;
     _retryInitialization();
   }
 

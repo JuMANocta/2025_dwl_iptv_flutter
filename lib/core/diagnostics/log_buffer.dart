@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -248,12 +249,27 @@ abstract final class DiagnosticLog {
       // LA session précédente lisible. `File.rename` sur Android (POSIX)
       // remplace atomiquement la cible existante — l'app est Android-only,
       // cette hypothèse est sûre ici (elle ne le serait pas sur Windows).
+      // revue 2026-09-11, D3B-12 — Un `.tmp` qui traîne est une écriture
+      // qu'un kill a interrompue : il peut être coupé n'importe où. Le fichier
+      // courant (le flush précédent, complet) fait foi ; le `.tmp` est jeté.
+      final File staleTmp = File('${current.path}$_tmpSuffix');
+      if (await staleTmp.exists()) {
+        try {
+          await staleTmp.delete();
+        } catch (_) {}
+      }
       if (await current.exists()) {
         await current.rename(previous.path);
       }
       if (await previous.exists()) {
         try {
-          final String text = await previous.readAsString();
+          // revue 2026-09-11, D3B-12 — `readAsString` décode en UTF-8 STRICT :
+          // un emoji coupé en fin de fichier levait, et TOUTE la session
+          // précédente était perdue pour un seul caractère. Les octets
+          // invalides deviennent un caractère de remplacement, le reste reste
+          // lisible.
+          final String text = utf8.decode(await previous.readAsBytes(),
+              allowMalformed: true);
           _previousSessionText = text;
           _previousSessionLines = text.isEmpty ? 0 : '\n'.allMatches(text).length + 1;
         } catch (_) {
@@ -287,23 +303,50 @@ abstract final class DiagnosticLog {
     _flushIfDirty();
   }
 
+  /// revue 2026-09-11, D3B-12 — Une écriture est en cours : le tour d'horloge
+  /// suivant ne doit pas en lancer une seconde par-dessus (deux écritures
+  /// concurrentes du même `.tmp`). `_dirty` reste vrai, rien n'est perdu.
+  static bool _writing = false;
+
   static void _flushIfDirty() {
-    if (!_dirty) return;
+    if (!_dirty || _writing) return;
     final File? f = _currentFile;
     if (f == null) return;
-    _dirty = false;
-    // Le contenu écrit est déjà rédigé (chaque ligne l'a été à l'entrée dans
-    // [add]) : le puits disque n'a jamais accès à une ligne en clair. On
-    // recopie l'état ENTIER du tampon (déjà plafonné à `maxLines`/`maxChars`)
-    // plutôt que d'ajouter la ligne : ça borne trivialement la taille du
-    // fichier à la taille du tampon mémoire, et une écriture partielle
-    // (kill en plein milieu) laisse au pire l'état du flush précédent, jamais
-    // un fichier corrompu par un append à moitié écrit.
-    final String content = dump();
-    unawaited(f.writeAsString(content).then<void>((_) {}).catchError((Object e) {
-      debugPrint('⚠️ §tvLogsPersist : écriture disque échouée ($e).');
-    }));
+    unawaited(_writeSnapshot(f));
   }
+
+  /// Recopie l'état ENTIER du tampon (déjà plafonné à `maxLines`/`maxChars`)
+  /// plutôt que d'ajouter la ligne : ça borne trivialement la taille du
+  /// fichier à la taille du tampon mémoire. Le contenu est déjà rédigé
+  /// (chaque ligne l'a été à l'entrée dans [add]) : le puits disque n'a
+  /// jamais accès à une ligne en clair.
+  ///
+  /// §logPersist — revue 2026-09-11, D3B-12 — ⚠️ **La promesse « jamais un
+  /// fichier corrompu » était FAUSSE** : `writeAsString` ouvre en
+  /// `FileMode.write`, qui TRONQUE la destination avant d'écrire. Un kill en
+  /// plein flush — le cas même pour lequel §logPersist existe — laissait un
+  /// fichier coupé, et la session précédente était perdue. On écrit donc dans
+  /// un `.tmp` puis on renomme (atomique sur Android) : un kill laisse au pire
+  /// l'état du flush PRÉCÉDENT, intact. Pas de `flush: true` (fsync) : il ne
+  /// protège que d'une coupure de courant, et coûterait une synchronisation
+  /// de la mémoire flash toutes les 1,5 s sur une box.
+  static Future<void> _writeSnapshot(File f) async {
+    _dirty = false;
+    _writing = true;
+    final String content = dump();
+    final File tmp = File('${f.path}$_tmpSuffix');
+    try {
+      await tmp.writeAsString(content);
+      await tmp.rename(f.path);
+    } catch (e) {
+      debugPrint('⚠️ §tvLogsPersist : écriture disque échouée ($e).');
+    } finally {
+      _writing = false;
+    }
+  }
+
+  /// Suffixe du fichier temporaire d'un flush (cf. [_writeSnapshot]).
+  static const String _tmpSuffix = '.tmp';
 
   /// Attend que la rotation ait tourné (best effort, ne lève jamais) puis
   /// renvoie [previousSessionDump]. À utiliser côté console web : elle peut
@@ -330,6 +373,22 @@ abstract final class DiagnosticLog {
     _previousSessionText = null;
     _previousSessionLines = 0;
     _dirty = false;
+    _writing = false;
+  }
+
+  /// revue 2026-09-11, D3B-12 — Amorce la persistance (rotation comprise)
+  /// SANS [install], qui détournerait `debugPrint` et les gestionnaires
+  /// d'erreurs du processus de test.
+  @visibleForTesting
+  static Future<void> initPersistenceForTest() => _ensurePersistence();
+
+  /// revue 2026-09-11, D3B-12 — Un flush immédiat et ATTENDU (le vrai est
+  /// déclenché par le `Timer`, jamais attendu).
+  @visibleForTesting
+  static Future<void> flushNowForTest() {
+    final File? f = _currentFile;
+    if (f == null || _writing) return Future<void>.value();
+    return _writeSnapshot(f);
   }
 
   // ── Traceur de touches ───────────────────────────────────────────────────

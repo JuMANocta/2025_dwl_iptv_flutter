@@ -183,7 +183,18 @@ abstract final class PlaylistFleetService {
           case FleetStep.download:
             final res = await PlaylistService.ensureDownloadedForAccount(
               acc,
-              force: facts.sourceIsStale && !facts.inMemory,
+              // revue 2026-09-11, D1A-02 + D3B-02 (relecture) — ⚠️ Les faits
+              // ci-dessus datent d'AVANT le verrou de téléchargement du compte.
+              // Depuis que le démarrage programme ce réconciliateur même quand
+              // l'utilisateur entre sans attendre, il passe PENDANT le
+              // téléchargement de la liste principale (ou de la première
+              // secondaire, §bootPipeline) : forcé, il attendait la fin de ce
+              // téléchargement… puis en refaisait un second, complet, sur un
+              // panel limité à une connexion. Sans forçage, le contrôle de
+              // fraîcheur se refait SOUS le verrou et trouve le fichier neuf.
+              force: facts.sourceIsStale &&
+                  !facts.inMemory &&
+                  !PlaylistService.isDownloadInProgress(acc.id),
             ).timeout(perAccount);
             if (res.path == null) {
               failed[acc.id] = LoadFailure(

@@ -108,8 +108,17 @@ class BackupContent {
         appVersion: j['appVersion'] as String? ?? '?',
         exportedAt: DateTime.tryParse(j['exportedAt'] as String? ?? '') ??
             DateTime.now(),
-        accounts:
-            (j['accounts'] as List?)?.cast<Map<String, dynamic>>() ?? const [],
+        // revue 2026-09-11, D1B-05 — `cast` était PARESSEUX : un élément qui
+        // n'est pas un objet levait au moment de l'itérer, en pleine
+        // restauration. Chaque élément est désormais converti ici ; un
+        // élément illisible devient un objet vide, qui échouera à la lecture
+        // du compte et sera COMPTÉ comme illisible (cf. `applyBackup`) au lieu
+        // de disparaître. ⚠️ Un champ qui n'est pas une liste lève toujours,
+        // comme avant : la sauvegarde est alors refusée avant tout effacement.
+        accounts: [
+          for (final Object? e in (j['accounts'] as List?) ?? const [])
+            e is Map ? e.cast<String, dynamic>() : <String, dynamic>{},
+        ],
         activeAccountId: j['activeAccountId'] as String?,
         tmdbKey: j['tmdbKey'] as String?,
         theme: j['theme'] as Map<String, dynamic>?,
@@ -249,21 +258,52 @@ class BackupService {
     return BackupContent.fromJson(json);
   }
 
+  /// revue 2026-09-11, D1B-05 — Phase 1 de la restauration : lit TOUS les
+  /// comptes d'une sauvegarde sans rien écrire. Un compte illisible est écarté
+  /// et journalisé ; c'est à l'appelant de décider si « aucun lisible » doit
+  /// arrêter la restauration (cf. [applyBackup]).
+  @visibleForTesting
+  static List<StreamAccount> readAccounts(List<Map<String, dynamic>> raw) {
+    final List<StreamAccount> out = <StreamAccount>[];
+    for (final Map<String, dynamic> json in raw) {
+      try {
+        out.add(StreamAccount.fromJson(json));
+      } catch (e) {
+        debugPrint('⚠️ Compte ignoré (parse fail) — $e');
+      }
+    }
+    return out;
+  }
+
   /// Applique un [BackupContent] en ÉCRASANT l'état courant.
   /// L'appelant DOIT avoir confirmé l'action côté UI (dialog de confirmation).
   static Future<void> applyBackup(BackupContent content) async {
     debugPrint('📥 BackupService: application — ${content.summary()}');
 
-    // 1. Comptes IPTV — wipe puis re-create.
+    // 1. Comptes IPTV — wipe puis re-create, en DEUX phases.
+    //
+    // §acctPurge + §restoreOnboarding — revue 2026-09-11, D1B-05 — L'ordre
+    // était « tout effacer, puis relire » : `deleteAccount` purge aussi les
+    // FICHIERS du compte (§acctPurge), et chaque échec de lecture était avalé
+    // ensuite. Une sauvegarde mal formée — ou écrite par une version future
+    // (format v1 identique, donc acceptée) — effaçait tous les comptes, n'en
+    // recréait aucun, et l'écran annonçait une restauration RÉUSSIE : les
+    // identifiants étaient perdus si le fichier source n'était plus là.
+    // Phase 1 : TOUT lire. Phase 2 seulement : effacer puis écrire.
+    final List<StreamAccount> incoming = readAccounts(content.accounts);
+    if (content.accounts.isNotEmpty && incoming.isEmpty) {
+      debugPrint('🛑 D1B-05 : aucun des ${content.accounts.length} compte(s) de la sauvegarde n\'est lisible → restauration refusée AVANT tout effacement.');
+      throw UserFacingException(L10n.current.bkNoReadableAccount);
+    }
     final existing = await StreamAccountService.listAccounts();
     for (final acc in existing) {
       await StreamAccountService.deleteAccount(acc.id);
     }
-    for (final json in content.accounts) {
+    for (final acc in incoming) {
       try {
-        await StreamAccountService.saveAccount(StreamAccount.fromJson(json));
+        await StreamAccountService.saveAccount(acc);
       } catch (e) {
-        debugPrint('⚠️ Compte ignoré (parse fail) — $e');
+        debugPrint('⚠️ Compte non enregistré (${acc.label}) — $e');
       }
     }
     if ((content.activeAccountId ?? '').isNotEmpty) {

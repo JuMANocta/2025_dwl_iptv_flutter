@@ -50,7 +50,13 @@ abstract final class PlaylistReloadService {
   }) async {
     final String? newPath;
     if (isPriority) {
-      newPath = await PlaylistService.downloadCurrentM3U();
+      // revue 2026-09-11, D1A-01 — Le principal peut désormais rendre le
+      // catalogue EXISTANT sans rien télécharger (panel qui refuse le JSON,
+      // repli `get.php` interdit pour ne pas détruire un catalogue sain).
+      // Même règle que les secondaires ci-dessous : rien de neuf ⇒ échec
+      // annoncé, jamais « rechargée » sur la liste d'hier.
+      final res = await PlaylistService.downloadCurrentM3UResult();
+      newPath = res.downloaded ? res.path : null;
     } else {
       // ⚠️ `force: true`, pas `respectTtl: false` : ce dernier ne télécharge
       // que si le fichier MANQUE — c'est-à-dire jamais, puisqu'on ne le

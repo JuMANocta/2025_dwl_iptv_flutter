@@ -1836,6 +1836,7 @@
   "bootSlowHint": "Loading is taking longer than usual. You can go in now: your lists will finish loading in the background.",
   "bootContinueAnyway": "Go in without waiting",
   "bootStalledBody": "The main list has stopped making progress. It keeps loading in the background: try again in a moment, or check the account.",
+  "playlistNoTitles": "This list contains no titles. Check the account, or try again later.",
   "sheetCloseSub": "Closes without changing anything",
   "optBackToVideoSub": "Closes this panel, playback continues",
   "optNextEpisode": "Next episode",
@@ -2067,6 +2068,7 @@
     }
   },
   "reloadDownloadFailed": "Download failed (check the URL or the connection).",
+  "playlistNotAList": "The server did not return a usable playlist. Check the playlist address.",
   "reloadParseFailed": "Parsing the playlist failed.",
   "bkPartTmdbKey": "TMDB key",
   "bkPartTheme": "theme",
@@ -2081,6 +2083,7 @@
   "bkPasswordEmptyError": "The password cannot be empty.",
   "bkNewerVersion": "Backup created by a newer version of the app; an update is required.",
   "bkWrongPassword": "Wrong password, or the backup file is corrupted.",
+  "bkNoReadableAccount": "None of the accounts in this backup could be read: nothing was changed.",
   "castDiscoveryFailed": "Discovery failed on this network. The phone must be on the same Wi-Fi as the TV, outside a guest network.",
   "castDeviceNotResponding": "{device} is not answering. Check that it is on and on the same network.",
   "@castDeviceNotResponding": {

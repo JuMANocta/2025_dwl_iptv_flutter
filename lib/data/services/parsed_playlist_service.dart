@@ -12,6 +12,8 @@ import 'package:aetherStream/feature/search/m3u_parser.dart';
 import 'package:aetherStream/feature/search/xtream_catalog_parser.dart';
 import 'package:aetherStream/data/services/hidden_regions_service.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
+import 'package:aetherStream/core/utils/keyed_serial.dart';
+import '../../l10n/l10n_ext.dart';
 import 'load_failure.dart';
 
 /// État de chargement d'un compte IPTV en mémoire (§16).
@@ -227,21 +229,53 @@ class ParsedPlaylistService {
   /// - Cache mémoire → retour immédiat.
   /// - Cache disque valide → ~50ms.
   /// - Sinon → parse complet + sauvegarde disque (fire & forget).
+  ///
+  /// §fleetSingle — revue 2026-09-11, D1L-02 — Sous le MÊME verrou par compte
+  /// que [loadSecondary] et [reloadFromDisk]. ⚠️ C'était le seul chargement
+  /// qui n'y passait pas : au changement de principal vers une liste périmée,
+  /// `HomePage._ensureLoaded` (→ `loadActive`) et `refreshIfStale` (→
+  /// `reloadFromDisk`) lançaient DEUX analyses complètes du même catalogue en
+  /// parallèle — exactement le doublon que §fleetSingle venait de retirer, sur
+  /// un téléviseur. Un second appel attend le premier, puis rend la copie en
+  /// mémoire si elle est à jour (sinon il recommence, cf. [_singleFlight]).
   static Future<ParsedPlaylist> loadActive(
     String accountId,
     String accountName,
     String m3uPath, {
     void Function(double)? onProgress,
     void Function(String)? onDetail,
-  }) async {
+  }) {
     // 1. Déjà en mémoire — et pas périmée (§reloadScope).
-    if (_memory.containsKey(accountId) && !isStale(accountId)) {
+    final ParsedPlaylist? inMemory = _memory[accountId];
+    if (inMemory != null && !isStale(accountId)) {
       _accountNames[accountId] = accountName;
       setLoadState(accountId, AccountLoadState.loaded);
       onProgress?.call(1.0);
       debugPrint('⚡ ParsedPlaylist: déjà en mémoire — $accountName');
-      return _memory[accountId]!;
+      return Future<ParsedPlaylist>.value(inMemory);
     }
+    return _singleFlight<ParsedPlaylist>(
+      accountId,
+      () => _loadActiveImpl(accountId, accountName, m3uPath,
+          onProgress: onProgress, onDetail: onDetail),
+      // Le vol rejoint est terminé : copie à jour → rendue sans nouvelle
+      // analyse (étape 1 ci-dessus) ; échec, ou source renouvelée pendant le
+      // vol → un vrai chargement.
+      onJoin: () => loadActive(accountId, accountName, m3uPath,
+          onProgress: onProgress, onDetail: onDetail),
+    );
+  }
+
+  static Future<ParsedPlaylist> _loadActiveImpl(
+    String accountId,
+    String accountName,
+    String m3uPath, {
+    void Function(double)? onProgress,
+    void Function(String)? onDetail,
+  }) async {
+    loadStartsForTest++;
+    // revue 2026-09-11, D1A-03 — Génération au DÉPART (cf. [_publishLoaded]).
+    final int startGen = _generationOf(accountId);
 
     // 2. Cache disque valide
     final disk = await _loadFromDisk(
@@ -255,7 +289,7 @@ class ParsedPlaylistService {
       _auditCategories(accountName, disk.entries);
       _memory[accountId] = disk;
       _accountNames[accountId] = accountName;
-      setLoadState(accountId, AccountLoadState.loaded);
+      _publishLoaded(accountId, startGen);
       onProgress?.call(1.0);
       _bumpAfterLoad();
       return disk;
@@ -267,7 +301,13 @@ class ParsedPlaylistService {
     final films   = <M3uEntry>[];
     final series  = <M3uEntry>[];
     final tv      = <M3uEntry>[];
+    late final DateTime m3uModified;
     try {
+      // revue 2026-09-11, D1A-03 — Date de la source lue AVANT l'analyse : lue
+      // après, elle pouvait être celle d'un fichier renouvelé PENDANT
+      // l'analyse, et l'en-tête du cache datait alors l'ANCIEN catalogue du
+      // NOUVEAU fichier — qui passait pour conforme pendant 24 h.
+      m3uModified = await File(m3uPath).lastModified();
       await _parsePlaylistFile(
         m3uPath, films, series, tv,
         accountId: accountId,
@@ -282,7 +322,19 @@ class ParsedPlaylistService {
     }
 
     final allEntries = [...films, ...series, ...tv];
-    final m3uModified = await File(m3uPath).lastModified();
+    // §cacheKeep + §fleetLoad — revue 2026-09-11, D1A-19 — Une analyse à ZÉRO
+    // entrée était acceptée comme « chargée » (puce DISPONIBLE, accueil vide)
+    // et écrite en cache — alors que `_loadFromDisk` refuse, lui, un cache
+    // vide. Même règle ici : échec nommé, rien en mémoire, rien sur disque.
+    // ⚠️ Sauf quand c'est le FILTRE de régions qui a tout masqué
+    // ([emptyBecauseFiltered]) : c'est le choix de l'utilisateur, pas une
+    // panne — la liste se charge vide, comme avant.
+    if (allEntries.isEmpty && !emptyBecauseFiltered(allEntries)) {
+      debugPrint('❌ ParsedPlaylist.loadActive — 0 entrée pour $accountName : refusé (ni mémoire, ni cache)');
+      setLoadState(accountId, AccountLoadState.error,
+          kind: LoadFailureKind.amputated);
+      throw UserFacingException(L10n.current.playlistNoTitles);
+    }
     final playlist = ParsedPlaylist(
       accountId:    accountId,
       schema:       ParsedPlaylist.schemaVersion,
@@ -292,11 +344,13 @@ class ParsedPlaylistService {
 
     _memory[accountId] = playlist;
     _accountNames[accountId] = accountName;
-    setLoadState(accountId, AccountLoadState.loaded);
+    final bool fresh = _publishLoaded(accountId, startGen);
     _bumpAfterLoad();
 
-    // Sauvegarde disque en arrière-plan (non bloquant)
-    _saveToDisk(accountId, playlist);
+    // Sauvegarde disque en arrière-plan (non bloquant). D1A-03 — seulement si
+    // la source n'a pas changé pendant l'analyse : sinon ce cache décrirait un
+    // catalogue que le disque n'a déjà plus.
+    if (fresh) _saveToDisk(accountId, playlist);
 
     debugPrint('✅ ParsedPlaylist: parse terminé — ${allEntries.length} entrées');
     return playlist;
@@ -327,11 +381,15 @@ class ParsedPlaylistService {
         continue;
       }
 
+      // revue 2026-09-11, D1A-03 — Génération au DÉPART, comme tous les
+      // chargements : un `markStale` pendant cette lecture laisse la copie
+      // périmée (cf. [_publishLoaded]).
+      final int startGen = _generationOf(acc.id);
       final disk = await _loadFromDisk(acc.id, m3uPath);
       if (disk != null) {
         _memory[acc.id] = disk;
         _accountNames[acc.id] = acc.label;
-        setLoadState(acc.id, AccountLoadState.loaded);
+        _publishLoaded(acc.id, startGen);
         debugPrint('✅ ParsedPlaylist: préchargé depuis disque — ${acc.label} (${disk.entries.length} entrées)');
         _auditCategories(acc.label, disk.entries);
         _bumpAfterLoad();
@@ -375,16 +433,83 @@ class ParsedPlaylistService {
   static final Map<String, Future<void>> _loadsInFlight =
       <String, Future<void>>{};
 
+  /// §legLang — revue 2026-09-11 (intégration du lot 2) — Zéro entrée PARCE
+  /// QUE le filtre de régions a tout masqué.
+  ///
+  /// D1A-19 refuse désormais une analyse vide (échec nommé, rien en mémoire
+  /// ni en cache) : c'est juste pour une source VIDE à la source. Mais les
+  /// parseurs appliquent le filtre de régions AVANT de stocker une entrée —
+  /// un utilisateur qui masque toutes les régions d'une liste obtient donc
+  /// zéro entrée sans que rien ne soit en panne. Le refuser mènerait, pour la
+  /// liste principale, à l'écran d'erreur du démarrage au lieu d'un accueil
+  /// (vide, mais conforme à son choix) — une régression. Avec un filtre
+  /// actif, on garde donc le comportement d'avant : la liste se charge vide.
+  /// [filterActive] n'existe que pour les tests.
+  @visibleForTesting
+  static bool emptyBecauseFiltered(List<M3uEntry> entries, {bool? filterActive}) =>
+      entries.isEmpty && (filterActive ?? HiddenRegionsService.hasAny);
+
+  /// §fleetSingle — revue 2026-09-11, D1A-03 + D1L-02 — [onJoin] dit ce que
+  /// fait un appel arrivé PENDANT un vol, une fois ce vol terminé.
+  ///
+  /// ⚠️ **Le défaut corrigé.** Le suiveur recevait `null`
+  /// (`running.then((_) => null as T)`) :
+  ///   - pour [reloadFromDisk], c'était un FAUX échec d'analyse
+  ///     (`PlaylistReloadService` annonçait « L'analyse de la liste a
+  ///     échoué » alors que rien n'avait échoué) — et surtout la NOUVELLE
+  ///     source n'était jamais lue : le vol rejoint analysait l'ancienne ;
+  ///   - pour [loadActive] (type non nullable), `null as T` aurait levé —
+  ///     l'une des raisons pour lesquelles il restait hors du verrou.
+  /// Le suiveur attend la fin du vol, puis [onJoin] décide : copie à jour →
+  /// la rendre ; échec, ou source renouvelée pendant le vol (cf.
+  /// [_publishLoaded]) → refaire un VRAI chargement.
   static Future<T> _singleFlight<T>(
-      String accountId, Future<T> Function() body) {
+    String accountId,
+    Future<T> Function() body, {
+    required Future<T> Function() onJoin,
+  }) {
     final Future<void>? running = _loadsInFlight[accountId];
     if (running != null) {
       debugPrint('⏸️ §fleetSingle : $accountId — analyse déjà en cours, on l\'attend');
-      return running.then((_) => null as T);
+      return running.then((_) => onJoin());
     }
     final Future<T> f = body();
-    _loadsInFlight[accountId] = f.then((_) {}, onError: (_) {});
-    return f.whenComplete(() => _loadsInFlight.remove(accountId));
+    // ⚠️ L'entrée est retirée AVANT que les suiveurs ne soient libérés (ils
+    // attendent [gate], qui ne se termine qu'après ce rappel) : un suiveur qui
+    // recommence doit trouver la voie libre, pas l'ancien vol déjà terminé.
+    late final Future<void> gate;
+    gate = f.then<void>((_) {}, onError: (Object _) {}).whenComplete(() {
+      if (identical(_loadsInFlight[accountId], gate)) {
+        _loadsInFlight.remove(accountId);
+      }
+    });
+    _loadsInFlight[accountId] = gate;
+    return f;
+  }
+
+  /// revue 2026-09-11, D1A-03 — Génération de la SOURCE, par compte : +1 à
+  /// chaque [markStale].
+  ///
+  /// ⚠️ **Le défaut corrigé.** `setLoadState(loaded)` lève [_stale] sans
+  /// condition — y compris pour un chargement DÉMARRÉ AVANT le `markStale` :
+  /// la ré-analyse du réconciliateur (jusqu'à 3 min) se terminait sur
+  /// l'ANCIENNE source, déclarait la liste à jour, et l'ancien catalogue
+  /// passait pour conforme 24 h. Un chargement note la génération à son
+  /// départ ; s'il la retrouve changée à l'arrivée, sa copie est publiée (elle
+  /// reste affichable) mais TOUJOURS périmée, et rien n'est écrit en cache.
+  static final Map<String, int> _generation = <String, int>{};
+
+  static int _generationOf(String accountId) => _generation[accountId] ?? 0;
+
+  /// Déclare la liste chargée ; rend `true` si elle est À JOUR (aucun
+  /// [markStale] depuis [startGen]), `false` si elle reste périmée.
+  static bool _publishLoaded(String accountId, int startGen) {
+    setLoadState(accountId, AccountLoadState.loaded);
+    if (_generationOf(accountId) == startGen) return true;
+    // ⚠️ APRÈS le `setLoadState` : déclarer « chargée » lève le drapeau.
+    _stale.add(accountId);
+    debugPrint('♻️ D1A-03 : $accountId — la source a changé pendant le chargement → copie publiée mais toujours périmée, cache non écrit');
+    return false;
   }
 
   static Future<void> loadSecondary(
@@ -403,6 +528,9 @@ class ParsedPlaylistService {
       accountId,
       () => _loadSecondaryImpl(accountId, accountName, m3uPath,
           onProgress: onProgress, onDetail: onDetail),
+      // Comportement d'origine conservé : le suiveur attend, sans relancer
+      // (le réconciliateur §fleetLoad repassera si la liste n'est pas prête).
+      onJoin: () async {},
     );
   }
 
@@ -423,6 +551,8 @@ class ParsedPlaylistService {
       setLoadState(accountId, AccountLoadState.loaded);
       return;
     }
+    // revue 2026-09-11, D1A-03 — Génération au DÉPART (cf. [_publishLoaded]).
+    final int startGen = _generationOf(accountId);
     // Tentative cache disque
     final disk = await _loadFromDisk(
       accountId,
@@ -433,7 +563,7 @@ class ParsedPlaylistService {
     if (disk != null) {
       _memory[accountId] = disk;
       _accountNames[accountId] = accountName;
-      setLoadState(accountId, AccountLoadState.loaded);
+      _publishLoaded(accountId, startGen);
       _bumpAfterLoad();
       debugPrint('✅ ParsedPlaylist secondaire: cache disque — $accountName');
       return;
@@ -443,7 +573,11 @@ class ParsedPlaylistService {
     final films  = <M3uEntry>[];
     final series = <M3uEntry>[];
     final tv     = <M3uEntry>[];
+    late final DateTime modified;
     try {
+      // revue 2026-09-11, D1A-03 — Date de la source lue AVANT l'analyse
+      // (cf. [_loadActiveImpl]).
+      modified = await File(m3uPath).lastModified();
       await _parsePlaylistFile(
         m3uPath,
         films,
@@ -460,7 +594,15 @@ class ParsedPlaylistService {
       return;
     }
     final allEntries = [...films, ...series, ...tv];
-    final modified = await File(m3uPath).lastModified();
+    // revue 2026-09-11, D1A-19 — Zéro entrée n'est pas un chargement (cf.
+    // [_loadActiveImpl]) : échec nommé, rien en mémoire, rien sur disque —
+    // sauf filtre de régions qui masque tout ([emptyBecauseFiltered]).
+    if (allEntries.isEmpty && !emptyBecauseFiltered(allEntries)) {
+      debugPrint('❌ ParsedPlaylist secondaire — 0 entrée pour $accountName : refusé (ni mémoire, ni cache)');
+      setLoadState(accountId, AccountLoadState.error,
+          kind: LoadFailureKind.amputated);
+      return;
+    }
     final playlist = ParsedPlaylist(
       accountId:    accountId,
       schema:       ParsedPlaylist.schemaVersion,
@@ -469,9 +611,10 @@ class ParsedPlaylistService {
     );
     _memory[accountId] = playlist;
     _accountNames[accountId] = accountName;
-    setLoadState(accountId, AccountLoadState.loaded);
+    final bool fresh = _publishLoaded(accountId, startGen);
     _bumpAfterLoad();
-    _saveToDisk(accountId, playlist);
+    // D1A-03 — pas de cache pour une copie déjà périmée à sa naissance.
+    if (fresh) _saveToDisk(accountId, playlist);
     debugPrint('✅ ParsedPlaylist secondaire: parse — $accountName (${allEntries.length} entrées)');
   }
 
@@ -592,7 +735,13 @@ class ParsedPlaylistService {
   /// chaque notification : la reconstruction balaie toutes les entrées de tous
   /// les comptes (~350 000 sur les listes réelles).
   static void _bumpAfterLoad() {
-    TmdbGroupAliasService.rebuild(entries);
+    // §lazyUnload — revue 2026-09-11, D1A-18 — Parcours DIRECT de la mémoire,
+    // pas le getter [entries] : celui-ci touche `_lastAccess` de TOUS les
+    // comptes et copie toutes les entrées dans une liste neuve. Chaque
+    // chargement repoussait donc le déchargement de toutes les listes
+    // secondaires — une liste jamais consultée restait en mémoire tant
+    // qu'une autre se chargeait.
+    TmdbGroupAliasService.rebuild(_memory.values.expand((p) => p.entries));
     version.value++;
   }
 
@@ -753,6 +902,19 @@ class ParsedPlaylistService {
       accountId,
       () => _reloadFromDiskImpl(accountId, accountName, m3uPath,
           onProgress: onProgress, onDetail: onDetail),
+      // revue 2026-09-11, D1A-03 — Le vol rejoint est terminé : si la copie
+      // en mémoire est À JOUR (le vol a lu la source après son
+      // renouvellement), elle est le résultat ; sinon on CHAÎNE un vrai
+      // rechargement — au lieu de rendre `null`, le faux « l'analyse a
+      // échoué » qui laissait la nouvelle source jamais lue.
+      onJoin: () {
+        final ParsedPlaylist? inMemory = _memory[accountId];
+        if (inMemory != null && !isStale(accountId)) {
+          return Future<ParsedPlaylist?>.value(inMemory);
+        }
+        return reloadFromDisk(accountId, accountName, m3uPath,
+            onProgress: onProgress, onDetail: onDetail);
+      },
     );
   }
 
@@ -767,12 +929,19 @@ class ParsedPlaylistService {
       debugPrint('⚠️ ParsedPlaylist.reloadFromDisk: fichier introuvable — $m3uPath');
       return null;
     }
+    loadStartsForTest++;
+    // revue 2026-09-11, D1A-03 — Génération au DÉPART (cf. [_publishLoaded]).
+    final int startGen = _generationOf(accountId);
     debugPrint('🔄 ParsedPlaylist: rechargement atomique — $accountName');
 
     final films  = <M3uEntry>[];
     final series = <M3uEntry>[];
     final tv     = <M3uEntry>[];
+    late final DateTime modified;
     try {
+      // revue 2026-09-11, D1A-03 — Date de la source lue AVANT l'analyse
+      // (cf. [_loadActiveImpl]).
+      modified = await File(m3uPath).lastModified();
       await _parsePlaylistFile(
         m3uPath,
         films,
@@ -795,7 +964,16 @@ class ParsedPlaylistService {
     }
 
     final allEntries = [...films, ...series, ...tv];
-    final modified   = await File(m3uPath).lastModified();
+    // revue 2026-09-11, D1A-19 — Une analyse VIDE ne remplace pas la liste en
+    // mémoire (mieux vaut la liste d'hier qu'un accueil vide) : échec nommé,
+    // `null` pour l'appelant — qui l'annonce comme un échec de rechargement.
+    // Sauf filtre de régions qui masque tout ([emptyBecauseFiltered]).
+    if (allEntries.isEmpty && !emptyBecauseFiltered(allEntries)) {
+      debugPrint('❌ ParsedPlaylist.reloadFromDisk — 0 entrée pour $accountName : la copie en mémoire est conservée');
+      setLoadState(accountId, AccountLoadState.error,
+          kind: LoadFailureKind.amputated);
+      return null;
+    }
     final playlist   = ParsedPlaylist(
       accountId:    accountId,
       schema:       ParsedPlaylist.schemaVersion,
@@ -814,12 +992,18 @@ class ParsedPlaylistService {
     // ouvrir de fenêtre vide.
     _memory[accountId]       = playlist;
     _accountNames[accountId] = accountName;
-    setLoadState(accountId, AccountLoadState.loaded);
+    final bool fresh = _publishLoaded(accountId, startGen);
 
     // Bump VERSION EN DERNIER → les listeners (home) rebuild sur le nouvel état.
-    version.value++;
+    // §tmdbMerge — revue 2026-09-11, D1A-18 — par `_bumpAfterLoad`, comme
+    // tous les autres chargements : ce chemin se contentait de
+    // `version.value++`, donc la table de fusion TMDB n'était reconstruite
+    // qu'au lancement suivant — les nouveaux identifiants du rafraîchissement
+    // quotidien ne fusionnaient pas de la journée.
+    _bumpAfterLoad();
 
-    _saveToDisk(accountId, playlist); // fire & forget
+    // D1A-03 — pas de cache pour une copie déjà périmée à sa naissance.
+    if (fresh) _saveToDisk(accountId, playlist); // fire & forget
     debugPrint('✅ ParsedPlaylist.reloadFromDisk: ${allEntries.length} entrées');
     return playlist;
   }
@@ -863,6 +1047,10 @@ class ParsedPlaylistService {
     // ⚠️ APRÈS le `setLoadState` : déclarer une liste « chargée » lève le
     // drapeau (cf. [setLoadState]), le poser avant reviendrait à l'effacer.
     _stale.add(accountId);
+    // revue 2026-09-11, D1A-03 — Nouvelle génération de SOURCE : tout
+    // chargement déjà en vol lit l'ancienne, il ne pourra pas lever le
+    // drapeau à son arrivée (cf. [_publishLoaded]).
+    _generation[accountId] = _generationOf(accountId) + 1;
     // ⚠️ Le message tient sur UNE ligne : le cliquet §l10nAll ne sait
     // reconnaître un diagnostic que sur la ligne qui porte `debugPrint(`.
     final String suite = inMemory ? ' (elle reste affichable)' : '';
@@ -1141,7 +1329,33 @@ class ParsedPlaylistService {
   /// (`XtreamCatalogService`, `ensureDownloadedForAccount`) écrivaient déjà en
   /// `.part` + `rename` ; celui-ci était le seul à ne pas le faire — et c'est
   /// justement lui qui écrit le fichier le plus long à produire.
-  static Future<void> _saveToDisk(String accountId, ParsedPlaylist playlist) async {
+  static Future<void> _saveToDisk(String accountId, ParsedPlaylist playlist) =>
+      _saves.run(accountId, () => _saveToDiskImpl(accountId, playlist));
+
+  /// §cacheKeep — revue 2026-09-11, D1A-04 — Les sauvegardes du cache
+  /// analysé, une à la fois PAR COMPTE.
+  ///
+  /// ⚠️ Deux sauvegardes du même compte (deux chargements concurrents, cf.
+  /// D1L-02) écrivaient le MÊME `.part` : deux flux gzip mêlés, puis un
+  /// renommage qui pouvait publier un cache illisible — supprimé puis
+  /// ré-analysé au démarrage suivant. Sous ce verrou elles s'enchaînent, la
+  /// plus récente écrite en dernier. Le `.part` garde un nom FIXE : il est
+  /// réécrit (donc nettoyé) à la sauvegarde suivante, là où un nom unique
+  /// laisserait un orphelin à chaque interruption.
+  static final KeyedSerial _saves = KeyedSerial();
+
+  /// revue 2026-09-11, D1A-04 — Tranche de travail avant de rendre la main au
+  /// thread UI (même motif que `M3uParser._parseStream`).
+  static Duration _saveSlice = const Duration(milliseconds: 8);
+
+  @visibleForTesting
+  static Duration get saveSliceForTest => _saveSlice;
+
+  @visibleForTesting
+  static set saveSliceForTest(Duration d) => _saveSlice = d;
+
+  static Future<void> _saveToDiskImpl(
+      String accountId, ParsedPlaylist playlist) async {
     final path = await _diskCachePath(accountId);
     final partPath = '$path.part';
     final part = File(partPath);
@@ -1171,8 +1385,24 @@ class ParsedPlaylistService {
         'filterSig': HiddenRegionsService.signature,
       });
       // Une entrée par ligne
+      //
+      // §jankMeter — revue 2026-09-11, D1A-04 — ⚠️ Cette boucle ne rendait
+      // JAMAIS la main : `jsonEncode` + UTF-8 + deflate de 150 000 entrées
+      // d'un seul bloc synchrone, sur le thread UI, accueil affiché
+      // (rechargement, rafraîchissement quotidien). Et l'IOSink ne pouvant
+      // rien écrire pendant la boucle, TOUT le `.gz` restait en mémoire —
+      // l'inverse de « l'empreinte minime » annoncée plus haut. On rend la
+      // main toutes les ~8 ms ; le `flush` régule l'IOSink, et il n'est lancé
+      // qu'entre deux entrées (aucun `add` ne le chevauche, ce qu'il refuse).
+      // L'ordre final trailer → flush → close → rename est inchangé.
+      final Stopwatch slice = Stopwatch()..start();
       for (final e in playlist.entries) {
         writeLine(e.toJson());
+        if (slice.elapsed > _saveSlice) {
+          await raw.flush();
+          await Future<void>.delayed(Duration.zero);
+          slice.reset();
+        }
       }
       // ⚠️ ORDRE CRITIQUE, et c'est tout l'intérêt de `_IOSinkAdapter` :
       //   1. `gzipSink.close()` pousse le TRAILER gzip dans l'IOSink — sans

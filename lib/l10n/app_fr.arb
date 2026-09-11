@@ -1833,6 +1833,7 @@
   "bootSlowHint": "Le chargement est plus long que d'habitude. Tu peux entrer dans l'application : les listes finissent de se charger en arrière-plan.",
   "bootContinueAnyway": "Entrer sans attendre",
   "bootStalledBody": "Le chargement de la liste principale n'avance plus. Il continue en arrière-plan : réessaie dans un instant, ou vérifie le compte.",
+  "playlistNoTitles": "Cette liste ne contient aucun titre. Vérifie le compte, ou réessaie plus tard.",
   "sheetCloseSub": "Referme sans rien changer",
   "optBackToVideoSub": "Ferme ce panneau, la lecture continue",
   "optNextEpisode": "Épisode suivant",
@@ -2064,6 +2065,7 @@
     }
   },
   "reloadDownloadFailed": "Téléchargement impossible (vérifie l'URL ou la connexion).",
+  "playlistNotAList": "Le serveur n'a pas renvoyé de liste exploitable. Vérifie l'adresse de la playlist.",
   "reloadParseFailed": "L'analyse de la liste a échoué.",
   "bkPartTmdbKey": "clé TMDB",
   "bkPartTheme": "thème",
@@ -2078,6 +2080,7 @@
   "bkPasswordEmptyError": "Le mot de passe ne peut pas être vide.",
   "bkNewerVersion": "Sauvegarde créée par une version plus récente de l'app ; mise à jour nécessaire.",
   "bkWrongPassword": "Mot de passe incorrect, ou fichier de sauvegarde altéré.",
+  "bkNoReadableAccount": "Aucun compte de cette sauvegarde n'a pu être lu : rien n'a été modifié.",
   "castDiscoveryFailed": "Recherche impossible sur ce réseau. Le téléphone doit être sur le même WiFi que le téléviseur, hors réseau invité.",
   "castDeviceNotResponding": "{device} ne répond pas. Vérifie qu'il est allumé et sur le même réseau.",
   "@castDeviceNotResponding": {

@@ -2222,6 +2222,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'The main list has stopped making progress. It keeps loading in the background: try again in a moment, or check the account.';
 
   @override
+  String get playlistNoTitles =>
+      'This list contains no titles. Check the account, or try again later.';
+
+  @override
   String get sheetCloseSub => 'Closes without changing anything';
 
   @override
@@ -2645,6 +2649,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Download failed (check the URL or the connection).';
 
   @override
+  String get playlistNotAList =>
+      'The server did not return a usable playlist. Check the playlist address.';
+
+  @override
   String get reloadParseFailed => 'Parsing the playlist failed.';
 
   @override
@@ -2674,6 +2682,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get bkWrongPassword =>
       'Wrong password, or the backup file is corrupted.';
+
+  @override
+  String get bkNoReadableAccount =>
+      'None of the accounts in this backup could be read: nothing was changed.';
 
   @override
   String get castDiscoveryFailed =>

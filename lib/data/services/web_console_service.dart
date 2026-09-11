@@ -17,6 +17,7 @@ import 'favorites_service.dart';
 import 'hidden_regions_service.dart';
 import 'last_watched_channel_service.dart';
 import 'parsed_playlist_service.dart';
+import 'playlist_reload_service.dart';
 import 'playlist_service.dart';
 import '../../core/boot/boot_status.dart';
 import '../../feature/search/xtream_catalog_parser.dart';
@@ -597,16 +598,15 @@ class WebConsoleService {
     if (id == null) throw 'ID manquant';
     final acc = await StreamAccountService.getAccount(id);
     if (acc == null) throw 'Compte introuvable.';
-    await PlaylistService.deleteForAccountId(id);
     final cur = await StreamAccountService.getCurrentAccount();
-    String? path;
-    if (cur?.id == id) {
-      path = await PlaylistService.downloadCurrentM3U();
-    } else {
-      path = (await PlaylistService.ensureDownloadedForAccount(acc)).path;
-    }
-    if (path == null) throw 'Téléchargement impossible (URL/connexion ?).';
-    await ParsedPlaylistService.reloadFromDisk(acc.id, acc.label, path);
+    // §reloadKeep + §reloadNaming — revue 2026-09-11, D1L-01 — Ce chemin-ci
+    // avait été OUBLIÉ par les deux correctifs : il supprimait la liste AVANT
+    // de la retélécharger (une panne du panel laissait le compte sans rien au
+    // redémarrage), ne forçait pas le téléchargement d'un secondaire, et
+    // ignorait le `null` d'une analyse ratée — la route répondait `ok`. Le
+    // chemin PARTAGÉ ne supprime rien, force, et lève sur tout échec : la
+    // console affiche alors l'erreur au lieu d'un faux succès.
+    await PlaylistReloadService.reloadAccount(acc, isPriority: cur?.id == id);
   }
 
   Future<void> _saveTmdb(String token) async {

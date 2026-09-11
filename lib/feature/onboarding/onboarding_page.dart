@@ -163,6 +163,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
   /// en arrière-plan, le téléphone peut poursuivre (TMDB, thème…) pendant que
   /// la TV bascule sur l'accueil.
   void _onConsoleEvent(WebConsoleEvent event) {
+    // revue 2026-09-11, D3B-14 — Rappel EXTERNE (serveur de la console) : il
+    // peut arriver après le démontage de la page, et `setState` lèverait.
+    if (!mounted) return;
     if (event.isAccountChange) {
       setState(() => _consoleStatus = L10n.current.onbPlaylistSaved);
       Future.delayed(const Duration(milliseconds: 1200), () {

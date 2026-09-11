@@ -2238,6 +2238,10 @@ class AppLocalizationsFr extends AppLocalizations {
       'Le chargement de la liste principale n\'avance plus. Il continue en arrière-plan : réessaie dans un instant, ou vérifie le compte.';
 
   @override
+  String get playlistNoTitles =>
+      'Cette liste ne contient aucun titre. Vérifie le compte, ou réessaie plus tard.';
+
+  @override
   String get sheetCloseSub => 'Referme sans rien changer';
 
   @override
@@ -2661,6 +2665,10 @@ class AppLocalizationsFr extends AppLocalizations {
       'Téléchargement impossible (vérifie l\'URL ou la connexion).';
 
   @override
+  String get playlistNotAList =>
+      'Le serveur n\'a pas renvoyé de liste exploitable. Vérifie l\'adresse de la playlist.';
+
+  @override
   String get reloadParseFailed => 'L\'analyse de la liste a échoué.';
 
   @override
@@ -2690,6 +2698,10 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get bkWrongPassword =>
       'Mot de passe incorrect, ou fichier de sauvegarde altéré.';
+
+  @override
+  String get bkNoReadableAccount =>
+      'Aucun compte de cette sauvegarde n\'a pu être lu : rien n\'a été modifié.';
 
   @override
   String get castDiscoveryFailed =>
