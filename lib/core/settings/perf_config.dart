@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 
 /// §perfSettings — Configuration des optimisations de rendu, sérialisable pour
@@ -423,6 +424,58 @@ class PerfConfig {
         downloadsWifiOnly: downloadsWifiOnly ?? this.downloadsWifiOnly,
       );
 
+  /// §perfNotify (revue 2026-09-11, D4B-01 + D4L-01) — Applique un PROFIL à
+  /// cette config : prend dans [profile] les NEUF leviers de l'égalité (ceux
+  /// qui font un profil) et garde depuis `this` TOUT le reste — les réglages
+  /// de confort exclus de `==`.
+  ///
+  /// ⚠️ Avant, `applyPreset` faisait `preset.config.copyWith(...)` en ne
+  /// reportant que DEUX champs de confort (`autoNextEpisode`,
+  /// `tmdbPostersFirst`, §tourFix) : les six ajoutés ensuite (rangées TMDB,
+  /// `rowFoldMin`, `maxParallelDownloads`, `downloadsWifiOnly`) retombaient sur
+  /// les valeurs du preset, donc d'usine. Toucher « Équilibré » éteignait
+  /// « Wi-Fi seulement » sans un mot — et le téléchargement suivant partait
+  /// sur les données mobiles. Même trou dans le profil automatique du premier
+  /// lancement (§autoProfile), qui écrasait une sauvegarde `.aether` restaurée
+  /// quelques secondes plus tôt.
+  ///
+  /// La liste est écrite ici en ENVERS (champs de profil lus dans [profile]),
+  /// de sorte qu'un futur réglage de confort soit gardé PAR DÉFAUT : il n'a
+  /// rien à faire pour survivre à un changement de profil. Un futur LEVIER de
+  /// profil, lui, doit être ajouté ici ET dans `==` — le test
+  /// `withProfileOf(p) == p` le rattrape s'il manque.
+  /// ⛔ Ne PAS « simplifier » en réintégrant les champs de confort dans `==`
+  /// (§perfNotify : c'est ce qui rendait les interrupteurs muets).
+  PerfConfig withProfileOf(PerfConfig profile) => copyWith(
+        heroEnabled: profile.heroEnabled,
+        heroAutoRotate: profile.heroAutoRotate,
+        heroCardCount: profile.heroCardCount,
+        maxItemsPerRow: profile.maxItemsPerRow,
+        imageCacheMb: profile.imageCacheMb,
+        bufferSeconds: profile.bufferSeconds,
+        keepAllListsInMemory: profile.keepAllListsInMemory,
+        idleUnloadMinutes: profile.idleUnloadMinutes,
+        hostMaxConcurrent: profile.hostMaxConcurrent,
+      );
+
+  /// §perfNotify (revue 2026-09-11, D4B-01) — La cible de « Réinitialiser »
+  /// dans la page Optimisation : tout revient aux défauts, SAUF ce qui ne vit
+  /// pas dans cette page (les quatre options de la page TMDB) et « Wi-Fi
+  /// seulement », dont la remise à zéro silencieuse coûte des données
+  /// mobiles facturées.
+  PerfConfig withOptimizationDefaults() => defaults.copyWith(
+        tmdbPostersFirst: tmdbPostersFirst,
+        tmdbRowBecause: tmdbRowBecause,
+        tmdbRowTopRated: tmdbRowTopRated,
+        tmdbRowProviders: tmdbRowProviders,
+        downloadsWifiOnly: downloadsWifiOnly,
+      );
+
+  /// Égalité de TOUS les champs, confort compris (par la forme persistée).
+  /// ⚠️ À utiliser pour « y a-t-il quelque chose à changer ? » : `==` répond
+  /// « même profil », pas « mêmes réglages » (§perfNotify).
+  bool sameSettingsAs(PerfConfig other) => mapEquals(toJson(), other.toJson());
+
   // Égalité champ-à-champ → détection du preset actif dans la page.
   @override
   bool operator ==(Object other) =>
@@ -441,9 +494,12 @@ class PerfConfig {
       other.idleUnloadMinutes == idleUnloadMinutes &&
       other.hostMaxConcurrent == hostMaxConcurrent;
   // NB : `autoNextEpisode`, `tmdbPostersFirst`, `tmdbRowBecause`,
-  // `tmdbRowTopRated` et `tmdbRowProviders` sont volontairement EXCLUS de l'égalité — c'est un
-  // réglage de confort, pas un paramètre de profil. L'inclure ferait basculer
-  // la page en « Personnalisé » dès qu'on touche l'interrupteur.
+  // `tmdbRowTopRated`, `tmdbRowProviders`, `rowFoldMin`,
+  // `maxParallelDownloads` et `downloadsWifiOnly` sont volontairement EXCLUS
+  // de l'égalité — ce sont des réglages de confort, pas des paramètres de
+  // profil. Les inclure ferait basculer la page en « Personnalisé » dès qu'on
+  // touche l'interrupteur. Conséquence : changer de profil passe par
+  // [withProfileOf], jamais par le preset brut.
 
   @override
   int get hashCode => Object.hash(

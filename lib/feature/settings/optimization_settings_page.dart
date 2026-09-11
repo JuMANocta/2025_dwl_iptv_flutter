@@ -4,6 +4,7 @@ import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
+import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/download_manager_service.dart';
 import 'package:aetherStream/data/services/storage_janitor.dart';
@@ -104,19 +105,29 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
   /// n'existent plus, ET les partiels de téléchargement abandonnés.
   Future<void> _purgeOrphans() async {
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     setState(() => _purging = true);
-    final res = await _measure(dryRun: false);
-    if (!mounted) return;
-    setState(() {
-      _purging = false;
-      _reclaimable = const StorageSweepResult(fileCount: 0, bytes: 0);
-      _memCardEpoch++;
-    });
-    messenger.showSnackBar(SnackBar(
-      content: Text(res.isEmpty
-          ? context.l10n.perfPurgeNothing
-          : context.l10n.perfPurgeDone(res.label, res.fileCount)),
-    ));
+    // Revue 2026-09-11, D4B-11 — `_measure` lit le stockage et la liste des
+    // comptes : s'il lève, le bouton restait en « Suppression… » jusqu'à la
+    // sortie de la page. Le drapeau est désormais toujours relâché.
+    try {
+      final res = await _measure(dryRun: false);
+      if (!mounted) return;
+      setState(() {
+        _reclaimable = const StorageSweepResult(fileCount: 0, bytes: 0);
+        _memCardEpoch++;
+      });
+      messenger.showSnackBar(SnackBar(
+        content: Text(res.isEmpty
+            ? l10n.perfPurgeNothing
+            : l10n.perfPurgeDone(res.label, res.fileCount)),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(l10n.commonFailedWith(describeError(e)))));
+    } finally {
+      if (mounted) setState(() => _purging = false);
+    }
   }
 
   /// Applique la config en live (ValueNotifier → rebuild home) et la persiste.
@@ -134,16 +145,22 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
   ///
   /// ⚠️ Le snackbar survit à la page (il vit sur le `ScaffoldMessenger` racine) :
   /// si l'utilisateur a quitté avant d'annuler, on persiste sans `setState`.
+  ///
+  /// Revue 2026-09-11, D4B-01 : la cible épargne les options de la page TMDB
+  /// et « Wi-Fi seulement » (`withOptimizationDefaults`), et le test « rien à
+  /// faire » compare TOUS les champs — `==` ignore le confort, donc
+  /// « Réinitialiser » ne faisait rien quand seul le confort avait changé.
   Future<void> _resetWithUndo() async {
     final PerfConfig old = _config;
-    if (old == PerfConfig.defaults) return; // rien à réinitialiser
+    final PerfConfig target = old.withOptimizationDefaults();
+    if (old.sameSettingsAs(target)) return; // rien à réinitialiser
     await confirmOrUndo(
       context,
       title: context.l10n.perfResetTitle,
       question: context.l10n.perfResetQuestion,
       confirmLabel: context.l10n.perfResetConfirm,
       doneMessage: context.l10n.perfResetDone,
-      action: () async => _apply(PerfConfig.defaults),
+      action: () async => _apply(target),
       onUndo: () {
         if (mounted) {
           _apply(old);
@@ -563,15 +580,13 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
         itemBuilder: (_, i) {
           final preset = PerfConfig.presets[i];
           final active = _config == preset.config;
-          // §tourFix — reporter autoNextEpisode dans la config du preset :
-          // c'est un réglage de CONFORT volontairement hors des profils de
+          // §tourFix — les réglages de CONFORT sont hors des profils de
           // performance (cf. §autoNextEp dans perf_config.dart) ; appliquer
-          // preset.config tel quel l'écrasait silencieusement.
-          void applyPreset() => _apply(preset.config.copyWith(
-                autoNextEpisode: _config.autoNextEpisode,
-                // §posterLang — même raison : hors profils, donc préservé.
-                tmdbPostersFirst: _config.tmdbPostersFirst,
-              ));
+          // preset.config tel quel les écrasait silencieusement.
+          // Revue 2026-09-11, D4B-01 : le report champ par champ n'en gardait
+          // que deux sur huit (« Wi-Fi seulement » repassait à faux) →
+          // `withProfileOf` garde tout ce qui n'est pas un levier de profil.
+          void applyPreset() => _apply(_config.withProfileOf(preset.config));
           return FocusableChip(
             onTap: applyPreset,
             borderRadius: BorderRadius.circular(10),

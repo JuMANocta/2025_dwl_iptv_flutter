@@ -233,6 +233,28 @@ class StreamAccount {
       'StreamAccount(id=$id, label=$label, mode=$mode, usable=$isUsable)';
 }
 
+/// Revue 2026-09-11, D4B-03 — Vrai si ce qui sert à JOINDRE le fournisseur a
+/// changé entre deux versions d'un compte : le mode, puis, selon le mode,
+/// l'URL complète ou le trio serveur / identifiant / mot de passe, et le type
+/// de liste. Le NOM ne compte pas : renommer un compte ne doit rien
+/// retélécharger. Les champs de l'autre mode sont ignorés (le formulaire les
+/// remet à `null`, un vieux compte peut encore les porter).
+///
+/// Pourquoi ça compte : le catalogue analysé EMBARQUE les identifiants dans
+/// les URL de flux Xtream. Après un changement de mot de passe, toutes les
+/// lectures échouaient jusqu'au rafraîchissement de 24 h. **Pure** — testée.
+bool connectionChanged(StreamAccount before, StreamAccount after) {
+  String n(String? s) => (s ?? '').trim();
+  if (before.mode != after.mode) return true;
+  if (before.playlistType != after.playlistType) return true;
+  if (after.mode == StreamAuthMode.completeUrl) {
+    return n(before.completeUrl) != n(after.completeUrl);
+  }
+  return n(before.baseUrl) != n(after.baseUrl) ||
+      n(before.username) != n(after.username) ||
+      n(before.password) != n(after.password);
+}
+
 /// §17a — Helper d'extraction des credentials Xtream depuis une URL "complète".
 ///
 /// Couvre les 2 formats les plus courants :

@@ -60,6 +60,19 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     _scheduleNext(); // re-court-circuite (ou relance) selon heroAutoRotate
   }
 
+  /// Revue 2026-09-11, D4A-12 — Le bandeau est construit SANS clé et survit
+  /// aux recompositions de `featured` (§tabPageKeep) ; `_scheduleNext` n'arme
+  /// le minuteur qu'à partir de deux cartes. Parti d'une seule carte (avant
+  /// l'arrivée des tendances), le hero ne tournait donc plus jusqu'au
+  /// prochain retour du lecteur ou changement de focus.
+  @override
+  void didUpdateWidget(covariant _HeroFanBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ((oldWidget.featured.length > 1) != (widget.featured.length > 1)) {
+      _scheduleNext();
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -534,7 +547,13 @@ class _HeroFanCardState extends State<_HeroFanCard> {
       groupTitle: entry.groupTitle,
       categoryKey: contentGroupKey(entry),
     ).then((url) {
+      // Revue 2026-09-11, D4A-04 — même garde que `_HomeCard` : la clé du
+      // hero est un RANG (`hero_$i`), la carte peut donc porter un autre
+      // titre quand cette réponse arrive.
       if (!mounted || url == null) return;
+      if (widget.versions.isEmpty || widget.versions.first.url != entry.url) {
+        return;
+      }
       setState(() => _tmdbPoster = url);
     });
   }

@@ -30,6 +30,7 @@ import 'remote_control_service.dart';
 import 'search_history_service.dart';
 import 'stream_account_service.dart';
 import 'tmdb_api_service.dart';
+import 'tmdb_poster_cache.dart';
 import 'tmdb_service.dart';
 import 'watch_progress_service.dart';
 import 'xmltv_service.dart';
@@ -604,9 +605,11 @@ class WebConsoleService {
           _json(req, 200, {'ok': true});
           break;
         case '/api/xmltv/refresh':
-          XmltvService.invalidate();
-          await XmltvService.ensureLoaded();
-          _json(req, 200, {'ok': true});
+          // Revue 2026-09-11, D1B-04 — `invalidate` + `ensureLoaded` relisait
+          // le fichier de moins de 24 h sans rien télécharger. `refresh()`
+          // télécharge vraiment, et dit si c'est fait.
+          final bool xmltvFresh = await XmltvService.refresh();
+          _json(req, 200, {'ok': true, 'fresh': xmltvFresh});
           break;
         case '/api/regions/save':
           await _saveRegions(payload);
@@ -772,7 +775,11 @@ class WebConsoleService {
       // `null` (TMDB injoignable) : on enregistre quand même, comme la page.
       final bool? accepted = await TmdbService.probeKey(t);
       if (accepted == false) throw 'Clé refusée par TMDB.';
+      final String? previous = await TmdbApiService.getApiKey();
       await TmdbApiService.saveApiKey(t);
+      // Revue 2026-09-11, D1B-01 — clé NOUVELLE : les « introuvables »
+      // mémorisés sans clé valide se recherchent à nouveau.
+      if (previous != t) await TmdbPosterCache.forgetNegatives();
     }
     TmdbService.resetInstance();
   }

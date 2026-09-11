@@ -28,6 +28,7 @@ import 'data/services/hidden_regions_service.dart';
 import 'data/services/track_preferences_service.dart';
 import 'core/navigation/main_navigation.dart';
 import 'core/navigation/focus_route_memory.dart';
+import 'core/navigation/foreground_gate.dart';
 import 'data/services/expiration_alert_service.dart';
 import 'feature/accounts/accounts_page.dart';
 import 'feature/accounts/expiration_alert_dialog.dart';
@@ -244,9 +245,14 @@ Future<void> _initServices() async {
 Future<void> checkForUpdate() async {
   final info = await UpdateService.checkForUpdate();
   if (info == null) return;
-  final context = navigatorKey.currentContext;
-  if (context == null || !context.mounted) return;
-  await UpdateDialog.show(context, info);
+  // Revue 2026-09-11, D3B-13 — jamais par-dessus le lecteur : ce dialogue
+  // (non fermable par la barrière) s'ouvrait 10 s après l'accueil sur
+  // n'importe quel écran, et prenait le focus d'un film lancé entre-temps.
+  homeForeground.runOrDefer(() {
+    final context = navigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    unawaited(UpdateDialog.show(context, info));
+  });
 }
 
 /// Widget racine de l'application.
@@ -844,9 +850,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
       if (alerts.isEmpty) return;
       // Délai pour laisser le UI démarrer proprement.
       await Future.delayed(const Duration(seconds: 4));
-      final ctx = navigatorKey.currentContext;
-      if (ctx == null || !ctx.mounted) return;
-      await ExpirationAlertDialog.show(ctx, alerts);
+      // D3B-13 — seulement l'accueil à l'écran (jamais sur le lecteur).
+      homeForeground.runOrDefer(() {
+        final ctx = navigatorKey.currentContext;
+        if (ctx == null || !ctx.mounted) return;
+        unawaited(ExpirationAlertDialog.show(ctx, alerts));
+      });
     } catch (e) {
       // Échec silencieux — pas critique au boot.
     }
@@ -859,9 +868,12 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
   Future<void> _suggestTvPerfProfile() async {
     try {
       await Future.delayed(const Duration(milliseconds: 2500));
-      final ctx = navigatorKey.currentContext;
-      if (ctx == null || !ctx.mounted) return;
-      await PerfSuggestDialog.maybeShow(ctx);
+      // D3B-13 — seulement l'accueil à l'écran (jamais sur le lecteur).
+      homeForeground.runOrDefer(() {
+        final ctx = navigatorKey.currentContext;
+        if (ctx == null || !ctx.mounted) return;
+        unawaited(PerfSuggestDialog.maybeShow(ctx));
+      });
     } catch (_) {
       // Échec silencieux — pas critique au boot.
     }

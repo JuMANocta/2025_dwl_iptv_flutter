@@ -21,6 +21,7 @@ import 'favorites_service.dart';
 import 'parsed_playlist_service.dart';
 import 'stream_account_service.dart';
 import 'tmdb_api_service.dart';
+import 'tmdb_poster_cache.dart';
 import 'tmdb_service.dart';
 import 'watch_progress_service.dart';
 import '../../l10n/l10n_ext.dart';
@@ -315,8 +316,15 @@ class BackupService {
     }
 
     // 2. Clé TMDB
+    final String? previousTmdbKey = await TmdbApiService.getApiKey();
     if ((content.tmdbKey ?? '').isNotEmpty) {
       await TmdbApiService.saveApiKey(content.tmdbKey!);
+      // Revue 2026-09-11, D1B-01 — une clé NOUVELLE : les titres mémorisés
+      // « introuvables » ont pu l'être sans clé valide (onboarding parcouru
+      // avant la restauration) ; on les laisse se rechercher à nouveau.
+      if (previousTmdbKey != content.tmdbKey) {
+        await TmdbPosterCache.forgetNegatives();
+      }
     } else {
       await TmdbApiService.deleteApiKey();
     }

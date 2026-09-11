@@ -127,9 +127,13 @@ class _MainNavigationState extends State<MainNavigation> {
     // qui le détruisait.
     //
     // [PlaylistVisibility] généralise le principe à toute page qui montre des
-    // listes. Le test `HomePage.isForeground` est CONSERVÉ en plus (en OU) :
-    // `HomePage` ne prend pas encore de jeton, le retirer rouvrirait le bug
-    // d'origine.
+    // listes. `HomePage` prend désormais un jeton elle aussi (§fleetLoad) ; le
+    // test `HomePage.isForeground` est conservé en plus, par prudence.
+    // ⚠️ Revue 2026-09-11, D4A-01 : l'accueil reprenait son jeton juste après
+    // chaque route poussée (lecteur compris), si bien que ce timer sortait
+    // TOUJOURS ici — corrigé dans `HomePage.didChangeDependencies`.
+    // ⚠️ Reste ouvert : sur l'onglet Téléchargements, l'accueil (vivant dans
+    // l'`IndexedStack`) garde son jeton — rien n'y est déchargé.
     _idleUnloadTimer = Timer.periodic(_idleCheckInterval, (_) {
       final activeId = StreamAccountService.currentAccountIdNotifier.value ??
           widget.initialData.accountId;

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:dpad/dpad.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/colors.dart';
+import '../../core/themes/light_palette.dart';
 import '../../core/utils/platform_tv.dart';
 import '../../data/services/favorites_service.dart';
 import '../../data/services/tmdb_service.dart';
@@ -693,7 +694,15 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     return null;
   }
 
+  /// Revue 2026-09-11, D4A-05 — Jeton du dernier `_loadData` lancé. OK sur
+  /// E03 puis tout de suite sur E04 : si la réponse E03 arrivait APRÈS celle
+  /// de E04, la fiche montrait titre, synopsis et image de E03 sous la puce
+  /// E04 — et « LIRE » ouvrait E04 avec le titre de E03 dans le lecteur et la
+  /// notification. Seule la réponse du DERNIER chargement s'applique.
+  int _loadSeq = 0;
+
   Future<void> _loadData() async {
+    final int seq = ++_loadSeq;
     final service  = TmdbService.instance;
     final isSeries = widget.entry.type == M3uContentType.series;
 
@@ -741,7 +750,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         ),
         if (seriesAlready == null) fetchFull(isTv: true),
       ]);
-      if (mounted) {
+      if (mounted && seq == _loadSeq) {
         setState(() {
           _episodeData = results[0] as Map<String, dynamic>?;
           if (seriesAlready == null) _tmdbData = results[1] as Media?;
@@ -752,7 +761,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
       }
     } else {
       final data = await fetchFull(isTv: isSeries || _currentEpisode.isSerie);
-      if (mounted) {
+      if (mounted && seq == _loadSeq) {
         setState(() {
           _tmdbData  = data;
           _isLoading = false;
@@ -1599,7 +1608,12 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                             // Les noms viennent de TMDB (« Amazon Prime Video »,
                             // « MBS »…) : on les NORMALISE pour la couleur de
                             // marque seulement, et on affiche le nom d'origine.
-                            final color = _platformColor(_normalizePlatform(p));
+                            // Revue 2026-09-11, D4A-08 — rendue LISIBLE sur
+                            // la surface : Canal+/Peacock sont noirs, donc
+                            // noir sur noir en thème sombre (≈ 1:1).
+                            final color = brandReadableOn(
+                                platformBrandColor(_normalizePlatform(p)),
+                                cs.surface);
                             return Chip(
                               label: Text(p),
                               backgroundColor: color.withAlpha(40),
@@ -2624,21 +2638,6 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     if (r.contains('HULU'))      return 'Hulu';
     if (r.contains('RAKUTEN'))   return 'Rakuten TV';
     return '';
-  }
-
-  static Color _platformColor(String platform) {
-    switch (platform) {
-      case 'Netflix':      return const Color(0xFFE50914);
-      case 'Prime Video':  return const Color(0xFF00A8E1);
-      case 'HBO Max':      return const Color(0xFF5B2D8E);
-      case 'Apple TV+':    return const Color(0xFF555555);
-      case 'Starz':        return const Color(0xFF00B4D8);
-      case 'Paramount+':   return const Color(0xFF0064FF);
-      case 'Disney+':      return const Color(0xFF0063E5);
-      case 'Canal+':       return const Color(0xFF000000);
-      case 'Peacock':      return const Color(0xFF000000);
-      default:             return Colors.grey;
-    }
   }
 
   Widget _buildMetaTag(String text, Color color) {

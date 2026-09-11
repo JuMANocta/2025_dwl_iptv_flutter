@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
+import 'package:aetherStream/core/utils/user_error.dart';
+import 'package:aetherStream/widgets/confirm_or_undo.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/data/services/visual_language_service.dart';
@@ -81,12 +86,7 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> with TvInitialFocus {
     await _loadKey();
     if (!mounted) return;
     if (!hadKey && _hasSavedKey) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(l10n.tmdbKeyConnected),
-          backgroundColor: kSuccess,
-        ),
-      );
+      messenger.showSnackBar(_toneSnackBar(l10n.tmdbKeyConnected, kSuccess));
     }
   }
 
@@ -112,47 +112,71 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> with TvInitialFocus {
     if (!mounted) return;
     if (accepted == false) {
       setState(() => _saving = false);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(l10n.tmdbKeyRejected),
-          backgroundColor: kError,
-        ),
-      );
+      messenger.showSnackBar(_toneSnackBar(l10n.tmdbKeyRejected, kError));
       return;
     }
+    final String? previous = await TmdbApiService.getApiKey();
     await TmdbApiService.saveApiKey(key);
     TmdbService.resetInstance();
+    // Revue 2026-09-11, D1B-01 — une clé NOUVELLE : les titres mémorisés
+    // « introuvables » ont pu l'être sans clé valide ; ils se recherchent à
+    // nouveau (les affiches déjà trouvées restent).
+    if (previous != key) await TmdbPosterCache.forgetNegatives();
     if (!mounted) return;
     setState(() {
       _hasSavedKey = true;
       _saving = false;
     });
     FocusScope.of(context).unfocus();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-            accepted == true ? l10n.tmdbKeyConnected : l10n.tmdbKeyUnverified),
-        backgroundColor: accepted == true ? kSuccess : kWarning,
-      ),
-    );
+    messenger.showSnackBar(_toneSnackBar(
+      accepted == true ? l10n.tmdbKeyConnected : l10n.tmdbKeyUnverified,
+      accepted == true ? kSuccess : kWarning,
+    ));
   }
 
+  /// Revue 2026-09-11, D4B-08 — Une snackbar sur fond d'ÉTAT (succès,
+  /// alerte, erreur) : le thème impose un texte BLANC à toutes les snackbars,
+  /// illisible sur un vert Matrix ou un fond clair. Le texte prend donc la
+  /// couleur (noir ou blanc) qui contraste le plus avec ce fond.
+  static SnackBar _toneSnackBar(String message, Color tone) => SnackBar(
+        content: Text(message, style: TextStyle(color: onColorFor(tone))),
+        backgroundColor: tone,
+      );
+
+  /// Revue 2026-09-11, D4B-13 — « Retirer » était le seul geste destructif
+  /// des réglages sans confirmation ni annulation : sur TV, un OK réflexe en
+  /// descendant la page effaçait une clé de ~220 caractères, à ressaisir par
+  /// le téléphone ou la console web. Il passe par `confirmOrUndo` (§undoTv :
+  /// dialogue sur TV, focus sur « Annuler » ; snackbar « Annuler » au doigt).
   Future<void> _delete() async {
-    final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
-    await TmdbApiService.deleteApiKey();
-    TmdbService.resetInstance();
+    // ⚠️ L'instantané AVANT l'effacement (cf. `confirmOrUndo`).
+    final String? previous = await TmdbApiService.getApiKey();
     if (!mounted) return;
-    setState(() {
-      _keyController.clear();
-      _hasSavedKey = false;
-      _isKeyVisible = false;
-    });
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(l10n.tmdbKeyRemoved),
-        backgroundColor: kError,
-      ),
+    await confirmOrUndo(
+      context,
+      title: l10n.tmdbKeyRemoveTitle,
+      question: l10n.tmdbKeyRemoveQuestion,
+      confirmLabel: l10n.tmdbKeyRemove,
+      doneMessage: l10n.tmdbKeyRemoved,
+      action: () async {
+        await TmdbApiService.deleteApiKey();
+        TmdbService.resetInstance();
+        if (!mounted) return;
+        setState(() {
+          _keyController.clear();
+          _hasSavedKey = false;
+          _isKeyVisible = false;
+        });
+      },
+      onUndo: () {
+        if (previous == null || previous.isEmpty) return;
+        unawaited(() async {
+          await TmdbApiService.saveApiKey(previous);
+          TmdbService.resetInstance();
+          if (mounted) await _loadKey();
+        }());
+      },
     );
   }
 
@@ -807,14 +831,25 @@ class _TmdbMaintenanceBlockState extends State<_TmdbMaintenanceBlock> {
   /// Vide les affiches mémorisées. Non destructif : elles se résolvent à
   /// nouveau à l'affichage. On agit donc directement, avec un compte rendu —
   /// même parti que « Vider le cache images » dans Optimisation.
-  Future<void> _clearPosters() async {
+  Future<void> _clearPosters() =>
+      _runBusy(TmdbPosterCache.clear, context.l10n.tmdbMemoryPostersCleared);
+
+  /// Revue 2026-09-11, D4B-11 — `_busy` était posé avant un `await` sans
+  /// `try/finally` : une exception (stockage indisponible) laissait les deux
+  /// boutons désactivés jusqu'à la sortie de la page, sans un mot.
+  Future<void> _runBusy(Future<void> Function() job, String doneMessage) async {
     final messenger = ScaffoldMessenger.of(context);
     final l10n = context.l10n;
     setState(() => _busy = true);
-    await TmdbPosterCache.clear();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    messenger.showSnackBar(SnackBar(content: Text(l10n.tmdbMemoryPostersCleared)));
+    try {
+      await job();
+      messenger.showSnackBar(SnackBar(content: Text(doneMessage)));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(l10n.commonFailedWith(describeError(e)))));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   /// Oublie les catégories devinées par TMDB (§inferredCat).
@@ -823,15 +858,8 @@ class _TmdbMaintenanceBlockState extends State<_TmdbMaintenanceBlock> {
   /// (`group-title`) : seulement celles que l'app a déduites pour les listes
   /// qui n'en fournissent aucune — le format « Ultimate », où 100 % des
   /// entrées arrivent sans groupe.
-  Future<void> _relearnCategories() async {
-    final messenger = ScaffoldMessenger.of(context);
-    final l10n = context.l10n;
-    setState(() => _busy = true);
-    await InferredCategoryService.clear();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    messenger.showSnackBar(SnackBar(content: Text(l10n.tmdbMemorySortingCleared)));
-  }
+  Future<void> _relearnCategories() => _runBusy(
+      InferredCategoryService.clear, context.l10n.tmdbMemorySortingCleared);
 
   @override
   Widget build(BuildContext context) {

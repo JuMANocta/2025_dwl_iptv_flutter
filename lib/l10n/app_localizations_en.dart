@@ -663,6 +663,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tmdbKeyRemove => 'Remove the key';
 
   @override
+  String get tmdbKeyRemoveTitle => 'Remove the TMDB key?';
+
+  @override
+  String get tmdbKeyRemoveQuestion =>
+      'Posters and info from TMDB will no longer load until a key is entered again.';
+
+  @override
   String get tmdbKeyManualEntry => 'Type it with the remote';
 
   @override
@@ -2500,6 +2507,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get xmltvUpdated => '✅ Channel guide updated';
+
+  @override
+  String get xmltvUpdateUnavailable =>
+      'The channel guide couldn\'t be updated right now. Try again later.';
 
   @override
   String xmltvUpdateFailed(String reason) {

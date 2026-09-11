@@ -350,7 +350,18 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
           ))
       .toList();
 
-  void playVersion(M3uEntry v) {
+  Future<void> playVersion(M3uEntry v) async {
+    // Revue 2026-09-11, D4B-09 — §deviceCaps : la porte 4K est « une seule
+    // porte pour les TROIS points de lancement », mais cette feuille (celle
+    // du tap simple sur une chaîne) poussait le lecteur sans elle : une
+    // chaîne « 4K » refusée par le menu ⋯ de la carte partait ici en lecture,
+    // puis échouait au décodage. Même geste que `_launchPlayer` : fermer la
+    // feuille, demander à la porte sur le contexte RACINE (celui de la
+    // feuille meurt avec elle), puis lancer.
+    final BuildContext root = navigatorKey.currentContext ?? context;
+    Navigator.pop(context);
+    if (!await PlaybackGate.allow(root, v)) return;
+    if (!root.mounted) return;
     // Auto-ajout aux favoris au lancement de la lecture (§1d)
     FavoritesService.addEntry(v);
     // §1i — Mémoriser la dernière chaîne pour la tuile "Reprendre la chaîne".
@@ -360,8 +371,7 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
       tvgId: v.tvgId,
       logoUrl: v.logoUrl,
     );
-    Navigator.pop(context);
-    Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerPage(
+    Navigator.push(root, MaterialPageRoute(builder: (_) => PlayerPage(
       path: v.url,
       title: v.displayName,
       // §stallCount — rattache les blocages au fournisseur.
@@ -393,10 +403,20 @@ Future<void> showTvActionSheet(BuildContext context, List<M3uEntry> rawVersions)
                   style: Theme.of(context).textTheme.headlineSmall,
                   maxLines: 2, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 12),
-              if (entry.tvgId != null)
-                EpgNowNextBlock(tvgId: entry.tvgId!, versions: versions, onPlayVersion: playVersion),
-              if (entry.tvgId == null)
-                QualityButtonsRow(versions: versions, onPlay: playVersion),
+              // Revue 2026-09-11, D4B-04 — les boutons de lecture d'abord, et
+              // TOUT DE SUITE : ils vivaient dans le bloc guide, qui n'affiche
+              // qu'une barre de chargement tant que l'EPG arrive (jusqu'à
+              // 12 s). Sur TV, le focus d'entrée tombe désormais sur eux.
+              QualityButtonsRow(versions: versions, onPlay: playVersion),
+              if (entry.tvgId != null) ...[
+                const SizedBox(height: 8),
+                EpgNowNextBlock(
+                  tvgId: entry.tvgId!,
+                  versions: versions,
+                  onPlayVersion: playVersion,
+                  showPlayButtons: false,
+                ),
+              ],
               const SizedBox(height: 4),
               // ── Favoris (toggle) ───────────────────────────────────────
               _FavoriteToggleTile(entry: entry),

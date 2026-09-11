@@ -146,4 +146,66 @@ void main() {
       expect(kQualityFHD, const Color(0xFFFFC107));
     });
   });
+
+  /// Revue 2026-09-11, D4A-08 — Pastilles « Diffusé par » : Canal+ et Peacock
+  /// ont une couleur de marque NOIRE, posée telle quelle sur la surface
+  /// sombre (≈ 1:1). `readableOn` ne sait qu'assombrir.
+  group('D4A-08 — pastilles de diffuseur (brandReadableOn)', () {
+    const Color darkSurface = Color(0xFF121212);
+
+    test('⚠️ le constat : Canal+ noir sur la surface sombre', () {
+      expect(contrastRatio(platformBrandColor('Canal+'), darkSurface),
+          lessThan(1.2));
+    });
+
+    for (final String p in <String>[
+      'Netflix', 'Prime Video', 'HBO Max', 'Apple TV+', 'Starz',
+      'Paramount+', 'Disney+', 'Canal+', 'Peacock', 'Inconnu',
+    ]) {
+      test('$p — lisible en sombre ET en clair', () {
+        for (final Color s in <Color>[darkSurface, kLightSurface]) {
+          expect(
+              contrastRatio(brandReadableOn(platformBrandColor(p), s), s),
+              greaterThanOrEqualTo(kMinUiContrast),
+              reason: '$p illisible sur $s');
+        }
+      });
+    }
+
+    test('une couleur déjà lisible n\'est pas touchée (Netflix en sombre)', () {
+      final Color netflix = platformBrandColor('Netflix');
+      expect(contrastRatio(netflix, darkSurface),
+          greaterThanOrEqualTo(kMinUiContrast));
+      expect(brandReadableOn(netflix, darkSurface), netflix);
+    });
+  });
+
+  /// Revue 2026-09-11, D4B-08 — Le thème impose un texte BLANC à toutes les
+  /// snackbars, quel que soit le fond. Sur un fond d'accent ou d'état, le
+  /// texte doit suivre le fond (`onColorFor`).
+  group('D4B-08 — texte d\'une snackbar sur fond coloré', () {
+    test('⚠️ le constat : texte blanc sur l\'accent du préréglage Tron', () {
+      final Color tron = AppThemeConfig.presets
+          .firstWhere((p) => p.name == 'Tron')
+          .config
+          .primaryColor;
+      expect(contrastRatio(kTextDarkPrimary, tron), lessThan(kMinUiContrast));
+    });
+
+    for (final Brightness b in Brightness.values) {
+      for (final preset in AppThemeConfig.presets) {
+        test('${preset.name} (${b.name}) — le texte suit le fond d\'état', () {
+          ThemeService.debugBrightnessOverride = b;
+          ThemeService.config.value = preset.config;
+          for (final Color bg in <Color>[
+            kAccentPrimary, kSuccess, kWarning, kError,
+          ]) {
+            expect(contrastRatio(onColorFor(bg), bg),
+                greaterThanOrEqualTo(kMinTextContrast),
+                reason: '${preset.name} : texte illisible sur $bg');
+          }
+        });
+      }
+    }
+  });
 }

@@ -677,11 +677,17 @@ class TmdbService {
   /// Recherche atomique avec paramètres optionnels.
   /// [genreHints] : liste de genre_ids TMDB préférés — si non vide, on regarde jusqu'à 5 résultats
   ///               et on préfère le premier dont les genres matchent. Fallback sur results[0].
+  ///
+  /// [onError] — Revue 2026-09-11, D1B-01 : appelé quand la recherche n'a PAS
+  /// abouti (réseau, 401, 429, statut ≠ 200). Le `null` rendu est le même que
+  /// pour « 0 résultat » ; seul cet appel permet à `fetchPosterAndGenre` de
+  /// ne pas faire mémoriser une panne comme un titre introuvable.
   Future<Map<String, dynamic>?> _performSearch(String query, {
     required bool isTv,
     required String language,
     String? year,
     List<int> genreHints = const [],
+    void Function()? onError,
   }) async {
     try {
       final endpoint = isTv ? '/search/tv' : '/search/movie';
@@ -723,7 +729,10 @@ class TmdbService {
         item['media_type'] = isTv ? 'tv' : 'movie';
         return item;
       }
-    } catch (_) {}
+      onError?.call();
+    } catch (_) {
+      onError?.call();
+    }
     return null;
   }
 
@@ -744,39 +753,56 @@ class TmdbService {
   /// ne coûte aucune requête supplémentaire, et c'est la seule source de
   /// rangement disponible pour les listes qui n'en fournissent aucune (format
   /// « Ultimate » : ni `group-title`, ni catalogue JSON).
-  Future<({String? posterUrl, String? category})> fetchPosterAndGenre({
+  ///
+  /// Revue 2026-09-11, D1B-01 — `definitive` : vrai quand TMDB a répondu
+  /// (résultat trouvé, ou « 0 résultat » sur TOUTES les recherches tentées).
+  /// Faux sans clé, sur une erreur réseau, un 401 ou un 429 : l'appelant qui
+  /// persiste les introuvables (`TmdbPosterCache`) ne doit pas mémoriser une
+  /// panne comme un titre inconnu.
+  Future<({String? posterUrl, String? category, bool definitive})>
+      fetchPosterAndGenre({
     required String query,
     required bool isTv,
     String? year,
     String? groupTitle,
     String size = 'w342',
   }) async {
-    const empty = (posterUrl: null, category: null);
-    if (!await _init()) return empty;
+    if (!await _init()) {
+      return (posterUrl: null, category: null, definitive: false);
+    }
     final clean = _cleanQuery(query);
-    if (clean.isEmpty) return empty;
+    // Rien à chercher : c'est une réponse définitive (le titre ne donnera
+    // jamais rien, inutile de retenter).
+    if (clean.isEmpty) {
+      return (posterUrl: null, category: null, definitive: true);
+    }
 
     final bool appearsEnglish =
         RegExp(r'\b(VO|VOST|VOSTFR|ENGLISH)\b', caseSensitive: false).hasMatch(query);
     final String lang = appearsEnglish ? 'en-US' : _lang;
     final List<int> hints = groupTitle != null ? _groupTitleToGenreHints(groupTitle) : const [];
 
+    bool failed = false;
+    void onError() => failed = true;
     try {
       Map<String, dynamic>? r;
       if (year != null) {
-        r = await _performSearch(clean, isTv: isTv, language: lang, year: year, genreHints: hints);
+        r = await _performSearch(clean, isTv: isTv, language: lang, year: year, genreHints: hints, onError: onError);
       }
-      r ??= await _performSearch(clean, isTv: isTv, language: lang, genreHints: hints);
-      r ??= await _performSearch(clean, isTv: !isTv, language: lang, genreHints: hints);
-      if (r == null) return empty;
+      r ??= await _performSearch(clean, isTv: isTv, language: lang, genreHints: hints, onError: onError);
+      r ??= await _performSearch(clean, isTv: !isTv, language: lang, genreHints: hints, onError: onError);
+      if (r == null) {
+        return (posterUrl: null, category: null, definitive: !failed);
+      }
       final ids = (r['genre_ids'] as List?)?.whereType<int>().toList() ?? const <int>[];
       return (
         posterUrl: getPosterUrl(r['poster_path'] as String?, size: size),
         category: tmdbGenreLabel(ids),
+        definitive: true,
       );
     } catch (e) {
       debugPrint("❌ Glitch TMDB (poster fallback) : $e");
-      return empty;
+      return (posterUrl: null, category: null, definitive: false);
     }
   }
 

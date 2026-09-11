@@ -672,6 +672,13 @@ class AppLocalizationsFr extends AppLocalizations {
   String get tmdbKeyRemove => 'Retirer la clé';
 
   @override
+  String get tmdbKeyRemoveTitle => 'Retirer la clé TMDB ?';
+
+  @override
+  String get tmdbKeyRemoveQuestion =>
+      'Les affiches et infos TMDB ne se chargeront plus tant qu\'une clé n\'aura pas été saisie à nouveau.';
+
+  @override
   String get tmdbKeyManualEntry => 'Saisir à la télécommande';
 
   @override
@@ -2516,6 +2523,10 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get xmltvUpdated => '✅ Guide des chaînes mis à jour';
+
+  @override
+  String get xmltvUpdateUnavailable =>
+      'Le guide des chaînes n\'a pas pu être mis à jour. Réessaie plus tard.';
 
   @override
   String xmltvUpdateFailed(String reason) {

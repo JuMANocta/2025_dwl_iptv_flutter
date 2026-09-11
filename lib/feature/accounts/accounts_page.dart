@@ -163,11 +163,47 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
     );
     if (result != null) {
       await StreamAccountService.saveAccount(result);
-      await StreamAccountService.setCurrentAccount(result.id);
+      // Revue 2026-09-11, D4B-03 — seul un compte NOUVEAU devient principal.
+      // En édition, corriger le nom d'un secondaire le rendait principal sans
+      // le dire (et l'accueil se rechargeait sur lui) : aucun commentaire ne
+      // justifiait ce `setCurrentAccount`, il suivait création et édition.
+      if (initial == null) {
+        await StreamAccountService.setCurrentAccount(result.id);
+      }
       if (!mounted) return;
       _priorityChanged = true;
       _refresh();
+      // …et si ce qui sert à joindre le fournisseur a changé, le catalogue
+      // analysé (qui embarque les anciens identifiants) est rechargé.
+      if (initial != null && connectionChanged(initial, result)) {
+        unawaited(_reloadAfterEdit(result));
+      }
     }
+  }
+
+  /// Revue 2026-09-11, D4B-03 — Recharge la liste d'un compte dont l'URL ou
+  /// les identifiants viennent d'être modifiés. Même chemin que le bouton
+  /// « Recharger » de la carte (§reloadAll) ; le résultat est annoncé, un
+  /// échec garde l'ancienne liste (§cacheKeep).
+  Future<void> _reloadAfterEdit(StreamAccount acc) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
+    try {
+      await PlaylistReloadService.reloadAccount(
+        acc,
+        isPriority: acc.id == _priorityAccountId,
+      );
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(l10n.acctReloadedFor(acc.label))));
+    } catch (e) {
+      debugPrint('❌ D4B-03 — rechargement après édition : $e');
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content: Text(l10n.commonFailedWith(describeError(e)))));
+    }
+    if (mounted) _refresh();
   }
 
   /// §webConsoleOnly — Gestion des comptes depuis le téléphone via la Console
@@ -730,6 +766,9 @@ class _AccountCardState extends State<_AccountCard> {
     if (await file.exists()) {
       final age = DateTime.now().difference(await file.lastModified());
       if (age.inHours < 24) {
+        // Revue 2026-09-11, D4B-11 — trois `await` depuis le tap : la carte
+        // a pu disparaître, et `_confirmReload` lit `context`.
+        if (!mounted) return;
         final ok = await _confirmReload(age);
         if (ok != true) return;
       }
@@ -747,10 +786,12 @@ class _AccountCardState extends State<_AccountCard> {
         isPriority: widget.isPriority,
       );
       if (!mounted) return;
+      // Revue 2026-09-11, D4B-08 — plus de fond d'accent : le thème impose un
+      // texte BLANC aux snackbars, et l'accent du préréglage Tron EST blanc
+      // (bande claire, texte illisible). Le fond du thème suffit.
       messenger..hideCurrentSnackBar()..showSnackBar(
         SnackBar(
           content: Text(context.l10n.acctReloadedFor(widget.account.label)),
-          backgroundColor: kAccentPrimary.withAlpha(180),
         ),
       );
       widget.onReloaded();

@@ -93,7 +93,9 @@ class _HomeCardState extends State<_HomeCard> {
   ///
   /// ⚠️ Idempotent : `TmdbPosterCache` dédoublonne les appels concurrents et
   /// met même les résultats négatifs en cache, donc être rappelé plusieurs fois
-  /// pour un même titre ne coûte rien.
+  /// pour un même titre ne coûte rien. (Revue 2026-09-11, D1B-01 : négatifs
+  /// DÉFINITIFS seulement — une panne ou l'absence de clé se retente, la
+  /// présence de la clé étant mémorisée côté cache.)
   void _resolveTmdbPosterIfNeeded() {
     if (_tmdbPoster != null) return;
     if (widget.type == M3uContentType.tv) return; // les chaînes ont leur logo
@@ -119,7 +121,16 @@ class _HomeCardState extends State<_HomeCard> {
       // soit le compte d'où elles viennent.
       categoryKey: contentGroupKey(entry),
     ).then((url) {
+      // Revue 2026-09-11, D4A-04 — la carte a pu être RECYCLÉE pour un autre
+      // titre pendant la résolution (recherche qui change à chaque frappe,
+      // « Voir tout ») : `didUpdateWidget` a relancé la sienne, parfois servie
+      // en synchrone par le cache, puis cette réponse-ci arrivait et posait
+      // l'affiche de l'ANCIEN titre sous le nouveau libellé (§posterFlash :
+      // une mauvaise image est pire que rien).
       if (!mounted || url == null) return;
+      if (widget.versions.isEmpty || widget.versions.first.url != entry.url) {
+        return;
+      }
       setState(() => _tmdbPoster = url);
     });
   }

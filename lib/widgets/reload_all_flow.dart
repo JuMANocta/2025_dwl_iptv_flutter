@@ -133,7 +133,7 @@ Future<ReloadBatchResult?> showReloadAllFlow(
   ).whenComplete(() => progressVisible = false));
 
   final succeeded = <String>[];
-  final failed = <String, String>{};
+  final failed = <String>[]; // D4B-15 — une entrée par COMPTE, pas par nom
 
   for (var i = 0; i < accounts.length; i++) {
     final a = accounts[i];
@@ -152,7 +152,7 @@ Future<ReloadBatchResult?> showReloadAllFlow(
       // ⚠️ Un échec n'arrête PAS le lot : une liste injoignable ne doit pas
       // empêcher de rafraîchir les autres — c'est exactement le problème qu'on
       // cherche à supprimer.
-      failed[a.label] = e.toString();
+      failed.add(a.label);
       debugPrint('❌ §reloadAll — « ${a.label} » : $e');
     }
   }

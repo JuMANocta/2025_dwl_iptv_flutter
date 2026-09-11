@@ -462,6 +462,14 @@
   "@tmdbKeyRemove": {
     "description": "Delete key button"
   },
+  "tmdbKeyRemoveTitle": "Remove the TMDB key?",
+  "@tmdbKeyRemoveTitle": {
+    "description": "Confirmation title before deleting the TMDB key"
+  },
+  "tmdbKeyRemoveQuestion": "Posters and info from TMDB will no longer load until a key is entered again.",
+  "@tmdbKeyRemoveQuestion": {
+    "description": "Confirmation body before deleting the TMDB key"
+  },
   "tmdbKeyManualEntry": "Type it with the remote",
   "@tmdbKeyManualEntry": {
     "description": "TV: reveal the manual field"
@@ -1963,6 +1971,7 @@
   "themeModeSystem": "System",
   "themePreviewPlay": "▶  Play",
   "xmltvUpdated": "✅ Channel guide updated",
+  "xmltvUpdateUnavailable": "The channel guide couldn't be updated right now. Try again later.",
   "xmltvUpdateFailed": "❌ Update failed: {reason}",
   "@xmltvUpdateFailed": {
     "placeholders": {

@@ -59,6 +59,27 @@ const Color kQualityCam = Color(0xFFFF6D00);
 /// précisément le défaut corrigé.
 const Color kProviderTag = Color(0xFF7E8FA6);
 
+// ── Diffuseurs (pastilles « Diffusé par » de la fiche) ──────────────────────
+/// Revue 2026-09-11, D4A-08 — La couleur de MARQUE d'un diffuseur, par nom
+/// normalisé (cf. `_normalizePlatform` de la fiche). Déplacée ici depuis
+/// `details_page.dart` (« zéro couleur en dur dans un widget »). Couleur BRUTE :
+/// ⚠️ l'afficher passe par `brandReadableOn(…, surface)` — Canal+ et Peacock
+/// sont NOIRS, illisibles tels quels sur le thème sombre.
+Color platformBrandColor(String platform) {
+  switch (platform) {
+    case 'Netflix':      return const Color(0xFFE50914);
+    case 'Prime Video':  return const Color(0xFF00A8E1);
+    case 'HBO Max':      return const Color(0xFF5B2D8E);
+    case 'Apple TV+':    return const Color(0xFF555555);
+    case 'Starz':        return const Color(0xFF00B4D8);
+    case 'Paramount+':   return const Color(0xFF0064FF);
+    case 'Disney+':      return const Color(0xFF0063E5);
+    case 'Canal+':       return const Color(0xFF000000);
+    case 'Peacock':      return const Color(0xFF000000);
+    default:             return Colors.grey;
+  }
+}
+
 // ── Langues ─────────────────────────────────────────────────────────────────
 Color get kLangMulti     => kAccentPrimary;       // suit le thème
 const Color kLangVOSTFR  = Color(0xFFFF8C00);     // Orange

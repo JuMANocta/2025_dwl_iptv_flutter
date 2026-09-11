@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -28,20 +29,32 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
     setState(() => _refreshing = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      XmltvService.invalidate();
-      await XmltvService.ensureLoaded();
+      // Revue 2026-09-11, D1B-04 — `invalidate` + `ensureLoaded` relisait le
+      // fichier de moins de 24 h : aucune requête ne partait, et la page
+      // annonçait pourtant « Guide mis à jour ». `refresh()` télécharge
+      // vraiment et dit si un guide neuf est arrivé.
+      final bool fresh = await XmltvService.refresh();
       if (!mounted) return;
+      // D4B-08 — texte noir ou blanc selon le fond d'état (le thème impose
+      // du blanc, illisible sur un vert vif).
+      final Color tone = fresh ? kSuccess : kWarning;
       messenger.showSnackBar(
         SnackBar(
-          content: Text(context.l10n.xmltvUpdated),
-          backgroundColor: kSuccess,
+          content: Text(
+            fresh
+                ? context.l10n.xmltvUpdated
+                : context.l10n.xmltvUpdateUnavailable,
+            style: TextStyle(color: onColorFor(tone)),
+          ),
+          backgroundColor: tone,
         ),
       );
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: Text(context.l10n.xmltvUpdateFailed(describeError(e))),
+          content: Text(context.l10n.xmltvUpdateFailed(describeError(e)),
+              style: TextStyle(color: onColorFor(kError))),
           backgroundColor: kError,
         ),
       );

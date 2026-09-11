@@ -105,6 +105,38 @@ Color readableOn(
   return hsl.toColor();
 }
 
+/// Revue 2026-09-11, D4A-08 — Une couleur de MARQUE rendue lisible sur
+/// [surface], thème clair OU sombre : rendue telle quelle si elle contraste
+/// déjà d'au moins [minRatio], sinon assombrie (fond clair) ou éclaircie
+/// (fond sombre) par paliers de 2 %, teinte et saturation conservées.
+///
+/// ⚠️ Le cas qui l'a fait naître : Canal+ et Peacock ont une couleur de
+/// marque NOIRE, posée telle quelle (texte, fond, bordure de la pastille
+/// « Diffusé par ») sur la surface quasi noire du thème sombre — contraste
+/// ≈ 1:1. [readableOn] ne sait qu'assombrir : il n'y pouvait rien.
+///
+/// Le seuil 0,179 est la luminance où le noir et le blanc contrastent
+/// autant : au-dessus, le fond « est clair ». **Pure** — testée.
+Color brandReadableOn(
+  Color brand,
+  Color surface, {
+  double minRatio = kMinUiContrast,
+}) {
+  if (contrastRatio(brand, surface) >= minRatio) return brand;
+  final bool lightSurface = surface.computeLuminance() > 0.179;
+  HSLColor hsl = HSLColor.fromColor(brand);
+  for (int i = 0; i < 50; i++) {
+    double next = hsl.lightness + (lightSurface ? -0.02 : 0.02);
+    if (next < 0.0) next = 0.0;
+    if (next > 1.0) next = 1.0;
+    hsl = hsl.withLightness(next);
+    final Color candidate = hsl.toColor();
+    if (contrastRatio(candidate, surface) >= minRatio) return candidate;
+    if (next == 0.0 || next == 1.0) break;
+  }
+  return hsl.toColor();
+}
+
 /// La couleur du TEXTE à poser sur un aplat de [background].
 ///
 /// ⚠️ Le piège que ça évite : un même jeton sémantique sert tantôt de

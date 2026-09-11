@@ -132,8 +132,13 @@ abstract final class PlaylistReloadService {
 class ReloadBatchResult {
   final List<String> succeeded;
 
-  /// Libellés des comptes en échec, avec leur raison.
-  final Map<String, String> failed;
+  /// Libellés des comptes en échec, UN par compte.
+  ///
+  /// ⚠️ Revue 2026-09-11, D4B-15 — c'était une table indexée par le NOM du
+  /// compte : deux abonnements homonymes (« Xtream ») en échec ne faisaient
+  /// qu'une entrée, et le bilan annonçait « 1 échec » avec un total faux.
+  /// La raison n'était jamais lue (le journal la garde, rédigée au puits).
+  final List<String> failed;
 
   const ReloadBatchResult({required this.succeeded, required this.failed});
 
@@ -149,9 +154,9 @@ class ReloadBatchResult {
       return L10n.current.reloadBatchAllOk(succeeded.length);
     }
     if (succeeded.isEmpty) {
-      return L10n.current.reloadBatchAllFailed(failed.keys.join(', '));
+      return L10n.current.reloadBatchAllFailed(failed.join(', '));
     }
     return L10n.current.reloadBatchMixed(
-        succeeded.length, failed.length, failed.keys.join(', '));
+        succeeded.length, failed.length, failed.join(', '));
   }
 }

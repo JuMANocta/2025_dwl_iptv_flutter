@@ -2,6 +2,19 @@ import 'package:flutter/material.dart';
 import '../../data/models/stream_account.dart';
 import '../../l10n/app_localizations.dart';
 
+/// Revue 2026-09-11, D4B-02 — Adresse de serveur acceptable : analysable,
+/// absolue, avec un hôte. ⚠️ Les deux validateurs faisaient
+/// `Uri.tryParse(v)!.isAbsolute` : `tryParse` rend `null` là où `parse`
+/// lèverait (port non numérique « :808O », crochet IPv6 non fermé), et le `!`
+/// levait alors en plein `validate()` — aucun message sous le champ, et
+/// « Enregistrer » ne faisait plus rien.
+bool isValidServerUrl(String? v) {
+  final String s = v?.trim() ?? '';
+  if (s.isEmpty) return false;
+  final Uri? u = Uri.tryParse(s);
+  return u != null && u.isAbsolute && u.host.isNotEmpty;
+}
+
 class EditAccountSheet extends StatefulWidget {
   final StreamAccount? initial;
   const EditAccountSheet({super.key, this.initial});
@@ -79,9 +92,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
       onFieldSubmitted: (_) => _save(),
       decoration: InputDecoration(
           labelText: l10n.editAccountFullUrlLabel, prefixIcon: const Icon(Icons.public)),
-      validator: (v) => (v == null || v.trim().isEmpty || !Uri.tryParse(v.trim())!.isAbsolute)
-          ? l10n.editAccountFullUrlInvalid
-          : null,
+      validator: (v) =>
+          isValidServerUrl(v) ? null : l10n.editAccountFullUrlInvalid,
     );
   }
 
@@ -96,9 +108,8 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
           decoration: InputDecoration(
               labelText: l10n.editAccountServerUrlLabel,
               prefixIcon: const Icon(Icons.dns)),
-          validator: (v) => (v == null || v.trim().isEmpty || !Uri.tryParse(v.trim())!.isAbsolute)
-              ? l10n.editAccountFullUrlInvalid
-              : null,
+          validator: (v) =>
+              isValidServerUrl(v) ? null : l10n.editAccountFullUrlInvalid,
         ),
         const SizedBox(height: 16),
         TextFormField(

@@ -12,11 +12,20 @@ class EpgNowNextBlock extends StatefulWidget {
   final List<M3uEntry> versions;
   final void Function(M3uEntry)? onPlayVersion;
 
+  /// Revue 2026-09-11, D4B-04 — `false` quand l'appelant rend les boutons de
+  /// lecture LUI-MÊME, hors du bloc : tant que le guide chargeait (jusqu'à
+  /// 12 s, premier lancement ou xmltvfr.fr lent), la feuille d'une chaîne TNT
+  /// n'offrait qu'une barre fine — impossible de lancer la chaîne, l'action
+  /// principale de la feuille. Le bloc ne donne alors que l'information du
+  /// programme, sans doublon une fois le guide arrivé.
+  final bool showPlayButtons;
+
   const EpgNowNextBlock({
     super.key,
     required this.tvgId,
     this.versions = const [],
     this.onPlayVersion,
+    this.showPlayButtons = true,
   });
 
   @override
@@ -64,7 +73,9 @@ class _EpgNowNextBlockState extends State<EpgNowNextBlock> {
       );
     }
     if (_current == null && _next == null) {
-      if (widget.versions.isEmpty || widget.onPlayVersion == null) {
+      if (!widget.showPlayButtons ||
+          widget.versions.isEmpty ||
+          widget.onPlayVersion == null) {
         return const SizedBox.shrink();
       }
       return Padding(
@@ -88,8 +99,9 @@ class _EpgNowNextBlockState extends State<EpgNowNextBlock> {
               EpgProgramRow(
                 program: _current!,
                 isNow: true,
-                versions: widget.versions,
-                onPlayVersion: widget.onPlayVersion,
+                versions: widget.showPlayButtons ? widget.versions : const [],
+                onPlayVersion:
+                    widget.showPlayButtons ? widget.onPlayVersion : null,
                 channelIconUrl: _channelIconUrl,
               ),
             if (_current != null && _next != null)

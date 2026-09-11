@@ -26,15 +26,34 @@ class XmltvService {
   static DateTime? _loadedAt;
   static bool _isLoading = false; // garde contre les chargements concurrents
 
+  /// Revue 2026-09-11, D4B-04 — Dernier téléchargement RATÉ (réseau, statut
+  /// ≠ 200). Retenu [_failureMemo] : la feuille d'une chaîne appelle trois
+  /// accesseurs de suite, qui relançaient chacun un téléchargement tant que
+  /// le guide manquait — plusieurs secondes d'attente par ouverture.
+  static DateTime? _lastFailureAt;
+  static const Duration _failureMemo = Duration(minutes: 2);
+
+  /// Vrai si le dernier chargement a réellement TÉLÉCHARGÉ le guide (D1B-04).
+  static bool _lastLoadFresh = false;
+
   // -------------------------------------------------------------------------
   // API publique
   // -------------------------------------------------------------------------
 
   /// Charge le fichier XMLTV si nécessaire (en mémoire ou depuis le cache fichier).
   /// Timeout global : $_loadTimeout. Protégé contre les appels concurrents.
-  static Future<void> ensureLoaded() async {
-    if (_programs != null && _loadedAt != null &&
+  ///
+  /// [force] — Revue 2026-09-11, D1B-04 : saute la mémoire ET le fichier de
+  /// moins de 24 h, pour aller réellement chercher le guide (le repli sur le
+  /// cache en cas d'échec réseau est conservé). Sans lui, « Rafraîchir le
+  /// guide » relisait le fichier du matin et annonçait « Guide mis à jour »
+  /// sans qu'aucune requête soit partie.
+  static Future<void> ensureLoaded({bool force = false}) async {
+    if (!force && _programs != null && _loadedAt != null &&
         DateTime.now().difference(_loadedAt!) < _cacheTtl) { return; }
+    // D4B-04 — un échec RÉCENT est retenu : pas de nouvelle tentative avant
+    // [_failureMemo], on garde ce qu'on a (au besoin, rien).
+    if (!force && failureStillFresh(_lastFailureAt, DateTime.now())) return;
 
     // Si un chargement est déjà en cours, on attend qu'il se termine (max timeout).
     if (_isLoading) {
@@ -42,13 +61,17 @@ class XmltvService {
       while (_isLoading && DateTime.now().isBefore(deadline)) {
         await Future.delayed(const Duration(milliseconds: 200));
       }
-      return;
+      // Revue 2026-09-11 (relecture de D1B-04) — un rafraîchissement FORCÉ
+      // ne se contente pas du chargement qu'il vient d'attendre (souvent la
+      // simple relecture du cache au démarrage) : sans cette reprise, le
+      // bouton rendait « pas mis à jour » sans qu'aucune requête soit partie.
+      if (!force || _isLoading) return;
     }
 
     _isLoading = true;
     try {
       await Future.any([
-        _doLoad(),
+        _doLoad(force: force),
         Future.delayed(_loadTimeout),
       ]);
     } finally {
@@ -56,9 +79,30 @@ class XmltvService {
     }
   }
 
-  static Future<void> _doLoad() async {
+  /// Revue 2026-09-11, D1B-04 — « Rafraîchir le guide » (page Guide et
+  /// console web) : télécharge vraiment, et rend `true` seulement si un guide
+  /// NEUF est arrivé. Sur échec, le guide déjà là reste affiché.
+  static Future<bool> refresh() async {
+    _lastLoadFresh = false;
+    await ensureLoaded(force: true);
+    return _lastLoadFresh;
+  }
+
+  /// D4B-04 — Un échec de téléchargement datant de moins de [_failureMemo].
+  /// **Pure** — testée.
+  @visibleForTesting
+  static bool failureStillFresh(DateTime? lastFailureAt, DateTime now) =>
+      lastFailureAt != null && now.difference(lastFailureAt) < _failureMemo;
+
+  /// D1B-04 — Le fichier en cache est-il assez récent pour éviter le réseau ?
+  /// Jamais quand on FORCE (bouton « Rafraîchir »). **Pure** — testée.
+  @visibleForTesting
+  static bool readCacheFirst({required Duration? age, required bool force}) =>
+      !force && age != null && age < _cacheTtl;
+
+  static Future<void> _doLoad({bool force = false}) async {
     try {
-      final result = await _getContent();
+      final result = await _getContent(force: force);
       if (result != null) await _parse(result.content, result.downloadedAt);
     } catch (e) {
       debugPrint('⚠️ XmltvService: chargement échoué → $e');
@@ -207,7 +251,8 @@ class XmltvService {
 
   // ---- Téléchargement / cache fichier ----
 
-  static Future<({String content, DateTime downloadedAt})?> _getContent() async {
+  static Future<({String content, DateTime downloadedAt})?> _getContent(
+      {bool force = false}) async {
     // ⚠️ Persistance : on stocke dans le répertoire support de l'app
     // (getApplicationSupportDirectory) et NON dans le cache temporaire
     // (getTemporaryDirectory). Android purge régulièrement le cache temp
@@ -216,14 +261,15 @@ class XmltvService {
     final cacheDir = await getApplicationSupportDirectory();
     final file = File('${cacheDir.path}/$_cacheFile');
 
-    // Utilise le cache fichier s'il est récent
+    // Utilise le cache fichier s'il est récent (jamais quand on FORCE, D1B-04)
     if (file.existsSync()) {
       final mtime = file.lastModifiedSync();
       final age = DateTime.now().difference(mtime);
-      if (age < _cacheTtl) {
+      if (readCacheFirst(age: age, force: force)) {
         debugPrint('📺 XmltvService: lecture cache fichier (${age.inMinutes}min)');
+        _lastFailureAt = null;
         return (
-          content: utf8.decode(file.readAsBytesSync()),
+          content: await _readCacheFile(file.path),
           downloadedAt: mtime,
         );
       }
@@ -244,22 +290,43 @@ class XmltvService {
         // Sauvegarde toujours en UTF-8 pour le cache (encodage normalisé)
         await file.writeAsBytes(utf8.encode(content));
         debugPrint('✅ XmltvService: fichier téléchargé (${resp.bodyBytes.length ~/ 1024} Ko)');
+        _lastFailureAt = null;
+        _lastLoadFresh = true;
         return (content: content, downloadedAt: DateTime.now());
       }
       debugPrint('❌ XmltvService: HTTP ${resp.statusCode}');
     } catch (e) {
       debugPrint('❌ XmltvService: erreur réseau → $e');
-      // Fallback : utilise le cache même périmé
-      if (file.existsSync()) {
-        debugPrint('⚠️ XmltvService: fallback cache périmé');
+    }
+    _lastFailureAt = DateTime.now();
+    // Fallback : utilise le cache même périmé.
+    // Revue 2026-09-11, D1B-16 — AUSSI sur un statut ≠ 200 (un 503 de
+    // xmltvfr.fr faisait disparaître tout le guide alors que le fichier de la
+    // veille était sur le disque) : le repli ne vivait que dans le `catch`.
+    if (file.existsSync()) {
+      debugPrint('⚠️ XmltvService: fallback cache périmé');
+      try {
         return (
-          content: utf8.decode(file.readAsBytesSync()),
+          content: await _readCacheFile(file.path),
           downloadedAt: file.lastModifiedSync(),
         );
+      } catch (e) {
+        debugPrint('❌ XmltvService: cache illisible → $e');
       }
     }
     return null;
   }
+
+  /// Revue 2026-09-11, D1B-16 — Lecture + décodage du cache (plusieurs Mo)
+  /// HORS du thread UI : `readAsBytesSync` + `utf8.decode` y tournaient,
+  /// y compris à l'ouverture d'une feuille de chaîne. On passe le CHEMIN à
+  /// l'isolate, pas le contenu (§isolateLeak : fonction statique, aucune
+  /// fermeture sur un état de l'appelant).
+  static Future<String> _readCacheFile(String path) =>
+      compute(_readUtf8File, path);
+
+  static String _readUtf8File(String path) =>
+      utf8.decode(File(path).readAsBytesSync());
 
   // ---- Parsing XML ----
 

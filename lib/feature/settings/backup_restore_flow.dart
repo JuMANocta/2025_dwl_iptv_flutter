@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
@@ -15,10 +16,25 @@ import '../../l10n/l10n_ext.dart';
 /// Retourne `true` si une sauvegarde a effectivement été appliquée.
 Future<bool> runBackupImportFlow(BuildContext context) async {
   // 1. Sélection du fichier.
-  final picked = await FilePicker.platform.pickFiles(
-    type: FileType.any,
-    allowMultiple: false,
-  );
+  //
+  // Revue 2026-09-11, D4B-14 — Sur une box sans application de sélection de
+  // documents, le sélecteur LÈVE (erreur de plateforme) : rien ne l'attrapait,
+  // « Importer » ne faisait rien et le bouton revenait sans un mot — sur le
+  // chemin de restauration de l'onboarding, le plus exposé.
+  final ScaffoldMessengerState? pickMessenger =
+      ScaffoldMessenger.maybeOf(context);
+  final FilePickerResult? picked;
+  try {
+    picked = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+      allowMultiple: false,
+    );
+  } catch (e) {
+    debugPrint('❌ §restore — sélecteur de fichiers indisponible : $e');
+    pickMessenger?.showSnackBar(SnackBar(
+        content: Text(L10n.current.commonFailedWith(describeError(e)))));
+    return false;
+  }
   if (picked == null || picked.files.single.path == null) return false;
   final path = picked.files.single.path!;
   if (!context.mounted) return false;
@@ -95,9 +111,11 @@ Future<String?> _askImportPassword(BuildContext context) async {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text),
+              // D4B-08 — le texte suit le fond (noir OU blanc, cf. `onColorFor`) :
+              // un accent assombri pour le thème clair rendait le noir illisible.
               style: FilledButton.styleFrom(
                 backgroundColor: kAccentPrimary,
-                foregroundColor: Colors.black,
+                foregroundColor: onColorFor(kAccentPrimary),
               ),
               child: Text(ctx.l10n.bkDecrypt),
             ),
@@ -180,7 +198,7 @@ Future<bool?> _confirmApply(BuildContext context, BackupContent content) async {
           onPressed: () => Navigator.pop(ctx, true),
           style: FilledButton.styleFrom(
             backgroundColor: kWarning,
-            foregroundColor: Colors.black,
+            foregroundColor: onColorFor(kWarning), // D4B-08
           ),
           child: Text(ctx.l10n.bkRestore),
         ),
@@ -215,7 +233,7 @@ Future<void> _showImportSuccessDialog(
           onPressed: () => Navigator.pop(ctx),
           style: FilledButton.styleFrom(
             backgroundColor: kAccentPrimary,
-            foregroundColor: Colors.black,
+            foregroundColor: onColorFor(kAccentPrimary), // D4B-08
           ),
           child: Text(ctx.l10n.commonOk),
         ),

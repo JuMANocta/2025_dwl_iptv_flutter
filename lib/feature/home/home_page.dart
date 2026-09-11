@@ -8,6 +8,7 @@ import 'package:aetherStream/core/diagnostics/log_buffer.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/navigation/playlist_visibility.dart';
+import 'package:aetherStream/core/navigation/foreground_gate.dart';
 import 'package:aetherStream/data/models/stream_account.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/services/favorites_service.dart';
@@ -97,7 +98,12 @@ class HomePage extends StatefulWidget {
   /// l'utilisateur** — plus de catégories, plus de vignettes — et rien ne les
   /// recharge, puisque la ré-hydratation §lazyUnload est accrochée à
   /// `didPopNext`, qui ne se produit jamais si on ne quitte pas la page.
-  static bool isForeground = false;
+  ///
+  /// Revue 2026-09-11, D3B-13 — tenu par [homeForeground] : les dialogues
+  /// sur minuterie (mise à jour, expiration, profil) attendent que l'accueil
+  /// redevienne visible au lieu de s'ouvrir par-dessus le lecteur.
+  static bool get isForeground => homeForeground.foreground;
+  static set isForeground(bool value) => homeForeground.foreground = value;
 
   /// Callback pour sortir du mode recherche (invoqué quand l'utilisateur
   /// clique sur le bouton X dans la barre de recherche).
@@ -263,6 +269,12 @@ class _HomePageState extends State<HomePage> with RouteAware {
     if (!widget.searchMode && oldWidget.searchMode) {
       _searchCtrl.clear();
       _searchFocus.unfocus();
+      // Revue 2026-09-11, D4A-03 — l'index STATIQUE de la recherche par
+      // personne indexe toutes les entrées non-TV de tous les comptes ; il
+      // n'était remplacé qu'à la recherche suivante, donc survivait au
+      // déchargement des listes secondaires. Hors recherche, il ne sert à
+      // rien : on le lâche (reconstruit à la prochaine requête par personne).
+      _PersonTitlesSectionState.dropIndex();
     }
   }
 
@@ -274,6 +286,14 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // notifications playlist/favoris/progression pendant la lecture.
     final route = ModalRoute.of(context);
     if (route is PageRoute) appRouteObserver.subscribe(this, route);
+    // Revue 2026-09-11, D4A-01 — ⚠️ `ModalRoute.of` rend cette page
+    // dépendante de TOUT le statut de la route, `isCurrent` compris : à chaque
+    // route poussée, `didPushNext` rendait le jeton… puis, une frame plus
+    // tard, ce rappel (déclenché par `isCurrent` passé à faux) le REPRENAIT
+    // avec `isForeground = true`. Le déchargement §lazyUnload ne se
+    // déclenchait donc jamais tant que l'accueil existait, lecteur compris.
+    // Sous une route poussée, c'est `didPopNext` qui reprend le jeton.
+    if (_inBackground) return;
     // §unloadGuard — L'accueil est visible dès qu'il est monté ; `didPopNext`
     // n'est appelé qu'au RETOUR d'une autre route, jamais à la première
     // apparition.
@@ -294,6 +314,9 @@ class _HomePageState extends State<HomePage> with RouteAware {
 
   /// Vrai tant que cet écran détient le jeton de visibilité (cf. ci-dessus).
   bool _holdsVisibility = false;
+
+  /// D4A-02 — `TmdbService.generation` vue au dernier retour sur l'accueil.
+  int _seenTmdbGeneration = TmdbService.generation;
 
   void _releaseVisibility() {
     if (!_holdsVisibility) return;
@@ -325,8 +348,14 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // était sur le player, on les re-précharge depuis le cache disque JSON.gz
     // (~50 ms par compte). Idempotent : skip ceux déjà en mémoire.
     _rehydrateSecondariesIfNeeded();
+    // Revue 2026-09-11, D4A-02 — une clé TMDB saisie ou retirée pendant
+    // qu'on était ailleurs (page TMDB, restauration) ne passe par aucun des
+    // notifieurs de l'accueil : sans ce signal, ni tendances ni rangées TMDB
+    // n'apparaissaient (ou ne disparaissaient) avant un redémarrage.
+    final bool tmdbChanged = TmdbService.generation != _seenTmdbGeneration;
+    _seenTmdbGeneration = TmdbService.generation;
     // Rejouer une éventuelle notification ignorée pendant l'arrière-plan.
-    if (_pendingRefresh && mounted) {
+    if ((_pendingRefresh || tmdbChanged) && mounted) {
       _pendingRefresh = false;
       _contentTick.value++; // §pageTick — le hero doit voir la reprise
       setState(() {});
@@ -1510,13 +1539,25 @@ class _TmdbRowsMemo {
   /// des reprises et celle des favoris. Tant que rien n'a bougé, recharger
   /// ne changerait rien — et coûterait une passe O(entrées) plus une
   /// recherche TMDB à chaque recréation de page (§tabSwitchCost).
-  final List<M3uEntry> source;
+  ///
+  /// ⚠️ Revue 2026-09-11, D4A-03 — une référence FAIBLE : ce mémo est
+  /// statique et n'est réécrit que par `_loadTmdbRows`. Tenue en dur, la
+  /// liste (qui concatène les entrées de TOUS les comptes) survivait au
+  /// déchargement des listes secondaires — « Libérer la mémoire » ne libérait
+  /// pas leurs dizaines de milliers d'entrées. Seule l'IDENTITÉ sert ici :
+  /// une cible ramassée vaut « entrées changées », donc rechargement.
+  final WeakReference<List<M3uEntry>> source;
   final int watchVersion;
   final int favVersion;
 
   /// `TmdbService.generation` au chargement : une clé changée ou retirée
   /// invalide le mémo (les caches du service, eux, meurent avec l'instance).
   final int tmdbGeneration;
+
+  /// Revue 2026-09-11, D4A-02 — Les trois interrupteurs au chargement (bits
+  /// 1 = « Parce que tu as regardé », 2 = mieux notés, 4 = plateformes) : une
+  /// rangée allumée APRÈS coup n'a rien été chargée, le mémo ne vaut plus.
+  final int switches;
 
   const _TmdbRowsMemo({
     required this.version,
@@ -1528,6 +1569,7 @@ class _TmdbRowsMemo {
     required this.watchVersion,
     required this.favVersion,
     required this.tmdbGeneration,
+    required this.switches,
   });
 }
 
@@ -1709,6 +1751,12 @@ class _TypePageState extends State<_TypePage>
   static final Map<M3uContentType, List<TrendingTitle>> _sharedTrending =
       <M3uContentType, List<TrendingTitle>>{};
 
+  /// Revue 2026-09-11, D4A-02 — `TmdbService.generation` au dernier
+  /// `_loadTrending` du type : une clé saisie ou retirée depuis relance les
+  /// tendances au prochain signal (elles n'étaient chargées qu'au montage).
+  static final Map<M3uContentType, int> _sharedTrendingGen =
+      <M3uContentType, int>{};
+
   // §tmdbRows — Les deux rangées éditoriales TMDB, par type, partagées comme
   // `_sharedTrending` pour survivre à la destruction de la page. Le
   // croisement avec la playlist se fait dans `_ensureTmdbRows`.
@@ -1785,7 +1833,7 @@ class _TypePageState extends State<_TypePage>
     // Tendances seulement pour films/séries (pas de matching TMDB sur le live TV).
     if (widget.type != M3uContentType.tv) {
       _loadTrending();
-      _loadTmdbRows();
+      unawaited(_reloadTmdbRows());
     }
   }
 
@@ -1845,6 +1893,47 @@ class _TypePageState extends State<_TypePage>
     if (!mounted) return;
     debugPrint('🔔 §pageTick (${widget.type.name}) : reconstruite');
     setState(() {});
+    // Revue 2026-09-11, D4A-02 — Les rangées TMDB et les tendances n'étaient
+    // chargées qu'en `initState` : depuis §tabPageKeep la page vit toute la
+    // session, donc « Parce que tu as regardé <ancien titre> » restait figé,
+    // une rangée rallumée n'apparaissait qu'au redémarrage, une clé saisie
+    // ne donnait rien. Le signal relance donc les deux chargements — APRÈS
+    // la frame, pour que `_memo` soit celui des entrées courantes (l'index
+    // `byUrl` du mémo évite toute passe O(entrées) sur le retour du lecteur).
+    // Les gardes des deux chargements rendent la main sans rien faire quand
+    // rien n'a bougé (même graine, mêmes interrupteurs, même clé).
+    if (widget.type == M3uContentType.tv) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_sharedTrendingGen[widget.type] != TmdbService.generation) {
+        _loadTrending();
+      }
+      unawaited(_reloadTmdbRows());
+    });
+  }
+
+  /// Revue 2026-09-11, D4A-02 — Un seul `_loadTmdbRows` à la fois par page :
+  /// un signal qui arrive pendant un chargement (réseau TMDB) en redemande
+  /// UN de plus à la fin, jamais deux en parallèle.
+  bool _tmdbRowsBusy = false;
+  bool _tmdbRowsAgain = false;
+
+  Future<void> _reloadTmdbRows() async {
+    if (_tmdbRowsBusy) {
+      _tmdbRowsAgain = true;
+      return;
+    }
+    _tmdbRowsBusy = true;
+    try {
+      do {
+        _tmdbRowsAgain = false;
+        await _loadTmdbRows();
+      } while (_tmdbRowsAgain && mounted);
+    } catch (e) {
+      debugPrint('⚠️ §tmdbRows (${widget.type.name}) : $e');
+    } finally {
+      _tmdbRowsBusy = false;
+    }
   }
 
   /// §tmdbRows — Charge les deux rangées TMDB du type courant, puis force le
@@ -1856,6 +1945,9 @@ class _TypePageState extends State<_TypePage>
   /// rangée « parce que tu as regardé » vide de sens.
   Future<void> _loadTmdbRows() async {
     final perf = PerformanceSettingsService.config.value;
+    // Tout éteint : rien à charger MAINTENANT. Ce n'est plus une sortie
+    // définitive (revue 2026-09-11, D4A-02) : le signal de contenu rappelle
+    // cette méthode, et l'interrupteur rallumé sera relu à ce moment-là.
     if (!perf.tmdbRowBecause &&
         !perf.tmdbRowTopRated &&
         !perf.tmdbRowProviders) {
@@ -1864,19 +1956,24 @@ class _TypePageState extends State<_TypePage>
     final isTv = widget.type == M3uContentType.series;
     final svc = TmdbService.instance;
 
-    // §tabSwitchCost — Le `PageView` recrée cette page à chaque changement
-    // d'onglet. Si ni les entrées, ni les reprises, ni les favoris n'ont
-    // bougé depuis le dernier chargement, la graine serait la même : on ne
-    // repaye ni l'index par URL ni la recherche TMDB. (Trouvé à la revue.)
+    // §tabSwitchCost — Ce chargement est rappelé à chaque signal de contenu
+    // (§pageTick, D4A-02) et au montage. Si ni les entrées, ni les reprises,
+    // ni les favoris, ni la clé TMDB, ni les interrupteurs n'ont bougé depuis
+    // le dernier chargement, la graine et les rangées seraient les mêmes : on
+    // ne repaye ni la recherche de graine ni les appels TMDB.
     final int watchV = WatchProgressService.version.value;
     final int favV = FavoritesService.version.value;
     final int gen = TmdbService.generation;
+    final int switches = (perf.tmdbRowBecause ? 1 : 0) |
+        (perf.tmdbRowTopRated ? 2 : 0) |
+        (perf.tmdbRowProviders ? 4 : 0);
     final _TmdbRowsMemo? prev = _sharedTmdbRows[widget.type];
     if (prev != null &&
-        identical(prev.source, widget.entries) &&
+        identical(prev.source.target, widget.entries) &&
         prev.watchVersion == watchV &&
         prev.favVersion == favV &&
-        prev.tmdbGeneration == gen) {
+        prev.tmdbGeneration == gen &&
+        prev.switches == switches) {
       return;
     }
 
@@ -1896,23 +1993,49 @@ class _TypePageState extends State<_TypePage>
     M3uEntry? seed;
     List<TrendingTitle> because = const [];
     if (perf.tmdbRowBecause) {
-      final byUrl = <String, M3uEntry>{
-        for (final e in widget.entries) e.url: e,
-      };
       final progresses = WatchProgressService.all
         ..sort((a, b) => b.lastWatched.compareTo(a.lastWatched));
-      for (final p in progresses) {
-        final e = byUrl[p.url];
-        if (e != null) {
-          seed = e;
-          break;
+      // Revue 2026-09-11, D4A-02 — §resumeIndex/§favIndex : maintenant que ce
+      // chargement suit le signal de contenu (donc le retour du lecteur), la
+      // graine se retrouve par les index du mémo (`byUrl`, `byKey`), jamais
+      // par une passe sur toutes les entrées. Le parcours ne reste qu'au
+      // MONTAGE, quand le rangement n'existe pas encore (comportement d'avant).
+      final _GroupingMemo? grouping = _memo;
+      if (grouping != null && identical(grouping.source, widget.entries)) {
+        final Map<String, List<M3uEntry>> byUrl = grouping.byUrl;
+        for (final p in progresses) {
+          final List<M3uEntry>? g = byUrl[p.url];
+          if (g != null) {
+            seed = g.firstWhere((e) => e.url == p.url, orElse: () => g.first);
+            break;
+          }
         }
-      }
-      if (seed == null) {
-        for (final e in widget.entries) {
-          if (FavoritesService.isEntryFavorite(e)) {
+        if (seed == null) {
+          final favs = favoriteGroupsFor(
+            favoriteKeys: FavoritesService.all,
+            type: widget.type,
+            byKey: grouping.byKey,
+            groups: grouping.groups,
+          );
+          if (favs.isNotEmpty) seed = favs.first.first;
+        }
+      } else {
+        final byUrl = <String, M3uEntry>{
+          for (final e in widget.entries) e.url: e,
+        };
+        for (final p in progresses) {
+          final e = byUrl[p.url];
+          if (e != null) {
             seed = e;
             break;
+          }
+        }
+        if (seed == null) {
+          for (final e in widget.entries) {
+            if (FavoritesService.isEntryFavorite(e)) {
+              seed = e;
+              break;
+            }
           }
         }
       }
@@ -1943,10 +2066,11 @@ class _TypePageState extends State<_TypePage>
       because: because,
       topRated: topRated,
       providers: providers,
-      source: widget.entries,
+      source: WeakReference<List<M3uEntry>>(widget.entries),
       watchVersion: watchV,
       favVersion: favV,
       tmdbGeneration: gen,
+      switches: switches,
     );
     if (same) {
       _sharedTmdbRows[widget.type] = memo;
@@ -1970,6 +2094,7 @@ class _TypePageState extends State<_TypePage>
   /// force un recalcul du hero pour y injecter les titres dispo.
   Future<void> _loadTrending() async {
     final isTv = widget.type == M3uContentType.series; // series → /trending/tv
+    _sharedTrendingGen[widget.type] = TmdbService.generation; // D4A-02
     final list = await TmdbService.instance.getTrending(isTv: isTv);
     if (!mounted) return;
     // ⚠️ Ne RIEN faire si les tendances n'ont pas bougé. Le service rend la

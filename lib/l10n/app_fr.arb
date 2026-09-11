@@ -462,6 +462,14 @@
   "@tmdbKeyRemove": {
     "description": "Delete key button"
   },
+  "tmdbKeyRemoveTitle": "Retirer la clé TMDB ?",
+  "@tmdbKeyRemoveTitle": {
+    "description": "Confirmation title before deleting the TMDB key"
+  },
+  "tmdbKeyRemoveQuestion": "Les affiches et infos TMDB ne se chargeront plus tant qu'une clé n'aura pas été saisie à nouveau.",
+  "@tmdbKeyRemoveQuestion": {
+    "description": "Confirmation body before deleting the TMDB key"
+  },
   "tmdbKeyManualEntry": "Saisir à la télécommande",
   "@tmdbKeyManualEntry": {
     "description": "TV: reveal the manual field"
@@ -1960,6 +1968,7 @@
   "themeModeSystem": "Système",
   "themePreviewPlay": "▶  Lire",
   "xmltvUpdated": "✅ Guide des chaînes mis à jour",
+  "xmltvUpdateUnavailable": "Le guide des chaînes n'a pas pu être mis à jour. Réessaie plus tard.",
   "xmltvUpdateFailed": "❌ Échec mise à jour : {reason}",
   "@xmltvUpdateFailed": {
     "placeholders": {

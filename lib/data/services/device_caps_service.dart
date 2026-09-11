@@ -87,7 +87,14 @@ abstract final class DeviceCapsService {
           PerformanceSettingsService.config.value != PerfConfig.defaults;
       final suggested = measured.suggestedProfile;
       if (!userAlreadyChose) {
-        await PerformanceSettingsService.save(_configFor(suggested));
+        // Revue 2026-09-11, D4L-01 : `userAlreadyChose` compare par `==`, qui
+        // ignore le confort — une sauvegarde `.aether` restaurée dans
+        // l'onboarding (« Wi-Fi seulement », rangées TMDB coupées…) passait
+        // donc pour « rien de choisi », et le preset BRUT l'écrasait. On
+        // n'applique plus que les leviers de profil (§perfNotify).
+        await PerformanceSettingsService.save(PerformanceSettingsService
+            .config.value
+            .withProfileOf(_configFor(suggested)));
         autoProfile.value = suggested;
         debugPrint('\u{1F3AF} §autoProfile : profil ${suggested.name} choisi par la sonde');
       }

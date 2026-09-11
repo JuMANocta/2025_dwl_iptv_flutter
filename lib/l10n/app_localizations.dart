@@ -1256,6 +1256,18 @@ abstract class AppLocalizations {
   /// **'Remove the key'**
   String get tmdbKeyRemove;
 
+  /// Confirmation title before deleting the TMDB key
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the TMDB key?'**
+  String get tmdbKeyRemoveTitle;
+
+  /// Confirmation body before deleting the TMDB key
+  ///
+  /// In en, this message translates to:
+  /// **'Posters and info from TMDB will no longer load until a key is entered again.'**
+  String get tmdbKeyRemoveQuestion;
+
   /// TV: reveal the manual field
   ///
   /// In en, this message translates to:
@@ -4357,6 +4369,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'✅ Channel guide updated'**
   String get xmltvUpdated;
+
+  /// No description provided for @xmltvUpdateUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The channel guide couldn\'t be updated right now. Try again later.'**
+  String get xmltvUpdateUnavailable;
 
   /// No description provided for @xmltvUpdateFailed.
   ///

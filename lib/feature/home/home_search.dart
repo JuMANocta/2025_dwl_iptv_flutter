@@ -262,6 +262,13 @@ class _PersonTitlesSectionState extends State<_PersonTitlesSection> {
     return map;
   }
 
+  /// Revue 2026-09-11, D4A-03 — Lâche l'index (appelé à la sortie du mode
+  /// recherche) : statique, il retenait les entrées des comptes déchargés.
+  static void dropIndex() {
+    _index = const {};
+    _indexVersion = -1;
+  }
+
   String? _personName;
   List<List<M3uEntry>> _groups = const [];
   int _requestId = 0;
