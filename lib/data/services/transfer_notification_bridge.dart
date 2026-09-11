@@ -34,6 +34,19 @@ abstract final class TransferNotificationBridge {
   /// voir le commentaire dans [_onTasksChanged].
   static bool _wasShowing = false;
 
+  /// D3A-18 — Forme de la dernière notification poussée (barre indéterminée,
+  /// nombre de tâches). Un changement de forme est une transition : sans ça,
+  /// `downloading → finalizing` tombait dans le throttle et la notification
+  /// restait figée à « 99 % » pendant toute la finalisation.
+  static bool _wasIndeterminate = false;
+  static int _lastCount = 0;
+
+  /// D3A-08 — Numéro du dernier appel. Un appel resté suspendu sur la boîte
+  /// de permission ne doit pas reposer, après coup, un état PÉRIMÉ (celui
+  /// d'avant le `stopOngoing`, qui aurait laissé la notification et le
+  /// service de premier plan plantés pour de bon).
+  static int _seq = 0;
+
   /// Appelé une fois depuis `main.dart`, après
   /// `DownloadManagerService().init()`.
   static void attach() {
@@ -55,6 +68,7 @@ abstract final class TransferNotificationBridge {
       unawaited(_postFinished(f));
     }
     _previous = current;
+    final int seq = ++_seq;
 
     // ⚠️ La permission n'est jamais demandée s'il n'y a rien à montrer : un
     // appel à `ensureNotificationPermission()` avant même de savoir si une
@@ -63,6 +77,9 @@ abstract final class TransferNotificationBridge {
     final bool granted = hasActiveDownloads(current)
         ? await ensureNotificationPermission()
         : false;
+    // D3A-08 — Un appel plus récent est passé pendant l'attente : c'est lui
+    // qui a le dernier mot.
+    if (seq != _seq) return;
 
     final notice =
         downloadNotice(current, isTv: PlatformTv.isTv, granted: granted);
@@ -75,8 +92,14 @@ abstract final class TransferNotificationBridge {
     // restaient plantés indéfiniment. Seules les répétitions d'un MÊME état
     // (progression qui avance) sont throttlées ; apparition et disparition de
     // la notification passent toujours.
-    final bool isEdge = _wasShowing != (notice != null);
+    final bool indeterminate = notice != null && notice.progress == null;
+    final int count = notice?.activeCount ?? 0;
+    final bool isEdge = _wasShowing != (notice != null) ||
+        (notice != null &&
+            (indeterminate != _wasIndeterminate || count != _lastCount));
     _wasShowing = notice != null;
+    _wasIndeterminate = indeterminate;
+    _lastCount = count;
     final now = DateTime.now();
     if (!isEdge && now.difference(_lastPush) < _minInterval) return;
     _lastPush = now;
@@ -130,5 +153,8 @@ abstract final class TransferNotificationBridge {
     _previous = const [];
     _lastPush = DateTime.fromMillisecondsSinceEpoch(0);
     _wasShowing = false;
+    _wasIndeterminate = false;
+    _lastCount = 0;
+    _seq = 0;
   }
 }

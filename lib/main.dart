@@ -121,10 +121,6 @@ void main() async {
   // `PlatformTv.isTv` de façon synchrone dès leur premier build.
   await PlatformTv.init();
   await ThemeService.load();
-  // §hostGate — La profondeur de file par fournisseur vient des réglages :
-  // 0 = déduire de `max_connections` quand on l'aura lu, sinon on force.
-  final int hmc = PerformanceSettingsService.config.value.hostMaxConcurrent;
-  if (hmc >= 1) HostGate.defaultLimit = hmc;
 
   // §3c-bis — Lock landscape global sur TV. La TV n'a pas de mode portrait
   // physique, mais Flutter peut quand même appliquer `setPreferredOrientations`
@@ -174,6 +170,17 @@ Future<void>? _servicesReady;
 
 Future<void> ensureServicesReady() => _servicesReady ??= _initServices();
 
+bool _hostLimitListening = false;
+
+/// §hostGate — Profondeur de file par fournisseur, depuis les réglages :
+/// `0` = déduire de `max_connections` quand on l'aura lu (repli : 1, la valeur
+/// sûre), toute autre valeur force. Ne vaut que pour les hôtes pas encore
+/// vus, et un `setLimit` posé d'après `max_connections` gagne toujours.
+void _applyHostLimit() {
+  final int hmc = PerformanceSettingsService.config.value.hostMaxConcurrent;
+  HostGate.defaultLimit = hmc >= 1 ? hmc : 1;
+}
+
 Future<void> _initServices() async {
   // L'ordre compte : `MediaStore.appFolder` doit être posé avant
   // `DownloadManagerService.init()`, qui réconcilie les tâches sur disque.
@@ -181,6 +188,20 @@ Future<void> _initServices() async {
   MediaStore.appFolder = 'AetherStream';
   // Migration legacy d'abord (touche le secure storage des comptes).
   await StreamAccountService.migrateFromLegacyIfNeeded();
+  // D3L-01 — Les réglages AVANT les services qui les lisent. Chargés dans le
+  // `Future.wait` ci-dessous, ils arrivaient APRÈS le premier `pump()` des
+  // téléchargements (ordre des microtâches) : « Wi-Fi seulement » et le
+  // plafond parallèle étaient ignorés pour les tâches reprises au démarrage.
+  await PerformanceSettingsService.load(); // §perfSettings
+  // D3B-10 / D5B-16 — La profondeur de file par fournisseur (§hostGate) se lit
+  // APRÈS le chargement (avant, dans `main()`, elle lisait toujours la valeur
+  // par défaut) et se réapplique à chaque changement de réglage ou
+  // restauration `.aether`.
+  _applyHostLimit();
+  if (!_hostLimitListening) {
+    _hostLimitListening = true;
+    PerformanceSettingsService.config.addListener(_applyHostLimit);
+  }
   // §startupParallel — Ces init() sont des lectures de cache INDÉPENDANTES
   // (SharedPreferences / secure storage propres à chaque service). En parallèle,
   // le démarrage attend juste la plus lente au lieu d'additionner les temps.
@@ -197,7 +218,6 @@ Future<void> _initServices() async {
     PlaybackHealthService.init(),
     HiddenRegionsService.init(),
     TrackPreferencesService.init(),
-    PerformanceSettingsService.load(), // §perfSettings
     VideoFitPreference.load(), // §videoFit
     VideoStatsPreference.load(), // §videoStats
     MeasuredQualityService.init(), // §qualityTruth

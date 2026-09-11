@@ -68,7 +68,9 @@ DownloadNotice? downloadNotice(
       text: info.text,
       progress: info.progress,
       activeCount: 1,
-      cancelTaskId: t.id,
+      // D3A-07 — Pas d'« Annuler » pendant la finalisation : le transfert est
+      // fini, l'interrompre ne ferait que laisser un fichier à moitié copié.
+      cancelTaskId: t.status == DownloadStatus.finalizing ? null : t.id,
     );
   }
 

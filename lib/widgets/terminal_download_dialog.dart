@@ -183,15 +183,22 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       }
       _stopwatch ??= Stopwatch()..start();
       if (!_elapsed.isRunning) _elapsed.start();
+      // D3A-12 — Le Timer RÉÉCRIT la ligne de statistiques : il se contentait
+      // de `setState`, or le temps écoulé est figé dans la chaîne au moment
+      // de la dernière notification — il ne bougeait donc plus précisément
+      // quand le transfert était bloqué, le cas pour lequel il existe.
       _elapsedTimer ??= Timer.periodic(
         const Duration(seconds: 1),
         (_) {
-          if (mounted) setState(() {});
+          if (!mounted) return;
+          final DownloadTask? t = _lastTaskState;
+          final AppLocalizations? l = _cachedL10n;
+          if (t != null && l != null && t.status == DownloadStatus.downloading) {
+            _writeStats(_statsLine(t, l));
+          }
+          setState(() {});
         },
       );
-      const barLength = 20;
-      final filled = (task.progress * barLength).clamp(0, barLength).toInt();
-      final bar = '█' * filled + '▒' * (barLength - filled);
 
       if (_stopwatch!.elapsedMilliseconds > 500) {
         final currentReceived = (task.progress * task.totalSize).toInt();
@@ -206,20 +213,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
         _stopwatch!.reset();
       }
 
-      final speedInfo = _speed > 0 ? '\n🚀 ${l10n.terminalSpeedMessage} : ${formatFileSize(_speed.toInt())}/s' : '';
-      final etaInfo = _eta > 0 ? '\n⏳ ${l10n.terminalEtaMessage} : ${formatDuration(_eta)}' : '';
-      // §dlElapsed — Le temps écoulé remplace le compteur de relances
-      // (signalement du 2026-09-08 : « vu que la relance fonctionne
-      // correctement, supprimer la partie relance et mettre à la place le
-      // temps réel du téléchargement qui incrémente de secondes »).
-      // ⚠️ Le compteur « relancé ×N » de la TUILE, lui, RESTE : c'est là qu'il
-      // distingue « source lente » de « source qui bride », et il survit à la
-      // fermeture de ce moniteur — ce que ce dialogue ne peut pas faire.
-      final elapsedInfo = '\n⏱️ ${l10n.terminalElapsedMessage} : '
-          '${formatDuration(_elapsed.elapsed.inSeconds)}';
-      final formatted = '\n[$bar] ${(task.progress * 100).toStringAsFixed(1)}%$speedInfo$etaInfo$elapsedInfo';
-
-      _writeStats(formatted);
+      _writeStats(_statsLine(task, l10n));
     } else if (task.status == DownloadStatus.finalizing &&
         _lastTaskState?.status != DownloadStatus.finalizing) {
       // Forcer la barre à 100% avant le message de finalisation
@@ -235,8 +229,10 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       _logs.add({'message': l10n.terminalSuccessMessage, 'type': 'log'});
       _logs.add({'message': '\n> THERE IS NO SPOON.', 'type': 'matrix'});
       _isDownloadComplete = true;
+      _stopElapsedTicker();
     } else if (task.status == DownloadStatus.failed &&
         _lastTaskState?.status != DownloadStatus.failed) {
+      _stopElapsedTicker();
       _logs.add({'message': l10n.terminalFatalErrorMessage, 'type': 'error'});
       _logs.add({'message': '\n> CONNECTION TO THE MATRIX LOST.', 'type': 'error'});
       _hasFatalError = true;
@@ -265,6 +261,34 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
     _scrollToBottom();
   }
 
+
+  /// La ligne de statistiques (barre, débit, reste, temps écoulé) de [task].
+  String _statsLine(DownloadTask task, AppLocalizations l10n) {
+    const barLength = 20;
+    final filled = (task.progress * barLength).clamp(0, barLength).toInt();
+    final bar = '█' * filled + '▒' * (barLength - filled);
+    final speedInfo = _speed > 0 ? '\n🚀 ${l10n.terminalSpeedMessage} : ${formatFileSize(_speed.toInt())}/s' : '';
+    final etaInfo = _eta > 0 ? '\n⏳ ${l10n.terminalEtaMessage} : ${formatDuration(_eta)}' : '';
+    // §dlElapsed — Le temps écoulé remplace le compteur de relances
+    // (signalement du 2026-09-08 : « vu que la relance fonctionne
+    // correctement, supprimer la partie relance et mettre à la place le
+    // temps réel du téléchargement qui incrémente de secondes »).
+    // ⚠️ Le compteur « relancé ×N » de la TUILE, lui, RESTE : c'est là qu'il
+    // distingue « source lente » de « source qui bride », et il survit à la
+    // fermeture de ce moniteur — ce que ce dialogue ne peut pas faire.
+    final elapsedInfo = '\n⏱️ ${l10n.terminalElapsedMessage} : '
+        '${formatDuration(_elapsed.elapsed.inSeconds)}';
+    return '\n[$bar] ${(task.progress * 100).toStringAsFixed(1)}%$speedInfo$etaInfo$elapsedInfo';
+  }
+
+  /// Arrête le compteur de temps quand le transfert est fini (succès ou
+  /// échec) : plus rien à compter, et plus de reconstruction chaque seconde.
+  /// Une relance le recrée (branche `downloading`).
+  void _stopElapsedTicker() {
+    _elapsedTimer?.cancel();
+    _elapsedTimer = null;
+    _elapsed.stop();
+  }
 
   /// §dlWatchdog — Écrit une ligne de relance en REMPLAÇANT la précédente si
   /// elle est encore la dernière du journal.
@@ -580,6 +604,11 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                       closeButton,
                     ],
                   );
+                }
+                // D3A-07 — Pas d'ABORT pendant la finalisation : le transfert
+                // est fini, l'interrompre ne ferait que corrompre la copie.
+                if (_lastTaskState?.status == DownloadStatus.finalizing) {
+                  return closeButton;
                 }
                 return Wrap(
                   spacing: 8,

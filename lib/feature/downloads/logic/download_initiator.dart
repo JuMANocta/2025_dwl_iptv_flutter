@@ -10,6 +10,7 @@ import '../../../core/utils/app_snackbar.dart';
 import '../downloads_page.dart';
 import '../../../data/models/download_task.dart';
 import '../../../data/services/download_manager_service.dart';
+import '../../../data/services/download_range_policy.dart';
 import '../../../core/utils/network.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/storage_file.dart';
@@ -67,8 +68,6 @@ Future<String> _resolvePartPath(String finalDirectory, String fileName) async {
   return '$tempDirectory/$fileName';
 }
 
-String sanitizeFilename(String filename) => filename.replaceAll(RegExp(r'[\\/*?:"<>|]'), "_");
-
 /// §dlEpisode — Premier nom LIBRE dans [directory], en évitant [takenPaths]
 /// (les chemins finaux des tâches déjà connues) et les fichiers réellement
 /// présents.
@@ -91,11 +90,6 @@ Future<String> _freeFileName({
     return candidate;
   }
   return downloadNameCandidate(fileName, 99);
-}
-
-String _ext(String name) {
-  final i = name.lastIndexOf('.');
-  return (i >= 0 && i < name.length - 1) ? name.substring(i + 1).toLowerCase() : '';
 }
 
 Future<void> verifierEtTelecharger({
@@ -202,6 +196,9 @@ Future<int?> probeContentLength(Dio dio, String url) async {
       options: Options(
         responseType: ResponseType.stream, // TRÈS IMPORTANT: on ne télécharge pas tout le corps
         followRedirects: true,
+        // §dlRangeCheck (D3A-01) — Un 403/404 ne doit pas donner sa taille
+        // de page d'erreur comme taille du film.
+        validateStatus: isDownloadableStatus,
       ),
     ).then((response) {
       // Dès qu'on reçoit la réponse (les en-têtes sont arrivés)...
@@ -249,8 +246,9 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   // 2. On affiche l'AlertDialog de confirmation.
   if (!context.mounted) return;
 
-  // On prépare l'extension pour l'afficher dans le dialogue
-  final String extension = _ext(url).toUpperCase();
+  // On prépare l'extension pour l'afficher dans le dialogue. Lue sur le seul
+  // dernier segment du chemin : jamais l'hôte ni les identifiants (D3A-04).
+  final String extension = urlFileExtension(url)?.toUpperCase() ?? '';
 
   final bool? confirm = await showAppDialog<bool>(
     context: context,
@@ -337,14 +335,10 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
   }
 
   // 6. CRÉATION DE LA TÂCHE AVEC LE BON CHEMIN
-  String baseFileName = sanitizeFilename(nom);
-  // Ajout de l'année au nom de fichier si disponible
-  if (releaseYear != null && releaseYear.isNotEmpty) {
-    baseFileName = '$baseFileName ($releaseYear)';
-  }
-
-  final fileExt = extension.isNotEmpty ? extension.toLowerCase() : 'mp4';
-  if (_ext(baseFileName).isEmpty) baseFileName = '$baseFileName.$fileExt';
+  // Nom assaini + année + extension TOUJOURS posée (D3A-04 : un point dans le
+  // titre la faisait sauter).
+  String baseFileName =
+      downloadFileName(name: nom, year: releaseYear, url: url);
 
   // §dlEpisode — Le nom ne doit heurter NI une autre tâche, NI un fichier déjà
   // posé dans le dossier public (il est partagé : l'utilisateur y met ce qu'il

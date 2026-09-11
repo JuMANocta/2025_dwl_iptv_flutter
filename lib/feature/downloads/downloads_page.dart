@@ -129,7 +129,9 @@ class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
 
   /// §12-c — Pull-to-refresh : recharge les tâches depuis disque + réconcilie
   /// les statuts (utile si une tâche s'est figée en `downloading` après crash).
-  Future<void> _refresh() => _downloadManager.init();
+  // D3A-05 — `refreshFromDisk` épargne les transferts en vol : `init()` les
+  // faisait passer « échec » sur un simple tirer-pour-rafraîchir.
+  Future<void> _refresh() => _downloadManager.refreshFromDisk();
 
   /// §dlOrphans — Le balayage MANUEL du dossier public (bouton ⟳ de la barre).
   /// Jamais muet : le résultat s'annonce, même quand il n'y a rien.

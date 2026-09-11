@@ -11,6 +11,26 @@ enum DownloadStatus {
   finalizing,  // En cours de finalisation (déplacement du fichier)
 }
 
+/// Relit un statut persisté (D3A-14).
+///
+/// ⚠️ **L'écriture reste par INDEX** (`status.index`) : l'écrire par nom
+/// rendrait la liste illisible à un APK antérieur, qui fait
+/// `DownloadStatus.values[json['status'] as int]` — un retour arrière perdrait
+/// alors TOUS les téléchargements. La lecture, elle, accepte les deux formes
+/// et replie un statut inconnu sur `failed` (reprenable) au lieu de lever.
+/// Corollaire : l'ordre de l'enum est FIGÉ, n'insérer une valeur qu'à la fin.
+DownloadStatus downloadStatusFromJson(Object? raw) {
+  if (raw is int && raw >= 0 && raw < DownloadStatus.values.length) {
+    return DownloadStatus.values[raw];
+  }
+  if (raw is String) {
+    for (final s in DownloadStatus.values) {
+      if (s.name == raw) return s;
+    }
+  }
+  return DownloadStatus.failed;
+}
+
 @immutable
 class DownloadTask {
   final String id;          // Un identifiant unique, ex: un timestamp ou un UUID
@@ -89,7 +109,7 @@ class DownloadTask {
       displayName: json['displayName'] as String,
       finalPath: json['finalPath'] as String,
       tempPath: json['tempPath'] as String? ?? '',
-      status: DownloadStatus.values[json['status'] as int],
+      status: downloadStatusFromJson(json['status']),
       progress: (json['progress'] as num).toDouble(),
       totalSize: json['totalSize'] as int,
       createdAt: DateTime.parse(json['createdAt'] as String),

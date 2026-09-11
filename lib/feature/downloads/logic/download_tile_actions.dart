@@ -28,6 +28,18 @@ extension DownloadActionX on DownloadAction {
       this == DownloadAction.cancel || this == DownloadAction.delete;
 }
 
+/// Fichiers à effacer quand on SUPPRIME une tâche (D3A-13).
+///
+/// Le fichier FINAL ne part que si la tâche est terminée : c'est alors le
+/// sien. Pour une tâche en échec, en attente ou annulée, `finalPath` n'est
+/// qu'un nom RÉSERVÉ — l'effacer supprimait un fichier personnel de même nom
+/// ou, pour des épisodes enregistrés avant §dlEpisode, l'épisode TERMINÉ d'une
+/// autre tâche qui partageait ce chemin. Le partiel, lui, part toujours.
+({String? finalPath, String partialPath}) filesToDeleteFor(DownloadTask task) => (
+      finalPath: task.status == DownloadStatus.completed ? task.finalPath : null,
+      partialPath: task.tempPath,
+    );
+
 /// Action principale (tap / touche OK) + entrées du menu ⋯.
 typedef DownloadTileActions = ({
   DownloadAction primary,

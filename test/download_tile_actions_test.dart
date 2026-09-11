@@ -9,6 +9,33 @@ import 'package:aetherStream/feature/downloads/logic/download_tile_actions.dart'
 /// téléchargement sans rien demander. À l'inverse, `queued`/`paused`/
 /// `finalizing` tombaient dans un `default: break` et ne faisaient rien.
 void main() {
+  group('D3A-13 — filesToDeleteFor', () {
+    DownloadTask t(DownloadStatus s) => DownloadTask(
+          id: '1',
+          url: 'http://h/1.mkv',
+          displayName: 'Heroes S01 E01',
+          finalPath: '/m/Heroes S01 E01.mkv',
+          tempPath: '/m/.Heroes S01 E01.aetherpart.mkv',
+          createdAt: DateTime(2026),
+          status: s,
+        );
+
+    test('terminée : le fichier final ET le partiel', () {
+      final f = filesToDeleteFor(t(DownloadStatus.completed));
+      expect(f.finalPath, '/m/Heroes S01 E01.mkv');
+      expect(f.partialPath, '/m/.Heroes S01 E01.aetherpart.mkv');
+    });
+
+    test('🔴 non terminée : JAMAIS le fichier final (il n\'est pas le sien)', () {
+      for (final s in DownloadStatus.values) {
+        if (s == DownloadStatus.completed) continue;
+        final f = filesToDeleteFor(t(s));
+        expect(f.finalPath, isNull, reason: '$s');
+        expect(f.partialPath, isNotEmpty, reason: '$s');
+      }
+    });
+  });
+
   test('INVARIANT — le tap n\'est JAMAIS destructif, quel que soit le statut',
       () {
     for (final s in DownloadStatus.values) {

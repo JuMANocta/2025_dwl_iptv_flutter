@@ -286,39 +286,48 @@ class DownloadTaskTile extends StatelessWidget {
 
     if (confirm == true) {
       await downloadManager.removeTask(task.id);
+      final files = filesToDeleteFor(task);
 
-      // §dlDirectWrite — Le fichier final est désormais écrit DIRECTEMENT dans
-      // le dossier public : on l'efface par son chemin. MediaStore reste
-      // ensuite appelé pour purger l'entrée d'index (et couvrir les fichiers
-      // issus du repli, qui ont pu être renommés en cas de doublon).
+      // Le partiel EN PREMIER (à côté du final, ou résidu du cache privé quand
+      // le repli a servi) : l'appel MediaStore plus bas peut ne jamais rendre
+      // la main (le plugin ne complète pas son `Result` sur exception).
       try {
-        final finalFile = File(task.finalPath);
-        if (await finalFile.exists()) await finalFile.delete();
-      } catch (e) {
-        debugPrint("⚠️ Suppression du fichier final échouée : $e");
-      }
-
-      // Suppression du fichier final via MediaStore (Android 10+)
-      try {
-        final fileName = task.finalPath.split('/').last;
-        if (fileName.isNotEmpty) {
-          await MediaStore().deleteFile(
-            fileName: fileName,
-            dirType: DirType.video,
-            dirName: DirName.movies,
-          );
+        final tempFile = File(files.partialPath);
+        if (files.partialPath.isNotEmpty && await tempFile.exists()) {
+          await tempFile.delete();
         }
       } catch (e) {
-        debugPrint("⚠️ Suppression MediaStore échouée : $e");
+        debugPrint("⚠️ Suppression fichier partiel échouée : $e");
       }
 
-      // Suppression du fichier partiel (`.<nom>.part` à côté du final, ou
-      // résidu dans le cache privé quand le repli a servi).
-      try {
-        final tempFile = File(task.tempPath);
-        if (await tempFile.exists()) await tempFile.delete();
-      } catch (e) {
-        debugPrint("⚠️ Suppression fichier partiel échouée : $e");
+      // D3A-13 — Le fichier final seulement s'il est À CETTE TÂCHE (terminée).
+      final String? finalPath = files.finalPath;
+      if (finalPath != null) {
+        // §dlDirectWrite — Le fichier final est écrit DIRECTEMENT dans le
+        // dossier public : on l'efface par son chemin. MediaStore reste ensuite
+        // appelé pour purger l'entrée d'index (et couvrir les fichiers issus du
+        // repli).
+        try {
+          final finalFile = File(finalPath);
+          if (await finalFile.exists()) await finalFile.delete();
+        } catch (e) {
+          debugPrint("⚠️ Suppression du fichier final échouée : $e");
+        }
+
+        try {
+          final fileName = finalPath.split('/').last;
+          if (fileName.isNotEmpty) {
+            await MediaStore()
+                .deleteFile(
+                  fileName: fileName,
+                  dirType: DirType.video,
+                  dirName: DirName.movies,
+                )
+                .timeout(const Duration(seconds: 10));
+          }
+        } catch (e) {
+          debugPrint("⚠️ Suppression MediaStore échouée : $e");
+        }
       }
     }
   }
