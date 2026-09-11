@@ -2,7 +2,7 @@
 /// de téléchargement, AVANT d'en écrire le moindre octet.
 ///
 /// **Le défaut payé** : le GET de flux héritait de `validateStatus: s < 500`
-/// (`NetworkUtils.buildBaseDio`) et son statut n'était JAMAIS lu. Un
+/// (`NetworkUtils.buildIptvBaseDio`) et son statut n'était JAMAIS lu. Un
 /// `403 Too many connections` — cas documenté par §dlQueue et §hostGate, et
 /// déclenché par une simple lecture sur le même abonnement — voyait donc son
 /// corps d'erreur AJOUTÉ au partiel ; la barre passait à 100 %, le partiel était

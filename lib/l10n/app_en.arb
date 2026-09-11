@@ -2,14 +2,11 @@
   "@@locale": "en",
   "downloadManagerTitle": "Download Manager",
   "noDownloads": "No downloads",
-  "downloadDialogTitle": "Start Download",
-  "downloadDialogFileNameLabel": "File name",
   "downloadDialogFileSizeLabel": "File size",
   "downloadDialogFileTypeLabel": "File type",
   "downloadDialogUnknownSize": "Unknown",
   "cancel": "Cancel",
   "download": "Download",
-  "denied": "Permission denied. The download cannot begin.",
   "terminalTitle": "//:FLUX_DOWNLOAD_INTERFACE",
   "terminalResumeMessage": "🔄 Resuming download:\n🎞️ {fileName}",
   "terminalStartMessage": "🤖 Starting download:\n🎞️ {fileName}",
@@ -18,41 +15,21 @@
   "terminalSuccessMessage": "\n🟢 SUCCESS: Download complete!",
   "terminalFatalErrorMessage": "\n☣️ FATAL: An error occurred",
   "terminalSpeedMessage": "Speed",
-  "terminalRetryCountMessage": "Retries",
   "terminalEtaMessage": "ETA",
   "terminalElapsedMessage": "Elapsed",
   "terminalCancelMessage": "\nℹ️ ABORT: Download cancelled by user",
   "terminalCloseButton": "[ CLOSE ]",
   "terminalAbortingButton": "[ PAUSE... ]",
   "terminalAbortButton": "[ PAUSE ]",
-  "searchPageDownloadsTooltip": "See downloads",
-  "searchPageReloadTooltip": "Reload playlist",
-  "searchPageAccountsTooltip": "Accounts and Settings",
-  "searchPageLoadingError": "Could not load playlist",
-  "searchPageRetryButton": "Retry",
-  "searchPageProcessingError": "Error processing playlist:",
-  "searchFieldHint": "Search...",
-  "searchFilterFilms": "Movies",
-  "searchFilterSeries": "Series",
-  "searchFilterTv": "TV",
-  "searchNoResults": "No results found.",
-  "searchNoContent": "No content to display.",
-  "actionSheetChooseVersion": "Choose a version for:",
-  "chipSeasons": "{count,plural, =1{1 Season} other{{count} Seasons}}",
-  "chipEpisodes": "{count,plural, =1{1 Ep.} other{{count} Ep.}}",
-  "season": "Season",
   "episode": "Episode",
   "favoriteAdd": "Add to favorites",
   "favoriteRemove": "Remove from favorites",
   "actionSheetPlay": "Play",
-  "actionSheetPlaySubtitle": "Starts playback (automatic caching).",
   "actionSheetDownload": "Download in background",
-  "actionSheetDownloadSubtitle": "To watch later without a connection.",
   "deleteDialogTitle": "Delete file?",
   "deleteDialogSizeLabel": "Size",
   "deleteDialogWarning": "This action is irreversible and the file will be permanently deleted.",
   "deleteDialogConfirmButton": "Delete",
-  "deleteTooltip": "Delete permanently",
   "taskStatusDownloading": "Downloading...",
   "taskStatusRemaining": " • {remainingSize} left",
   "taskStatusCompleted": "Completed • {size} • {date}",
@@ -60,34 +37,14 @@
   "taskStatusCanceled": "Canceled {progressInfo} • Tap to retry",
   "taskStatusPending": "Pending • {date}",
   "taskStatusUnknownError": "Unknown error",
-  "playlistCardSubtitleNone": "No playlist downloaded in this context.",
-  "playlistCardSubtitleLastFile": "Last file: {path}",
-  "playlistDownloadButton": "Download / Update",
-  "playlistDeleteButton": "Delete",
-  "playlistManagementTip": "Tip: You can also reload the playlist from the settings gear or via the refresh icon on the search screen.",
   "accountsTitle": "Account Management",
   "deleteAccountDialogTitle": "Delete account?",
-  "deleteAccountDialogContent": "This action is permanent.",
   "deleteAccountConfirm": "Delete",
-  "playlistInfoChecking": "Checking playlist...",
-  "playlistInfoUnavailable": "No playlist available or loading error.",
-  "playlistInfoTryReload": "Try reloading",
-  "playlistInfoLocalFile": "Local playlist file",
-  "playlistInfoSize": "Size",
-  "playlistInfoLastUpdate": "Upd.",
-  "playlistInfoEntries": "Entries",
-  "playlistInfoReloadButton": "Reload",
-  "playlistInfoDeleteButton": "Delete",
-  "accountsListEmpty": "Add an account",
-  "accountModeComplete": "Mode: Full URL — {host}",
-  "accountModeSeparate": "Mode: Separate — {username}@{host}",
   "accountActionEdit": "Edit",
   "accountActionDelete": "Delete",
-  "accountsFab": "New",
   "editAccountTitleAdd": "Add Account",
   "editAccountTitleEdit": "Edit Account",
   "editAccountNameLabel": "Account name (e.g., Living Room, Vacation...)",
-  "editAccountNameHint": "My IPTV Account",
   "editAccountNameRequired": "Required",
   "editAccountModeUrl": "Full URL",
   "editAccountModeCredentials": "Credentials",
@@ -96,15 +53,7 @@
   "editAccountServerUrlLabel": "Server URL (e.g., http://host:port)",
   "editAccountUsernameLabel": "Username",
   "editAccountPasswordLabel": "Password",
-  "editAccountPlaylistTypeLabel": "Playlist type",
-  "editAccountPlaylistTypeM3u": "M3U (Standard)",
-  "editAccountPlaylistTypeSimple": "Simple (Single link)",
-  "editAccountCookiesLabel": "Cookies (optional)",
-  "editAccountCookiesHint": "e.g., PHPSESSID=xxxxxx;",
   "editAccountSaveButton": "Save",
-  "playerGenericError": "Unable to play this media.",
-  "playerLoading": "Initializing player...",
-  "playerLoadingError": "Loading error: {error}",
   "settingsTitle": "Settings",
   "aboutTitle": "About",
   "backupTitle": "Backup",
@@ -405,10 +354,6 @@
   "dlOrphanDeleteFailed": "Android refused the deletion",
   "@dlOrphanDeleteFailed": {
     "description": "Delete refused"
-  },
-  "dlOrphanPlay": "Play",
-  "@dlOrphanPlay": {
-    "description": "Play action"
   },
   "commonDelete": "Delete",
   "@commonDelete": {
@@ -1525,9 +1470,6 @@
       }
     }
   },
-  "relayBlockerLive": "A live channel has no end, and neither would the conversion. It is only offered on a movie or an episode.",
-  "relayBlockerLocal": "A file that is already downloaded cannot be converted for the TV.",
-  "relayBlockerOther": "This source cannot be relayed by the phone.",
   "relayBatteryPluggedOk": "The phone is plugged in, perfect for a movie.",
   "relayBatteryPlugIfYouCan": "Plug the phone in if you can: converting uses a lot of battery.",
   "relayBatteryLow": "Battery at {percent}% — plug the phone in, casting depends on it.",
@@ -1557,25 +1499,6 @@
     }
   },
   "relayConsentConfirm": "Adapt and cast",
-  "relayConvertedUpTo": "Converted up to {position}",
-  "@relayConvertedUpTo": {
-    "placeholders": {
-      "position": {
-        "type": "String"
-      }
-    }
-  },
-  "relayProgressPaused": "{ahead} · {percent}% · paused",
-  "@relayProgressPaused": {
-    "placeholders": {
-      "ahead": {
-        "type": "String"
-      },
-      "percent": {
-        "type": "String"
-      }
-    }
-  },
   "playerLastEpisode": "Last available episode.",
   "playerAudioTrackSwitched": "Incompatible audio track — switching to {track}",
   "@playerAudioTrackSwitched": {
@@ -1586,7 +1509,6 @@
     }
   },
   "playerNoAudioTrack": "No playable audio track in this file — playing without sound",
-  "playerResuming": "Resuming playback…",
   "playerReconnecting": "Reconnecting in 5 s… ({attempt}/{max})",
   "@playerReconnecting": {
     "placeholders": {
@@ -1713,17 +1635,6 @@
   "langKorean": "Korean",
   "langTurkish": "Turkish",
   "langPolish": "Polish",
-  "statsRealDefinition": "actual {definition} ({resolution})",
-  "@statsRealDefinition": {
-    "placeholders": {
-      "definition": {
-        "type": "String"
-      },
-      "resolution": {
-        "type": "String"
-      }
-    }
-  },
   "statsDecoding": "Decoding",
   "statsHardwareWith": "hardware · {decoder}",
   "@statsHardwareWith": {
@@ -1735,7 +1646,6 @@
   },
   "statsHardware": "hardware",
   "statsResolution": "Resolution",
-  "statsAnnounced": "Announced",
   "statsAnnouncedOversold": "{announced} — the playlist OVERSELLS",
   "@statsAnnouncedOversold": {
     "placeholders": {
@@ -1783,14 +1693,6 @@
   },
   "nextEpLoading": "Loading the next episode…",
   "nextEpTitle": "NEXT EPISODE",
-  "nextEpPlayNowIn": "Play now  ·  {seconds}s",
-  "@nextEpPlayNowIn": {
-    "placeholders": {
-      "seconds": {
-        "type": "int"
-      }
-    }
-  },
   "nextEpPlay": "Play",
   "nextEpSeasonEnd": "END OF SEASON",
   "nextEpGoToSeason": "Go to season {season}?",
@@ -1823,17 +1725,6 @@
   "fitCoverSub": "Removes black bars · crops the edges",
   "fitFill": "Full screen",
   "fitFillSub": "Fills everything · slightly distorted picture",
-  "relayProgressPlaying": "{ahead} · {percent}%",
-  "@relayProgressPlaying": {
-    "placeholders": {
-      "ahead": {
-        "type": "String"
-      },
-      "percent": {
-        "type": "String"
-      }
-    }
-  },
   "ctrlCastActive": "Casting",
   "ctrlLock": "Lock",
   "ctrlBadgeLive": "LIVE",
@@ -1925,7 +1816,6 @@
   "bkPasswordMismatch": "The two passwords differ.",
   "bkSave": "Back up",
   "bkCreated": "Backup created",
-  "bkRememberPassword": "Do not forget the password — it is stored nowhere.",
   "bkCreateTitle": "Create a backup",
   "bkCreateSub": "Encrypts your accounts, TMDB key, theme, favorites and progress into a .aether file.",
   "bkEncrypting": "Encrypting…",
@@ -2441,14 +2331,6 @@
   "expSeeDetails": "See details",
   "memTitle": "MEMORY & STORAGE",
   "memRefresh": "Refresh",
-  "memParsed": "parsed {size}",
-  "@memParsed": {
-    "placeholders": {
-      "size": {
-        "type": "String"
-      }
-    }
-  },
   "memEntriesAndSize": "{count} entries · {size}",
   "@memEntriesAndSize": {
     "placeholders": {
@@ -2524,8 +2406,6 @@
   "navExitHint": "💡 To leave the app: press Back twice",
   "navExitConfirm": "Press Back again to leave",
   "settingsUsageReset": "🧹 Usage data reset",
-  "updNetworkError": "Network error",
-  "themePreviewMovieTitle": "Movie Title",
   "errUnexpected": "An unexpected error occurred.",
   "errUnknown": "An unknown error occurred.",
   "relayNothingReadable": "The conversion produced nothing playable.",

@@ -208,12 +208,6 @@ abstract final class DeviceLibraryService {
     return ok;
   }
 
-  /// Retire de la liste ce qui n'existe plus (sans balayage MediaStore).
-  static Future<void> forget(DeviceVideo v) async {
-    videos.value = videos.value.where((x) => x.uri != v.uri).toList();
-    await _persist();
-  }
-
   /// Même logique que `StorageFile._requestStoragePermission` : vidéos sur
   /// Android 13+, stockage avant. Sans elle MediaStore ne rend que nos
   /// propres fichiers — précisément ceux qui ne sont PAS orphelins.

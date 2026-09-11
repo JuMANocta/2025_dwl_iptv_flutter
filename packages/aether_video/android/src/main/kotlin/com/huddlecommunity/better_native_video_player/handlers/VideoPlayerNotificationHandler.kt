@@ -91,7 +91,6 @@ class VideoPlayerNotificationHandler(
 
     private var mediaSession: MediaSession? = null
     private val handler = Handler(Looper.getMainLooper())
-    private var positionUpdateRunnable: Runnable? = null
     private val notificationManager: NotificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private var currentArtwork: Bitmap? = null
@@ -269,9 +268,10 @@ class VideoPlayerNotificationHandler(
         mediaInfo?.let { info ->
             updateMediaMetadata(info)
         }
-
-        // Start periodic position updates
-        startPositionUpdates()
+        // Patch 20 (revue 2026-09-11, D2B-09) — plus de « mise à jour de
+        // position » périodique : son Runnable ne faisait que se re-poster
+        // chaque seconde (MediaSession publie la position d'ExoPlayer seule),
+        // soit un réveil du looper principal par seconde pour rien.
     }
 
     /**
@@ -463,43 +463,12 @@ class VideoPlayerNotificationHandler(
     }
 
     /**
-     * Converts Bitmap to ByteArray
-     */
-    private fun bitmapToByteArray(bitmap: Bitmap): ByteArray {
-        val stream = java.io.ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        return stream.toByteArray()
-    }
-
-    /**
-     * Starts periodic position updates (every second)
-     */
-    private fun startPositionUpdates() {
-        positionUpdateRunnable = object : Runnable {
-            override fun run() {
-                // Position is automatically updated by ExoPlayer/MediaSession
-                handler.postDelayed(this, 1000)
-            }
-        }
-        handler.post(positionUpdateRunnable!!)
-    }
-
-    /**
-     * Stops periodic position updates
-     */
-    private fun stopPositionUpdates() {
-        positionUpdateRunnable?.let { handler.removeCallbacks(it) }
-        positionUpdateRunnable = null
-    }
-
-    /**
      * Releases MediaSession and hides notification
      */
     fun release() {
         // Patch 18 — plus aucune affiche ne doit arriver après la libération.
         artworkJob?.cancel()
         artworkJob = null
-        stopPositionUpdates()
         player.removeListener(playerListener)
         VideoPlayerMediaSessionService.stop(context, removeNotification = true)
         hideNotification()

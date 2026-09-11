@@ -6,10 +6,11 @@ import '../../l10n/l10n_ext.dart';
 /// `flutter test`. Le canal natif (`transfer_notif`) ne fait qu'exécuter ce
 /// que ces fonctions décident.
 
+// Revue 2026-09-11, D3A-15 — `paused` n'est jamais affecté : retiré des
+// statuts actifs, et sa ligne « En pause » (texte en dur, jamais affichable).
 const _activeStatuses = {
   DownloadStatus.downloading,
   DownloadStatus.queued,
-  DownloadStatus.paused,
   DownloadStatus.finalizing,
 };
 
@@ -57,10 +58,6 @@ DownloadNotice? downloadNotice(
         ),
       DownloadStatus.queued => (text: L10n.current.dlQueued, progress: null),
       DownloadStatus.finalizing => (text: L10n.current.dlFinalizing, progress: null),
-      DownloadStatus.paused => (
-          text: 'En pause',
-          progress: t.progress.clamp(0.0, 1.0),
-        ),
       _ => (text: '', progress: null),
     };
     return (

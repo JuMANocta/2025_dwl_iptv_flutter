@@ -27,8 +27,6 @@ class XmltvProgram {
   /// Vrai si ce programme est diffusé à l'instant [t].
   bool isCurrentAt(DateTime t) => t.isAfter(start) && t.isBefore(stop);
 
-  bool get isNow => isCurrentAt(DateTime.now());
-
   String get timeRange {
     final fmt = DateFormat('HH:mm');
     return '${fmt.format(start)} – ${fmt.format(stop)}';

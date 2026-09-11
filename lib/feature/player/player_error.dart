@@ -2,12 +2,19 @@
 ///
 /// ⚠️ §tourFix (2026-09-02) — INATTEIGNABLE depuis le retrait de libmpv
 /// (§engineVendor 6/6) : les chaînes reconnues ici sont des libellés d'erreur
-/// **mpv**, or le seul moteur restant (`Media3Engine`) n'émet plus qu'une
-/// chaîne constante ('Lecture impossible') — [isAudioDecodeError] ne matche
-/// donc jamais, et le chemin §audioFallback de `player_page.dart` avec lui.
-/// La logique est conservée telle quelle : le POURQUOI ci-dessous reste vrai,
-/// et le rebranchement est prévu sur les erreurs typées de Media3
-/// (§engineFeatures), pas sur une réécriture de ces regex.
+/// **mpv**. Le seul moteur restant (`Media3Engine`) émet, depuis §liveRecover,
+/// une phrase TRADUITE construite à partir du code d'erreur Media3
+/// (`playbackErrorMessage(codeName:, rawMessage:)`) — jamais un libellé mpv.
+/// [isAudioDecodeError] ne matche donc jamais, et le chemin §audioFallback de
+/// `player_page.dart` avec lui. (Revue 2026-09-11, D2A-10 : ce commentaire
+/// disait « une chaîne constante 'Lecture impossible' », faux depuis
+/// §liveRecover.)
+/// ⚠️ Et `Media3Engine.disableAudio()` est VIDE : rebrancher naïvement ce
+/// chemin annoncerait « lecture sans son » sans couper la moindre piste.
+/// La logique est conservée telle quelle en attendant la décision (rebrancher
+/// sur les codes typés `ERROR_CODE_AUDIO_TRACK_*` / `DECODER_INIT_FAILED` et
+/// implémenter `disableAudio`, ou retirer ce fichier et son chemin) — cf.
+/// roadmap, revue D2A-10.
 ///
 /// Le lecteur doit répondre différemment selon la nature de la panne : un flux
 /// injoignable se retente (réseau), une piste audio indécodable se contourne

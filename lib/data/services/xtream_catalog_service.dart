@@ -38,7 +38,14 @@ import '../../feature/search/m3u_filter.dart';
 class XtreamCatalogService {
   XtreamCatalogService._();
 
-  /// Version du format de fichier catalogue (invalidation si évolution).
+  /// Marqueur de format écrit dans le fichier catalogue (clé `'v'`).
+  ///
+  /// Revue 2026-09-11, D1A-15 — ⚠️ AUCUN lecteur ne le vérifie :
+  /// `XtreamCatalogParser` ne lit pas `'v'`, et le cache analysé ne s'invalide
+  /// que sur la date du fichier et `ParsedPlaylist.schemaVersion`. Changer le
+  /// format impose donc d'ajouter ce contrôle au parseur, pas seulement
+  /// d'incrémenter cette valeur. Gardé tel quel pour ne pas changer le
+  /// fichier écrit.
   static const int fileVersion = 1;
 
   /// Télécharge le catalogue complet de [account] et l'écrit dans [destPath]

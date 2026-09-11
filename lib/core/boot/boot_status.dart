@@ -169,11 +169,6 @@ abstract final class BootStatus {
     step.value = BootStep(_label, progress: _progress, detail: detail);
   }
 
-  /// Clôt la dernière étape sans en ouvrir de nouvelle (fin du démarrage).
-  static void complete(String label) {
-    set(label, progress: 1);
-  }
-
   /// Remet à l'état initial — le boot peut être rejoué (« Réessayer », fin
   /// d'onboarding, changement de compte).
   static void reset() {

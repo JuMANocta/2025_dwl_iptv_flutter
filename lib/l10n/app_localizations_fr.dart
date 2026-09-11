@@ -15,12 +15,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get noDownloads => 'Aucun téléchargement';
 
   @override
-  String get downloadDialogTitle => 'Démarrer le téléchargement';
-
-  @override
-  String get downloadDialogFileNameLabel => 'Nom du fichier';
-
-  @override
   String get downloadDialogFileSizeLabel => 'Taille du fichier';
 
   @override
@@ -34,10 +28,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get download => 'Télécharger';
-
-  @override
-  String get denied =>
-      'Permission refusée. Le téléchargement ne peut pas commencer.';
 
   @override
   String get terminalTitle => '//:FLUX_DOWNLOAD_INTERFACE';
@@ -72,9 +62,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get terminalSpeedMessage => 'Vitesse';
 
   @override
-  String get terminalRetryCountMessage => 'Relances';
-
-  @override
   String get terminalEtaMessage => 'Temps restant';
 
   @override
@@ -94,71 +81,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get terminalAbortButton => '[ PAUSE ]';
 
   @override
-  String get searchPageDownloadsTooltip => 'Voir les téléchargements';
-
-  @override
-  String get searchPageReloadTooltip => 'Recharger la playlist';
-
-  @override
-  String get searchPageAccountsTooltip => 'Comptes et Paramètres';
-
-  @override
-  String get searchPageLoadingError => 'Impossible de charger la playlist';
-
-  @override
-  String get searchPageRetryButton => 'Réessayer';
-
-  @override
-  String get searchPageProcessingError =>
-      'Erreur de traitement de la playlist :';
-
-  @override
-  String get searchFieldHint => 'Rechercher...';
-
-  @override
-  String get searchFilterFilms => 'Films';
-
-  @override
-  String get searchFilterSeries => 'Séries';
-
-  @override
-  String get searchFilterTv => 'TV';
-
-  @override
-  String get searchNoResults => 'Aucun résultat trouvé.';
-
-  @override
-  String get searchNoContent => 'Aucun contenu à afficher.';
-
-  @override
-  String get actionSheetChooseVersion => 'Choisir une version pour :';
-
-  @override
-  String chipSeasons(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count Saisons',
-      one: '1 Saison',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String chipEpisodes(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count Ép.',
-      one: '1 Ép.',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String get season => 'Saison';
-
-  @override
   String get episode => 'Épisode';
 
   @override
@@ -171,15 +93,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get actionSheetPlay => 'Lire';
 
   @override
-  String get actionSheetPlaySubtitle =>
-      'Lance la lecture (mise en cache automatique).';
-
-  @override
   String get actionSheetDownload => 'Télécharger en arrière-plan';
-
-  @override
-  String get actionSheetDownloadSubtitle =>
-      'Pour regarder plus tard sans connexion.';
 
   @override
   String get deleteDialogTitle => 'Supprimer le fichier ?';
@@ -193,9 +107,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get deleteDialogConfirmButton => 'Supprimer';
-
-  @override
-  String get deleteTooltip => 'Supprimer définitivement';
 
   @override
   String get taskStatusDownloading => 'Téléchargement en cours...';
@@ -229,85 +140,19 @@ class AppLocalizationsFr extends AppLocalizations {
   String get taskStatusUnknownError => 'Erreur inconnue';
 
   @override
-  String get playlistCardSubtitleNone =>
-      'Aucune playlist téléchargée dans ce contexte.';
-
-  @override
-  String playlistCardSubtitleLastFile(Object path) {
-    return 'Dernier fichier : $path';
-  }
-
-  @override
-  String get playlistDownloadButton => 'Télécharger / Mettre à jour';
-
-  @override
-  String get playlistDeleteButton => 'Supprimer';
-
-  @override
-  String get playlistManagementTip =>
-      'Astuce : vous pouvez aussi recharger la playlist depuis la roue crantée ou via l\'icône de rafraîchissement sur l\'écran de recherche.';
-
-  @override
   String get accountsTitle => 'Gestion des Comptes';
 
   @override
   String get deleteAccountDialogTitle => 'Supprimer le compte ?';
 
   @override
-  String get deleteAccountDialogContent => 'Cette action est définitive.';
-
-  @override
   String get deleteAccountConfirm => 'Supprimer';
-
-  @override
-  String get playlistInfoChecking => 'Vérification de la playlist...';
-
-  @override
-  String get playlistInfoUnavailable =>
-      'Aucune playlist disponible ou erreur de chargement.';
-
-  @override
-  String get playlistInfoTryReload => 'Tenter un rechargement';
-
-  @override
-  String get playlistInfoLocalFile => 'Fichier playlist local';
-
-  @override
-  String get playlistInfoSize => 'Taille';
-
-  @override
-  String get playlistInfoLastUpdate => 'Maj';
-
-  @override
-  String get playlistInfoEntries => 'Entrées';
-
-  @override
-  String get playlistInfoReloadButton => 'Recharger';
-
-  @override
-  String get playlistInfoDeleteButton => 'Supprimer';
-
-  @override
-  String get accountsListEmpty => 'Ajouter un compte';
-
-  @override
-  String accountModeComplete(Object host) {
-    return 'Mode: URL complète — $host';
-  }
-
-  @override
-  String accountModeSeparate(Object host, Object username) {
-    return 'Mode: Séparé — $username@$host';
-  }
 
   @override
   String get accountActionEdit => 'Modifier';
 
   @override
   String get accountActionDelete => 'Supprimer';
-
-  @override
-  String get accountsFab => 'Nouveau';
 
   @override
   String get editAccountTitleAdd => 'Ajouter un compte';
@@ -317,9 +162,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get editAccountNameLabel => 'Nom du compte (ex: Salon, Vacances...)';
-
-  @override
-  String get editAccountNameHint => 'Mon Compte IPTV';
 
   @override
   String get editAccountNameRequired => 'Requis';
@@ -347,33 +189,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get editAccountPasswordLabel => 'Mot de passe';
 
   @override
-  String get editAccountPlaylistTypeLabel => 'Type de playlist';
-
-  @override
-  String get editAccountPlaylistTypeM3u => 'M3U (Standard)';
-
-  @override
-  String get editAccountPlaylistTypeSimple => 'Simple (Lien unique)';
-
-  @override
-  String get editAccountCookiesLabel => 'Cookies (optionnel)';
-
-  @override
-  String get editAccountCookiesHint => 'ex: PHPSESSID=xxxxxx;';
-
-  @override
   String get editAccountSaveButton => 'Enregistrer';
-
-  @override
-  String get playerGenericError => 'Impossible de lire ce média.';
-
-  @override
-  String get playerLoading => 'Initialisation du lecteur...';
-
-  @override
-  String playerLoadingError(Object error) {
-    return 'Erreur de chargement: $error';
-  }
 
   @override
   String get settingsTitle => 'Paramètres';
@@ -626,9 +442,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get dlOrphanDeleteFailed => 'Android a refusé la suppression';
-
-  @override
-  String get dlOrphanPlay => 'Lire';
 
   @override
   String get commonDelete => 'Supprimer';
@@ -1795,18 +1608,6 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
-  String get relayBlockerLive =>
-      'Une chaîne en direct n\'a pas de fin : la conversion non plus. Elle n\'est proposée que sur un film ou un épisode.';
-
-  @override
-  String get relayBlockerLocal =>
-      'Un fichier déjà téléchargé ne peut pas être converti pour le téléviseur.';
-
-  @override
-  String get relayBlockerOther =>
-      'Cette source ne peut pas être relayée par le téléphone.';
-
-  @override
   String get relayBatteryPluggedOk =>
       'Le téléphone est branché, parfait pour un film.';
 
@@ -1840,16 +1641,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get relayConsentConfirm => 'Adapter et diffuser';
 
   @override
-  String relayConvertedUpTo(String position) {
-    return 'Converti jusqu\'à $position';
-  }
-
-  @override
-  String relayProgressPaused(String ahead, String percent) {
-    return '$ahead · $percent % · en pause';
-  }
-
-  @override
   String get playerLastEpisode => 'Dernier épisode disponible.';
 
   @override
@@ -1860,9 +1651,6 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get playerNoAudioTrack =>
       'Aucune piste audio lisible sur ce fichier — lecture sans son';
-
-  @override
-  String get playerResuming => 'Reprise de la lecture…';
 
   @override
   String playerReconnecting(int attempt, int max) {
@@ -2047,11 +1835,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get langPolish => 'Polonais';
 
   @override
-  String statsRealDefinition(String definition, String resolution) {
-    return 'réel $definition ($resolution)';
-  }
-
-  @override
   String get statsDecoding => 'Décodage';
 
   @override
@@ -2064,9 +1847,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get statsResolution => 'Résolution';
-
-  @override
-  String get statsAnnounced => 'Annoncé';
 
   @override
   String statsAnnouncedOversold(String announced) {
@@ -2123,11 +1903,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get nextEpTitle => 'ÉPISODE SUIVANT';
-
-  @override
-  String nextEpPlayNowIn(int seconds) {
-    return 'Lire maintenant  ·  ${seconds}s';
-  }
 
   @override
   String get nextEpPlay => 'Lire';
@@ -2206,11 +1981,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get fitFillSub => 'Remplit tout · image légèrement déformée';
-
-  @override
-  String relayProgressPlaying(String ahead, String percent) {
-    return '$ahead · $percent %';
-  }
 
   @override
   String get ctrlCastActive => 'Diffusion en cours';
@@ -2375,10 +2145,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get bkCreated => 'Sauvegarde créée';
-
-  @override
-  String get bkRememberPassword =>
-      'N\'oublie pas le mot de passe — il n\'est nulle part stocké.';
 
   @override
   String get bkCreateTitle => 'Créer une sauvegarde';
@@ -3215,11 +2981,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get memRefresh => 'Rafraîchir';
 
   @override
-  String memParsed(String size) {
-    return 'analysé $size';
-  }
-
-  @override
   String memEntriesAndSize(String count, String size) {
     return '$count entrées · $size';
   }
@@ -3314,12 +3075,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get settingsUsageReset => '🧹 Données d\'usage réinitialisées';
-
-  @override
-  String get updNetworkError => 'Erreur réseau';
-
-  @override
-  String get themePreviewMovieTitle => 'Titre du Film';
 
   @override
   String get errUnexpected => 'Une erreur inattendue est survenue.';

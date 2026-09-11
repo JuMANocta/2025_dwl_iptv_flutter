@@ -130,7 +130,9 @@ Future<void> verifierEtTelecharger({
         );
         return;
 
-    // CAS 2 : C'est déjà en cours, en attente ou en pause. On ouvre le moniteur.
+    // CAS 2 : C'est déjà en cours ou en attente. On ouvre le moniteur.
+    // (`paused` n'est jamais affecté — revue 2026-09-11, D3A-15 — : étiquette
+    // gardée pour l'exhaustivité du `switch`.)
       case DownloadStatus.downloading:
       case DownloadStatus.queued:
       case DownloadStatus.paused:

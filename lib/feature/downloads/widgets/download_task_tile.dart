@@ -385,10 +385,9 @@ class DownloadTaskTile extends StatelessWidget {
         return Icon(Icons.error, color: kError);
       case DownloadStatus.canceled:
         return Icon(Icons.cancel, color: kWarning);
+      // Revue 2026-09-11, D3A-15 — `paused` n'est jamais affecté : étiquette
+      // gardée pour l'exhaustivité, même rendu que la file d'attente.
       case DownloadStatus.paused:
-        // §dlTheme — était `Colors.blueGrey` : une couleur hors palette, qui
-        // ne bougeait pas d'un preset à l'autre.
-        return Icon(Icons.pause_circle, color: cs.onSurfaceVariant);
       case DownloadStatus.queued:
         return Icon(Icons.hourglass_top, color: cs.onSurfaceVariant);
       case DownloadStatus.finalizing:

@@ -103,9 +103,9 @@ extension on DownloadFilter {
   /// annulations — deux états qui appellent la même réaction : relancer.
   bool matches(DownloadStatus s) => switch (this) {
         DownloadFilter.all => true,
+        // Revue 2026-09-11, D3A-15 — `paused` n'est jamais affecté.
         DownloadFilter.active => s == DownloadStatus.downloading ||
             s == DownloadStatus.queued ||
-            s == DownloadStatus.paused ||
             s == DownloadStatus.finalizing,
         DownloadFilter.completed => s == DownloadStatus.completed,
         DownloadFilter.errors =>

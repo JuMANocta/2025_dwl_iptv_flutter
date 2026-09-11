@@ -48,9 +48,6 @@ class ExpirationAlertService {
     infos.value = next;
   }
 
-  /// Lecture synchrone d'un info (null si pas encore fetché ou pas Xtream).
-  static AccountInfo? getCached(String accountId) => infos.value[accountId];
-
   /// Retourne le nombre de jours avant expiration, négatif si expiré, null
   /// si pas de date disponible (info absente, ou compte non-Xtream).
   static int? daysUntilExpiration(String accountId) {

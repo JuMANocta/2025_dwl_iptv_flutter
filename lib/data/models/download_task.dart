@@ -7,7 +7,11 @@ enum DownloadStatus {
   completed,   // Terminé avec succès
   failed,      // Échec
   canceled,    // Annulé par l'utilisateur
-  paused,      // En pause (pour une future évolution)
+  // Revue 2026-09-11, D3A-15 — JAMAIS affecté (aucun chemin ne met une tâche
+  // en pause). ⛔ Ne pas retirer la valeur : l'ordre de l'enum est figé par
+  // la persistance par index (cf. [downloadStatusFromJson]) — la retirer
+  // décalerait `finalizing`. Ses branches mortes ont été retirées.
+  paused,
   finalizing,  // En cours de finalisation (déplacement du fichier)
 }
 

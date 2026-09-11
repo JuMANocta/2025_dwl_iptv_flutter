@@ -14,10 +14,10 @@ const Color kTextDarkSecondary = Color(0xFFE0E0E0);
 const Color kTextDarkPrimary = Color(0xFFFFFFFF);
 
 // ── Palette AetherStream (raw) ───────────────────────────────────────────────
-const Color kAetherPrimaryPurple  = Color(0xFF6A0DAD); // Violet historique (conservé pour compat)
+// Revue 2026-09-11, D4B-07 — `kAetherPrimaryPurple`, `kAetherVibrantMagenta`,
+// `kMatrixGreen`, `kProviderTag` et `kLangEpisode` n'avaient aucun lecteur :
+// retirés. La couleur principale se lit par `kAccentPrimary` (thème).
 const Color kAetherSecondaryCyan  = Color(0xFF00CED1); // Cyan/Turquoise
-const Color kAetherVibrantMagenta = Color(0xFFC71585); // Magenta
-const Color kMatrixGreen          = Color(0xFF00FF41); // Terminal Matrix green
 const Color kMatrixGreenDim       = Color(0xFF00C832); // Variante plus douce
 
 // ── Alias sémantiques dynamiques ─────────────────────────────────────────────
@@ -53,12 +53,6 @@ const Color kQualityUnknown = Color(0xFFF0EAD6);
 /// en croyant prendre un flux normal.
 const Color kQualityCam = Color(0xFFFF6D00);
 
-/// §providerTag — Marqueur de tête du fournisseur (FR, US, IT, RU, PPV…).
-/// Gris-bleu NEUTRE, volontairement en dehors du code couleur des qualités :
-/// ce n'est ni une qualité ni une langue, et l'afficher comme telle était
-/// précisément le défaut corrigé.
-const Color kProviderTag = Color(0xFF7E8FA6);
-
 // ── Diffuseurs (pastilles « Diffusé par » de la fiche) ──────────────────────
 /// Revue 2026-09-11, D4A-08 — La couleur de MARQUE d'un diffuseur, par nom
 /// normalisé (cf. `_normalizePlatform` de la fiche). Déplacée ici depuis
@@ -88,7 +82,6 @@ const Color kLangVF      = kAetherSecondaryCyan;  // Cyan
 /// VOSTFR (même nature : version originale + sous-titres), en plus sourd pour
 /// rester distinguable d'un coup d'œil.
 const Color kLangLeg     = Color(0xFFB8860B);     // Or sombre
-const Color kLangEpisode = kAetherSecondaryCyan;  // Cyan
 
 // ── Badges media type (player + fiches) ─────────────────────────────────────
 const Color kBadgeLive   = Color(0xFFE53935);       // Rouge direct

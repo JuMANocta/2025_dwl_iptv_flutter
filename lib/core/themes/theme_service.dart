@@ -72,6 +72,4 @@ class ThemeService {
   }
 
   static bool get isLight => effectiveBrightness == Brightness.light;
-
-  static Future<void> reset() => save(AppThemeConfig.defaults);
 }

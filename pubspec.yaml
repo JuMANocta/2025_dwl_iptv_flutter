@@ -80,7 +80,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_launcher_icons: ^0.14.4
-  flutter_native_splash: ^2.4.0
+  # Revue 2026-09-11, D5A-16 — `flutter_native_splash` RETIRÉ : sa config est
+  # commentée (plus bas), aucun fichier ne l'importe, et son plugin Android ne
+  # fait que répondre `getPlatformVersion` (aucune ressource, manifeste vide).
+  # Le splash vient de NOS drawables/styles, édités à la main : rien ne change
+  # au rendu. ⛔ Ne pas le remettre « au cas où » (cf. la note plus bas).
   flutter_lints: ^6.0.0
 
 flutter:
@@ -110,7 +114,8 @@ flutter_launcher_icons:
 #
 # Ne PAS relancer `dart run flutter_native_splash:create` sans réactiver cette
 # config — ça remplacerait nos drawables ET nos couleurs. Pour réactiver :
-# décommenter le bloc ci-dessous + regénérer.
+# re-déclarer `flutter_native_splash` en dev_dependency (retiré le 2026-09-11,
+# revue D5A-16), décommenter le bloc ci-dessous + regénérer.
 #
 # flutter_native_splash:
 #   android: true

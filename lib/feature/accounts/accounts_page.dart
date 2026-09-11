@@ -41,11 +41,9 @@ import 'package:aetherStream/widgets/sheet_close_tile.dart';
 ///   - Menu contextuel ⋯ par compte : Modifier · Vider le cache · Supprimer
 ///   - FAB "Ajouter" inchangé
 class AccountsPage extends StatefulWidget {
-  const AccountsPage({super.key, this.initialPlaylistPath});
-
-  /// Chemin pré-résolu de la playlist du compte courant — non utilisé dans
-  /// la version refondue mais conservé pour la rétro-compatibilité du call site.
-  final String? initialPlaylistPath;
+  // Revue 2026-09-11, D4B-07 — `initialPlaylistPath` (non utilisé depuis la
+  // refonte, passé par aucun appelant) : retiré.
+  const AccountsPage({super.key});
 
   @override
   State<AccountsPage> createState() => _AccountsPageState();

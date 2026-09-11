@@ -64,12 +64,10 @@ enum PlayerBadgeType {
 }
 
 class PlayerPage extends StatefulWidget {
-  /// §nextEpPortrait — Vestige de l'ancien enchaînement pop/push d'épisodes,
-  /// devenu **inutile** depuis §episodeMeta : on ne démonte plus le player pour
-  /// changer d'épisode, donc plus de `dispose()` qui restaurait le portrait par
-  /// dessus l'`initState` landscape du suivant. Conservé (toujours `false`) le
-  /// temps de valider sur appareil, à retirer ensuite.
-  static bool suppressOrientationRestore = false;
+  // Revue 2026-09-11, D2A-09 — `suppressOrientationRestore` (§nextEpPortrait)
+  // n'était jamais mis à `true` : vestige de l'enchaînement pop/push
+  // d'épisodes, inutile depuis §episodeMeta (validé le 2026-08-17). Retiré ;
+  // l'orientation de sortie ne dépend plus que de `PlatformTv.isTv`.
 
   final String path;
   final String title;
@@ -1383,10 +1381,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   ///
   /// ⚠️ §tourFix (2026-09-02) — Chemin actuellement INATTEIGNABLE : il n'est
   /// déclenché que par [isAudioDecodeError], qui reconnaît des libellés
-  /// d'erreur **mpv**, alors que Media3Engine n'émet plus qu'une chaîne
-  /// constante ('Lecture impossible'). Conservé tel quel : la logique de
-  /// bascule reste juste, le rebranchement se fera sur les erreurs typées
-  /// Media3 (§engineFeatures) — cf. l'en-tête de `player_error.dart`.
+  /// d'erreur **mpv**, alors que Media3Engine émet (depuis §liveRecover) une
+  /// phrase traduite construite à partir du CODE d'erreur Media3
+  /// (`playbackErrorMessage`) — jamais un libellé mpv. ⚠️ Et
+  /// `Media3Engine.disableAudio()` est vide : la branche « lecture sans son »
+  /// l'annoncerait sans rien couper. Conservé tel quel en attendant la
+  /// décision (rebrancher sur les codes typés, ou retirer) — cf. l'en-tête de
+  /// `player_error.dart` (revue 2026-09-11, D2A-10).
   ///
   /// Retourne `true` si on a pris la main (donc pas de retry réseau : le flux
   /// n'a rien fait de mal, c'est la piste choisie qui ne se décode pas).
@@ -1786,15 +1787,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // §3c-bis — Sur TV, la sortie du player NE DOIT PAS basculer en portrait
     // (la TV n'a pas de portrait, ça casserait toute l'UI). On reste en
     // landscape. Sur mobile, on restaure le comportement portrait par défaut.
-    if (PlatformTv.isTv || PlayerPage.suppressOrientationRestore) {
-      // TV : jamais de portrait. §nextEpPortrait : enchaînement épisode suivant
-      // → on garde landscape pour ne pas écraser l'orientation du player qui suit.
+    if (PlatformTv.isTv) {
+      // TV : jamais de portrait.
       SystemChrome.setPreferredOrientations(const [
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
-      PlayerPage.suppressOrientationRestore =
-          false; // réarme pour la prochaine sortie
     } else {
       SystemChrome.setPreferredOrientations(const [
         DeviceOrientation.portraitUp,
@@ -2093,7 +2091,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   void _onPlayerPop(bool didPop, Object? _) {
     if (!didPop) return;
     debugPrint('⏱️ §exitCost — retour demande');
-    if (PlatformTv.isTv || PlayerPage.suppressOrientationRestore) return;
+    if (PlatformTv.isTv) return;
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,

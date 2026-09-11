@@ -71,7 +71,12 @@ class LastWatchedChannelService {
   /// de TV ou si le cache n'est pas encore chargé).
   static LastWatchedChannel? get current => _cache;
 
-  /// Enregistre la chaîne courante. Idempotent (skip si même URL).
+  /// Enregistre la chaîne courante (même URL : titre, logo et date rafraîchis).
+  ///
+  /// Revue 2026-09-11, D1B-20 — Les branches « même chaîne » et « autre
+  /// chaîne » construisaient la MÊME valeur : fusionnées. La doc promettait un
+  /// « skip si même URL » qui n'a jamais existé — on réécrit toujours, et on
+  /// notifie toujours.
   static Future<void> save({
     required String url,
     required String title,
@@ -79,24 +84,13 @@ class LastWatchedChannelService {
     String? logoUrl,
   }) async {
     await _ensureLoaded();
-    if (_cache?.url == url) {
-      // Même chaîne — on bump juste la date pour le tri ultérieur éventuel.
-      _cache = LastWatchedChannel(
-        url: url,
-        title: title,
-        tvgId: tvgId,
-        logoUrl: logoUrl,
-        watchedAt: DateTime.now(),
-      );
-    } else {
-      _cache = LastWatchedChannel(
-        url: url,
-        title: title,
-        tvgId: tvgId,
-        logoUrl: logoUrl,
-        watchedAt: DateTime.now(),
-      );
-    }
+    _cache = LastWatchedChannel(
+      url: url,
+      title: title,
+      tvgId: tvgId,
+      logoUrl: logoUrl,
+      watchedAt: DateTime.now(),
+    );
     version.value++;
     try {
       final prefs = await SharedPreferences.getInstance();

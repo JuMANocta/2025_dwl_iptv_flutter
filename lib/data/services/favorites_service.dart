@@ -488,27 +488,6 @@ class FavoritesService {
     }
   }
 
-  /// Retire un favori. Idempotent.
-  static Future<void> remove(String key) async {
-    await _ensureLoaded();
-    if (_cache.remove(key)) {
-      version.value++;
-      await _persist();
-      debugPrint('🗑️ FavoritesService: retrait — $key');
-    }
-  }
-
-  /// Toggle un favori. Retourne le nouvel état (`true` = favori ajouté).
-  static Future<bool> toggle(String key) async {
-    await _ensureLoaded();
-    if (_cache.contains(key)) {
-      await remove(key);
-      return false;
-    }
-    await add(key);
-    return true;
-  }
-
   /// Vide tous les favoris (action destructive, utilisée pour reset/debug).
   static Future<void> clear() async {
     if (_cache.isEmpty) return;

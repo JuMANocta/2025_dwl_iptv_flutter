@@ -68,14 +68,6 @@ class OnboardingService {
       await prefs.setBool(_prefsKey, true);
     } catch (_) {}
   }
-
-  /// Debug : reset l'onboarding.
-  static Future<void> reset() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_prefsKey);
-    } catch (_) {}
-  }
 }
 
 class OnboardingPage extends StatefulWidget {

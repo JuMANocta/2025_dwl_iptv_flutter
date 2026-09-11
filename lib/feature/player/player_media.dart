@@ -123,24 +123,8 @@ class PlayerMedia {
     return a != b;
   }
 
-  PlayerMedia copyWith({String? path, Duration? startPosition}) => PlayerMedia(
-        path: path ?? this.path,
-        title: title,
-        qualityTag: qualityTag,
-        episodeTag: episodeTag,
-        seriesName: seriesName,
-        synopsis: synopsis,
-        sourceType: sourceType,
-        badgeType: badgeType,
-        replayStart: replayStart,
-        replayDuration: replayDuration,
-        startPosition: startPosition ?? this.startPosition,
-        progressKey: progressKey,
-        siblingResumeKeys: siblingResumeKeys,
-        seasonNumber: seasonNumber,
-        accountId: accountId,
-        posterUrl: posterUrl,
-      );
+  // Revue 2026-09-11, D2A-11 — `copyWith` n'avait plus aucun appelant dans
+  // `lib/` (seul un test le couvrait) : retiré avec ce test.
 }
 
 /// §nowPlaying — Ce que la notification de lecture doit afficher pour [m].

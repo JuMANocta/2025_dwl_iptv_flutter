@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 ///
 /// Usage dans un widget :
 ///   final ext = Theme.of(context).extension[AetherThemeExtension]()!;
-///   decoration: ext.glowBorder()
+///   decoration: ext.glassCard()
+///
+/// Revue 2026-09-11, D4B-07 — `glowBorder()` et `focusBorderWidth` n'avaient
+/// aucun lecteur : retirés. ⚠️ L'épaisseur de la bordure de focus n'est PAS
+/// thémable — `FocusableCard` et `FocusableChip` la codent eux-mêmes.
 class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
   final Color primaryColor;
   final Color accentColor;
@@ -20,8 +24,6 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
   final double borderRadius;  // px
   /// §3c-2 — couleur de la bordure/glow lorsqu'un widget reçoit le focus (Android TV).
   final Color focusGlowColor;
-  /// §3c-2 — épaisseur de la bordure de focus (en px).
-  final double focusBorderWidth;
 
   const AetherThemeExtension({
     required this.primaryColor,
@@ -34,25 +36,7 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
     required this.glowIntensity,
     required this.borderRadius,
     required this.focusGlowColor,
-    this.focusBorderWidth = 2.0,
   });
-
-  /// Bordure lumineuse avec glow optionnel.
-  BoxDecoration glowBorder({Color? color, double? intensityOverride}) {
-    final c = color ?? accentColor;
-    final i = intensityOverride ?? glowIntensity;
-    return BoxDecoration(
-      border: Border.all(color: c.withAlpha((255 * 0.6).round()), width: 1.0),
-      borderRadius: BorderRadius.circular(borderRadius),
-      boxShadow: i == 0
-          ? null
-          : [BoxShadow(
-              color: c.withAlpha((255 * 0.3 * i).round()),
-              blurRadius: 8 * i,
-              spreadRadius: 1,
-            )],
-    );
-  }
 
   /// Fond semi-transparent avec glow subtil (cartes home).
   BoxDecoration glassCard({Color? bg}) => BoxDecoration(
@@ -79,7 +63,6 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
     double? glowIntensity,
     double? borderRadius,
     Color? focusGlowColor,
-    double? focusBorderWidth,
   }) => AetherThemeExtension(
     primaryColor:     primaryColor     ?? this.primaryColor,
     accentColor:      accentColor      ?? this.accentColor,
@@ -91,7 +74,6 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
     glowIntensity:    glowIntensity    ?? this.glowIntensity,
     borderRadius:     borderRadius     ?? this.borderRadius,
     focusGlowColor:   focusGlowColor   ?? this.focusGlowColor,
-    focusBorderWidth: focusBorderWidth ?? this.focusBorderWidth,
   );
 
   @override
@@ -108,7 +90,6 @@ class AetherThemeExtension extends ThemeExtension<AetherThemeExtension> {
       glowIntensity:    glowIntensity    + (other.glowIntensity    - glowIntensity)    * t,
       borderRadius:     borderRadius     + (other.borderRadius     - borderRadius)     * t,
       focusGlowColor:   Color.lerp(focusGlowColor,  other.focusGlowColor,  t)!,
-      focusBorderWidth: focusBorderWidth + (other.focusBorderWidth - focusBorderWidth) * t,
     );
   }
 }

@@ -1455,8 +1455,6 @@ class M3uEntry {
     this.addedAt,
   });
 
-  bool get supportsCatchup => catchupDays != null && catchupDays! > 0;
-
   String get rawTitle    => title.rawTitle;
   String get displayName => title.baseTitle;
   bool   get isSerie     => type == M3uContentType.series;

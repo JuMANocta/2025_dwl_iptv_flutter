@@ -15,12 +15,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noDownloads => 'No downloads';
 
   @override
-  String get downloadDialogTitle => 'Start Download';
-
-  @override
-  String get downloadDialogFileNameLabel => 'File name';
-
-  @override
   String get downloadDialogFileSizeLabel => 'File size';
 
   @override
@@ -34,9 +28,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get download => 'Download';
-
-  @override
-  String get denied => 'Permission denied. The download cannot begin.';
 
   @override
   String get terminalTitle => '//:FLUX_DOWNLOAD_INTERFACE';
@@ -70,9 +61,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalSpeedMessage => 'Speed';
 
   @override
-  String get terminalRetryCountMessage => 'Retries';
-
-  @override
   String get terminalEtaMessage => 'ETA';
 
   @override
@@ -91,70 +79,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalAbortButton => '[ PAUSE ]';
 
   @override
-  String get searchPageDownloadsTooltip => 'See downloads';
-
-  @override
-  String get searchPageReloadTooltip => 'Reload playlist';
-
-  @override
-  String get searchPageAccountsTooltip => 'Accounts and Settings';
-
-  @override
-  String get searchPageLoadingError => 'Could not load playlist';
-
-  @override
-  String get searchPageRetryButton => 'Retry';
-
-  @override
-  String get searchPageProcessingError => 'Error processing playlist:';
-
-  @override
-  String get searchFieldHint => 'Search...';
-
-  @override
-  String get searchFilterFilms => 'Movies';
-
-  @override
-  String get searchFilterSeries => 'Series';
-
-  @override
-  String get searchFilterTv => 'TV';
-
-  @override
-  String get searchNoResults => 'No results found.';
-
-  @override
-  String get searchNoContent => 'No content to display.';
-
-  @override
-  String get actionSheetChooseVersion => 'Choose a version for:';
-
-  @override
-  String chipSeasons(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count Seasons',
-      one: '1 Season',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String chipEpisodes(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count Ep.',
-      one: '1 Ep.',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String get season => 'Season';
-
-  @override
   String get episode => 'Episode';
 
   @override
@@ -167,14 +91,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionSheetPlay => 'Play';
 
   @override
-  String get actionSheetPlaySubtitle => 'Starts playback (automatic caching).';
-
-  @override
   String get actionSheetDownload => 'Download in background';
-
-  @override
-  String get actionSheetDownloadSubtitle =>
-      'To watch later without a connection.';
 
   @override
   String get deleteDialogTitle => 'Delete file?';
@@ -188,9 +105,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deleteDialogConfirmButton => 'Delete';
-
-  @override
-  String get deleteTooltip => 'Delete permanently';
 
   @override
   String get taskStatusDownloading => 'Downloading...';
@@ -224,85 +138,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taskStatusUnknownError => 'Unknown error';
 
   @override
-  String get playlistCardSubtitleNone =>
-      'No playlist downloaded in this context.';
-
-  @override
-  String playlistCardSubtitleLastFile(Object path) {
-    return 'Last file: $path';
-  }
-
-  @override
-  String get playlistDownloadButton => 'Download / Update';
-
-  @override
-  String get playlistDeleteButton => 'Delete';
-
-  @override
-  String get playlistManagementTip =>
-      'Tip: You can also reload the playlist from the settings gear or via the refresh icon on the search screen.';
-
-  @override
   String get accountsTitle => 'Account Management';
 
   @override
   String get deleteAccountDialogTitle => 'Delete account?';
 
   @override
-  String get deleteAccountDialogContent => 'This action is permanent.';
-
-  @override
   String get deleteAccountConfirm => 'Delete';
-
-  @override
-  String get playlistInfoChecking => 'Checking playlist...';
-
-  @override
-  String get playlistInfoUnavailable =>
-      'No playlist available or loading error.';
-
-  @override
-  String get playlistInfoTryReload => 'Try reloading';
-
-  @override
-  String get playlistInfoLocalFile => 'Local playlist file';
-
-  @override
-  String get playlistInfoSize => 'Size';
-
-  @override
-  String get playlistInfoLastUpdate => 'Upd.';
-
-  @override
-  String get playlistInfoEntries => 'Entries';
-
-  @override
-  String get playlistInfoReloadButton => 'Reload';
-
-  @override
-  String get playlistInfoDeleteButton => 'Delete';
-
-  @override
-  String get accountsListEmpty => 'Add an account';
-
-  @override
-  String accountModeComplete(Object host) {
-    return 'Mode: Full URL — $host';
-  }
-
-  @override
-  String accountModeSeparate(Object host, Object username) {
-    return 'Mode: Separate — $username@$host';
-  }
 
   @override
   String get accountActionEdit => 'Edit';
 
   @override
   String get accountActionDelete => 'Delete';
-
-  @override
-  String get accountsFab => 'New';
 
   @override
   String get editAccountTitleAdd => 'Add Account';
@@ -313,9 +161,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get editAccountNameLabel =>
       'Account name (e.g., Living Room, Vacation...)';
-
-  @override
-  String get editAccountNameHint => 'My IPTV Account';
 
   @override
   String get editAccountNameRequired => 'Required';
@@ -342,33 +187,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get editAccountPasswordLabel => 'Password';
 
   @override
-  String get editAccountPlaylistTypeLabel => 'Playlist type';
-
-  @override
-  String get editAccountPlaylistTypeM3u => 'M3U (Standard)';
-
-  @override
-  String get editAccountPlaylistTypeSimple => 'Simple (Single link)';
-
-  @override
-  String get editAccountCookiesLabel => 'Cookies (optional)';
-
-  @override
-  String get editAccountCookiesHint => 'e.g., PHPSESSID=xxxxxx;';
-
-  @override
   String get editAccountSaveButton => 'Save';
-
-  @override
-  String get playerGenericError => 'Unable to play this media.';
-
-  @override
-  String get playerLoading => 'Initializing player...';
-
-  @override
-  String playerLoadingError(Object error) {
-    return 'Loading error: $error';
-  }
 
   @override
   String get settingsTitle => 'Settings';
@@ -617,9 +436,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dlOrphanDeleteFailed => 'Android refused the deletion';
-
-  @override
-  String get dlOrphanPlay => 'Play';
 
   @override
   String get commonDelete => 'Delete';
@@ -1781,17 +1597,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get relayBlockerLive =>
-      'A live channel has no end, and neither would the conversion. It is only offered on a movie or an episode.';
-
-  @override
-  String get relayBlockerLocal =>
-      'A file that is already downloaded cannot be converted for the TV.';
-
-  @override
-  String get relayBlockerOther => 'This source cannot be relayed by the phone.';
-
-  @override
   String get relayBatteryPluggedOk =>
       'The phone is plugged in, perfect for a movie.';
 
@@ -1825,16 +1630,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get relayConsentConfirm => 'Adapt and cast';
 
   @override
-  String relayConvertedUpTo(String position) {
-    return 'Converted up to $position';
-  }
-
-  @override
-  String relayProgressPaused(String ahead, String percent) {
-    return '$ahead · $percent% · paused';
-  }
-
-  @override
   String get playerLastEpisode => 'Last available episode.';
 
   @override
@@ -1845,9 +1640,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get playerNoAudioTrack =>
       'No playable audio track in this file — playing without sound';
-
-  @override
-  String get playerResuming => 'Resuming playback…';
 
   @override
   String playerReconnecting(int attempt, int max) {
@@ -2031,11 +1823,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get langPolish => 'Polish';
 
   @override
-  String statsRealDefinition(String definition, String resolution) {
-    return 'actual $definition ($resolution)';
-  }
-
-  @override
   String get statsDecoding => 'Decoding';
 
   @override
@@ -2048,9 +1835,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get statsResolution => 'Resolution';
-
-  @override
-  String get statsAnnounced => 'Announced';
 
   @override
   String statsAnnouncedOversold(String announced) {
@@ -2107,11 +1891,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get nextEpTitle => 'NEXT EPISODE';
-
-  @override
-  String nextEpPlayNowIn(int seconds) {
-    return 'Play now  ·  ${seconds}s';
-  }
 
   @override
   String get nextEpPlay => 'Play';
@@ -2190,11 +1969,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fitFillSub => 'Fills everything · slightly distorted picture';
-
-  @override
-  String relayProgressPlaying(String ahead, String percent) {
-    return '$ahead · $percent%';
-  }
 
   @override
   String get ctrlCastActive => 'Casting';
@@ -2359,10 +2133,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get bkCreated => 'Backup created';
-
-  @override
-  String get bkRememberPassword =>
-      'Do not forget the password — it is stored nowhere.';
 
   @override
   String get bkCreateTitle => 'Create a backup';
@@ -3195,11 +2965,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get memRefresh => 'Refresh';
 
   @override
-  String memParsed(String size) {
-    return 'parsed $size';
-  }
-
-  @override
   String memEntriesAndSize(String count, String size) {
     return '$count entries · $size';
   }
@@ -3292,12 +3057,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsUsageReset => '🧹 Usage data reset';
-
-  @override
-  String get updNetworkError => 'Network error';
-
-  @override
-  String get themePreviewMovieTitle => 'Movie Title';
 
   @override
   String get errUnexpected => 'An unexpected error occurred.';

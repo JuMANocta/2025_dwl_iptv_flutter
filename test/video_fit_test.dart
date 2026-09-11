@@ -24,12 +24,6 @@ void main() {
       );
     });
 
-    test('next boucle sur les trois modes', () {
-      expect(VideoFitMode.original.next, VideoFitMode.zoom);
-      expect(VideoFitMode.zoom.next, VideoFitMode.stretch);
-      expect(VideoFitMode.stretch.next, VideoFitMode.original);
-    });
-
     test('tout mode a un libellé et une description non vides', () {
       // Le menu NOMME les modes (sur une source déjà plein cadre, les trois
       // rendus sont identiques — sans libellé le bouton paraîtrait cassé).

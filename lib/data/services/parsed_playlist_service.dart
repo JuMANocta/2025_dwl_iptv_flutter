@@ -99,7 +99,7 @@ class ParsedPlaylistService {
 
   /// Marque un compte comme "accédé récemment" → reset son délai d'idle.
   /// Appelé automatiquement par tous les accesseurs ([entries],
-  /// [entriesWithPriority], [byTypeWithPriority], [getAccount]).
+  /// [byTypeWithPriority], [getAccount]).
   static void markAccessed(String accountId) {
     _lastAccess[accountId] = DateTime.now();
   }
@@ -748,19 +748,6 @@ class ParsedPlaylistService {
   static List<M3uEntry> get entries {
     _touchAllLoaded();
     return _memory.values.expand((p) => p.entries).toList();
-  }
-
-  /// Entrées avec le compte prioritaire en PREMIER.
-  /// À utiliser dans RechercheM3U pour que putIfAbsent donne la priorité
-  /// aux URLs/qualités du compte actif sur les autres comptes chargés.
-  static List<M3uEntry> entriesWithPriority(String priorityAccountId) {
-    _touchAllLoaded();
-    final priority = _memory[priorityAccountId]?.entries ?? [];
-    final others   = _memory.entries
-        .where((e) => e.key != priorityAccountId)
-        .expand((e) => e.value.entries)
-        .toList();
-    return [...priority, ...others];
   }
 
   /// §perfBigList — Entrées DÉJÀ splittées par type, compte prioritaire d'abord.

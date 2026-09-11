@@ -67,12 +67,9 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
 
         fun getActivity(): Activity? = currentActivity
 
-        /**
-         * Get all registered video player views
-         * Used by MainActivity to trigger automatic PiP on user leave hint
-         */
-        fun getAllViews(): Collection<VideoPlayerView> =
-            registeredViews.values.filterIsInstance<VideoPlayerView>()
+        // Patch 20 (revue 2026-09-11, D2B-09) — `getAllViews()` retiré : aucun
+        // appelant (son commentaire « Used by MainActivity » était faux ; le
+        // PiP passe par le canal maison `aetherstream/pip`, §pipPhone).
 
         /**
          * Registers the StreamHandler for `native_video_player_controller_<id>`.

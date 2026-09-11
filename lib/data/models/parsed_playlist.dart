@@ -2,8 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 
 /// Résultat complet du parsing d'une playlist M3U pour un compte donné.
-/// Sert de container sérialisable pour le cache disque (JSON.gz) et de source
-/// de vérité en mémoire pour toute l'application.
+/// Source de vérité en mémoire pour toute l'application ; le cache disque
+/// (JSON.gz) est écrit et relu EN FLUX par `ParsedPlaylistService`
+/// (§ramDiet : en-tête puis une entrée par ligne).
+///
+/// Revue 2026-09-11, D1A-15 — `toJson` / `fromJson` n'avaient aucun appelant :
+/// retirés. ⛔ Ne pas les réintroduire pour le cache : un `jsonEncode` /
+/// `jsonDecode` d'un bloc matérialise tout le catalogue en mémoire et
+/// contourne §ramDiet.
 class ParsedPlaylist {
   /// Version du schéma de sérialisation.
   /// Incrémenter quand la structure de [M3uEntry] ou [TitleMetadata] change
@@ -30,24 +36,6 @@ class ParsedPlaylist {
   late final List<M3uEntry> films  = entries.where((e) => e.type == M3uContentType.movie).toList();
   late final List<M3uEntry> series = entries.where((e) => e.type == M3uContentType.series).toList();
   late final List<M3uEntry> tv     = entries.where((e) => e.type == M3uContentType.tv).toList();
-
-  // ── Sérialisation ─────────────────────────────────────────────────────────
-
-  Map<String, dynamic> toJson() => {
-    'schema':       schema,
-    'accountId':    accountId,
-    'm3uModAt':     m3uModifiedAt.toIso8601String(),
-    'entries':      entries.map((e) => e.toJson()).toList(),
-  };
-
-  factory ParsedPlaylist.fromJson(Map<String, dynamic> j) => ParsedPlaylist(
-    schema:       j['schema']    as int,
-    accountId:    j['accountId'] as String,
-    m3uModifiedAt: DateTime.parse(j['m3uModAt'] as String),
-    entries:      (j['entries'] as List)
-        .map((e) => M3uEntry.fromJson(e as Map<String, dynamic>))
-        .toList(),
-  );
 }
 
 /// §secondaryCounts — Totaux par type d'une playlist.

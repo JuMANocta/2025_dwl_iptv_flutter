@@ -345,14 +345,7 @@ class ReplayService {
     return DateTime.tryParse(s)?.toLocal();
   }
 
-  /// Vérifie si un flux a du replay : au moins un programme avec has_archive=true.
-  /// get_short_epg retourne les programmes à venir — si le serveur y indique has_archive,
-  /// c'est que le stream supporte le catchup de façon générale.
-  Future<bool> hasReplay(int streamId, {String? streamUrl}) async {
-    debugPrint('🔍 ReplayService: Vérification replay — streamId: $streamId');
-    final programs = await fetchShortEpg(streamId, limit: 10, streamUrl: streamUrl);
-    final supported = programs.any((p) => p.hasArchive);
-    debugPrint(supported ? '✅ ReplayService: Replay supporté (has_archive=true trouvé).' : '📭 ReplayService: Pas de replay (has_archive=false sur tous les programmes).');
-    return supported;
-  }
+  // Revue 2026-09-11, D5L-02 / D1B-20 — `hasReplay` (détection de replay par
+  // `get_short_epg`) n'avait aucun appelant : retirée. Une détection future
+  // devra repasser par le client IPTV corrigé (D5A-03), pas la ressusciter.
 }

@@ -2,7 +2,6 @@ package com.huddlecommunity.better_native_video_player.handlers
 
 import com.huddlecommunity.better_native_video_player.NpLog
 
-import android.app.Activity
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -219,7 +218,8 @@ class VideoPlayerMethodHandler(
     // aujourd'hui cesserait de marcher, sans message clair.
     //
     // /!\ CE CLIENT N'EST CONSTRUIT QUE SUR DEMANDE EXPLICITE, par flux.
-    // Même discipline que `NetworkUtils.buildBaseDio(allowInvalidCertificate:)`
+    // Même discipline que `NetworkUtils.buildIptvBaseDio()` (patch 20, revue
+    // 2026-09-11, D1B-21 — ex-`buildBaseDio(allowInvalidCertificate:)`)
     // côté Dart : TMDB, GitHub et XMLTV gardent une validation stricte. Ne
     // JAMAIS le rendre global ni le passer par défaut — ce serait ouvrir toute
     // l'app à l'interception.
@@ -453,9 +453,8 @@ class VideoPlayerMethodHandler(
     }
 
     private var availableQualities: List<Map<String, Any>> = emptyList()
-    private var isAutoQuality = false
-    private var lastBitrateCheck = 0L
-    private val bitrateCheckInterval = 5000L // 5 seconds
+    // Patch 20 (revue 2026-09-11, D2B-09) — `isAutoQuality` (écrit, jamais
+    // lu), `lastBitrateCheck` et `bitrateCheckInterval` (jamais lus) retirés.
     private var currentVideoIsHls = false // Track if current video is HLS for quality switching
 
     // Ingredients of the last load, kept so sidecar subtitles can be attached
@@ -1262,7 +1261,6 @@ class VideoPlayerMethodHandler(
         }
 
         val isAuto = qualityInfo["isAuto"] as? Boolean ?: false
-        isAutoQuality = isAuto
 
         if (isAuto) {
             // Lift the manual ceiling so ABR resumes. Use MAX rather than
@@ -1443,26 +1441,6 @@ class VideoPlayerMethodHandler(
         NpLog.d(TAG, "AirPlay disconnect requested but not supported on Android")
         // Simply return success - AirPlay is not available on Android
         result.success(null)
-    }
-
-    /**
-     * Helper method to get Activity from Context, handling ContextWrapper cases
-     * Same pattern as used in VideoPlayerView
-     */
-    private fun getActivity(ctx: Context?): Activity? {
-        if (ctx == null) {
-            return null
-        }
-
-        if (ctx is Activity) {
-            return ctx
-        }
-
-        if (ctx is android.content.ContextWrapper) {
-            return getActivity(ctx.baseContext)
-        }
-
-        return null
     }
 
 

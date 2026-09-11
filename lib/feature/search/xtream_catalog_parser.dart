@@ -179,7 +179,7 @@ class XtreamCatalogParser {
 
   // §langFilter + §langFilterCat — Une entrée dont la région est masquée est
   // SAUTÉE → jamais stockée. La région est détectée par le **préfixe `|XX|` du
-  // titre** (`entryRegionLabel`) OU par sa **catégorie** ([cat] =
+  // titre** (`entryRegionLabels`) OU par sa **catégorie** ([cat] =
   // `contentCategoryLabel(groupTitle)`) : certains providers encodent la région
   // dans la CATÉGORIE (ex. « Films Italiens ») et pas dans le titre → sans ce
   // 2e test, la rangée région réapparaissait. Court-circuit si rien n'est masqué.

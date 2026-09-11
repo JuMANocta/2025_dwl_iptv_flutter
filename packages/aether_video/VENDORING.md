@@ -201,6 +201,43 @@ n'y est plus passée que sur un build débogable (le message, lui, reste).
 Numéroté 19 à la fusion : le lot 3 de la même revue a pris les patchs 15 à 18
 (voir plus bas).
 
+## patch 20 — code mort retiré du natif, restes versionnés supprimés (2026-09-11, revue de code, lot 6)
+
+Suppression pure : aucun comportement ne change. Chaque symbole a été regrepé
+dans `lib/`, `test/`, `android/` et `packages/` juste avant sa suppression
+(y compris noms de canaux et chaînes de méthode).
+
+**D2B-09 (a)** — `VideoPlayerNotificationHandler` : `startPositionUpdates` /
+`stopPositionUpdates` et leur `positionUpdateRunnable`. Le Runnable n'avait
+pour corps que `handler.postDelayed(this, 1000)` : un réveil du looper
+principal par seconde pendant toute la vie de la session, pour rien —
+`MediaSession` publie seule la position d'ExoPlayer. `handler` reste (deux
+autres usages).
+**(b)** — `bitmapToByteArray` : définition seule.
+**(c)** — `VideoPlayerMethodHandler` : `isAutoQuality` (écrit, jamais lu),
+`lastBitrateCheck` et `bitrateCheckInterval` (jamais lus), et le
+`getActivity(ctx)` privé qui ne s'appelait que lui-même (import `Activity`
+retiré avec lui).
+**(d)** — `NativeVideoPlayerPlugin.getAllViews()` : aucun appelant ; son
+commentaire « Used by MainActivity » était faux (le PiP passe par le canal
+maison `aetherstream/pip`, §pipPhone).
+⏳ **(e) NON traité** : le canal `native_video_player/assets`
+(`resolveAssetPath`) n'a aucun appelant Dart, mais c'est une API amont hors de
+la réserve §engineFeatures — à retirer seulement sur décision explicite.
+
+**D2B-19** — Restes versionnés supprimés :
+`android/src/test/kotlin/com/example/native_video_player/NativeVideoPlayerPluginTest.kt`
+(appelait `onMethodCall` et `getPlatformVersion`, qui n'existent pas : un
+`./gradlew test` du module ne compilait pas) et
+`packages/better_native_video_extractor/analysis_options.yaml` (seul fichier
+restant du sous-paquet supprimé le 2026-09-01, cf. « Écarts »).
+
+**D1B-21** — commentaires seulement : `load(allowInvalidCertificate:)` dans
+`native_video_player_controller.dart` et le bloc « client OkHttp tolérant »
+de `VideoPlayerMethodHandler.kt` citaient `NetworkUtils.buildBaseDio` ; il
+s'appelle désormais `buildIptvBaseDio()` côté app (le second oubli a été
+trouvé à la relecture).
+
 ## patch 14 — la libération du lecteur ne gèle plus la sortie (2026-09-06)
 
 `VideoPlayerMethodHandler.handleDispose` appelait `SharedPlayerManager.removePlayer`

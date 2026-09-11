@@ -2,14 +2,11 @@
   "@@locale": "fr",
   "downloadManagerTitle": "Gestion des Téléchargements",
   "noDownloads": "Aucun téléchargement",
-  "downloadDialogTitle": "Démarrer le téléchargement",
-  "downloadDialogFileNameLabel": "Nom du fichier",
   "downloadDialogFileSizeLabel": "Taille du fichier",
   "downloadDialogFileTypeLabel": "Type de fichier",
   "downloadDialogUnknownSize": "Inconnue",
   "cancel": "Annuler",
   "download": "Télécharger",
-  "denied": "Permission refusée. Le téléchargement ne peut pas commencer.",
   "terminalTitle": "//:FLUX_DOWNLOAD_INTERFACE",
   "terminalResumeMessage": "🔄 Reprise du téléchargement :\n🎞️ {fileName}",
   "terminalStartMessage": "ℹ️ Lancement du téléchargement :\n🎞️ {fileName}",
@@ -18,41 +15,21 @@
   "terminalSuccessMessage": "\n🟢 SUCCÈS : Téléchargement terminé !",
   "terminalFatalErrorMessage": "\n☣️ FATAL : Une erreur est survenue",
   "terminalSpeedMessage": "Vitesse",
-  "terminalRetryCountMessage": "Relances",
   "terminalEtaMessage": "Temps restant",
   "terminalElapsedMessage": "Temps écoulé",
   "terminalCancelMessage": "\nℹ️ ABANDON : Téléchargement annulé par l'utilisateur",
   "terminalCloseButton": "[ FERMER ]",
   "terminalAbortingButton": "[ PAUSE... ]",
   "terminalAbortButton": "[ PAUSE ]",
-  "searchPageDownloadsTooltip": "Voir les téléchargements",
-  "searchPageReloadTooltip": "Recharger la playlist",
-  "searchPageAccountsTooltip": "Comptes et Paramètres",
-  "searchPageLoadingError": "Impossible de charger la playlist",
-  "searchPageRetryButton": "Réessayer",
-  "searchPageProcessingError": "Erreur de traitement de la playlist :",
-  "searchFieldHint": "Rechercher...",
-  "searchFilterFilms": "Films",
-  "searchFilterSeries": "Séries",
-  "searchFilterTv": "TV",
-  "searchNoResults": "Aucun résultat trouvé.",
-  "searchNoContent": "Aucun contenu à afficher.",
-  "actionSheetChooseVersion": "Choisir une version pour :",
-  "chipSeasons": "{count,plural, =1{1 Saison} other{{count} Saisons}}",
-  "chipEpisodes": "{count,plural, =1{1 Ép.} other{{count} Ép.}}",
-  "season": "Saison",
   "episode": "Épisode",
   "favoriteAdd": "Ajouter aux favoris",
   "favoriteRemove": "Retirer des favoris",
   "actionSheetPlay": "Lire",
-  "actionSheetPlaySubtitle": "Lance la lecture (mise en cache automatique).",
   "actionSheetDownload": "Télécharger en arrière-plan",
-  "actionSheetDownloadSubtitle": "Pour regarder plus tard sans connexion.",
   "deleteDialogTitle": "Supprimer le fichier ?",
   "deleteDialogSizeLabel": "Taille",
   "deleteDialogWarning": "Cette action est irréversible et le fichier sera définitivement effacé.",
   "deleteDialogConfirmButton": "Supprimer",
-  "deleteTooltip": "Supprimer définitivement",
   "taskStatusDownloading": "Téléchargement en cours...",
   "taskStatusRemaining": " • {remainingSize} restant",
   "taskStatusCompleted": "Terminé • {size} • {date}",
@@ -60,34 +37,14 @@
   "taskStatusCanceled": "Annulé {progressInfo} • Appuyer pour relancer",
   "taskStatusPending": "En attente • {date}",
   "taskStatusUnknownError": "Erreur inconnue",
-  "playlistCardSubtitleNone": "Aucune playlist téléchargée dans ce contexte.",
-  "playlistCardSubtitleLastFile": "Dernier fichier : {path}",
-  "playlistDownloadButton": "Télécharger / Mettre à jour",
-  "playlistDeleteButton": "Supprimer",
-  "playlistManagementTip": "Astuce : vous pouvez aussi recharger la playlist depuis la roue crantée ou via l'icône de rafraîchissement sur l'écran de recherche.",
   "accountsTitle": "Gestion des Comptes",
   "deleteAccountDialogTitle": "Supprimer le compte ?",
-  "deleteAccountDialogContent": "Cette action est définitive.",
   "deleteAccountConfirm": "Supprimer",
-  "playlistInfoChecking": "Vérification de la playlist...",
-  "playlistInfoUnavailable": "Aucune playlist disponible ou erreur de chargement.",
-  "playlistInfoTryReload": "Tenter un rechargement",
-  "playlistInfoLocalFile": "Fichier playlist local",
-  "playlistInfoSize": "Taille",
-  "playlistInfoLastUpdate": "Maj",
-  "playlistInfoEntries": "Entrées",
-  "playlistInfoReloadButton": "Recharger",
-  "playlistInfoDeleteButton": "Supprimer",
-  "accountsListEmpty": "Ajouter un compte",
-  "accountModeComplete": "Mode: URL complète — {host}",
-  "accountModeSeparate": "Mode: Séparé — {username}@{host}",
   "accountActionEdit": "Modifier",
   "accountActionDelete": "Supprimer",
-  "accountsFab": "Nouveau",
   "editAccountTitleAdd": "Ajouter un compte",
   "editAccountTitleEdit": "Modifier le compte",
   "editAccountNameLabel": "Nom du compte (ex: Salon, Vacances...)",
-  "editAccountNameHint": "Mon Compte IPTV",
   "editAccountNameRequired": "Requis",
   "editAccountModeUrl": "URL Complète",
   "editAccountModeCredentials": "Identifiants",
@@ -96,15 +53,7 @@
   "editAccountServerUrlLabel": "URL du serveur (ex: http://host:port)",
   "editAccountUsernameLabel": "Nom d'utilisateur",
   "editAccountPasswordLabel": "Mot de passe",
-  "editAccountPlaylistTypeLabel": "Type de playlist",
-  "editAccountPlaylistTypeM3u": "M3U (Standard)",
-  "editAccountPlaylistTypeSimple": "Simple (Lien unique)",
-  "editAccountCookiesLabel": "Cookies (optionnel)",
-  "editAccountCookiesHint": "ex: PHPSESSID=xxxxxx;",
   "editAccountSaveButton": "Enregistrer",
-  "playerGenericError": "Impossible de lire ce média.",
-  "playerLoading": "Initialisation du lecteur...",
-  "playerLoadingError": "Erreur de chargement: {error}",
   "settingsTitle": "Paramètres",
   "aboutTitle": "À propos",
   "backupTitle": "Sauvegarde",
@@ -405,10 +354,6 @@
   "dlOrphanDeleteFailed": "Android a refusé la suppression",
   "@dlOrphanDeleteFailed": {
     "description": "Delete refused"
-  },
-  "dlOrphanPlay": "Lire",
-  "@dlOrphanPlay": {
-    "description": "Play action"
   },
   "commonDelete": "Supprimer",
   "@commonDelete": {
@@ -1522,9 +1467,6 @@
       }
     }
   },
-  "relayBlockerLive": "Une chaîne en direct n'a pas de fin : la conversion non plus. Elle n'est proposée que sur un film ou un épisode.",
-  "relayBlockerLocal": "Un fichier déjà téléchargé ne peut pas être converti pour le téléviseur.",
-  "relayBlockerOther": "Cette source ne peut pas être relayée par le téléphone.",
   "relayBatteryPluggedOk": "Le téléphone est branché, parfait pour un film.",
   "relayBatteryPlugIfYouCan": "Branche le téléphone si tu peux : la conversion consomme beaucoup de batterie.",
   "relayBatteryLow": "Batterie à {percent} % — branche le téléphone, la diffusion en dépend.",
@@ -1554,25 +1496,6 @@
     }
   },
   "relayConsentConfirm": "Adapter et diffuser",
-  "relayConvertedUpTo": "Converti jusqu'à {position}",
-  "@relayConvertedUpTo": {
-    "placeholders": {
-      "position": {
-        "type": "String"
-      }
-    }
-  },
-  "relayProgressPaused": "{ahead} · {percent} % · en pause",
-  "@relayProgressPaused": {
-    "placeholders": {
-      "ahead": {
-        "type": "String"
-      },
-      "percent": {
-        "type": "String"
-      }
-    }
-  },
   "playerLastEpisode": "Dernier épisode disponible.",
   "playerAudioTrackSwitched": "Piste audio incompatible — bascule sur {track}",
   "@playerAudioTrackSwitched": {
@@ -1583,7 +1506,6 @@
     }
   },
   "playerNoAudioTrack": "Aucune piste audio lisible sur ce fichier — lecture sans son",
-  "playerResuming": "Reprise de la lecture…",
   "playerReconnecting": "Reconnexion dans 5 s… ({attempt}/{max})",
   "@playerReconnecting": {
     "placeholders": {
@@ -1710,17 +1632,6 @@
   "langKorean": "Coréen",
   "langTurkish": "Turc",
   "langPolish": "Polonais",
-  "statsRealDefinition": "réel {definition} ({resolution})",
-  "@statsRealDefinition": {
-    "placeholders": {
-      "definition": {
-        "type": "String"
-      },
-      "resolution": {
-        "type": "String"
-      }
-    }
-  },
   "statsDecoding": "Décodage",
   "statsHardwareWith": "matériel · {decoder}",
   "@statsHardwareWith": {
@@ -1732,7 +1643,6 @@
   },
   "statsHardware": "matériel",
   "statsResolution": "Résolution",
-  "statsAnnounced": "Annoncé",
   "statsAnnouncedOversold": "{announced} — la liste SURVEND",
   "@statsAnnouncedOversold": {
     "placeholders": {
@@ -1780,14 +1690,6 @@
   },
   "nextEpLoading": "Chargement de l'épisode suivant…",
   "nextEpTitle": "ÉPISODE SUIVANT",
-  "nextEpPlayNowIn": "Lire maintenant  ·  {seconds}s",
-  "@nextEpPlayNowIn": {
-    "placeholders": {
-      "seconds": {
-        "type": "int"
-      }
-    }
-  },
   "nextEpPlay": "Lire",
   "nextEpSeasonEnd": "FIN DE LA SAISON",
   "nextEpGoToSeason": "Passer à la saison {season} ?",
@@ -1820,17 +1722,6 @@
   "fitCoverSub": "Efface les bandes noires · rogne les bords",
   "fitFill": "Plein écran",
   "fitFillSub": "Remplit tout · image légèrement déformée",
-  "relayProgressPlaying": "{ahead} · {percent} %",
-  "@relayProgressPlaying": {
-    "placeholders": {
-      "ahead": {
-        "type": "String"
-      },
-      "percent": {
-        "type": "String"
-      }
-    }
-  },
   "ctrlCastActive": "Diffusion en cours",
   "ctrlLock": "Verrouiller",
   "ctrlBadgeLive": "DIRECT",
@@ -1922,7 +1813,6 @@
   "bkPasswordMismatch": "Les deux mots de passe diffèrent.",
   "bkSave": "Sauvegarder",
   "bkCreated": "Sauvegarde créée",
-  "bkRememberPassword": "N'oublie pas le mot de passe — il n'est nulle part stocké.",
   "bkCreateTitle": "Créer une sauvegarde",
   "bkCreateSub": "Chiffre tes comptes, clé TMDB, thème, favoris et progression dans un fichier .aether.",
   "bkEncrypting": "Chiffrement en cours…",
@@ -2431,14 +2321,6 @@
   "expSeeDetails": "Voir détails",
   "memTitle": "MÉMOIRE & STOCKAGE",
   "memRefresh": "Rafraîchir",
-  "memParsed": "analysé {size}",
-  "@memParsed": {
-    "placeholders": {
-      "size": {
-        "type": "String"
-      }
-    }
-  },
   "memEntriesAndSize": "{count} entrées · {size}",
   "@memEntriesAndSize": {
     "placeholders": {
@@ -2514,8 +2396,6 @@
   "navExitHint": "💡 Pour quitter l'application : appuie 2 fois sur Retour",
   "navExitConfirm": "Appuie à nouveau sur Retour pour quitter",
   "settingsUsageReset": "🧹 Données d'usage réinitialisées",
-  "updNetworkError": "Erreur réseau",
-  "themePreviewMovieTitle": "Titre du Film",
   "errUnexpected": "Une erreur inattendue est survenue.",
   "errUnknown": "Une erreur inconnue est survenue.",
   "relayNothingReadable": "La conversion n'a rien produit de lisible.",

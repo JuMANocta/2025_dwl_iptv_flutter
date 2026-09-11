@@ -95,7 +95,7 @@ class AetherCastRelay(private val context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private var progressTicker: Runnable? = null
 
-    val isRunning: Boolean get() = transformer != null
+    // Revue 2026-09-11, D2B-10 — `isRunning` (lu nulle part) retiré.
 
     /** Chemin du fichier produit (existe dès les premiers fragments). */
     fun outputPath(): String? = outputFile?.absolutePath
@@ -256,8 +256,8 @@ class AetherCastRelay(private val context: Context) {
         try {
             t.start(composition, out.absolutePath)
         } catch (e: Exception) {
-            // Sinon `transformer` reste non nul : `isRunning` mentirait et
-            // aucun arrêt ultérieur ne trouverait de quoi nettoyer.
+            // Sinon `transformer` reste non nul : l'instance passerait pour
+            // occupée et aucun arrêt ultérieur ne trouverait de quoi nettoyer.
             transformer = null
             failed = true
             callbacks.onFailed(e.message ?: "conversion impossible", false)

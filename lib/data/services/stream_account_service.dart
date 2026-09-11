@@ -241,7 +241,7 @@ class StreamAccountService {
       // se faisait refuser — et l'échec du catalogue était invisible.
       final response = await HostGate.run(apiUrl, () async {
         // 3. Dio configuré pour serveur IPTV (cert self-signed possible)
-        final dio = NetworkUtils.buildBaseDio(allowInvalidCertificate: true);
+        final dio = NetworkUtils.buildIptvBaseDio();
         try {
           // 4. On exécute la requête GET
           return await dio.get(apiUrl, queryParameters: params);

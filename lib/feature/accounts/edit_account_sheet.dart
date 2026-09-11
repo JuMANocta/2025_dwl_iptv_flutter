@@ -66,11 +66,13 @@ class _EditAccountSheetState extends State<EditAccountSheet> {
 
   void _save() {
     if (!_form.currentState!.validate()) return;
-    final l10n = AppLocalizations.of(context)!;
     final id = widget.initial?.id ?? "acc_${DateTime.now().millisecondsSinceEpoch}";
     final acc = StreamAccount(
       id: id,
-      label: _label.text.trim().isEmpty ? l10n.editAccountNameHint : _label.text.trim(),
+      // Revue 2026-09-11, D4B-07 — Le repli « Mon Compte IPTV » était
+      // inatteignable : le validateur du champ exige un nom non vide, et
+      // `validate()` vient de passer.
+      label: _label.text.trim(),
       mode: _mode,
       completeUrl: _mode == StreamAuthMode.completeUrl ? _completeUrl.text.trim() : null,
       baseUrl: _mode == StreamAuthMode.separate ? _baseUrl.text.trim() : null,

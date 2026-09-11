@@ -42,10 +42,12 @@ class AetherDownloadService : Service() {
         const val ACTION_CANCEL = "com.juman.aetherstream.action.CANCEL_DOWNLOAD"
         const val EXTRA_TASK_ID = "taskId"
 
-        /// §fgsSafeStart — Le service tourne-t-il déjà ? Évite de relancer un
-        /// démarrage à chaque mise à jour de progression (1×/s).
-        @Volatile
-        private var isRunning: Boolean = false
+        // Revue 2026-09-11, D2B-10 — Le drapeau `isRunning` était écrit
+        // (`onStartCommand`, `onDestroy`) mais JAMAIS lu : son commentaire
+        // promettait « éviter de relancer un démarrage à chaque mise à jour »,
+        // alors que `start()` appelle `startService` sans condition (un
+        // aller-retour IPC par mise à jour, sans danger depuis §fgsSafeStart :
+        // la promotion n'a lieu qu'une fois, dans `onCreate`). Retiré.
 
         fun start(
             context: Context,
@@ -149,7 +151,6 @@ class AetherDownloadService : Service() {
     }
 
     override fun onDestroy() {
-        isRunning = false
         super.onDestroy()
     }
 
@@ -185,7 +186,6 @@ class AetherDownloadService : Service() {
         // ⛔ Plus de `stopSelf()` en rattrapage d'échec : se retirer sans
         // s'être déclaré est PRÉCISÉMENT ce qui tue le processus.
         promoteToForeground(notification)
-        isRunning = true
         return START_NOT_STICKY
     }
 

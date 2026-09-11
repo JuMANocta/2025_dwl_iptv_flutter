@@ -1505,7 +1505,8 @@ class NativeVideoPlayerController {
   /// expiré, et le lecteur sortant (media_kit) posait `tls-verify=no` — ne pas
   /// reproduire ce comportement casserait des flux qui marchent aujourd'hui.
   /// Reste **par flux et opt-in**, jamais global : même discipline que
-  /// `NetworkUtils.buildBaseDio(allowInvalidCertificate:)` côté app.
+  /// `NetworkUtils.buildIptvBaseDio()` côté app, réservé aux serveurs IPTV
+  /// (revue 2026-09-11, D1B-21 — patch 20).
   /// §engineVendor patch 9 — [mediaInfo] par CHARGEMENT.
   ///
   /// Amont, les métadonnées « Now Playing » venaient uniquement du champ

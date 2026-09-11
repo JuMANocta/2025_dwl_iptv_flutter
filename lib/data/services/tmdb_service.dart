@@ -210,8 +210,6 @@ class TmdbService {
     return clean;
   }
 
-  Future<void> reinitialize() async => await _init();
-
   /// §tmdbKeyCheck (2026-09-05) — Demande à TMDB si une clé est acceptée,
   /// AVANT de l'enregistrer.
   ///

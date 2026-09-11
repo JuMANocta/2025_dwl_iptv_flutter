@@ -26,9 +26,8 @@ class FocusableCard extends StatefulWidget {
   final VoidCallback? onLongPress;
   final BorderRadius? borderRadius;
 
-  /// Déprécié (§dpadNav) : les effets de focus s'affichent désormais sur toutes
-  /// les plateformes au focus. Conservé pour compat d'API (sans effet).
-  final bool forceTvLook;
+  // Revue 2026-09-11, D4B-07 — `forceTvLook` (déprécié depuis §dpadNav, sans
+  // effet, passé par aucun appelant) : retiré.
 
   /// Auto-focus à la première frame (1re carte d'une liste, 1er item d'un dialog).
   final bool autofocus;
@@ -67,7 +66,6 @@ class FocusableCard extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.borderRadius,
-    this.forceTvLook = false,
     this.autofocus = false,
     this.decorateOnly = false,
     this.backgroundColor,

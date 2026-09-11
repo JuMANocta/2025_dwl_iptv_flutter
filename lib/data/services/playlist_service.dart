@@ -85,13 +85,6 @@ class PlaylistService {
     return jsonPath;
   }
 
-  static Future<void> deleteExisting() async {
-    try {
-      final acc = await StreamAccountService.getCurrentAccount();
-      if (acc != null) await deleteForAccountId(acc.id);
-    } catch (_) {}
-  }
-
   /// Supprime les fichiers playlist (json + m3u) en cache pour un compte.
   static Future<void> deleteForAccountId(String accountId) async {
     for (final path in [

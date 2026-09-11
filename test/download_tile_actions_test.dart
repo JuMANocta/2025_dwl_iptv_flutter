@@ -101,11 +101,16 @@ void main() {
     //     repartirait de zéro ;
     //   - `queued` (§dlQueue, 2026-09-06) : rien n'a commencé, et « forcer le
     //     départ » ouvrirait une seconde connexion sur le même abonnement
-    //     (403 chez les panels). La file la fera partir d'elle-même.
+    //     (403 chez les panels). La file la fera partir d'elle-même ;
+    //   - `paused` (revue 2026-09-11, D3A-15) : jamais affecté — valeur gardée
+    //     pour l'ordre persisté. Sa branche « forcer le démarrage » était
+    //     morte et contredisait §dlQueue : il suit désormais la règle de la
+    //     file, comme `queued`.
     const noRestart = {
       DownloadStatus.finalizing,
       DownloadStatus.completed,
       DownloadStatus.queued,
+      DownloadStatus.paused,
     };
     for (final s in DownloadStatus.values) {
       final a = downloadTileActions(s);

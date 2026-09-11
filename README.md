@@ -190,7 +190,7 @@ lib/
 │   └── services/                      # Tous statiques/singletons :
 │        ├── StreamAccountService      #   comptes IPTV + currentAccountIdNotifier
 │        ├── PlaylistService           #   cache M3U 24h, multi-comptes
-│        ├── ParsedPlaylistService     #   hub central JSON.gz + mémoire (entriesWithPriority)
+│        ├── ParsedPlaylistService     #   hub central JSON.gz + mémoire (byTypeWithPriority)
 │        ├── DownloadManagerService    #   Dio stream + reprise + MediaStore
 │        ├── TmdbService / TmdbApiService #   recherche TMDB 4 passes + Bearer Token
 │        ├── ReplayService             #   Xtream timeshift + EPG short

@@ -112,12 +112,6 @@ Set<String> entryRegionLabels(String rawTitle) {
   return byCode == null ? const {} : {byCode}; // code inconnu → gardé
 }
 
-/// Compatibilité : la PREMIÈRE région, ou `null`. Préférer [entryRegionLabels].
-String? entryRegionLabel(String rawTitle) {
-  final labels = entryRegionLabels(rawTitle);
-  return labels.isEmpty ? null : labels.first;
-}
-
 /// §langFilter — **Le prédicat unique du filtre régions.** Les trois points
 /// d'application (parse M3U, parse JSON, téléchargement Xtream) l'appellent :
 /// avant, chacun avait sa copie, et celle du téléchargement avait oublié la
@@ -678,7 +672,7 @@ String tvGroupKey(String name) {
 ///
 /// **Stratégie** : clé `(qualité ?? versionLabel ?? rawTitle, accountId)` —
 /// on garde le premier rencontré (priorité du compte actif déjà appliquée
-/// par `ParsedPlaylistService.entriesWithPriority`). Multi-comptes : on
+/// par `ParsedPlaylistService.byTypeWithPriority`). Multi-comptes : on
 /// conserve une variante par compte pour que l'utilisateur puisse switcher.
 List<M3uEntry> dedupeTvVersions(List<M3uEntry> versions) {
   final seen = <String>{};

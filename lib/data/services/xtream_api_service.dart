@@ -189,10 +189,10 @@ bool _mentionsConnections(Object? body) {
 /// playlist en interne via cette API.
 ///
 /// **Architecture :**
-/// 1. `auth(account)` — vérifie les credentials (et récupère `server_info`).
-/// 2. `get*Categories()` — liste les catégories (TV / VOD / Séries).
-/// 3. `get*Streams()` — liste les flux (id + nom + logo + catégorie).
-/// 4. §23 — `XtreamCatalogService` sauvegarde les réponses brutes dans
+/// 1. `get*CategoriesResult()` — liste les catégories (TV / VOD / Séries).
+/// 2. `get*StreamsResult()` / `getSeriesResult()` — liste les flux (id + nom +
+///    logo + catégorie).
+/// 3. §23 — `XtreamCatalogService` sauvegarde les réponses brutes dans
 ///    `playlist_<id>.json`, parsé directement par `XtreamCatalogParser`
 ///    (l'ancien `XtreamM3uBuilder` qui reconstituait un M3U texte a été
 ///    supprimé — plus de round-trip ni de perte de métadonnées).
@@ -210,11 +210,6 @@ class XtreamApiService {
 
   static String _cacheKey(String accountId, int seriesId) =>
       '$accountId#$seriesId';
-
-  /// Invalide une entrée du cache (utile si on ajoute un refresh manuel un jour).
-  static void invalidateEpisodes(String accountId, int seriesId) {
-    _episodesCache.remove(_cacheKey(accountId, seriesId));
-  }
 
   /// Construit le Dio pour appeler `player_api.php` du host de [account].
   /// Hérite du profil IPTV (UA `IPTVSmartersPro`, Accept-Encoding gzip).
@@ -243,7 +238,7 @@ class XtreamApiService {
   /// Trois changements par rapport à la version d'origine :
   /// 1. l'appel entier passe par [HostGate] → une seule requête à la fois vers
   ///    ce panel (les abonnements de l'utilisateur sont en « 1 / 1 ») ;
-  /// 2. `validateStatus` aligné sur `buildBaseDio` (`< 500`) → un
+  /// 2. `validateStatus` aligné sur `buildIptvBaseDio` (`< 500`) → un
   ///    `403 Too many connections` devient une **réponse lisible** au lieu
   ///    d'une exception opaque dont le corps était jeté sans être lu ;
   /// 3. le `Dio` est fermé avant de rendre le jeton : sans ça, le socket
@@ -321,69 +316,24 @@ class XtreamApiService {
     }
   }
 
-  /// §hostGate — Applique la limite de connexions annoncée par le panel.
-  ///
-  /// ⚠️ `maxConnections - 1` : **la connexion restante est réservée au
-  /// lecteur vidéo**, qui ne passe jamais par [HostGate].
-  static void _applyConnectionLimit(StreamAccount account, Object? authBody) {
-    if (authBody is! Map) return;
-    final info = authBody['user_info'];
-    if (info is! Map) return;
-    final max = int.tryParse((info['max_connections'] ?? '').toString());
-    if (max == null || max <= 0) return;
-    final host = credentialsOf(account)?.host;
-    if (host == null) return;
-    HostGate.setLimit(host, max - 1 < 1 ? 1 : max - 1);
-  }
-
-  // ── Auth / info compte ──────────────────────────────────────────────────
-
-  /// Appelle `player_api.php` sans action → renvoie le bloc complet
-  /// `{ user_info: {…}, server_info: {…} }`. Null si échec / compte invalide.
-  static Future<Map<String, dynamic>?> auth(StreamAccount account) async {
-    final url = _baseUrl(account);
-    if (url == null) return null;
-    final r = await _fetch(account, url,
-        timeout: const Duration(seconds: 20),
-        queueTimeout: const Duration(seconds: 60));
-    if (r.error != null) {
-      debugPrint('⚠️ XtreamApi.auth : ${r.error}');
-      return null;
-    }
-    final data = r.body;
-    if (data is Map<String, dynamic>) {
-      // §hostGate — Le panel vient de dire combien de connexions il tolère.
-      _applyConnectionLimit(account, data);
-      return data;
-    }
-    return null;
-  }
-
   // ── Live (chaînes TV) ───────────────────────────────────────────────────
   //
-  // §catalogTruth — DEUX familles de getters :
-  //  · `get…Result()` — le contrat honnête (`items == null` ⇔ échec), utilisé
-  //    par `XtreamCatalogService` pour refuser d'écrire un catalogue amputé ;
-  //  · `get…()` — façade de compatibilité qui rend `[]` en cas d'échec, pour
-  //    les appelants qui ne savent pas quoi faire d'une panne.
+  // §catalogTruth — Le contrat honnête : `items == null` ⇔ échec. C'est ce
+  // qui permet à `XtreamCatalogService` de refuser d'écrire un catalogue
+  // amputé.
   //
-  // ⚠️ Ne PAS appeler la façade depuis un chemin qui écrit sur le disque : un
-  // `[]` d'échec y est indiscernable d'un catalogue réellement vide, et c'est
-  // exactement le bug qui effaçait les listes.
-
-  /// Liste des catégories live (TV). Retourne `[]` si échec (façade).
-  static Future<List<Map<String, dynamic>>> getLiveCategories(
-          StreamAccount account) =>
-      _itemsOrEmpty(getLiveCategoriesResult(account));
+  // Revue 2026-09-11, D1A-14 — Les six façades « liste ou `[]` » (`get…()`),
+  // leur `_itemsOrEmpty`, ainsi que `auth` / `_applyConnectionLimit` et
+  // `invalidateEpisodes`, n'avaient plus AUCUN appelant : retirés.
+  // ⛔ Ne pas réintroduire de façade qui rend `[]` en cas d'échec : un `[]`
+  // d'échec est indiscernable d'un catalogue réellement vide, et c'est
+  // exactement le bug qui effaçait les listes. La limite de connexions
+  // annoncée par le panel (§hostGate) est posée par
+  // `StreamAccountService.fetchAccountInfo`.
 
   static Future<XtreamListResult> getLiveCategoriesResult(
           StreamAccount account) =>
       _listAction(account, 'get_live_categories');
-
-  /// Liste de toutes les chaînes live (sans filtrage par catégorie).
-  static Future<List<Map<String, dynamic>>> getLiveStreams(
-          StreamAccount account) =>
-      _itemsOrEmpty(getLiveStreamsResult(account));
 
   static Future<XtreamListResult> getLiveStreamsResult(
           StreamAccount account) =>
@@ -391,42 +341,22 @@ class XtreamApiService {
 
   // ── VOD (films) ──────────────────────────────────────────────────────────
 
-  static Future<List<Map<String, dynamic>>> getVodCategories(
-          StreamAccount account) =>
-      _itemsOrEmpty(getVodCategoriesResult(account));
-
   static Future<XtreamListResult> getVodCategoriesResult(
           StreamAccount account) =>
       _listAction(account, 'get_vod_categories');
-
-  static Future<List<Map<String, dynamic>>> getVodStreams(
-          StreamAccount account) =>
-      _itemsOrEmpty(getVodStreamsResult(account));
 
   static Future<XtreamListResult> getVodStreamsResult(StreamAccount account) =>
       _listAction(account, 'get_vod_streams');
 
   // ── Séries ───────────────────────────────────────────────────────────────
 
-  static Future<List<Map<String, dynamic>>> getSeriesCategories(
-          StreamAccount account) =>
-      _itemsOrEmpty(getSeriesCategoriesResult(account));
-
   static Future<XtreamListResult> getSeriesCategoriesResult(
           StreamAccount account) =>
       _listAction(account, 'get_series_categories');
 
   /// Liste des séries (un item = une série, sans détails des épisodes).
-  static Future<List<Map<String, dynamic>>> getSeries(
-          StreamAccount account) =>
-      _itemsOrEmpty(getSeriesResult(account));
-
   static Future<XtreamListResult> getSeriesResult(StreamAccount account) =>
       _listAction(account, 'get_series');
-
-  static Future<List<Map<String, dynamic>>> _itemsOrEmpty(
-      Future<XtreamListResult> r) async =>
-      (await r).items ?? const [];
 
   /// §xtreamEpisodes — Récupère TOUS les épisodes d'une série et les retourne
   /// directement sous forme de `List<M3uEntry>` prêts à être affichés par

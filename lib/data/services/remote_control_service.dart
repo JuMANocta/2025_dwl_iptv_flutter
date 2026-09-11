@@ -51,9 +51,6 @@ class RemoteControlService {
 
   PlayerActionHandlers? _player;
 
-  /// Vrai si un player est actuellement ouvert (route player vs navigation).
-  bool get playerActive => _player != null;
-
   // ── Enregistrement depuis l'UI ───────────────────────────────────────────
 
   /// Une [FocusableCard] focusée s'enregistre comme cible d'activation OK/Menu.
