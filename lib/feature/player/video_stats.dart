@@ -238,7 +238,8 @@ class VideoStatsSnapshot {
   String? get definitionLabel {
     final h = height;
     if (h == null || h <= 0) return null;
-    return QualityScale.labelForHeight(h);
+    // §qualityScope — les deux dimensions (un FHD 2,40:1 fait 1920×800).
+    return QualityScale.labelFor(width: width ?? 0, height: h);
   }
 
   /// §qualityTruth — Confronte la qualité ANNONCÉE par la liste (parsing du

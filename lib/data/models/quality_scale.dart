@@ -28,13 +28,28 @@ enum QualityVerdict {
 }
 
 abstract final class QualityScale {
-  /// Étiquette de définition déduite d'une hauteur d'image décodée.
-  static String labelForHeight(int height) {
-    if (height >= 1600) return '4K';
-    if (height >= 1000) return 'FHD';
-    if (height >= 700) return 'HD';
-    return 'SD';
+  /// §qualityScope (2026-09-11, signalé par l'utilisateur) — Étiquette de
+  /// définition d'une image décodée, d'après ses DEUX dimensions : le palier
+  /// retenu est le plus haut des deux.
+  ///
+  /// ⚠️ La hauteur seule MENTAIT sur tous les films au format large : un FHD
+  /// en 2,40:1 est encodé 1920×**800** (les bandes noires ne sont pas
+  /// encodées) → classé « HD », et la fiche accusait la liste d'avoir
+  /// « survendu ». Idem 1280×536 (HD scope → « SD ») et 3840×1600/1392 (4K
+  /// scope). La largeur rattrape le format large ; la hauteur rattrape le 4:3
+  /// et le pillarbox (1440×1080 reste FHD).
+  ///
+  /// Seuils à ~83 % du nominal, comme ceux de la hauteur : largeur 3200 / 1600
+  /// / 1100 (3840, 1920, 1280), hauteur 1600 / 1000 / 700 (2160, 1080, 720).
+  static String labelFor({required int width, required int height}) {
+    final int byW = width >= 3200 ? 3 : width >= 1600 ? 2 : width >= 1100 ? 1 : 0;
+    final int byH = height >= 1600 ? 3 : height >= 1000 ? 2 : height >= 700 ? 1 : 0;
+    return const ['SD', 'HD', 'FHD', '4K'][byW > byH ? byW : byH];
   }
+
+  /// Étiquette d'après la SEULE hauteur — pour une mesure dont la largeur est
+  /// inconnue. ⚠️ Fausse sur un format large : préférer [labelFor].
+  static String labelForHeight(int height) => labelFor(width: 0, height: height);
 
   /// Rang comparable d'une étiquette. `null` = ce n'est pas une définition.
   ///
