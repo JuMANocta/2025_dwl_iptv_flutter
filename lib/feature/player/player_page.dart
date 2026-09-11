@@ -1802,6 +1802,16 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         DeviceOrientation.portraitDown,
       ]);
     }
+    // \u00A7barsRestore (revue 2026-09-11, recette t\u00E9l\u00E9phone) \u2014 `immersiveSticky`
+    // (ouverture) pose des drapeaux qui MASQUENT les barres d'\u00E9tat et de
+    // navigation ; `edgeToEdge` seul ne fait que `setDecorFitsSystemWindows`
+    // (moteur Flutter 3.44) et ne les efface JAMAIS : les deux barres restaient
+    // masqu\u00E9es jusqu'\u00E0 la fin de la session apr\u00E8s la premi\u00E8re lecture
+    // (mesur\u00E9 : `statusBars visible=false`, fiche et accueil sans marge du
+    // haut). `manual` + toutes les surcouches r\u00E9\u00E9crit la visibilit\u00E9 sans
+    // drapeau de masquage, PUIS on repasse bord \u00E0 bord. Pr\u00E9existant \u00E0 la revue.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
+        overlays: SystemUiOverlay.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     debugPrint('\u23F1\uFE0F \u00A7exitCost \u2014 sortie du lecteur : total ${swAll.elapsedMilliseconds} ms (avant moteur $tAvantMoteur ms, dispose moteur $tMoteur ms)');
     super.dispose();
