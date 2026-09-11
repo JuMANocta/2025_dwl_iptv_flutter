@@ -22,6 +22,10 @@ import 'package:aetherStream/feature/search/m3u_parser.dart';
 import 'package:aetherStream/feature/search/xtream_catalog_parser.dart';
 
 const String _dir = 'lib/iptv_exemple';
+
+/// D5A-01 — Les instantanés du filet §parseSpeed : à côté des dumps, hors de
+/// build/ (que `flutter clean` vide), gitignorés comme eux.
+const String _snapDir = '$_dir/snapshots';
 const List<String> _m3u = ['playlist_racine_2025-12.m3u', 'VOD_get.m3u'];
 const List<String> _json = [
   'PLATINIUM_vod_cache.json',
@@ -101,10 +105,23 @@ $stages''');
   }
 
   // §parseSpeed — FILET : la sortie du parseur sur chaque titre réel est
-  // figée dans build/parse_snapshot_<dump>.tsv au premier passage ; tout
-  // passage suivant doit rendre EXACTEMENT la même (base, clé, année,
-  // saison/épisode, qualité, langues, libellé de version, marqueur).
-  // Supprimer le fichier pour re-figer après un changement VOULU du parsing.
+  // comparée à un instantané figé ; tout passage doit rendre EXACTEMENT la
+  // même (base, clé, année, saison/épisode, qualité, langues, libellé de
+  // version, marqueur).
+  //
+  // D5A-01 (revue 2026-09-11, lot 9) — Deux trous refermés :
+  //   1. un instantané ABSENT se re-figeait tout seul sur la sortie COURANTE,
+  //      et le test passait. Il ÉCHOUE désormais ; re-figer est un geste
+  //      explicite : `AS_PARSE_REFREEZE=1 flutter test test/parse_bench_test.dart`
+  //      (même modèle que `AS_L10N_REGEN`), APRÈS avoir relu le diff d'un
+  //      passage sans la variable ;
+  //   2. il vivait dans build/, que `flutter clean` vide : après un clean, une
+  //      régression devenait la nouvelle référence. Il vit maintenant dans
+  //      lib/iptv_exemple/snapshots/ — à côté des dumps, gitignoré comme eux,
+  //      épargné par `flutter clean`.
+  // ⚠️ Repli de LECTURE sur l'ancien build/parse_snapshot_<dump>.tsv (les
+  // machines qui ont déjà figé l'ont là) ; un passage VERT le recopie à la
+  // nouvelle place. Sans dump, le test reste SAUTÉ (CI, worktree).
   for (final String name in [..._m3u, ..._json]) {
     final String path = '$_dir/$name';
     test('snapshot — $name', () async {
@@ -133,23 +150,44 @@ $stages''');
           e.category ?? '',
         ].join('	');
       }
-      final snapFile = File('build/parse_snapshot_$name.tsv');
+      final String nl = String.fromCharCode(10);
+      final File snapFile = File('$_snapDir/parse_snapshot_$name.tsv');
+      final File legacyFile = File('build/parse_snapshot_$name.tsv');
       final List<String> now = all.map(line).toList();
-      if (!snapFile.existsSync()) {
+      if (Platform.environment['AS_PARSE_REFREEZE'] == '1') {
         snapFile.parent.createSync(recursive: true);
-        snapFile.writeAsStringSync(now.join(String.fromCharCode(10)));
+        snapFile.writeAsStringSync(now.join(nl));
         // ignore: avoid_print
-        print('§parseSpeed — instantané figé : ${snapFile.path} (${now.length} lignes)');
+        print('§parseSpeed — instantané RE-FIGÉ : ${snapFile.path} (${now.length} lignes)');
         return;
       }
-      final List<String> before = snapFile.readAsStringSync().split(String.fromCharCode(10));
+      final File? reference = snapFile.existsSync()
+          ? snapFile
+          : (legacyFile.existsSync() ? legacyFile : null);
+      if (reference == null) {
+        fail('§parseSpeed — instantané absent (${snapFile.path}). Si la sortie '
+            'actuelle du parseur EST la référence voulue : '
+            'AS_PARSE_REFREEZE=1 flutter test test/parse_bench_test.dart');
+      }
+      final List<String> before = reference.readAsStringSync().split(nl);
       final diffs = <String>[];
       final int len = now.length < before.length ? now.length : before.length;
       for (var i = 0; i < len && diffs.length < 20; i++) {
-        if (now[i] != before[i]) diffs.add('#$i' + String.fromCharCode(10) + '  avant: ${before[i]}' + String.fromCharCode(10) + '  apres: ${now[i]}');
+        if (now[i] != before[i]) {
+          diffs.add('#$i$nl  avant: ${before[i]}$nl  apres: ${now[i]}');
+        }
       }
       expect(now.length, before.length, reason: 'nombre d entrées différent');
-      expect(diffs, isEmpty, reason: 'sortie du parseur changée :' + String.fromCharCode(10) + diffs.join(String.fromCharCode(10)));
+      expect(diffs, isEmpty,
+          reason: 'sortie du parseur changée :$nl${diffs.join(nl)}');
+      // Référence encore dans build/ ET identique : on la met à l'abri de
+      // `flutter clean` (copie de l'ANCIEN fichier, pas de la sortie courante).
+      if (!identical(reference, snapFile)) {
+        snapFile.parent.createSync(recursive: true);
+        legacyFile.copySync(snapFile.path);
+        // ignore: avoid_print
+        print('§parseSpeed — instantané déplacé à l\'abri : ${snapFile.path}');
+      }
     },
         skip: File(path).existsSync() ? false : 'dump absent ($name)',
         timeout: const Timeout(Duration(minutes: 10)));

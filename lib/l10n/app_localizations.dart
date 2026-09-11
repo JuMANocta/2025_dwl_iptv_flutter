@@ -63,7 +63,7 @@ import 'app_localizations_fr.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('en'),
-    Locale('fr')
+    Locale('fr'),
   ];
 
   /// No description provided for @downloadManagerTitle.
@@ -4778,6 +4778,24 @@ abstract class AppLocalizations {
   /// **'Installation permission denied'**
   String get updInstallDenied;
 
+  /// No description provided for @updNoApkForDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'The latest release ({tag}) has no version for this device.'**
+  String updNoApkForDevice(String tag);
+
+  /// No description provided for @updUnverifiable.
+  ///
+  /// In en, this message translates to:
+  /// **'This update cannot be verified, so it was not installed.'**
+  String get updUnverifiable;
+
+  /// No description provided for @updCorrupted.
+  ///
+  /// In en, this message translates to:
+  /// **'The downloaded update is damaged. Try again.'**
+  String get updCorrupted;
+
   /// No description provided for @failOnDisk.
   ///
   /// In en, this message translates to:
@@ -6469,7 +6487,11 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{used} / {max} · {count} / {maxCount} img'**
   String memImageCacheRamValue(
-      String used, String max, String count, String maxCount);
+    String used,
+    String max,
+    String count,
+    String maxCount,
+  );
 
   /// No description provided for @sizeBytes.
   ///
@@ -6595,8 +6617,9 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }

@@ -14,11 +14,45 @@
 // ou un libellé de fournisseur inconnu n'a pas de clé l10n — elle doit
 // s'afficher telle quelle, jamais disparaître ni devenir vide.
 
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:aetherStream/feature/search/category_labels.dart';
+import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
+
+/// D5A-15 (revue 2026-09-11, lot 9) — Tout ce que `m3u_filter.dart` sait
+/// PRODUIRE, lu dans son CODE et non recopié à la main : chaque `return 'X';`
+/// de la cascade, plus les ensembles publics (régions, plateformes, formats).
+///
+/// **Pourquoi lire la source.** Les listes ci-dessous étaient recopiées à la
+/// main, sans lien avec la cascade : une catégorie ajoutée à
+/// `contentCategoryLabel` sans clé l10n s'affichait en français sur un
+/// appareil anglais, et les trois tests l10n restaient verts (§l10nScreen).
+/// Lire le fichier suffit à le voir, sans exporter une énième liste qu'il
+/// faudrait elle aussi tenir à jour.
+Set<String> _producedLabels() {
+  final String src =
+      File('lib/feature/search/m3u_filter.dart').readAsStringSync();
+  return {
+    for (final RegExpMatch m in RegExp(r"return '([^']+)';").allMatches(src))
+      m.group(1)!,
+    ...kForeignRegionLabels,
+    ...kHideableRegionLabels,
+    ...kPlatformCategoryLabels,
+    ...kFormatCategoryLabels,
+  };
+}
+
+/// Mots qui s'écrivent PAREIL en anglais : leur traduction égale la clé, et
+/// c'est juste. Toute autre égalité clé = traduction est un OUBLI.
+const Set<String> kSameInEnglish = {
+  'Action', 'Animation', 'Biopic', 'Crime', 'Mafia', 'Maritime', 'Musical',
+  'Prison', 'Romance', 'Sci-Fi', 'Thriller', 'Western', 'New',
+  'Canada', 'Portugal', 'Ramadan', 'France',
+};
 
 /// Toutes les clés de catégorie que `contentCategoryLabel` sait produire, plus
 /// les rangées virtuelles de l'accueil (⭐ Favoris, New, Autres).
@@ -62,7 +96,9 @@ void main() {
 
   group('§l10nAll tranche 9 — en français, rien ne bouge', () {
     test('chaque clé de catégorie s\'affiche à l\'identique', () {
-      for (final key in kAllCategoryKeys) {
+      // D5A-15 — Les rangées virtuelles de l'accueil (liste ci-dessus) ET tout
+      // ce que la cascade de m3u_filter.dart produit réellement.
+      for (final key in {...kAllCategoryKeys, ..._producedLabels()}) {
         expect(categoryDisplayLabel(key, fr), key,
             reason: 'La rangée « $key » ne doit pas changer de nom en '
                 'français : la clé et la traduction fr DOIVENT coïncider.');
@@ -89,9 +125,29 @@ void main() {
       expect(regionDisplayLabel('VO (non-FR)', en), 'Original (non-French)');
     });
 
-    test('aucune clé ne rend une chaîne vide', () {
-      for (final key in [...kAllCategoryKeys, ...kAllRegionKeys]) {
-        expect(categoryDisplayLabel(key, en), isNotEmpty, reason: key);
+    // D5A-15 — Remplace « aucune clé ne rend une chaîne vide », qui passait
+    // même SANS traduction (le repli rend la clé elle-même) et appliquait
+    // `categoryDisplayLabel` aux clés de RÉGION.
+    test('tout libellé produit par m3u_filter.dart est traduit en anglais', () {
+      final List<String> untranslated = [];
+      for (final String key in {...kAllCategoryKeys, ..._producedLabels()}) {
+        if (kSameInEnglish.contains(key) || kProperNouns.contains(key)) {
+          continue;
+        }
+        if (categoryDisplayLabel(key, en) == key) untranslated.add(key);
+      }
+      expect(untranslated, isEmpty,
+          reason: 'Affichés en français sur un appareil anglais : ajouter la '
+              'clé l10n et son `case` dans category_labels.dart (ou, si le mot '
+              's\'écrit pareil en anglais, l\'ajouter à kSameInEnglish).');
+    });
+
+    test('chaque région passe par regionDisplayLabel, traduite', () {
+      for (final String key in {...kAllRegionKeys, ...kHideableRegionLabels}) {
+        if (kSameInEnglish.contains(key) || kProperNouns.contains(key)) {
+          continue;
+        }
+        expect(regionDisplayLabel(key, en), isNot(key), reason: key);
       }
     });
   });

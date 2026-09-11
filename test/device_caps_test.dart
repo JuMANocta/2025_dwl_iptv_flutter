@@ -1,8 +1,11 @@
 // §deviceCaps (2026-09-06) — Les règles PURES qui transforment la mesure de
 // l'appareil (décodeurs, écran, mémoire) en verdict et en profil.
 //
-// ⚠️ Décoder n'est pas afficher : la 4K exige les deux. Et une absence de
-// mesure ne refuse jamais rien.
+// ⚠️ §caps4kDisplay (2026-09-06) : SEUL le décodeur décide de la 4K. L'écran
+// annoncé par Android décrit l'interface, pas la dalle (téléviseur 4K vu en
+// 1080p) — il n'est lu qu'à titre informatif. Et une absence de mesure ne
+// refuse jamais rien. (D5A-21, revue 2026-09-11 : l'en-tête disait encore
+// « la 4K exige les deux », l'inverse de ce que ce fichier vérifie.)
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -46,7 +49,7 @@ const _box1080 = {'width': 1920, 'height': 1080, 'refreshHz': 60.0};
 const _phone = {'width': 1080, 'height': 2340, 'refreshHz': 120.0};
 
 void main() {
-  group('verdictFor — la 4K exige le décodeur ET l écran', () {
+  group('verdictFor — seul le décodeur décide (§caps4kDisplay)', () {
     test('décodeur 4K + écran 4K → ok', () {
       expect(_caps(hevc: _hw4k, display: _tv4k).verdictFor('4K'), PlayVerdict.ok);
     });

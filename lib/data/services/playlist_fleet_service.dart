@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 
+import '../../core/utils/user_error.dart';
 import '../models/stream_account.dart';
 import 'load_failure.dart';
 import 'parsed_playlist_service.dart';
@@ -261,16 +262,23 @@ abstract final class PlaylistFleetService {
         debugPrint('⏳ §fleetLoad : « ${acc.label} » dépasse '
             '${perAccount.inSeconds} s — reportée.');
       } catch (e) {
+        // §updAbi / obfuscation (revue 2026-09-11, lot 9) — Le détail passe
+        // SOUS la chip de la page Comptes (`describeFailure`). C'était
+        // `e.runtimeType.toString()` : un nom de classe Dart, qui devient une
+        // suite de lettres sans aucun sens dans l'APK obfusqué, et du jargon
+        // (« FormatException ») dans l'autre. Même phrase que les trois autres
+        // échecs d'analyse de `ParsedPlaylistService`.
+        final String detail = describeError(e);
         failed[acc.id] = LoadFailure(
           LoadFailureKind.parse,
-          detail: e.runtimeType.toString(),
+          detail: detail,
           at: DateTime.now(),
         );
         ParsedPlaylistService.setLoadState(
           acc.id,
           AccountLoadState.error,
           kind: LoadFailureKind.parse,
-          detail: e.runtimeType.toString(),
+          detail: detail,
         );
         debugPrint('❌ §fleetLoad : « ${acc.label} » a échoué ($e)');
       }

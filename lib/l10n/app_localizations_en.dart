@@ -2767,6 +2767,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get updInstallDenied => 'Installation permission denied';
 
   @override
+  String updNoApkForDevice(String tag) {
+    return 'The latest release ($tag) has no version for this device.';
+  }
+
+  @override
+  String get updUnverifiable =>
+      'This update cannot be verified, so it was not installed.';
+
+  @override
+  String get updCorrupted => 'The downloaded update is damaged. Try again.';
+
+  @override
   String get failOnDisk => 'ON DISK';
 
   @override
@@ -3724,7 +3736,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String memImageCacheRamValue(
-      String used, String max, String count, String maxCount) {
+    String used,
+    String max,
+    String count,
+    String maxCount,
+  ) {
     return '$used / $max · $count / $maxCount img';
   }
 

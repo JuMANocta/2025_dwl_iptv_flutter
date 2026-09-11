@@ -540,7 +540,14 @@ class WebConsoleService {
     // D1B-12 — `close()` n'était pas attendu NI gardé : un onglet fermé
     // pendant la réponse devenait une erreur asynchrone non gérée.
     unawaited(req.response.close().then<void>((_) {}, onError: (Object e) {
-      debugPrint('ℹ️ WebConsoleService: réponse interrompue (${e.runtimeType})');
+      // Revue 2026-09-11, lot 9 — pas de `runtimeType` (illisible une fois
+      // l'APK obfusqué, `obfuscation_guard_test`).
+      final String kind = e is SocketException
+          ? 'socket'
+          : e is HttpException
+              ? 'http'
+              : 'autre';
+      debugPrint('ℹ️ WebConsoleService: réponse interrompue ($kind)');
     }));
   }
 

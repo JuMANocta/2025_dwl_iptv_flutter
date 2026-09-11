@@ -2146,6 +2146,16 @@
   "updTimeout": "GitHub did not answer in time.",
   "updUnreachable": "Cannot reach GitHub. Check your connection.",
   "updInstallDenied": "Installation permission denied",
+  "updNoApkForDevice": "The latest release ({tag}) has no version for this device.",
+  "@updNoApkForDevice": {
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  },
+  "updUnverifiable": "This update cannot be verified, so it was not installed.",
+  "updCorrupted": "The downloaded update is damaged. Try again.",
   "failOnDisk": "ON DISK",
   "failWaiting": "WAITING",
   "failCacheGone": "CACHE LOST",

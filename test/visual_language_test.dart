@@ -5,12 +5,15 @@
 // le relais, la langue était `fr-FR` **écrite en dur à douze endroits** de
 // `TmdbService`, et la locale de l'appareil n'était lue nulle part.
 
+import 'dart:convert';
+
 import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
 import 'package:aetherStream/data/services/inferred_category_service.dart';
 import 'package:aetherStream/data/services/tmdb_poster_cache.dart';
 import 'package:aetherStream/data/services/visual_language_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(VisualLanguageService.resetForTest);
@@ -133,22 +136,40 @@ void main() {
   });
 
   group('§tmdbCacheUi — la mémoire TMDB rendue lisible', () {
-    test('un cache vide se décrit sans mentir', () {
-      // Les compteurs servent d'abord à EXPLIQUER : « N mémorisées, dont M
-      // introuvables ». Sans le second chiffre, un utilisateur qui voit un
-      // gros nombre d'échecs croit à une panne — or ils sont mémorisés
-      // EXPRÈS (68 % du cache à la mesure de §tmdbUrlPersist).
-      expect(TmdbPosterCache.resolvedCount, greaterThanOrEqualTo(0));
-      expect(TmdbPosterCache.unknownCount,
-          lessThanOrEqualTo(TmdbPosterCache.resolvedCount));
-      expect(TmdbPosterCache.networkResolutions, greaterThanOrEqualTo(0));
+    test('les compteurs disent ce qui a été restauré : N, dont M négatifs', () async {
+      // D5A-13 (revue 2026-09-11, lot 9) — L'ancienne version assertait
+      // `>= 0` : vrai par construction, elle ne pouvait pas échouer. On
+      // alimente maintenant le cache persisté (3 résolutions, dont 2 titres
+      // que TMDB ne connaît pas) et on vérifie les deux chiffres.
+      //
+      // Les négatifs sont mémorisés EXPRÈS (68 % du cache à la mesure de
+      // §tmdbUrlPersist) : c'est ce qui évite de relancer à chaque démarrage
+      // une recherche déjà infructueuse. D5A-21 — Le second chiffre n'est plus
+      // montré à l'écran depuis §tmdbPageOrder (il se lisait comme une
+      // panne) ; il reste la mesure de ce que la persistance épargne.
+      SharedPreferences.setMockInitialValues({});
+      await TmdbPosterCache.clear();
+      SharedPreferences.setMockInitialValues({
+        'tmdb_poster_cache_v2': jsonEncode({
+          'heat|false|1995|fr-FR': 'https://image.tmdb.org/t/p/w342/heat.jpg',
+          'titre inconnu|false||fr-FR': null,
+          'serie inconnue|true||fr-FR': null,
+        }),
+      });
+      await TmdbPosterCache.init();
+      expect(TmdbPosterCache.resolvedCount, 3);
+      expect(TmdbPosterCache.unknownCount, 2);
+      await TmdbPosterCache.clear();
+      expect(TmdbPosterCache.resolvedCount, 0);
     });
 
-    test('le compteur de catégories déduites est lisible hors tests', () {
+    test('le compteur de catégories déduites est public (la compilation le prouve)', () {
       // §tmdbCacheUi — il était `@visibleForTesting` : la page de réglages ne
       // pouvait donc pas l'afficher, et le bouton « Réapprendre » n'aurait
-      // rien pu annoncer.
-      expect(InferredCategoryService.count, greaterThanOrEqualTo(0));
+      // rien pu annoncer. D5A-13 — Ce test ne prouve QUE cela : il compile
+      // parce que le getter est public. La valeur elle-même n'est pas testée.
+      final int count = InferredCategoryService.count;
+      expect(count, isA<int>());
     });
   });
 }

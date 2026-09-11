@@ -45,6 +45,10 @@ dependencies:
   package_info_plus: ^8.3.0         # lire la version courante de l'app
   xml: ^6.5.0                       # parsing XMLTV (EPG)
   cryptography: ^2.7.0              # AES-256-GCM + PBKDF2 (sauvegarde §10)
+  # §updAbi (revue 2026-09-11, lot 9) — SHA-256 de l'APK de mise à jour, vérifié
+  # AVANT l'installeur. Déjà dans le lock (transitif, 3.0.7) : on le déclare
+  # parce qu'on l'importe, sans changer de version.
+  crypto: ^3.0.7
   file_picker: ^8.1.7               # sélection fichier .aether (import §10)
   qr_flutter: ^4.1.0                # génération QR code (§3c-8 pairing mobile→TV)
   cached_network_image: ^3.4.1      # §imgDiskCache — cache DISQUE des vignettes

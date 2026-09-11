@@ -2785,6 +2785,18 @@ class AppLocalizationsFr extends AppLocalizations {
   String get updInstallDenied => 'Permission d\'installation refusée';
 
   @override
+  String updNoApkForDevice(String tag) {
+    return 'La dernière release ($tag) n\'a pas de version pour cet appareil.';
+  }
+
+  @override
+  String get updUnverifiable =>
+      'Cette mise à jour ne peut pas être vérifiée : elle n\'a pas été installée.';
+
+  @override
+  String get updCorrupted => 'La mise à jour téléchargée est abîmée. Réessaie.';
+
+  @override
   String get failOnDisk => 'SUR DISQUE';
 
   @override
@@ -3746,7 +3758,11 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String memImageCacheRamValue(
-      String used, String max, String count, String maxCount) {
+    String used,
+    String max,
+    String count,
+    String maxCount,
+  ) {
     return '$used / $max · $count / $maxCount img';
   }
 

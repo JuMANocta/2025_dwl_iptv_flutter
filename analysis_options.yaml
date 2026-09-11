@@ -23,6 +23,17 @@ linter:
   rules:
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+    #
+    # D5A-08 (revue 2026-09-11, lot 9) — Les règles de revue du projet (« un
+    # Future ne part pas sans await ni unawaited() », « Timer / abonnement /
+    # flux fermés au dispose ») n'étaient tenues par AUCUN contrôle mécanique.
+    # Ces lints sont des INFOS : la CI tourne en `--no-fatal-infos`, rien ne
+    # bloque. Étape suivante : trier par module (marquer les tirs voulus par
+    # `unawaited(...)`), puis seulement les passer en warning via
+    # `analyzer: errors:` une fois la base propre.
+    unawaited_futures: true
+    cancel_subscriptions: true
+    close_sinks: true
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

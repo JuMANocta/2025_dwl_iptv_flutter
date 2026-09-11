@@ -290,7 +290,16 @@ abstract final class CastFileServer {
     } catch (e) {
       // Le récepteur a coupé (saut, arrêt) ou le fichier a disparu : normal,
       // pas une erreur de l'app. Réponse fermée proprement dans tous les cas.
-      debugPrint('ℹ️ §castLocal — requête interrompue (${e.runtimeType})');
+      // Revue 2026-09-11, lot 9 — pas de `runtimeType` : illisible une fois
+      // l'APK obfusqué (`obfuscation_guard_test`). Des libellés fixes.
+      final String kind = e is SocketException
+          ? 'socket'
+          : e is FileSystemException
+              ? 'fichier'
+              : e is HttpException
+                  ? 'http'
+                  : 'autre';
+      debugPrint('ℹ️ §castLocal — requête interrompue ($kind)');
       try {
         // En-têtes pas encore partis (fichier introuvable) : on le dit.
         res.statusCode = HttpStatus.notFound;
