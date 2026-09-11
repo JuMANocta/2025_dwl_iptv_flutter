@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 
 import '../core/themes/colors.dart';
@@ -63,6 +66,10 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
   late final TextEditingController _ctrl;
   List<List<M3uEntry>> _groups = const [];
 
+  /// Revue 2026-09-11, D4B-12 — Anti-rebond de la frappe (cf. [_onQueryChanged]).
+  Timer? _debounce;
+  static const Duration _kDebounce = Duration(milliseconds: 250);
+
   @override
   void initState() {
     super.initState();
@@ -72,23 +79,44 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _ctrl.dispose();
     super.dispose();
+  }
+
+  /// Revue 2026-09-11, D4B-12 — La FRAPPE passe par un anti-rebond : chaque
+  /// lettre relançait un balayage complet du catalogue (plusieurs centaines de
+  /// millisecondes sur une box avec plusieurs grosses listes). Une rafale de
+  /// frappes ne coûte plus qu'un balayage, fait sur le texte final. Même délai
+  /// que la recherche de l'accueil à 30 ms près ; l'ouverture et la bascule VO,
+  /// elles, cherchent tout de suite (appel direct à [_search]).
+  void _onQueryChanged(String query) {
+    _debounce?.cancel();
+    _debounce = Timer(_kDebounce, () {
+      if (mounted) _search(query);
+    });
   }
 
   /// Même prédicat que la recherche de l'accueil (`_SearchView._filterAndGroup`)
   /// : `contains` sur le nom affiché ET sur le titre brut, puis regroupement par
   /// `contentGroupKey` (la clé de fusion cross-listes de l'app).
   void _search(String query) {
+    // D4B-12 — Un appel direct (ouverture, bascule VO) remplace une frappe en
+    // attente : sinon celle-ci écraserait, un instant plus tard, le résultat
+    // qui vient d'être demandé.
+    _debounce?.cancel();
     final q = query.trim().toLowerCase();
     if (q.length < 2) {
       setState(() => _groups = const []);
       return;
     }
 
+    // D4B-12 — Les seules entrées du TYPE demandé (`entriesOfType` =
+    // `entries.where(type)`, même ordre, donc mêmes groupes et même
+    // troncature à 40), sans copier tout le catalogue de tous les comptes.
+    final Stopwatch sw = Stopwatch()..start();
     final byGroup = <String, List<M3uEntry>>{};
-    for (final e in ParsedPlaylistService.entries) {
-      if (e.type != widget.type) continue;
+    for (final e in ParsedPlaylistService.entriesOfType(widget.type)) {
       if (!e.displayName.toLowerCase().contains(q) &&
           !e.rawTitle.toLowerCase().contains(q)) {
         continue;
@@ -107,6 +135,12 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
 
     final groups = byGroup.values.toList();
     if (groups.length > 40) groups.length = 40;
+    // Sonde D4B-12 : une ligne par balayage réel (jamais par frappe avalée
+    // par l'anti-rebond).
+    if (!kReleaseMode) {
+      debugPrint('⏱️ §searchSheet : balayage ${sw.elapsedMilliseconds} ms '
+          '(${q.length} car., ${byGroup.length} groupes)');
+    }
     setState(() => _groups = groups);
   }
 
@@ -135,7 +169,7 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
             controller: _ctrl,
             autofocus: true,
             textInputAction: TextInputAction.search,
-            onChanged: _search,
+            onChanged: _onQueryChanged,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),
               filled: true,

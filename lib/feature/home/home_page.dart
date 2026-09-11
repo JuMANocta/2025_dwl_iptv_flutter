@@ -183,6 +183,11 @@ class _HomePageState extends State<HomePage> with RouteAware {
   String _searchQuery = '';
   Timer? _searchDebounce;
 
+  /// Revue 2026-09-11, D4A-09 — Résultats de la dernière recherche, rendus tels
+  /// quels tant que la requête et les listes n'ont pas changé (cf.
+  /// `_SearchHitsMemo`, dans `home_search.dart`).
+  final _SearchHitsMemo _searchHits = _SearchHitsMemo();
+
   @override
   void initState() {
     super.initState();
@@ -276,6 +281,8 @@ class _HomePageState extends State<HomePage> with RouteAware {
       // déchargement des listes secondaires. Hors recherche, il ne sert à
       // rien : on le lâche (reconstruit à la prochaine requête par personne).
       _PersonTitlesSectionState.dropIndex();
+      // D4A-09 — même raison pour le mémo des résultats (cf. `_SearchHitsMemo`).
+      _searchHits.clear();
     }
   }
 
@@ -724,7 +731,12 @@ class _HomePageState extends State<HomePage> with RouteAware {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final statusBarHeight = MediaQuery.of(context).padding.top;
+    // Revue 2026-09-11, D4A-09 — `paddingOf` et non `of(context).padding` :
+    // `MediaQuery.of` abonne la HomePage à TOUT le `MediaQueryData` (clavier,
+    // taille, préférences d'accessibilité…), et chaque changement la
+    // reconstruisait entière. Seule la marge du haut est lue : même valeur,
+    // moins de réveils.
+    final statusBarHeight = MediaQuery.paddingOf(context).top;
     // §heroFan ergo / §heroUnify — Le hero "fan" (désormais utilisé par TOUTES
     // les pages, y compris Chaînes) remonte jusqu'au status bar : l'inclinaison
     // des cartes laisse le coin haut-droit libre pour les icônes refresh/⚙️ qui
@@ -837,7 +849,8 @@ class _HomePageState extends State<HomePage> with RouteAware {
                         // §searchTopGap — juste la status bar + petite marge
                         // (avant : + kToolbarHeight, qui poussait le champ très
                         // bas pour rien). L'arrow_back est inline avec le champ.
-                        SizedBox(height: MediaQuery.of(context).padding.top + 6),
+                        // D4A-09 — même lecture ciblée qu'en tête de `build`.
+                        SizedBox(height: MediaQuery.paddingOf(context).top + 6),
                         Padding(
                           // §searchGap — bottom réduit (12 → 8) : combiné au
                           // `top: 4` de l'en-tête de section, il ne reste que
@@ -858,6 +871,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
                           child: _SearchView(
                             query: _searchQuery,
                             byType: byType,
+                            memo: _searchHits,
                             onSelectSuggestion: (q) {
                               _searchCtrl.text = q;
                               _searchCtrl.selection =
@@ -1261,19 +1275,70 @@ class _SecondaryAccountsProgressLine extends StatelessWidget {
 ///      liste manquante disparaissait de l'accueil sans un mot.
 /// Il affiche désormais `n/N` en vert quand ça travaille, et `n/N ⚠` en
 /// couleur d'alerte quand des listes manquent sans être en cours de chargement.
-class SecondaryAccountsCounter extends StatelessWidget {
+class SecondaryAccountsCounter extends StatefulWidget {
   const SecondaryAccountsCounter({super.key});
 
   @override
+  State<SecondaryAccountsCounter> createState() =>
+      _SecondaryAccountsCounterState();
+}
+
+/// Revue 2026-09-11, D4A-13 — La liste des comptes n'est plus relue à chaque
+/// reconstruction.
+///
+/// **Le défaut.** `FutureBuilder(future: StreamAccountService.listAccounts())`
+/// vivait sous deux `ValueListenableBuilder` (version de la playlist, états de
+/// chargement) : chaque transition relançait `1 + N` lectures du stockage
+/// chiffré, sur le canal plateforme — une rafale pendant l'hydratation des
+/// listes au démarrage, pour une liste de comptes qui n'avait pas bougé.
+///
+/// **La règle.** Le futur est gardé tant que `accountsVersion` ne bouge pas :
+/// c'est le seul signal d'un changement de la liste (ajout d'un compte,
+/// suppression — y compris la migration legacy et la restauration `.aether`,
+/// qui passent par `saveAccount` / `deleteAccount`). Une modification d'un
+/// compte existant ne le bumpe pas, et n'a pas à le faire : le décompte ne
+/// lit que les identifiants. Les deux autres signaux ne font que RELIRE la
+/// mémoire (`entriesCountOf`, `loadStates`), sans stockage. ⚠️ Un échec de
+/// lecture n'est pas mémoïsé : la reconstruction suivante réessaie, comme
+/// avant.
+class _SecondaryAccountsCounterState extends State<SecondaryAccountsCounter> {
+  /// Une liste entre ou sort de la mémoire, ou un compte est ajouté / retiré.
+  final Listenable _versions = Listenable.merge(<Listenable>[
+    ParsedPlaylistService.version,
+    StreamAccountService.accountsVersion,
+  ]);
+
+  Future<List<StreamAccount>>? _accounts;
+  int _accountsVersion = -1;
+
+  Future<List<StreamAccount>> _accountsFuture() {
+    final int v = StreamAccountService.accountsVersion.value;
+    final Future<List<StreamAccount>>? cached = _accounts;
+    if (cached != null && v == _accountsVersion) return cached;
+    _accountsVersion = v;
+    // Sonde D4A-13 : une ligne par relecture réelle (démarrage, ajout ou
+    // suppression d'un compte) — jamais par transition de chargement.
+    if (!kReleaseMode) {
+      debugPrint('🔢 §secondaryCounts : relecture des comptes '
+          '(accountsVersion=$v)');
+    }
+    final Future<List<StreamAccount>> f = StreamAccountService.listAccounts();
+    f.then<void>((_) {}, onError: (Object _) {
+      if (identical(_accounts, f)) _accounts = null;
+    });
+    return _accounts = f;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: ParsedPlaylistService.version,
-      builder: (ctx, _, __) {
+    return ListenableBuilder(
+      listenable: _versions,
+      builder: (ctx, __) {
         return ValueListenableBuilder<Map<String, AccountLoadState>>(
           valueListenable: ParsedPlaylistService.loadStates,
           builder: (ctx, states, __) {
             return FutureBuilder<List<StreamAccount>>(
-              future: StreamAccountService.listAccounts(),
+              future: _accountsFuture(),
               builder: (ctx, snap) {
                 final accounts = snap.data;
                 if (accounts == null || accounts.length < 2) {
@@ -1408,6 +1473,15 @@ class _TypePage extends StatefulWidget {
     }
   }
 
+  /// Revue 2026-09-11, D4A-14 — Préfixe `|FR|` d'un titre de chaîne, hissé en
+  /// `static final` comme `_reRadioGroup` juste en dessous. La VM Dart ne met
+  /// AUCUNE expression en cache à la construction (`RegExp(...)` rend un
+  /// `_RegExp` natif neuf, compilé à son premier usage) : le regroupement de la
+  /// page Chaînes en allouait et en compilait une par groupe. Même motif, mêmes
+  /// options — sortie identique.
+  static final RegExp _reFrPrefix =
+      RegExp(r'^\s*\|\s*FR\s*\|', caseSensitive: false);
+
   /// Détecte une chaîne TV française pour la regrouper en tête de la page Chaînes.
   /// Critères (ordre de fiabilité) :
   ///   1. tvgId se terminant par `.fr` (TF1.fr, France2.fr, M6.fr, ARTE.fr…)
@@ -1417,7 +1491,7 @@ class _TypePage extends StatefulWidget {
     final tvgId = e.tvgId?.toLowerCase() ?? '';
     if (tvgId.endsWith('.fr')) return true;
     final raw = e.title.rawTitle;
-    if (RegExp(r'^\s*\|\s*FR\s*\|', caseSensitive: false).hasMatch(raw)) return true;
+    if (_reFrPrefix.hasMatch(raw)) return true;
     final group = (e.groupTitle ?? '').toUpperCase();
     if (group.contains('FRANCE') || group.contains('|FR|')) return true;
     return false;

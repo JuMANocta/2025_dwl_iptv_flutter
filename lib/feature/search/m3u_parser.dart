@@ -110,6 +110,9 @@ class M3uParser {
 
     // §ramDiet — Un pool par parsing, jeté à la sortie (cf. `StringPool`).
     final pool = StringPool();
+    // Revue 2026-09-11, D1A-11 — Même durée de vie que le pool : un calcul de
+    // catégorie par `group-title` distinct, pas un par entrée.
+    final categoryMemo = CategoryLabelMemo();
 
     final regExpSerie       = RegExp(r"S\s*(\d{1,2})\s*E\s*(\d{1,2})", caseSensitive: false);
     final regExpLogo        = RegExp(r'tvg-logo="([^"]*)"');
@@ -225,27 +228,35 @@ class M3uParser {
         // région dans le group-title). Court-circuit si rien n'est masqué.
         // §legLang — prédicat PARTAGÉ (`isRegionHidden`) : les trois points
         // d'application avaient chacun leur copie, et elles divergeaient.
-        final hiddenEntry = isRegionHidden(
-          name: title ?? '',
-          groupTitle: groupTitle,
-          hidden: hidden,
-        );
-        if (title != null && title.isNotEmpty && !hiddenEntry) {
-          _addEntry(
-            rawTitle: title,
-            url: url,
-            accountId: accountId,
-            regExpSerie: regExpSerie,
-            logoUrl: logoUrl,
-            tvgId: tvgId,
-            groupTitle: groupTitle,
-            catchupDays: catchupDays,
-            catchupSource: catchupSource,
-            filmsList: filmsList,
-            seriesList: seriesList,
-            tvList: tvList,
-            pool: pool,
-          );
+        // Revue 2026-09-11, D1A-11 — La catégorie est calculée UNE fois (et
+        // mémorisée par `group-title`) puis servie au filtre ET à l'entrée :
+        // avant, un filtre actif la calculait deux fois par entrée. Une entrée
+        // sans titre n'est jamais ajoutée : sa catégorie n'est plus calculée
+        // pour rien (le prédicat est pur, le résultat est inchangé).
+        if (title != null && title.isNotEmpty) {
+          final String? category = categoryMemo.of(groupTitle);
+          if (!isRegionHiddenForCategory(
+            name: title,
+            category: category,
+            hidden: hidden,
+          )) {
+            _addEntry(
+              rawTitle: title,
+              url: url,
+              accountId: accountId,
+              regExpSerie: regExpSerie,
+              logoUrl: logoUrl,
+              tvgId: tvgId,
+              groupTitle: groupTitle,
+              category: category,
+              catchupDays: catchupDays,
+              catchupSource: catchupSource,
+              filmsList: filmsList,
+              seriesList: seriesList,
+              tvList: tvList,
+              pool: pool,
+            );
+          }
         }
       }
     }
@@ -286,6 +297,8 @@ class M3uParser {
     String? logoUrl,
     String? tvgId,
     String? groupTitle,
+    // D1A-11 — `contentCategoryLabel(groupTitle)`, déjà calculée par l'appelant.
+    String? category,
     int? catchupDays,
     String? catchupSource,
     required List<M3uEntry> filmsList,
@@ -326,7 +339,7 @@ class M3uParser {
       groupTitle: pool.of(groupTitle),
       catchupDays: catchupDays,
       catchupSource: pool.of(catchupSource),
-      category: pool.of(contentCategoryLabel(groupTitle)), // §1c
+      category: pool.of(category), // §1c — D1A-11 : calculée une fois, en amont
     );
 
     if (type == M3uContentType.series) {

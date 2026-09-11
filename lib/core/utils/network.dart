@@ -96,7 +96,14 @@ class NetworkUtils {
     // là que pour les chemins qui ne savent pas de quel compte ils dépendent
     // (téléchargement d'un média depuis une URL nue).
     final acc = account ?? await StreamAccountService.getCurrentAccount();
-    final legacy = await SecureStorageService().getCredentials();
+    // Revue 2026-09-11, D1B-15 — Le stockage legacy (8 lectures du trousseau,
+    // chiffré, par le canal natif) n'est lu que s'il peut servir : depuis
+    // D1B-10, `cookiesFor` ne le regarde QUE sans compte. Avant, il était relu
+    // à CHAQUE requête IPTV (chaque action player_api, chaque téléchargement)
+    // pour être ignoré. Résultat de `cookiesFor` strictement identique.
+    final Map<String, String?> legacy = acc == null
+        ? await SecureStorageService().getCredentials()
+        : const <String, String?>{};
     final cookies = cookiesFor(acc, legacy);
 
     // On ajoute les cookies uniquement s'ils existent

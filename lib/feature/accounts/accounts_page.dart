@@ -743,7 +743,17 @@ class _AccountCardState extends State<_AccountCard> {
     // §17a — fetch infos Xtream (expiration / connexions). Marche aussi pour
     // les comptes completeUrl (extraction creds depuis l'URL). Renvoie null si
     // l'URL n'est pas Xtream-compatible.
-    _accountInfoFuture = StreamAccountService.fetchAccountInfo(widget.account);
+    //
+    // Revue 2026-09-11, D4B-10 — La requête que `_loadAccounts` vient de
+    // lancer pour ce compte (`ExpirationAlertService.fetchAll`, juste avant
+    // que la liste des cartes ne s'affiche), TANT QU'ELLE COURT, plutôt
+    // qu'une seconde identique sur la connexion unique du panel. Terminée (ou
+    // jamais lancée), la carte fait la sienne, comme avant : la liste est un
+    // `ListView.builder`, une carte remontée au défilement doit montrer des
+    // chiffres frais, pas ceux de l'ouverture de la page.
+    _accountInfoFuture =
+        ExpirationAlertService.pendingFor(widget.account.id) ??
+            StreamAccountService.fetchAccountInfo(widget.account);
   }
 
   String get _host {

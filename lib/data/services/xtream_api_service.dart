@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -167,6 +169,57 @@ XtreamListResult classifyListBody(Object? body, int? status) {
   );
 }
 
+/// Revue 2026-09-11, D1A-12 — Au-delà de cette taille, une réponse est
+/// décodée dans un isolate. C'est le seuil que Dio lui-même retient pour
+/// sortir un décodage JSON du thread principal (`BackgroundTransformer`,
+/// 50 Ko). En dessous (catégories, `get_series_info` d'une fiche ouverte),
+/// lancer un isolate coûterait plus que le décodage : on reste sur place.
+const int _kIsolateDecodeThreshold = 50 * 1024;
+
+/// Décodeur UTF-8 + JSON FUSIONNÉ, qui tolère l'UTF-8 invalide comme le
+/// faisait Dio en `ResponseType.plain` (`utf8.decode(…, allowMalformed:
+/// true)`).
+final Converter<List<int>, Object?> _utf8JsonDecoder =
+    const Utf8Decoder(allowMalformed: true).fuse(const JsonDecoder());
+
+/// Revue 2026-09-11, D1A-12 — **Le corps d'une réponse `player_api.php`,
+/// décodé depuis ses OCTETS.** Fonction pure, top-level : elle tourne aussi
+/// bien sur le thread UI (petites réponses) que dans un isolate.
+///
+/// Rend EXACTEMENT ce que rendait l'ancien chemin — Dio en
+/// `ResponseType.plain` (`utf8.decode(octets, allowMalformed: true)`), puis
+/// `jsonDecode` — c'est-à-dire :
+/// - `null` pour un corps vide ;
+/// - le JSON décodé ;
+/// - sinon le texte, tronqué à 500 caractères (`classifyListBody` y cherche
+///   un « too many connections »).
+///
+/// Le décodeur fusionné saute la chaîne intermédiaire (une passe de moins).
+/// ⚠️ Relecture lot 8a — ce n'est PAS un gain de mémoire : au-delà de 50 Ko,
+/// les octets sont COPIÉS dans l'isolate (le message d'`Isolate.run`) et
+/// l'original reste tenu par la réponse Dio jusqu'au retour, soit ~2n + le
+/// graphe au pic — l'ordre de grandeur de l'ancien chemin (texte + graphe),
+/// pas moins. Le gain est ailleurs : le décodage ne tient plus le thread UI.
+/// Équivalence vérifiée
+/// cas par cas (UTF-8 invalide dans une chaîne, octets Latin-1, BOM en tête,
+/// BOM seul, `null`, HTML, espaces, séquences tronquées…) par
+/// `test/xtream_body_decode_test.dart`, contre l'ancien algorithme. Le seul
+/// écart du décodeur fusionné — un corps réduit à un BOM, que `utf8.decode`
+/// rend vide — est rattrapé par le repli ci-dessous.
+@visibleForTesting
+Object? decodeXtreamBody(Uint8List bytes) {
+  if (bytes.isEmpty) return null;
+  try {
+    return _utf8JsonDecoder.convert(bytes);
+  } catch (_) {
+    // Pas du JSON : on garde le texte, `classifyListBody` saura y
+    // reconnaître un « too many connections ».
+    final String raw = utf8.decode(bytes, allowMalformed: true);
+    if (raw.isEmpty) return null; // BOM seul : vide, comme avant.
+    return raw.length > 500 ? raw.substring(0, 500) : raw;
+  }
+}
+
 /// Le corps parle-t-il d'un excès de connexions ? (fr/en, panels bavards)
 bool _mentionsConnections(Object? body) {
   if (body == null) return false;
@@ -262,28 +315,27 @@ class XtreamApiService {
       return await HostGate.run(url, () async {
         final dio = await _dio(account);
         try {
-          final resp = await dio.get<String>(
+          // Revue 2026-09-11, D1A-12 — OCTETS, et plus `ResponseType.plain` :
+          // Dio décodait la réponse en texte (UTF-16, deux fois sa taille)
+          // PUIS `jsonDecode` la parcourait, les deux sur le thread UI — pour
+          // `get_vod_streams`, des dizaines de Mo, accueil affiché compris
+          // (passe « reprise », `refreshIfStale`, « Tout recharger »). Une
+          // grosse réponse est désormais décodée dans un isolate ; le
+          // résultat revient par `Isolate.exit`, sans copie.
+          final resp = await dio.get<List<int>>(
             url,
             options: Options(
-              responseType: ResponseType.plain,
+              responseType: ResponseType.bytes,
               followRedirects: true,
               receiveTimeout: timeout ?? const Duration(minutes: 2),
               // ⚠️ Ne PAS remettre `s < 300` : le 403 doit être lu, pas levé.
               validateStatus: (s) => s != null && s < 500,
             ),
           );
-          final raw = resp.data ?? '';
-          if (raw.isEmpty) {
-            return (body: null, status: resp.statusCode, error: null);
-          }
-          Object? decoded;
-          try {
-            decoded = jsonDecode(raw);
-          } catch (_) {
-            // Pas du JSON : on garde le texte, `classifyListBody` saura y
-            // reconnaître un « too many connections ».
-            decoded = raw.length > 500 ? raw.substring(0, 500) : raw;
-          }
+          final List<int> data = resp.data ?? const <int>[];
+          final Uint8List bytes =
+              data is Uint8List ? data : Uint8List.fromList(data);
+          final Object? decoded = await decodeBody(bytes);
           return (body: decoded, status: resp.statusCode, error: null);
         } finally {
           // Referme le HttpClient (et donc le socket) AVANT de rendre le jeton.
@@ -315,6 +367,23 @@ class XtreamApiService {
       return (body: null, status: null, error: 'erreur inattendue');
     }
   }
+
+  /// Revue 2026-09-11, D1A-12 — §isolateLeak : portée DÉDIÉE. La fermeture
+  /// envoyée à l'isolate ne voit que [bytes] ; déclarée dans `_fetch`, elle
+  /// aurait partagé le `Context` de la fermeture de `HostGate.run`, qui tient
+  /// le `Dio` (son `HttpClient` ne se transmet pas) et le compte.
+  static Future<Object?> _decodeOffUiThread(Uint8List bytes) =>
+      Isolate.run(() => decodeXtreamBody(bytes), debugName: 'xtream-json');
+
+  /// D1A-12 — Le choix du chemin : sur place sous [_kIsolateDecodeThreshold],
+  /// dans un isolate au-delà. C'est CETTE fonction que `_fetch` appelle, et
+  /// que `test/xtream_body_decode_test.dart` rejoue (aller-retour réel par
+  /// l'isolate compris) contre l'ancien chemin de Dio.
+  @visibleForTesting
+  static FutureOr<Object?> decodeBody(Uint8List bytes) =>
+      bytes.length < _kIsolateDecodeThreshold
+          ? decodeXtreamBody(bytes)
+          : _decodeOffUiThread(bytes);
 
   // ── Live (chaînes TV) ───────────────────────────────────────────────────
   //

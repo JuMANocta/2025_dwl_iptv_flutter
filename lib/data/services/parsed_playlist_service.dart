@@ -752,6 +752,25 @@ class ParsedPlaylistService {
     return _memory.values.expand((p) => p.entries).toList();
   }
 
+  /// Revue 2026-09-11, D4B-12 — Les entrées d'UN type, dans l'ordre exact de
+  /// [entries] (comptes dans l'ordre de la mémoire, entrées dans l'ordre de
+  /// chaque liste) : c'est `entries.where((e) => e.type == type)`, sans
+  /// matérialiser la concaténation de TOUS les comptes et de TOUS les types —
+  /// les listes pré-splittées `films/series/tv` sont par construction le
+  /// filtre de `entries` sur le type, dans le même ordre.
+  ///
+  /// ⚠️ Parcours PARESSEUX : à itérer tout de suite, sans `await` au milieu
+  /// (la mémoire peut changer entre deux tours de boucle d'événements).
+  /// Touche l'accès de toutes les listes chargées, exactement comme [entries].
+  static Iterable<M3uEntry> entriesOfType(M3uContentType type) {
+    _touchAllLoaded();
+    return _memory.values.expand((ParsedPlaylist p) => switch (type) {
+          M3uContentType.movie => p.films,
+          M3uContentType.series => p.series,
+          M3uContentType.tv => p.tv,
+        });
+  }
+
   /// §perfBigList — Entrées DÉJÀ splittées par type, compte prioritaire d'abord.
   /// Réutilise les listes pré-splittées `films/series/tv` de chaque
   /// [ParsedPlaylist] (calculées une seule fois via `late final`) au lieu de

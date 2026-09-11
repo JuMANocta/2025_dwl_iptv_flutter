@@ -12,9 +12,14 @@ class _SearchView extends StatelessWidget {
   /// Le parent met à jour le contrôleur de recherche avec la valeur choisie.
   final ValueChanged<String>? onSelectSuggestion;
 
+  /// Revue 2026-09-11, D4A-09 — Mémo des résultats, possédé par la HomePage
+  /// (cf. [_SearchHitsMemo]).
+  final _SearchHitsMemo memo;
+
   const _SearchView({
     required this.query,
     required this.byType,
+    required this.memo,
     this.onSelectSuggestion,
   });
 
@@ -23,6 +28,9 @@ class _SearchView extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     if (query.trim().isEmpty) {
+      // D4A-09 — Sans requête, rien à retenir : le mémo lâche ses listes (il
+      // référence le catalogue, qui doit rester déchargeable).
+      memo.clear();
       return _SearchEmptyState(
         cs: cs,
         onSelectSuggestion: onSelectSuggestion,
@@ -44,13 +52,35 @@ class _SearchView extends StatelessWidget {
     // « Personnes » s'imposait déjà `q.length < 2` (partie RÉSEAU), alors que
     // le balayage LOCAL, bien plus coûteux, ne se protégeait pas.
     final deepSearch = q.length >= _kMinQueryLength;
-    final filmsHits = deepSearch
-        ? _filterAndGroup(byType[M3uContentType.movie]!, q, M3uContentType.movie)
-        : const <List<M3uEntry>>[];
-    final seriesHits = deepSearch
-        ? _filterAndGroup(byType[M3uContentType.series]!, q, M3uContentType.series)
-        : const <List<M3uEntry>>[];
-    final tvHits = _filterAndGroup(byType[M3uContentType.tv]!, q, M3uContentType.tv);
+    // Revue 2026-09-11, D4A-09 — Les balayages ne tournent plus qu'à un
+    // changement de REQUÊTE ou de LISTES : la HomePage se reconstruit bien plus
+    // souvent que ça (catégorie apprise par une affiche de résultat, focus du
+    // champ, favori, reprise…), et chaque fois relançait jusqu'à trois passes
+    // sur tout le catalogue pour les mêmes groupes. Cf. [_SearchHitsMemo].
+    final int aliasVersion = TmdbGroupAliasService.version.value;
+    if (!memo.holds(q, byType, aliasVersion)) {
+      final Stopwatch sw = Stopwatch()..start();
+      memo.store(
+        q: q,
+        byType: byType,
+        aliasVersion: aliasVersion,
+        films: deepSearch
+            ? _filterAndGroup(byType[M3uContentType.movie]!, q, M3uContentType.movie)
+            : const <List<M3uEntry>>[],
+        series: deepSearch
+            ? _filterAndGroup(byType[M3uContentType.series]!, q, M3uContentType.series)
+            : const <List<M3uEntry>>[],
+        tv: _filterAndGroup(byType[M3uContentType.tv]!, q, M3uContentType.tv),
+      );
+      // Sonde D4A-09 : UNE ligne par balayage réel. Une ligne qui apparaît
+      // sans frappe (affiches qui résolvent, focus) = le mémo a raté.
+      if (!kReleaseMode) {
+        debugPrint('⏱️ §searchMemo : balayage ${sw.elapsedMilliseconds} ms (${q.length} car., groupes films/séries/chaînes ${memo.films.length}/${memo.series.length}/${memo.tv.length})');
+      }
+    }
+    final filmsHits = memo.films;
+    final seriesHits = memo.series;
+    final tvHits = memo.tv;
 
     final totalGroups = filmsHits.length + seriesHits.length + tvHits.length;
 
@@ -212,6 +242,91 @@ class _SearchView extends StatelessWidget {
     // avait aucun moyen d'accéder au-delà des 30 premiers, et le compteur ne
     // pouvait annoncer qu'un « 30+ » approximatif.
     return groups;
+  }
+}
+
+
+
+/// Revue 2026-09-11, D4A-09 — Les résultats de la dernière recherche, et ce
+/// qui les a produits.
+///
+/// **Le défaut.** `_SearchView` est recréé à CHAQUE reconstruction de la
+/// HomePage — et elle se reconstruit sans que la requête change : catégorie
+/// apprise quand une affiche de résultat résout (§inferredCat, jusqu'à une
+/// fois toutes les 5 s), prise ou perte du focus du champ, favori, sauvegarde
+/// de reprise. Chaque fois, jusqu'à trois balayages de tout le catalogue
+/// (~320 000 entrées, deux `toLowerCase()` alloués par entrée) pour les mêmes
+/// groupes.
+///
+/// **La règle.** Le résultat ne dépend QUE de la requête normalisée, des trois
+/// listes de `byType` et de la table de fusion TMDB (`contentGroupKey` passe
+/// par `TmdbGroupAliasService.canonical`) ; tout le reste est pur (titres
+/// immuables, `tvGroupKey`, `dedupeTvVersions`, `_splitGroupsByYear`). Si les
+/// cinq sont identiques, les balayages rendraient exactement les mêmes
+/// groupes, dans le même ordre : on rend ceux d'avant.
+///
+/// ⚠️ Les listes se comparent par IDENTITÉ, jamais par contenu (comparer le
+/// contenu coûterait le balayage qu'on veut éviter) : `_byTypeMemoized` rend
+/// les mêmes objets tant que la playlist et le compte actif n'ont pas bougé,
+/// et de nouveaux dès qu'ils bougent — un faux « changé » coûte un balayage,
+/// jamais un résultat faux.
+/// ⚠️ Mémo d'INSTANCE (un par HomePage), vidé sans requête et à la sortie de
+/// la recherche : il référence le catalogue, qui doit pouvoir être déchargé —
+/// le piège de l'index statique de D4A-03.
+/// ⚠️ Les listes de groupes rendues sont PARTAGÉES entre reconstructions : rien
+/// en aval ne doit les muter (vérifié : `_ResultSection`, `_TmdbOnlySection`,
+/// `CategoryListPage` ne font que les lire).
+class _SearchHitsMemo {
+  String? _q;
+  List<M3uEntry>? _movies;
+  List<M3uEntry>? _series;
+  List<M3uEntry>? _tv;
+  int _aliasVersion = -1;
+
+  List<List<M3uEntry>> films = const <List<M3uEntry>>[];
+  List<List<M3uEntry>> series = const <List<M3uEntry>>[];
+  List<List<M3uEntry>> tv = const <List<M3uEntry>>[];
+
+  /// Vrai si les résultats gardés ont été calculés avec EXACTEMENT ces entrées.
+  bool holds(
+    String q,
+    Map<M3uContentType, List<M3uEntry>> byType,
+    int aliasVersion,
+  ) =>
+      _q == q &&
+      _aliasVersion == aliasVersion &&
+      identical(_movies, byType[M3uContentType.movie]) &&
+      identical(_series, byType[M3uContentType.series]) &&
+      identical(_tv, byType[M3uContentType.tv]);
+
+  void store({
+    required String q,
+    required Map<M3uContentType, List<M3uEntry>> byType,
+    required int aliasVersion,
+    required List<List<M3uEntry>> films,
+    required List<List<M3uEntry>> series,
+    required List<List<M3uEntry>> tv,
+  }) {
+    _q = q;
+    _movies = byType[M3uContentType.movie];
+    _series = byType[M3uContentType.series];
+    _tv = byType[M3uContentType.tv];
+    _aliasVersion = aliasVersion;
+    this.films = films;
+    this.series = series;
+    this.tv = tv;
+  }
+
+  void clear() {
+    if (_q == null) return;
+    _q = null;
+    _movies = null;
+    _series = null;
+    _tv = null;
+    _aliasVersion = -1;
+    films = const <List<M3uEntry>>[];
+    series = const <List<M3uEntry>>[];
+    tv = const <List<M3uEntry>>[];
   }
 }
 

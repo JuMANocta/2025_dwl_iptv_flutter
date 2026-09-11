@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/diagnostics/prefs_probe.dart';
 import 'inferred_category_service.dart';
 import 'tmdb_api_service.dart';
 import 'tmdb_service.dart';
@@ -68,6 +69,11 @@ class TmdbPosterCache {
   static Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      // Revue 2026-09-11, D1B-14 — Une ligne au démarrage : la taille réelle
+      // des préférences, ce cache compris. C'est la mesure qui décide de le
+      // sortir dans un fichier dédié (seuil de la revue : ~500 Ko). Non
+      // attendue : elle lit la taille du fichier, rien n'en dépend.
+      unawaited(PrefsProbe.logFootprint(prefs));
       final raw = prefs.getString(_prefsKey);
       if (raw == null) return;
       final decoded = jsonDecode(raw);
@@ -102,7 +108,11 @@ class TmdbPosterCache {
       _dirty = false;
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_prefsKey, jsonEncode(_cache));
+        // Revue 2026-09-11, D1B-14 — Même écriture, chronométrée : journalisée
+        // seulement si elle prend plus de 8 ms au thread UI.
+        await PrefsProbe.setStringTimed(
+            prefs, _prefsKey, () => jsonEncode(_cache),
+            tag: '§tmdbUrlPersist');
       } catch (e) {
         debugPrint('⚠️ §tmdbUrlPersist — écriture impossible : $e');
       }

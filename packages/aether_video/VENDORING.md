@@ -88,6 +88,17 @@ bénéficiait déjà**, ne pas le reproduire aurait cassé des flux qui marchent
 configuration du processus.
 ⚠️ **Opt-in, par flux** (`load(allowInvalidCertificate: true)`), jamais global :
 même discipline que `NetworkUtils` côté Dart, TMDB/GitHub/XMLTV restent stricts.
+⚠️ **Amendé le 2026-09-11 (revue de code, lot 8b, D2B-13) : UN client pour tout
+le processus.** `insecureHttpFactory` construisait un `SSLContext` et un
+`OkHttpClient` complets (pool de connexions, tâche de nettoyage) à CHAQUE
+chargement de flux — un par zap, l'app demandant le bypass pour tout flux
+distant —, et chaque pool abandonné gardait ses connexions inactives vers le
+panel jusqu'à 5 min. Le client « trust-all » vit désormais dans le
+`companion object` (`insecureClient`, `by lazy` : construit à la première
+demande de bypass, jamais avant) ; seules les en-têtes varient, posées sur la
+fabrique (`OkHttpDataSource.Factory(client).setDefaultRequestProperties`), donc
+toujours PAR FLUX. Le périmètre ne change pas : le client n'est pris que par un
+flux distant qui le demande — le partager n'élargit pas le bypass.
 
 **Patch 1 — `LoudnessEnhancer` (§audio).** `player.volume` d'ExoPlayer est borné
 à 1.0 : il atténue, il n'amplifie pas. L'app monte à **200 %** et démarre à

@@ -88,6 +88,41 @@ class VideoPlayerMethodHandler(
         private const val AUDIO_FOCUS_PAUSE_ABANDON_DELAY_MS = 30_000L
 
         /**
+         * §engineVendor patch 2, amendé (revue 2026-09-11, D2B-13) — UN client
+         * OkHttp « trust-all » pour tout le processus, construit à la PREMIÈRE
+         * demande de bypass (jamais avant : un appareil qui ne lit que des flux
+         * au certificat valide ne le construit jamais).
+         *
+         * Il était reconstruit à CHAQUE chargement de flux — `SSLContext`,
+         * `SecureRandom`, client complet (pool de connexions, tâche de
+         * nettoyage) —, soit un par zap, puisque l'app demande le bypass pour
+         * tout flux distant ; et chaque pool abandonné gardait ses connexions
+         * inactives vers le panel jusqu'à 5 min. Un `OkHttpClient` est fait
+         * pour être partagé. Les en-têtes, elles, restent PAR FLUX : elles
+         * sont posées sur la fabrique (`setDefaultRequestProperties`), jamais
+         * sur le client.
+         *
+         * Attention : le périmètre ne change pas. Ce client n'est TOUJOURS
+         * utilisé que par `insecureHttpFactory`, donc par un flux distant qui
+         * l'a demandé ; le partager n'élargit pas le bypass, ça évite de le
+         * refaire.
+         */
+        private val insecureClient: OkHttpClient by lazy {
+            val trustAll: X509TrustManager = object : X509TrustManager {
+                override fun checkClientTrusted(c: Array<X509Certificate>?, a: String?) {}
+                override fun checkServerTrusted(c: Array<X509Certificate>?, a: String?) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+            }
+            val ctx = SSLContext.getInstance("TLS").apply {
+                init(null, arrayOf<TrustManager>(trustAll), java.security.SecureRandom())
+            }
+            OkHttpClient.Builder()
+                .sslSocketFactory(ctx.socketFactory, trustAll)
+                .hostnameVerifier { _, _ -> true }
+                .build()
+        }
+
+        /**
          * Determines if a URL is an HLS stream (.m3u8 extension or common
          * HLS patterns). Shared with VideoCacheManager.precache, which must
          * warm playlists+segments for HLS rather than raw bytes.
@@ -217,7 +252,9 @@ class VideoPlayerMethodHandler(
     // le reproduire serait une régression silencieuse — un flux qui marche
     // aujourd'hui cesserait de marcher, sans message clair.
     //
-    // /!\ CE CLIENT N'EST CONSTRUIT QUE SUR DEMANDE EXPLICITE, par flux.
+    // /!\ CE CLIENT N'EST PRIS QUE SUR DEMANDE EXPLICITE, par flux (il est
+    // construit une seule fois, à la première demande : D2B-13, cf.
+    // `insecureClient`).
     // Même discipline que `NetworkUtils.buildIptvBaseDio()` (patch 20, revue
     // 2026-09-11, D1B-21 — ex-`buildBaseDio(allowInvalidCertificate:)`)
     // côté Dart : TMDB, GitHub et XMLTV gardent une validation stricte. Ne
@@ -227,20 +264,10 @@ class VideoPlayerMethodHandler(
     // /!\ `DefaultHttpDataSource` n'expose aucun réglage SSL ; OkHttp est la
     // seule voie supportée qui n'altère pas la configuration du processus.
     private fun insecureHttpFactory(headers: Map<String, String>?): DataSource.Factory {
-        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun checkClientTrusted(c: Array<X509Certificate>?, a: String?) {}
-            override fun checkServerTrusted(c: Array<X509Certificate>?, a: String?) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        })
-        val ctx = SSLContext.getInstance("TLS").apply {
-            init(null, trustAll, java.security.SecureRandom())
-        }
-        val client = OkHttpClient.Builder()
-            .sslSocketFactory(ctx.socketFactory, trustAll[0] as X509TrustManager)
-            .hostnameVerifier { _, _ -> true }
-            .build()
+        // D2B-13 — le client est PARTAGÉ (cf. `insecureClient`) ; la fabrique,
+        // elle, reste neuve à chaque flux : c'est elle qui porte ses en-têtes.
         NpLog.w(TAG, "/!\\ Bypass SSL ACTIF pour ce flux (panel IPTV a certificat invalide)")
-        return OkHttpDataSource.Factory(client).apply {
+        return OkHttpDataSource.Factory(insecureClient).apply {
             if (headers != null) setDefaultRequestProperties(headers)
         }
     }

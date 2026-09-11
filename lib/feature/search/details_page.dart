@@ -221,7 +221,19 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     _currentEpisode = widget.entry;
-    _memorySignature = versionsSignature(_entriesFromMemory());
+    // Revue 2026-09-11, D4A-10 — UNE collecte en mémoire à l'ouverture, pas
+    // deux : l'empreinte, les versions d'un film et les épisodes d'une série
+    // la relisaient chacun (`byTypeWithPriority` concatène tous les comptes,
+    // puis `entriesOfTitle` balaie tout le type). Tout se passe dans ce même
+    // tour synchrone, la mémoire ne peut pas changer entre-temps : le
+    // résultat est celui qu'aurait donné chaque relecture.
+    final Stopwatch openSw = Stopwatch()..start();
+    final List<M3uEntry> fromMemory = _entriesFromMemory();
+    // Sonde D4A-10 : une ligne par ouverture de fiche (geste de l'utilisateur).
+    if (!kReleaseMode) {
+      debugPrint('⏱️ §detailsOpen : collecte mémoire ${openSw.elapsedMilliseconds} ms (${fromMemory.length} entrées du titre)');
+    }
+    _memorySignature = versionsSignature(fromMemory);
     ParsedPlaylistService.version.addListener(_onPlaylistChanged);
     // §exitCost — mesure de la rotation. Revue 2026-09-11, D4L-02 — hors
     // release seulement : l'observateur ne sert QU'À ce chrono, et chaque
@@ -229,7 +241,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     // (§logPersist), le seul canal de diagnostic d'un téléviseur. Debug et
     // profile gardent la mesure, comme §exitCost la décrit.
     if (!kReleaseMode) WidgetsBinding.instance.addObserver(this);
-    _buildSeasonEpisodes();
+    _buildSeasonEpisodes(memory: fromMemory);
 
     if (widget.entry.type == M3uContentType.series) {
       _uniqueVersions = _deduplicateVersions(widget.versions);
@@ -252,7 +264,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
       // que l'accueil a passée au moment du tap. Repli sur `widget.versions`
       // si le titre n'est pas (ou plus) en mémoire : fiche TMDB seule, liste
       // déchargée, entrée synthétique.
-      final fromMemory = _entriesFromMemory();
+      // D4A-10 — la collecte faite en tête d'`initState`.
       _uniqueVersions = _deduplicateVersions(
           fromMemory.isEmpty ? widget.versions : fromMemory);
       _selectedEntry  = _uniqueVersions.isNotEmpty ? _uniqueVersions.first : widget.entry;
@@ -316,7 +328,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     if (sig == _memorySignature) return; // rien de neuf pour CE titre
     _memorySignature = sig;
     if (widget.entry.type == M3uContentType.series) {
-      _resyncSeries();
+      _resyncSeries(entries);
     } else {
       _resyncMovie(entries);
     }
@@ -341,13 +353,14 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// déjà rendus par la JSON API (ils ne sont pas dans la mémoire de la
   /// playlist) — sinon la liste des saisons se viderait le temps d'un nouveau
   /// fetch. La saison ouverte et l'épisode choisi sont restaurés.
-  void _resyncSeries() {
+  void _resyncSeries(List<M3uEntry> memory) {
     final previous = _flattenSeasonEpisodes();
     debugPrint('\u{1F504} \u00A7detailsLive : serie "${widget.entry.displayName}" '
         'relue (${previous.length} version(s) d episode deja affichees)');
     final openSeason = _selectedSeason;
     final wasSelected = _episodeSelected;
-    _buildSeasonEpisodes(); // remet `_selectedSeason` à null
+    // D4A-10 — la collecte que `_onPlaylistChanged` vient de faire (même tour).
+    _buildSeasonEpisodes(memory: memory); // remet `_selectedSeason` à null
     if (previous.isNotEmpty) {
       _seasonEpisodes =
           _regroupEpisodes([...previous, ..._flattenSeasonEpisodes()]);
@@ -634,7 +647,10 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     }
   }
 
-  void _buildSeasonEpisodes() {
+  /// [memory] : la collecte `_entriesFromMemory()` que l'appelant vient de
+  /// faire dans le MÊME tour synchrone (D4A-10) — identique à celle d'ici,
+  /// puisque le type de la fiche EST `series`. Absent : on la fait.
+  void _buildSeasonEpisodes({List<M3uEntry>? memory}) {
     if (widget.entry.type != M3uContentType.series) return;
     // §detailsLive — Le rapprochement (§23b clé de groupe normalisée +
     // §homonymYear : on ne mélange pas deux séries homonymes d'époques
@@ -647,12 +663,13 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     // Mesuré sur l'émulateur avec 4 listes : 323 373 entrées copiées à chaque
     // ouverture d'une fiche de série, pour n'en garder qu'une poignée. Les
     // séries seules en représentent environ un cinquième.
-    final all = entriesOfTitle(
-      ParsedPlaylistService.byTypeWithPriority(
-              widget.entry.accountId)[M3uContentType.series] ??
-          const <M3uEntry>[],
-      widget.entry,
-    );
+    final all = memory ??
+        entriesOfTitle(
+          ParsedPlaylistService.byTypeWithPriority(
+                  widget.entry.accountId)[M3uContentType.series] ??
+              const <M3uEntry>[],
+          widget.entry,
+        );
 
     // §seriesMultiList — On sépare : (a) épisodes M3U réels (SxxExx présents)
     // → groupés tout de suite ; (b) stubs série (un par compte, URL
@@ -836,6 +853,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// l'app) + proximité d'année (anti-homonyme). Exclut le titre courant.
   List<List<M3uEntry>> _matchRefs(List<MediaRef> refs, {int max = 18}) {
     if (refs.isEmpty) return const [];
+    final Stopwatch sw = Stopwatch()..start();
     final type = widget.entry.type;
     final entries =
         ParsedPlaylistService.byTypeWithPriority(widget.entry.accountId)[type] ??
@@ -843,6 +861,15 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     final byKey = <String, List<M3uEntry>>{};
     for (final e in entries) {
       byKey.putIfAbsent(contentGroupKey(e), () => []).add(e);
+    }
+    // Revue 2026-09-11, D4A-10 (b) — DIFFÉRÉ, sonde seulement. Partager cet
+    // index entre « Similaires » et « Saga » l'obligerait à survivre à l'appel
+    // réseau de la saga (`await getCollectionTitles`) : tout le catalogue du
+    // type retenu pendant une attente réseau, là où il était libéré aussitôt.
+    // Une ligne par rangée croisée (chargement TMDB d'une fiche), jamais par
+    // frame : elle donne le coût à comparer à cette rétention sur appareil.
+    if (!kReleaseMode) {
+      debugPrint('⏱️ §detailsRelated : index ${sw.elapsedMilliseconds} ms (${entries.length} entrées, ${byKey.length} groupes, ${refs.length} refs)');
     }
     final out = <List<M3uEntry>>[];
     final seen = <String>{contentGroupKey(widget.entry)};

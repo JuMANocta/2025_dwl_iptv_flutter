@@ -157,10 +157,15 @@ abstract final class DeviceLibraryService {
       if (!await _ensurePermission()) {
         return const DeviceScanResult([], permissionDenied: true);
       }
+      // Revue 2026-09-11, D2B-14 — Sonde : la requête MediaStore tourne sur le
+      // thread PRINCIPAL Android. Ce chrono en donne la durée (aller-retour du
+      // canal compris), à relever AVANT de la déplacer.
+      final Stopwatch nativeSw = Stopwatch()..start();
       final raw = await _channel.invokeMethod<List<dynamic>>(
         'listVideos',
         {'relativePath': relativePath},
       );
+      final int nativeMs = nativeSw.elapsedMilliseconds;
       final files = (raw ?? const [])
           .whereType<Map>()
           .map((m) => DeviceVideo(
@@ -177,7 +182,8 @@ abstract final class DeviceLibraryService {
       videos.value = orphans;
       await _persist();
       debugPrint('📂 §dlOrphans : ${files.length} fichier(s) dans '
-          '$relativePath, ${orphans.length} hors liste');
+          '$relativePath, ${orphans.length} hors liste '
+          '(appel natif $nativeMs ms)');
       return DeviceScanResult(orphans);
     } on MissingPluginException {
       return const DeviceScanResult([]);

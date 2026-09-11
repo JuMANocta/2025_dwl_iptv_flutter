@@ -198,6 +198,10 @@ class XtreamCatalogParser {
   // et qualités d'un catalogue de 350 000 entrées tiennent en quelques
   // centaines de valeurs distinctes.
   final pool = StringPool();
+  // Revue 2026-09-11, D1A-11 — Un calcul de catégorie par `group-title`
+  // distinct (quelques centaines), pas un par entrée (des centaines de
+  // milliers). Local à l'isolate, comme le pool.
+  final categoryMemo = CategoryLabelMemo();
 
   final host = (data['host'] ?? '').toString();
   final user = Uri.encodeComponent((data['user'] ?? '').toString());
@@ -262,7 +266,7 @@ class XtreamCatalogParser {
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
     final groupTitle = pool.of(_str(item['_cat']));
-    final cat = pool.of(contentCategoryLabel(groupTitle));
+    final cat = pool.of(categoryMemo.of(groupTitle));
     if (id.isEmpty || name.isEmpty || isHidden(name, cat)) continue;
     // Replay Xtream : `tv_archive` = 1 + durée en jours → alimente le même
     // champ `catchupDays` que l'attribut M3U `catchup-days` (bonus vs l'ancien
@@ -295,7 +299,7 @@ class XtreamCatalogParser {
     final id = (item['stream_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
     final groupTitle = pool.of(_str(item['_cat']));
-    final cat = pool.of(contentCategoryLabel(groupTitle));
+    final cat = pool.of(categoryMemo.of(groupTitle));
     if (id.isEmpty || name.isEmpty || isHidden(name, cat)) continue;
     final ext = (item['container_extension'] ?? 'mp4').toString();
 
@@ -322,7 +326,7 @@ class XtreamCatalogParser {
     final id = (item['series_id'] ?? '').toString();
     final name = (item['name'] ?? '').toString().trim();
     final groupTitle = pool.of(_str(item['_cat']));
-    final cat = pool.of(contentCategoryLabel(groupTitle));
+    final cat = pool.of(categoryMemo.of(groupTitle));
     if (id.isEmpty || name.isEmpty || isHidden(name, cat)) continue;
     final backdrops = item['backdrop_path'];
 

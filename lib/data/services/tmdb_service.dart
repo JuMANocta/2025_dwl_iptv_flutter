@@ -115,6 +115,10 @@ class TmdbService {
 
   static void resetInstance() {
     generation++;
+    // Revue 2026-09-11, D1B-15 — La clé est désormais mémorisée par
+    // `TmdbApiService` : un changement de clé passe toujours par ici, on la
+    // fait donc relire au prochain usage.
+    TmdbApiService.invalidateCache();
     debugPrint("💣 Forçage de la destruction du Singleton TmdbService.");
     _instance = null;
   }

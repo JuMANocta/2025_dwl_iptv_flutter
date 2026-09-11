@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -129,10 +130,15 @@ class XtreamCatalogService {
 
     if (HiddenRegionsService.hasAny) {
       final hidden = HiddenRegionsService.hidden;
+      // Revue 2026-09-11, D1A-11 — Catégorie mémorisée par nom de catégorie :
+      // un calcul par catégorie du panel (quelques centaines), pas un par
+      // item. Même prédicat, même résultat (`contentCategoryLabel` est pure).
+      final categoryMemo = CategoryLabelMemo();
       bool Function(Map<String, dynamic>) keepWith(Map<String, String> names) =>
-          (it) => !isRegionHidden(
+          (it) => !isRegionHiddenForCategory(
                 name: (it['name'] ?? '').toString(),
-                groupTitle: names[(it['category_id'] ?? '').toString()],
+                category: categoryMemo
+                    .of(names[(it['category_id'] ?? '').toString()]),
                 hidden: hidden,
               );
       liveF = liveF.where(keepWith(liveNames)).toList();
@@ -193,7 +199,13 @@ class XtreamCatalogService {
     final tempPath = '$destPath.part';
     final temp = File(tempPath);
     try {
-      await temp.writeAsString(jsonEncode(payload), flush: true);
+      // Revue 2026-09-11, D1A-12 — Mêmes octets que
+      // `writeAsString(jsonEncode(payload), flush: true)`, sans la chaîne
+      // entière ni le gel qui l'accompagnait (cf. `writeJsonMapChunked`).
+      final Stopwatch swWrite = Stopwatch()..start();
+      await writeJsonMapChunked(tempPath, payload);
+      debugPrint('💾 XtreamCatalog « ${account.label} » écrit en '
+          '${swWrite.elapsedMilliseconds} ms (§D1A-12, par tranches)');
       await temp.rename(destPath);
     } catch (e) {
       // ⚠️ Sans ce nettoyage, un `.part` de plusieurs dizaines de Mo restait
@@ -269,6 +281,84 @@ class XtreamCatalogService {
       }
     }
     return unresolved;
+  }
+}
+
+/// Revue 2026-09-11, D1A-12 — Taille visée d'une tranche écrite.
+const int _kChunkBytes = 256 * 1024;
+
+/// Revue 2026-09-11, D1A-12 — Au-delà, la tranche en cours est écrite même
+/// si elle n'a pas atteint [_kChunkBytes] : c'est ce qui borne le temps passé
+/// d'affilée sur le thread UI (même règle que le parseur M3U, §ramDiet).
+const int _kSliceMs = 8;
+
+/// Revue 2026-09-11, D1A-12 — **Écrit `jsonEncode(map)` dans [path], octet
+/// pour octet, sans jamais construire la chaîne entière.**
+///
+/// Ce que faisait `writeAsString(jsonEncode(payload), flush: true)` sur un
+/// catalogue de 60 Mo, d'un seul tenant sur le thread UI (et aussi pendant
+/// qu'on navigue : passe « reprise », `refreshIfStale`, « Tout recharger ») :
+/// le texte JSON complet (UTF-16, ~120 Mo), puis sa copie UTF-8 (60 Mo), puis
+/// l'écriture — trois passes et deux gros intermédiaires, l'écran figé tout
+/// du long.
+///
+/// Ici, élément par élément avec `JsonUtf8Encoder`, qui produit directement
+/// l'UTF-8 que `jsonEncode` + `utf8.encode` auraient donné (c'est son contrat
+/// documenté) : ni texte intermédiaire, ni seconde passe, et le travail rend
+/// la main toutes les [_kChunkBytes] ou [_kSliceMs] — chaque écriture de
+/// tranche est une attente d'E/S pendant laquelle l'interface dessine.
+///
+/// **Mêmes octets** : `{` + `"clé":valeur` séparés par `,` + `}`, une
+/// liste = `[` + éléments séparés par `,` + `]`, sans espace — exactement la
+/// sortie de `jsonEncode` sans indentation. Vérifié par
+/// `test/catalog_file_writer_test.dart` (comparaison octet à octet).
+/// **Même durabilité** : `RandomAccessFile` + `flush()` avant fermeture, ce
+/// que fait `writeAsString(…, flush: true)`.
+///
+/// ⛔ Pas d'isolate ici : il faudrait lui ENVOYER le graphe décodé (des
+/// centaines de milliers de maps), et cette copie se fait sur le thread qui
+/// envoie — le thread UI — en doublant la mémoire du catalogue.
+@visibleForTesting
+Future<void> writeJsonMapChunked(String path, Map<String, Object?> map) async {
+  final JsonUtf8Encoder encoder = JsonUtf8Encoder();
+  const int openBrace = 0x7B, closeBrace = 0x7D;
+  const int openBracket = 0x5B, closeBracket = 0x5D;
+  const int comma = 0x2C, colon = 0x3A;
+
+  final RandomAccessFile raf = await File(path).open(mode: FileMode.write);
+  try {
+    final BytesBuilder buffer = BytesBuilder();
+    final Stopwatch slice = Stopwatch()..start();
+
+    buffer.addByte(openBrace);
+    bool firstKey = true;
+    for (final MapEntry<String, Object?> e in map.entries) {
+      if (!firstKey) buffer.addByte(comma);
+      firstKey = false;
+      buffer.add(encoder.convert(e.key));
+      buffer.addByte(colon);
+      final Object? value = e.value;
+      if (value is List) {
+        buffer.addByte(openBracket);
+        for (int i = 0; i < value.length; i++) {
+          if (i > 0) buffer.addByte(comma);
+          buffer.add(encoder.convert(value[i]));
+          if (buffer.length >= _kChunkBytes ||
+              slice.elapsedMilliseconds >= _kSliceMs) {
+            await raf.writeFrom(buffer.takeBytes());
+            slice.reset();
+          }
+        }
+        buffer.addByte(closeBracket);
+      } else {
+        buffer.add(encoder.convert(value));
+      }
+    }
+    buffer.addByte(closeBrace);
+    await raf.writeFrom(buffer.takeBytes());
+    await raf.flush();
+  } finally {
+    await raf.close();
   }
 }
 
