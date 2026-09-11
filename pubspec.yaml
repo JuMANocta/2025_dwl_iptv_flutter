@@ -5,7 +5,14 @@ publish_to: "none"
 version: 1.18.18+151
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
+  # D5A-09 (revue 2026-09-11, lot 9) — Le VRAI minimum. `>=3.0.0` mentait : le
+  # lock exige Dart 3.10 / Flutter 3.38 (contraintes des dépendances), et la
+  # borne basse de cette ligne FIXE la version de langage du paquet — elle
+  # était figée à 3.0. ⚠️ Changer cette borne change la langue du code
+  # (sémantique de `_` depuis 3.7, analyse de flux depuis 3.9) : commit ISOLÉ,
+  # suivi d'un `driver.sh verify` et d'un démarrage à froid sur appareil.
+  sdk: ^3.10.0
+  flutter: ">=3.38.0"
 
 dependencies:
   flutter:
