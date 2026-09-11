@@ -30,8 +30,8 @@ const List<String> kAllCategoryKeys = [
   'Drame', 'Espionnage', 'Fantastique', 'Fêtes', 'Guerre', 'Histoire',
   'Horreur', 'Jeunesse', 'Juridique', 'Karaoké', 'Mafia', 'Manga', 'Maritime',
   'Médecine', 'Médiéval', 'Musical', 'Policier', 'Prison', 'Romance', 'Sci-Fi',
-  'Spectacle', 'Sport', 'Super-Héros', 'Survie', 'Téléfilm', 'Téléréalité',
-  'Thriller', 'Tueur en série', 'Vengeance', 'Voitures', 'Western',
+  'Spectacle', 'Sport', 'Super-Héros', 'Survie', 'Talk-show', 'Téléfilm',
+  'Téléréalité', 'Thriller', 'Tueur en série', 'Vengeance', 'Voitures', 'Western',
 ];
 
 /// Les régions et langues, mêmes règles.

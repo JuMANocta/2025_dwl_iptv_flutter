@@ -114,6 +114,49 @@ class FavoritesService {
   static String _squash(String s) =>
       TitleMetadata.computeGroupKey(s).replaceAll(' ', '');
 
+  /// Revue 2026-09-11, D1A-05 — Les mots que le parsing EFFAÇAIT partout du
+  /// titre jusqu'au schéma 19 (`_reLangTags` de `TitleMetadata`). Au schéma 20
+  /// ils restent quand ils font partie du titre (« The French Dispatch »,
+  /// « Empire of Light », « Les Arnaqueurs VIP ») : les clés s'ALLONGENT, et le
+  /// mot est souvent au MILIEU — deux choses que le fuzzy préfixe/suffixe ne
+  /// sait pas suivre (il rapproche une clé stockée d'un candidat plus COURT).
+  ///
+  /// ⚠️ Liste HISTORIQUE, figée : c'est ce que l'ANCIEN parseur retirait, pas
+  /// ce que le parseur actuel juge ambigu. Ne pas la synchroniser.
+  ///
+  /// ⚠️ `\b` ASCII et casse libre VOLONTAIREMENT, comme l'ancienne regex : elle
+  /// coupait aussi dans les mots accentués (« Vipère au poing » → « ère au
+  /// poing »), et c'est cette clé-là qui est stockée. Appliquée au titre NON
+  /// replié (`baseTitle`), avant `computeGroupKey`, comme le faisait le parseur.
+  static final _reSchema19Erased = RegExp(
+      r'\b(?:VIP|RAW|FRENCH|SUBS?|AUDIO|LEGENDADO|LEGENDA|LEG|LIGHT)\b',
+      caseSensitive: false);
+
+  /// Squash de [title] privé des mots de [_reSchema19Erased] : la clé
+  /// qu'aurait produite le parsing du schéma 19 pour le même titre.
+  static String _squashSchema19(String title) =>
+      _squash(title.replaceAll(_reSchema19Erased, ' '));
+
+  /// Enregistre la forme « schéma 19 » de [title] dans [reduced][bucket].
+  /// La valeur est `(squash complet, clé)`. Deux titres DIFFÉRENTS pour une même
+  /// forme → marquée ambiguë (`('', '')`) : on ne choisit pas entre « French
+  /// Girl » et « Girl Light » de la même année. Deux clés du MÊME titre à la
+  /// casse près (`tv|Blacked Raw` / `tv|BLACKED RAW`, les clés de chaînes
+  /// gardent la casse) ne sont pas une ambiguïté : le dernier gagne, comme dans
+  /// l'index principal.
+  static void _addSchema19Form(
+      Map<String, Map<String, (String, String)>> reduced,
+      String bucket,
+      String title,
+      String key) {
+    final full = _squash(title);
+    final r = _squashSchema19(title);
+    if (r.isEmpty || r == full) return; // aucun mot concerné
+    final m = reduced[bucket] ??= {};
+    final prev = m[r];
+    m[r] = (prev == null || prev.$1 == full) ? (full, key) : ('', '');
+  }
+
   /// §favReconcile — Calcule les ré-appariements `ancienneClé → nouvelleClé`
   /// des favoris orphelins (stockés mais ne correspondant plus à aucune entrée
   /// de la playlist). Fonction PURE (aucun état, aucune I/O) → testable.
@@ -142,11 +185,15 @@ class FavoritesService {
     //    rapprochement `type[#année]` → { squash(groupKey) → clé canonique }.
     final validKeys = <String>{};
     final index = <String, Map<String, String>>{};
+    // Revue 2026-09-11, D1A-05 — même découpage, forme « schéma 19 ».
+    final schema19 = <String, Map<String, (String, String)>>{};
     for (final e in entries) {
       final key = keyFor(e);
       if (!validKeys.add(key)) continue; // autre version du même groupe
       if (e.type == M3uContentType.tv) {
-        (index['tv'] ??= {})[_squash(key.substring(3))] = key;
+        final body = key.substring(3);
+        (index['tv'] ??= {})[_squash(body)] = key;
+        _addSchema19Form(schema19, 'tv', body, key);
       } else {
         validKeys.add(_legacyKey(e));
         final t = e.type == M3uContentType.movie ? 'movie' : 'series';
@@ -155,6 +202,10 @@ class FavoritesService {
         // Une clé legacy stockée (sans année) doit pouvoir migrer vers la
         // clé canonique AVEC année → bucket sans année en parallèle.
         (index[t] ??= {})[squash] = key;
+        // Le titre NON replié : l'ancienne regex coupait dans « Vipère ».
+        final title = e.title.baseTitle;
+        _addSchema19Form(schema19, '$t#${e.title.year ?? ''}', title, key);
+        _addSchema19Form(schema19, t, title, key);
       }
     }
 
@@ -196,6 +247,15 @@ class FavoritesService {
       final exact = candidates[storedSquash];
       if (exact != null) {
         if (exact != stored) rewrites[stored] = exact;
+        continue;
+      }
+
+      // Règle 1 bis (revue 2026-09-11, D1A-05) : la clé stockée est celle
+      // qu'aurait produite le schéma 19 pour UN SEUL candidat du bucket (même
+      // type, même année). Forme partagée → règle 2, comme avant.
+      final viaSchema19 = schema19[bucket]?[storedSquash]?.$2;
+      if (viaSchema19 != null && viaSchema19.isNotEmpty) {
+        rewrites[stored] = viaSchema19;
         continue;
       }
 

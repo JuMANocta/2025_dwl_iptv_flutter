@@ -597,4 +597,198 @@ void main() {
     });
   });
 
+  // Revue 2026-09-11, D1A-05 — Les jetons AMBIGUS (FRENCH, LIGHT, RAW, VIP,
+  // AUDIO, SUB, LEG…) étaient effacés PARTOUT dans le titre. Ce sont aussi des
+  // mots : ils ne partent plus que comme TAGS (groupe, pipe, queue désignée).
+  // Tous les titres ci-dessous sont tirés des six listes réelles.
+  group("D1A-05 — un mot ambigu du titre reste dans le titre", () {
+    test("le cas de la fiche : The French Dispatch garde French, sans VF", () {
+      final m = parse("The French Dispatch (MULTI) FHD 2021");
+      expect(m.baseTitle, "The French Dispatch");
+      expect(m.groupKey, "the french dispatch");
+      expect(m.year, "2021");
+      expect(m.quality, "FHD");
+      // `french` y est un MOT : plus de pastille VF.
+      expect(m.languages, ["MULTI"]);
+    });
+
+    test("La French n'est plus « La »", () {
+      final m = parse("La French (FR) FHD 2014");
+      expect(m.baseTitle, "La French");
+      expect(m.languages, isNot(contains("VF")));
+      expect(parse("|FR| La French (2014)").baseTitle, "La French");
+    });
+
+    test("Empire of Light, Blinded by the Light, Raw Deal", () {
+      expect(parse("|FR| Empire of Light (2022)").baseTitle, "Empire of Light");
+      expect(parse("Blinded by the Light (MULTI) FHD 2019").baseTitle,
+          "Blinded by the Light");
+      expect(parse("Raw Deal (MULTI) FHD 1986").baseTitle, "Raw Deal");
+      expect(parse("XXX| Blacked Raw HD").baseTitle, "Blacked Raw");
+      expect(parse("Narco Sub (2021)").baseTitle, "Narco Sub");
+      expect(parse("|DE| The Call: Leg nicht auf! (2013)").baseTitle,
+          "The Call: Leg nicht auf!");
+    });
+
+    test("un jeton qui OUVRE le titre en fait partie", () {
+      final m = parse("Light (2024)");
+      expect(m.baseTitle, "Light");
+      expect(m.year, "2024");
+      expect(parse("|FR| French Kiss (1995)").baseTitle, "French Kiss");
+      expect(parse("Light Shop S01 E01").baseTitle, "Light Shop");
+      expect(parse("|VO| Raw (2016) (PT-Fixa)").baseTitle, "Raw (PT-Fixa)");
+    });
+
+    test("VIP est un sigle : sa casse ne trahit rien", () {
+      expect(parse("Les Arnaqueurs VIP S01 E01").baseTitle, "Les Arnaqueurs VIP");
+      expect(parse("|FR| Les Arnaqueurs VIP (2004)").baseTitle,
+          "Les Arnaqueurs VIP");
+      expect(parse("|AL| BIG BROTHER VIP ALBANIA 1 FHD").baseTitle,
+          "BIG BROTHER VIP ALBANIA 1");
+    });
+
+    test("frontière Unicode : « è » est une lettre", () {
+      // `\b` est ASCII en Dart : « Vipère » contenait le mot « VIP ».
+      expect(parse("|FR| Vipère au poing (2004)").baseTitle, "Vipère au poing");
+      expect(parse("|ESP| Legítima defensa (2025)").baseTitle,
+          "Legítima defensa");
+    });
+
+    test("un mot collé par des points ne ressort pas en libellé", () {
+      final m = parse("Blacked.Raw.V7");
+      expect(m.baseTitle, "Blacked.Raw.V7");
+      expect(m.versionLabel, isNull);
+    });
+
+    test("french dans un groupe de TEXTE conservé n'est pas une langue", () {
+      final m = parse("|FR| French Exit (Sortie côté tour) | 2021");
+      expect(m.baseTitle, "French Exit (Sortie côté tour)");
+      expect(m.languages, isNot(contains("VF")));
+    });
+  });
+
+  group("D1A-05 — non-régression : un jeton ambigu reste un TAG quand il en est un", () {
+    test("le cas de la fiche : Film 2020 FRENCH 1080p", () {
+      final m = parse("Film 2020 FRENCH 1080p");
+      expect(m.baseTitle, "Film");
+      expect(m.languages, contains("VF"));
+    });
+
+    test("entre délimiteurs (§tagResidue, inchangé)", () {
+      final m = parse("Parasite (FRENCH) [MULTI-SUB]");
+      expect(m.baseTitle, "Parasite");
+      expect(m.languages, contains("VF"));
+      expect(parse("Heat (1995) [4K Light HDR DV MULTi]").baseTitle, "Heat");
+    });
+
+    test("dans un champ de pipes fait de tags", () {
+      expect(
+          parse("|4K Light HDR DV| Le Seigneur des anneaux : Les Deux Tours (2002) [MULTi]")
+              .baseTitle,
+          "Le Seigneur des anneaux : Les Deux Tours");
+      // Préfixe mal formé : la clé doit rester celle du film.
+      expect(parse("|LEG:| Venom: The Last Dance (2024)").groupKey,
+          "venom the last dance");
+      expect(parse("LEG.|Turtles All the Way Down (2024)").baseTitle,
+          "Turtles All the Way Down");
+    });
+
+    test("séparé du titre par deux blancs", () {
+      final m = parse("The Wretched  FRENCH [MULTI-SUB]");
+      expect(m.baseTitle, "The Wretched");
+      expect(m.languages, contains("VF"));
+      expect(parse("Mustang  French").baseTitle, "Mustang");
+    });
+
+    test("en capitales sur un titre en casse normale", () {
+      expect(parse("FR| Last Christmas AUDIO").baseTitle, "Last Christmas");
+    });
+
+    test("titre en capitales : il finit le titre ou un tag le suit", () {
+      final m = parse("AR| BEIN SPORTS 01 FRENCH HD");
+      expect(m.baseTitle, "BEIN SPORTS 01");
+      expect(m.languages, contains("VF"));
+      expect(parse("|CA| TELETOON FRENCH HD").baseTitle, "TELETOON");
+      expect(parse("|MA| HIT RADIO FRENCH").baseTitle, "HIT RADIO");
+    });
+
+    test("joint par un tiret à un tag composé", () {
+      expect(parse("Goodbye June [MULTI-SUB").baseTitle, "Goodbye June");
+    });
+
+    test("VIP en tête reste le palier du fournisseur", () {
+      expect(parse("VIP - PK| GEO NEWS HD").baseTitle, "PK GEO NEWS");
+      expect(parse("24/7-EN - VIP POLICE ACADEMY").baseTitle,
+          "24/7-EN - POLICE ACADEMY");
+    });
+
+    test("french APRÈS le SxxExx reste une langue", () {
+      final m = parse("Lupin S01 E01 FRENCH");
+      expect(m.baseTitle, "Lupin");
+      expect(m.languages, contains("VF"));
+    });
+  });
+
+  // Revue 2026-09-11, D1A-05 (relecture) — un même titre ne doit pas changer
+  // de nom selon la casse ou le séparateur du fournisseur. Les deux cas sont
+  // tirés du diff des instantanés (xenoIptv, PLATINIUM).
+  group("D1A-05 (relecture) — un même titre garde le même nom", () {
+    test("RAW/VIP en fin de titre en capitales : un mot, comme en casse normale", () {
+      // `XXX| Blacked Raw HD` gardait RAW, `XXX| BLACKED RAW` le perdait et
+      // prenait le nom d'une autre chaîne (« BLACKED »).
+      expect(parse("XXX| BLACKED RAW").baseTitle, "BLACKED RAW");
+      expect(parse("XXX| BLACKED RAW").groupKey,
+          parse("XXX| Blacked Raw HD").groupKey);
+      final m = parse("|FR| WWE Raw (1993)");
+      expect(m.baseTitle, "WWE Raw");
+      expect(m.year, "1993");
+      // FRENCH garde la règle des capitales (ce n'est pas un sigle de titre).
+      expect(parse("|CA| TELETOON FRENCH HD").baseTitle, "TELETOON");
+    });
+
+    test("« Sub » final après un BLANC passe par le jugement (Narco Sub)", () {
+      expect(parse("FR| Narco Sub").baseTitle, "Narco Sub");
+      expect(parse("FR| Narco Sub").groupKey,
+          parse("Narco Sub (2021)").groupKey);
+      // Le suffixe `_sub` du fournisseur reste retiré (490 titres réels).
+      expect(parse("Blue Jay_sub").baseTitle, "Blue Jay");
+      expect(parse("Incredibles 2_sub").baseTitle, "Incredibles 2");
+      // Et le seul vrai tag « blanc + SUBS » reste un tag (ancre MULTI).
+      expect(
+          parse("|VO| Sir Alex Ferguson: Never Give In (2021)-MULTI SUBS")
+              .baseTitle,
+          "Sir Alex Ferguson: Never Give In");
+    });
+  });
+
+  // Revue 2026-09-11, D1A-06 — « cam » NU n'est plus un rip de salle.
+  group("D1A-06 — cam nu", () {
+    test("le cas de la fiche : Body Cam (4K) HDR donne 4K", () {
+      expect(parse("Body Cam (4K) HDR 2020").quality, "4K");
+      expect(parse("Body Cam (MULTI) FHD 2020").quality, "FHD");
+    });
+
+    test("un titre qui contient le mot n'est pas un rip", () {
+      expect(parse("|FR| Cam (2018)").quality, isNull);
+      expect(parse("|TR| Cam Tavanlar | 2021").quality, isNull);
+    });
+
+    test("« é » n'ouvre plus de frontière de mot (Caméra, Caméléon)", () {
+      expect(parse("|FR| Le Séminaire Caméra Café (2009)").quality, isNull);
+      expect(parse("|FR| Le Caméléon (1996)").quality, isNull);
+      expect(parse("|FR| Le Décaméron (2024)").quality, isNull);
+    });
+
+    test("TELECINE nu est une chaîne, pas un rip", () {
+      expect(parse("|BR| TELECINE ACTION FHD").quality, "FHD");
+    });
+
+    test("non-régression : les vrais rips restent CAM", () {
+      expect(parse("Film 2024 HDCAM").quality, "CAM");
+      expect(parse("(CAM) (2024)").quality, "CAM");
+      expect(parse("|LEG.| Zootopia 2 (CAM)  (2025)").quality, "CAM");
+      expect(parse("Moana 2 (2024) (cam)").quality, "CAM");
+      expect(parse("FR| Spider-Man : Brand New Day - 2026 |HDTS]").quality, "CAM");
+    });
+  });
 }

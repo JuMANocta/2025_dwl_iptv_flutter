@@ -152,4 +152,58 @@ void main() {
       expect(unresolved, {'tv|INCEPTION'});
     });
   });
+
+  // Revue 2026-09-11, D1A-05 — Schéma 20 : des mots que le parsing EFFAÇAIT
+  // (French, Light, Raw, VIP…) restent dans le titre. Les clés s'ALLONGENT, et
+  // le mot est souvent au milieu : le fuzzy préfixe/suffixe ne sait pas les
+  // suivre. Sans cette règle, ~100 titres distincts des listes réelles
+  // perdaient leur favori (cœur éteint, clé fantôme).
+  group('FavoritesService.reconcileKeys — clés allongées (schéma 20)', () {
+    test('The French Dispatch : mot au milieu, ancienne clé = forme réduite', () {
+      final entries = [
+        entry('The French Dispatch (MULTI) FHD 2021', M3uContentType.movie),
+      ];
+      final rewrites = reconcile({'movie|the dispatch|2021'}, entries);
+      expect(rewrites,
+          {'movie|the dispatch|2021': 'movie|the french dispatch|2021'});
+    });
+
+    test('série sans année (Light Shop) et chaîne (BIG BROTHER VIP)', () {
+      final series = entry('Light Shop S01 E01', M3uContentType.series);
+      final tv = entry('|AL| BIG BROTHER VIP ALBANIA 1 FHD', M3uContentType.tv);
+      final rewrites = reconcile(
+          {'series|shop|', 'tv|BIG BROTHER ALBANIA 1'}, [series, tv]);
+      expect(rewrites, {
+        'series|shop|': FavoritesService.keyFor(series),
+        'tv|BIG BROTHER ALBANIA 1': FavoritesService.keyFor(tv),
+      });
+    });
+
+    test('forme réduite partagée par deux titres → on ne choisit pas', () {
+      // « French Girl » et « Girl Light » (2024) donnaient tous deux « girl ».
+      final entries = [
+        entry('French Girl (2024)', M3uContentType.movie),
+        entry('Girl Light (2024)', M3uContentType.movie),
+      ];
+      final unresolved = <String>{};
+      final rewrites =
+          reconcile({'movie|girl|2024'}, entries, unresolved: unresolved);
+      expect(rewrites, isEmpty);
+      expect(unresolved, {'movie|girl|2024'});
+    });
+
+    test('année stricte, et une clé saine n\'est jamais détournée', () {
+      final lover = [entry('French Lover (2025)', M3uContentType.movie)];
+      final unresolved = <String>{};
+      expect(reconcile({'movie|lover|2020'}, lover, unresolved: unresolved),
+          isEmpty);
+      expect(unresolved, {'movie|lover|2020'});
+      // « Girl (2024) » existe : la clé « girl » est VALIDE, elle reste à lui.
+      final both = [
+        entry('Girl (2024)', M3uContentType.movie),
+        entry('French Girl (2024)', M3uContentType.movie),
+      ];
+      expect(reconcile({'movie|girl|2024'}, both), isEmpty);
+    });
+  });
 }

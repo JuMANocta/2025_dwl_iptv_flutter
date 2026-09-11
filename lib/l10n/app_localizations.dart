@@ -6038,6 +6038,12 @@ abstract class AppLocalizations {
   /// **'Reality TV'**
   String get catRealityTv;
 
+  /// No description provided for @catTalkShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk shows'**
+  String get catTalkShow;
+
   /// No description provided for @catThriller.
   ///
   /// In en, this message translates to:

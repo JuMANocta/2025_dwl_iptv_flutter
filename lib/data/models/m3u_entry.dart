@@ -147,8 +147,23 @@ class TitleMetadata {
   //
   // ⚠️ `TS` et `TC` NUS sont volontairement exclus : trop de faux positifs sur
   // de vrais mots de titres. On ne garde que les formes non ambiguës.
+  //
+  // §camQuality (revue 2026-09-11, D1A-06) — `CAM` et `TELECINE` NUS ne sont
+  // plus une qualité que s'ils sont ENTRE DÉLIMITEURS : `(CAM)`, `[cam]`,
+  // `|CAM|`. Nus, ce sont des mots de titres. Mesuré sur les six listes réelles,
+  // les 94 rips de salle marqués `cam` le sont TOUS entre parenthèses, et le mot
+  // nu classait CAM 398 titres qui n'en sont pas :
+  //   - 341 par le seul effet de la frontière `\b`, ASCII en Dart : « é » n'est
+  //     pas une lettre pour elle, donc « Caméra Café », « Le Caméléon »,
+  //     « Le Décaméron » contenaient le mot « cam » ;
+  //   - 27 où « cam » est un vrai mot : « Body Cam », « Cam » (2018),
+  //     « Court Cam », « Cam Tavanlar » — et « Body Cam (4K) HDR » passait en
+  //     DERNIER dans l'ordre des versions au lieu d'être la 4K ;
+  //   - 30 chaînes brésiliennes « TELECINE ACTION FHD » : une marque, pas un rip.
+  // Les formes composées (`HDTS`, `HDCAM`, `CAMRIP`…) restent reconnues partout.
   static final _reQCam         = RegExp(
-    r'\b(hdts|hdcam|camrip|cam|telesync|telecine|dvdscr)\b',
+    r'\b(hdts|hdcam|camrip|telesync|dvdscr)\b'
+    r'|[(\[|]\s*(?:cam|telecine)\s*[)\]|]',
     caseSensitive: false,
   );
   static final _reQ4K          = RegExp(r'\b(4k|uhd|2160p)\b', caseSensitive: false);
@@ -157,7 +172,14 @@ class TitleMetadata {
   static final _reQSd          = RegExp(r'\b(sd|480p)\b', caseSensitive: false);
   static final _reLangMulti    = RegExp(r'\bmulti\b', caseSensitive: false);
   static final _reLangVostfr   = RegExp(r'\bvostfr\b', caseSensitive: false);
-  static final _reLangVf       = RegExp(r'\b(vf|vff|truefrench|french)\b', caseSensitive: false);
+  // Revue 2026-09-11, D1A-05 — `french` NU n'est plus ici : c'est aussi un mot
+  // de titre (« The French Dispatch », « La French », « French Kiss »), qui
+  // recevait une pastille VF. Il ne compte comme langue que s'il a été retiré
+  // du titre en tant que TAG — voir [_reFrenchWord] dans [parse].
+  static final _reLangVf       = RegExp(r'\b(vf|vff|truefrench)\b', caseSensitive: false);
+  static final _reFrenchWord   = RegExp(
+      r'(?<![\w\p{L}\p{N}])french(?![\w\p{L}\p{N}])',
+      caseSensitive: false, unicode: true);
   /// §legLang — « Legendado » (portugais : sous-titré). Mesuré sur une liste
   /// réelle : **3 215 entrées**, TOUJOURS en préfixe, sous six formes —
   /// `|LEG.|` (1 801), `|VO-LEG.|` (1 356), `|VO-LEG|` (51), `|LEG|` (3),
@@ -245,7 +267,15 @@ class TitleMetadata {
 
   // §23 — Suffixe "_sub" (liste VOD : "Incredibles 2_sub", "Nancy_sub") :
   // marqueur sous-titres du provider, à retirer du titre de base.
-  static final _reSubSuffix    = RegExp(r'[_\s]+subs?\s*$', caseSensitive: false);
+  //
+  // Revue 2026-09-11, D1A-05 (relecture) — le TIRET BAS est désormais exigé.
+  // La forme « blanc + sub » court-circuitait le jugement des jetons ambigus
+  // ([_isAmbiguousTag]) : `FR| Narco Sub` restait « Narco » pendant que
+  // `Narco Sub (2021)` des trois autres listes devenait « Narco Sub » — un même
+  // film scindé en deux vignettes, l'une rangée avec « Narco » (2004). Mesuré :
+  // 490 titres réels finissent par `_sub`, 3 seulement par un blanc + sub, dont
+  // le seul tag (`…(2021)-MULTI SUBS`) reste retiré par le jugement (ancre MULTI).
+  static final _reSubSuffix    = RegExp(r'\s*_[_\s]*subs?\s*$', caseSensitive: false);
 
   // §23 — Tags qualité en exposants Unicode (live : "NATIONAL GEO ᶠᴴᴰ").
   // Normalisés vers leur équivalent ASCII AVANT toute détection.
@@ -297,11 +327,186 @@ class TitleMetadata {
   // ⚠️ `LEG` est court et dangereux : le corpus contient `LEGO Marvel Super
   // Heroes`. La frontière `\b` suffit ici (LEGO ≠ LEG), mais ce titre reste le
   // contre-exemple à faire tourner à chaque modification.
+  //
+  // Revue 2026-09-11, D1A-05 — Cette regex s'appliquait à TOUT le titre, et
+  // une partie de son vocabulaire est faite de vrais mots : « The French
+  // Dispatch » devenait « The Dispatch », « La French » devenait « La »,
+  // « Empire of Light » « Empire of », « Raw Deal » « Deal ». Mesuré sur les six
+  // listes réelles : hors groupes et hors préfixe, ces mots ne sont presque
+  // JAMAIS des tags (LIGHT-tag ne vit qu'entre crochets : `[4K Light HDR DV]`).
+  // Ne restent ici que les jetons SANS ambiguïté ; les autres passent par
+  // [_reAmbiguousTag] et [_stripAmbiguousTags], qui les jugent un par un.
   static final _reLangTags     = RegExp(
-      r'\b(MULTI|VOSTFR|VOST|VF\d?|VO|VFF|VQF|VFQ|VIP|RAW|TRUEFRENCH|FRENCH'
-      r'|SUB[-_]?AR|SUBAR|SUBS?|AUDIO|LEGENDADO|LEGENDA|LEG|LIGHT'
-      r'|MUTLI)\b',
+      r'\b(MULTI|VOSTFR|VOST|VF\d?|VO|VFF|VQF|VFQ|TRUEFRENCH'
+      r'|SUB[-_]?AR|SUBAR|MUTLI)\b',
       caseSensitive: false);
+
+  /// Revue 2026-09-11, D1A-05 — Les jetons AMBIGUS : des tags quand le
+  /// fournisseur les accroche au titre, des mots quand ils en font partie.
+  ///
+  /// ⚠️ Frontière UNICODE, pas `\b` : en Dart `\b` est ASCII, « è » n'y est pas
+  /// une lettre, et « Vipère au poing » devenait « ère au poing »,
+  /// « Legítima defensa » « ítima defensa ». Le `_` reste un caractère de mot,
+  /// comme pour `\b` (`MULTI_SUBS` n'est pas touché, `Boost_sub` relève de
+  /// [_reSubSuffix]).
+  ///
+  /// ⚠️ `SUB` suivi de `-AR`/`_AR` est exclu : c'est `SUB-AR`, un jeton non
+  /// ambigu que [_reLangTags] retire ENTIER — le couper ici laisserait `-AR`.
+  static final _reAmbiguousTag = RegExp(
+      r'(?<![\w\p{L}\p{N}])'
+      r'(VIP|RAW|FRENCH|SUBS?(?![-_]?AR\b)|AUDIO|LEGENDADO|LEGENDA|LEG|LIGHT)'
+      r'(?![\w\p{L}\p{N}])',
+      caseSensitive: false,
+      unicode: true);
+
+  /// Revue 2026-09-11, D1A-05 — Sigles qui s'écrivent en capitales DANS les
+  /// titres (« Les Arnaqueurs VIP », « WWE Monday Night RAW ») : leur casse ne
+  /// trahit rien, la règle des capitales ne s'y applique pas.
+  static const Set<String> _caseBlindTags = {'VIP', 'RAW'};
+
+  /// Revue 2026-09-11, D1A-05 — Nature d'un jeton (découpé sur les blancs) :
+  /// 0 = ponctuation / groupe masqué (neutre), 1 = jeton ambigu seul,
+  /// 2 = ANCRE (année ou tag non ambigu), 3 = mot du titre.
+  static int _tokenKind(String token) {
+    if (!_reAlnum.hasMatch(token)) return 0;
+    final rest = token
+        .replaceAll(_reYearToken, ' ')
+        .replaceAll(_reDolby, ' ')
+        .replaceAll(_reAllTags, ' ')
+        .replaceAll(_reQualityTags, ' ');
+    if (_reAlnum.hasMatch(rest)) return 3;
+    return _reAlnum.hasMatch(token.replaceAll(_reAmbiguousTag, ' ')) ? 2 : 1;
+  }
+
+  /// Un jeton « collé » à un pipe (`|SUB AR|`, `|LEG:|`, `LEG.|Titre`) : dans
+  /// ces listes le pipe délimite des CHAMPS de métadonnées, comme un crochet.
+  /// Seule de la ponctuation peut les séparer — un blanc ou une lettre coupe.
+  static bool _gluedToPipe(String s, int start, int end) {
+    bool stops(int c) =>
+        c <= 32 || c == 0xA0 || c > 127 || _isAsciiAlnum(c);
+    for (var i = start - 1; i >= 0; i--) {
+      final c = s.codeUnitAt(i);
+      if (c == 124) return true; // '|'
+      if (stops(c)) break;
+    }
+    for (var i = end; i < s.length; i++) {
+      final c = s.codeUnitAt(i);
+      if (c == 124) return true;
+      if (stops(c)) break;
+    }
+    return false;
+  }
+
+  /// Un jeton dans un CHAMP de pipes fait uniquement de tags : `|4K Light HDR
+  /// DV| Le Seigneur des anneaux…` (15 caractères, trop long pour [_rePrefix],
+  /// donc resté dans le titre à ce stade). Un champ qui contient un vrai mot
+  /// (`| A Bit of Light |`) n'est pas concerné.
+  static bool _inTagPipeField(String s, int start, int end) {
+    final left = s.lastIndexOf('|', start);
+    if (left < 0) return false;
+    final right = s.indexOf('|', end);
+    if (right < 0) return false;
+    final field = s.substring(left + 1, right);
+    return !_reAlnum.hasMatch(field
+        .replaceAll(_reAmbiguousTag, ' ')
+        .replaceAll(_reYearToken, ' ')
+        .replaceAll(_reDolby, ' ')
+        .replaceAll(_reAllTags, ' ')
+        .replaceAll(_reQualityTags, ' '));
+  }
+
+  /// Revue 2026-09-11, D1A-05 — Le jeton ambigu [m] de [s] est-il un TAG ?
+  ///
+  /// [s] est le titre en cours de nettoyage : préfixe retiré, coupé au
+  /// SxxExx, groupes de tags déjà retirés et groupes de texte masqués
+  /// ([_cleanTagGroups]) — mais AUCUN tag hors groupe n'est encore retiré, pour
+  /// que les ancres (année, `FHD`, `MULTI`…) soient encore visibles.
+  ///
+  /// Un mot n'est un tag que dans la QUEUE du titre (plus rien de signifiant
+  /// après lui une fois tags et années neutralisés), et seulement si un indice
+  /// le désigne. Chaque indice est tiré d'un cas réel des dumps :
+  ///   - une ancre le précède dans la queue : `Film 2020 FRENCH 1080p` ;
+  ///   - il est joint par `-` ou `/` : `[MULTI-SUB`, `]/AUDIO]`, `LTI-SUB` ;
+  ///   - deux blancs le séparent du titre : `Mustang  French`,
+  ///     `The Wretched  FRENCH [MULTI-SUB]` ;
+  ///   - titre en capitales (la casse ne dit rien) : il finit le titre ou un
+  ///     tag le suit — `TELETOON FRENCH HD`, `HIT RADIO FRENCH` ;
+  ///   - en capitales sur un titre en casse normale (sauf les sigles de
+  ///     [_caseBlindTags]) : `FR| Last Christmas AUDIO`.
+  /// Sinon c'est un mot : `Empire of Light (2022)`, `La French (FR) FHD 2014`,
+  /// `Narco Sub (2021)`, `Blacked Raw HD`. Et un jeton qui OUVRE le titre en est
+  /// toujours un (`Light (2024)`, `Raw (2016)`) — un titre n'est jamais vide.
+  static bool _isAmbiguousTag(String s, Match m) {
+    if (_gluedToPipe(s, m.start, m.end)) return true;
+    if (_inTagPipeField(s, m.start, m.end)) return true;
+    final before = s.substring(0, m.start);
+    final token = m.group(0)!;
+    final upperToken = token.toUpperCase();
+    // VIP en TÊTE (ou juste après un marqueur `24/7-EN - `) : c'est le palier
+    // du fournisseur — 60 chaînes `VIP - PK| GEO NEWS`, `GR| VIP GREEK CINEMA`,
+    // `24/7-EN - VIP POLICE ACADEMY` — ou une marque (`RU| VIP COMEDY`),
+    // indécidable sur le texte seul : il reste retiré, comme avant. Ailleurs
+    // c'est un mot (« Les Arnaqueurs VIP », « BIG BROTHER VIP ALBANIA »).
+    if (upperToken == 'VIP') {
+      final lead = before.trimRight();
+      if (lead.isEmpty || lead.endsWith('-') || lead.endsWith('|')) return true;
+    }
+    if (!_reAlnum.hasMatch(before)) return false; // il ouvre le titre
+    final after = s.substring(m.end);
+    if (_reAlnum.hasMatch(after) && _reAlnum.hasMatch(after
+        .replaceAll(_reYearToken, ' ')
+        .replaceAll(_reDolby, ' ')
+        .replaceAll(_reAllTags, ' ')
+        .replaceAll(_reQualityTags, ' '))) {
+      return false; // du titre suit : c'est un mot du titre
+    }
+    // Une ancre en remontant la queue (les autres jetons ambigus et la
+    // ponctuation se traversent, le premier mot du titre arrête).
+    final back = _splitWords(before.trimRight()).toList();
+    for (var i = back.length - 1; i >= 0; i--) {
+      final kind = _tokenKind(back[i]);
+      if (kind == 2) return true;
+      if (kind == 3) break;
+    }
+    final int prev = before.codeUnitAt(before.length - 1);
+    if (prev == 45 || prev == 47) return true; // '-' ou '/' : tag composé
+    if (before.length - before.trimRight().length >= 2) return true;
+    // Revue 2026-09-11, D1A-05 (relecture) — Les sigles de [_caseBlindTags]
+    // échappent AUSSI à la règle des capitales : leur casse ne trahit rien, pas
+    // plus sur un titre en capitales. Sans ça, `XXX| BLACKED RAW` devenait
+    // « BLACKED » — le nom d'une AUTRE chaîne — pendant que `XXX| Blacked Raw
+    // HD` gardait son nom, et la série `|FR| WWE Raw (1993)` devenait « WWE ».
+    // Mesuré sur les six listes : 5 titres, tous des noms (dont 2 bandeaux
+    // `✦●✦ … VIP ✦●✦` du fournisseur).
+    if (_caseBlindTags.contains(upperToken)) return false;
+    if (before.toUpperCase() == before) {
+      // Titre en capitales : il finit le titre, ou un tag le suit.
+      if (!_reAlnum.hasMatch(after)) return true;
+      for (final t in _splitWords(after.trimLeft())) {
+        final kind = _tokenKind(t);
+        if (kind == 0) continue;
+        return kind == 2;
+      }
+      return false;
+    }
+    return token == upperToken && !_caseBlindTags.contains(upperToken);
+  }
+
+  /// Retire de [s] les seuls jetons ambigus jugés tags par [_isAmbiguousTag].
+  /// Les autres restent — et [_reLangTags] ne les connaît plus, donc rien ne
+  /// les retire plus loin.
+  static String _stripAmbiguousTags(String s) {
+    StringBuffer? out;
+    var last = 0;
+    for (final m in _reAmbiguousTag.allMatches(s)) {
+      if (!_isAmbiguousTag(s, m)) continue;
+      (out ??= StringBuffer()).write(s.substring(last, m.start));
+      last = m.end;
+    }
+    if (out == null) return s;
+    out.write(s.substring(last));
+    return out.toString();
+  }
 
   // Codes langue/version entre délimiteurs : (FR), (EN), (AR), (MULTI), (VOST FR)…
   //
@@ -918,7 +1123,13 @@ class TitleMetadata {
     if (_reLangVostfr.hasMatch(lower) || (hasPipe && _reVoStfr.hasMatch(work))) {
       langs.add('VOSTFR');
     }
-    if (_reLangVf.hasMatch(lower))     langs.add('VF');
+    // Revue 2026-09-11, D1A-05 — `french` nu est jugé plus bas, une fois le
+    // titre nettoyé : on retient ici la PLACE de VF dans la liste (l'ordre
+    // MULTI, VOSTFR, VF, LEG est persisté).
+    final bool vfSure = _reLangVf.hasMatch(lower);
+    final int vfAt = langs.length;
+    if (vfSure) langs.add('VF');
+    final bool hasFrench = lower.contains('french');
     // §legLang — Cherché UNIQUEMENT dans le préfixe `|…|`, jamais dans le
     // titre : « LEGENDA » peut apparaître dans un vrai titre, et le marqueur
     // du fournisseur est toujours en tête.
@@ -959,6 +1170,16 @@ class TitleMetadata {
     final keptGroups = <String>[];
     base = _cleanTagGroups(base, keptGroups);
     lap('D2 cleanTagGroups');
+    // Revue 2026-09-11, D1A-05 — Les jetons AMBIGUS (FRENCH, LIGHT, RAW…),
+    // jugés un par un, AVANT les strips globaux : les indices qui font d'un
+    // mot un tag (année, `FHD`, `MULTI` juste avant lui) doivent encore être
+    // là. Pré-test exact : le motif exige l'une de ces sous-chaînes.
+    final bool mayHaveAmbiguous = lower.contains('light') ||
+        lower.contains('french') || lower.contains('sub') ||
+        lower.contains('leg') || lower.contains('raw') ||
+        lower.contains('vip') || lower.contains('audio');
+    if (mayHaveAmbiguous) base = _stripAmbiguousTags(base);
+    lap('D2b jetons ambigus');
     if (hasBracket) base = base.replaceAll(_reMultiSubTag, ' '); // §xenoFormat — avant _reLangTags
     if (hasDolby) base = base.replaceAll(_reDolby, '');        // multi-mots en premier
     base = base.replaceAll(_reQualityTags, '');
@@ -1010,6 +1231,18 @@ class TitleMetadata {
       fb = _dropOrphanBrackets(fb); // §orphanBracket
       fb = _trimChars(fb, _trimSetBase);
       base = fb.isNotEmpty ? fb : work.trim();
+    }
+
+    // Revue 2026-09-11, D1A-05 — `french` est une LANGUE s'il a quitté le
+    // titre en tant que tag (préfixe, groupe de tags, queue après SxxExx ou
+    // jugée par [_isAmbiguousTag]) : il y en a alors moins dans le titre
+    // nettoyé que dans le brut. Resté dans le titre (« The French Dispatch »,
+    // groupe de texte « (French Connection) »), c'est un mot.
+    if (!vfSure &&
+        hasFrench &&
+        _reFrenchWord.allMatches(work).length >
+            _reFrenchWord.allMatches(base).length) {
+      langs.insert(vfAt, 'VF');
     }
 
     // §parseSpeed — la clé de la base, calculée UNE fois (elle servait deux
@@ -1064,9 +1297,17 @@ class TitleMetadata {
       // le seul libellé authentique du corpus) et rejette `A/V`, `/`, `-`.
       final hasWord = _reHasWord.hasMatch(label);
       lap('E3 hasWord');
+      // Revue 2026-09-11, D1A-05 — Le libellé a perdu TOUS les jetons ambigus
+      // (`_reAllTags`), le titre seulement ceux jugés tags : on compare donc à
+      // un titre privé des mêmes jetons. Sans ça, `Blacked.Raw.V7` (mots
+      // collés par des points, que la soustraction ne peut pas apparier)
+      // sortait avec le libellé « Blacked..V7 ».
+      final String titleKey = mayHaveAmbiguous && _reAmbiguousTag.hasMatch(base)
+          ? computeGroupKey(base.replaceAll(_reAmbiguousTag, ' '))
+          : groupKey;
       if (label.isNotEmpty &&
           hasWord &&
-          !groupKey.contains(computeGroupKey(label))) {
+          !titleKey.contains(computeGroupKey(label))) {
         versionLabel = label;
       }
       lap('E4 groupKey label');

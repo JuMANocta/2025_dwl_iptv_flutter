@@ -45,6 +45,11 @@ const List<String> kExcludedPaths = [
   // françaises sont les CLÉS métier de `m3u_filter.dart` (`case 'Comédie':`),
   // pas des textes d'interface. Le texte affiché, lui, sort de la l10n.
   'lib/feature/search/category_labels.dart',
+  // Revue 2026-09-11, D1A-13 — la table des genres TMDB ne contient QUE des
+  // clés de catégorie (`10763: 'Actualités'`), le vocabulaire même de
+  // `m3u_filter.dart`, persisté dans `inferred_category_v3` et affiché par
+  // `categoryDisplayLabel()`. Des valeurs métier, pas des textes d'interface.
+  'lib/data/models/tmdb_genres.dart',
   // La console web est servie à un NAVIGATEUR : ni son HTML ni les réponses
   // JSON de son serveur ne passent par `Localizations` (surface séparée,
   // hors du système l10n de Flutter).
@@ -218,5 +223,9 @@ void main() {
             'de m3u_filter.dart, pas des textes. Si le fichier bouge, revoir '
             'kExcludedPaths — et verifier que les rangees de la home '
             'passent toujours par categoryDisplayLabel().');
+    expect(File('lib/data/models/tmdb_genres.dart').existsSync(), isTrue,
+        reason: 'tmdb_genres.dart exclu du scan : ses chaînes sont les CLÉS '
+            'de catégorie de m3u_filter.dart. Si le fichier bouge, revoir '
+            'kExcludedPaths.');
   });
 }

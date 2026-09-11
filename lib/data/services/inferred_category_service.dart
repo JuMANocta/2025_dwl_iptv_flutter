@@ -33,7 +33,11 @@ abstract final class InferredCategoryService {
   // groupe, elles, n'ont pas bougé : sans ce bump, les libellés déjà persistés
   // survivraient au bump de `schemaVersion` et l'accueil afficherait les DEUX
   // vocabulaires côte à côte — exactement le défaut qu'on corrige.
-  static const _key = 'inferred_category_v2';
+  //
+  // Revue 2026-09-11, D1A-13 — `_v3` : même raison. Le genre TMDB News
+  // (10763) donnait « Documentaire », il donne « Actualités » : les séries
+  // d'information déjà rangées sous l'ancien libellé y resteraient à vie.
+  static const _key = 'inferred_category_v3';
 
   /// Plafond d'entrées. Au-delà, on cesse d'en ajouter plutôt que d'évincer :
   /// une catégorie déjà connue vaut mieux qu'une nouvelle, et l'éviction ferait

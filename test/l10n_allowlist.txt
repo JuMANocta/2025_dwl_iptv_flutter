@@ -4,7 +4,7 @@
 # Ce fichier ne doit JAMAIS remonter : chaque tranche de
 # traduction l'abaisse. Un total qui augmente = une régression.
 #
-# TOTAL : 142 lignes dans 38 fichiers.
+# TOTAL : 136 lignes dans 37 fichiers.
 
 lib/core/diagnostics/jank_meter.dart 2
 lib/core/diagnostics/log_buffer.dart 6
@@ -12,7 +12,6 @@ lib/core/navigation/focus_route_memory.dart 7
 lib/core/utils/notification_permission.dart 2
 lib/data/models/m3u_entry.dart 7
 lib/data/models/media_model.dart 3
-lib/data/models/tmdb_genres.dart 6
 lib/data/services/backup_service.dart 1
 lib/data/services/cast_relay_service.dart 1
 lib/data/services/cast_service.dart 2

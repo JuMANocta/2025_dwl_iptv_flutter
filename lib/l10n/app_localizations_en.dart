@@ -3502,6 +3502,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get catRealityTv => 'Reality TV';
 
   @override
+  String get catTalkShow => 'Talk shows';
+
+  @override
   String get catThriller => 'Thriller';
 
   @override

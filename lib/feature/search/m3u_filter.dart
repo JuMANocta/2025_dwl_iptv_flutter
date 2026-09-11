@@ -554,6 +554,13 @@ String? _keywordCategoryLabel(String g) {
       g.contains('HALLOWEEN')) { return 'Fêtes'; }
   if (g.contains('MÉDECINE') || g.contains('MEDECINE')) return 'Médecine';
   if (g.contains('RÉALITÉ') || g.contains('REALITE')) return 'Téléréalité';
+  // Revue 2026-09-11, D1A-13 — « Talk-show » est le libellé que
+  // `tmdb_genres.dart` donne au genre TMDB 10767 : il doit exister ICI aussi,
+  // sinon la rangée déduite d'une liste pauvre ne rejoindrait jamais celle
+  // d'une liste riche. Aucun group-title des six listes mesurées ne le porte
+  // (instantané inchangé) ; la règle attend le premier fournisseur qui l'écrit.
+  if (g.contains('TALK SHOW') || g.contains('TALK-SHOW') ||
+      g.contains('TALKSHOW')) { return 'Talk-show'; }
   if (g.contains('CRIME')) return 'Crime';
   // §catWords — « FILMS ART-MARTIAUX » (103) faisait une rangée à côté de
   // « Arts martiaux » (99) : la graphie au singulier et au trait d'union.
