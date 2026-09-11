@@ -982,7 +982,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear, size: 20),
-                  tooltip: 'Effacer',
+                  tooltip: context.l10n.commonClear,
                   splashRadius: 20,
                   onPressed: () => _searchCtrl.clear(),
                 )

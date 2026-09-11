@@ -188,7 +188,9 @@ class BootNoAccountScreen extends StatelessWidget {
         // Sur mobile la Console web reste proposée en second (clavier de PC
         // confortable pour une longue URL) ; sur TV c'est la saisie manuelle.
         secondaryLabel:
-            isTv ? 'Saisir manuellement' : 'Configurer via Console web',
+            isTv
+                ? context.l10n.bootEnterManually
+                : context.l10n.bootConfigureWebConsole,
         secondaryIcon: isTv ? Icons.keyboard_alt_outlined : Icons.language,
         onSecondary: isTv ? onOpenAccounts : onOpenWebConsole,
         tertiaryLabel: context.l10n.bootRestoreBackup,

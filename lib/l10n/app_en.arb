@@ -627,6 +627,10 @@
     "description": "Confirm button of the reload-all dialog"
   },
   "reloadAllProgressTitle": "Reloading",
+  "reloadAllBackground": "Continue in the background",
+  "@reloadAllBackground": {
+    "description": "Dismisses the reload progress dialog while the batch keeps running."
+  },
   "@reloadAllProgressTitle": {
     "description": "Title of the progress dialog while every list is reloaded"
   },
@@ -1038,7 +1042,7 @@
   "perfSectionStorage": "Storage",
   "perfStorageScanning": "Scanning storage…",
   "perfStorageNothing": "Nothing to reclaim: every file belongs to an existing account.",
-  "perfStorageReclaimable": "{size} taken by files that no longer belong to any account ({count} file(s)) — playlists and caches left behind by deleted accounts.",
+  "perfStorageReclaimable": "{size} taken by {count} file(s) nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.",
   "@perfStorageReclaimable": {
     "placeholders": {
       "size": {
@@ -2348,8 +2352,6 @@
   "detStatusReturning": "Returning",
   "detStatusEnded": "Ended",
   "detStatusCanceled": "Canceled",
-  "sheetChooseVersion": "Choose a version",
-  "sheetStandardUnknown": "Standard / Unknown",
   "sheetDetails": "Details & info",
   "sheetReplayUnavailable": "Replay unavailable for this stream",
   "onbSkip": "Skip",
@@ -2639,5 +2641,134 @@
   "regExYugoslavia": "Former Yugoslavia",
   "regDominicanRepublic": "Dominican Republic",
   "regOriginalNonFrench": "Original (non-French)",
-  "regLegendado": "Legendado (PT subtitles)"
+  "regLegendado": "Legendado (PT subtitles)",
+  "acctChipMain": "MAIN",
+  "bootEnterManually": "Enter manually",
+  "bootConfigureWebConsole": "Set up via Web console",
+  "searchPeople": "People",
+  "personRoleDirector": "Director",
+  "personRoleActor": "Actor",
+  "personRoleWriter": "Writer",
+  "personRoleProduction": "Production",
+  "personRoleMusic": "Music",
+  "personRoleCamera": "Cinematography",
+  "optSpeedTitle": "Speed",
+  "optSpeedCurrentNormal": "Normal (1.0×)",
+  "tracksTitle": "Tracks",
+  "tracksSubtitle": "audio & subtitles",
+  "tracksAudio": "Audio",
+  "tracksSubtitles": "Subtitles",
+  "epgNow": "ON NOW",
+  "epgNext": "NEXT",
+  "replayPrograms": "Programmes",
+  "replayToday": "Today",
+  "replayYesterday": "Yesterday",
+  "replayWatchLabel": "Watch  •  {label}",
+  "@replayWatchLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "qualityWatch": "Watch · {label}",
+  "@qualityWatch": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "actorBiography": "Biography",
+  "actorBiographyMissing": "No biography available.",
+  "actorAvailableBadge": "AVAILABLE",
+  "detMainCast": "Main cast",
+  "detSimilarAvailable": "Similar titles available",
+  "detTrailerButton": "TRAILER",
+  "themePreviewTitle": "Movie Title",
+  "sheetReplay": "Replay",
+  "sheetReplayDays": "Replay ({days}d)",
+  "@sheetReplayDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "memComputing": "Calculating…",
+  "memRamProcess": "Process RAM",
+  "memRamProcessValue": "{current} (peak {peak})",
+  "@memRamProcessValue": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      },
+      "peak": {
+        "type": "String"
+      }
+    }
+  },
+  "memImageCacheDisk": "Image cache (disk)",
+  "memImageCacheRam": "Image cache (RAM)",
+  "memImageCacheRamValue": "{used} / {max} · {count} / {maxCount} img",
+  "@memImageCacheRamValue": {
+    "placeholders": {
+      "used": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      },
+      "maxCount": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeBytes": "{n} B",
+  "@sizeBytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeKilobytes": "{n} kB",
+  "@sizeKilobytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeMegabytes": "{n} MB",
+  "@sizeMegabytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeGigabytes": "{n} GB",
+  "@sizeGigabytes": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "dlActionRestart": "Restart",
+  "dlMoreActions": "More actions",
+  "playerQuit": "Quit",
+  "nextEpContinue": "Continue",
+  "commonClear": "Clear",
+  "statsAnnouncedLabel": "Declared",
+  "replayGuideUnavailable": "Guide unavailable",
+  "replayNotAvailable": "not available",
+  "detEnableTmdb": "Turn on TMDB",
+  "dlRestartUpper": "RESTART",
+  "commonDecrease": "Decrease",
+  "commonIncrease": "Increase"
 }

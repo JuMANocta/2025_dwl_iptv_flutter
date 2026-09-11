@@ -38,7 +38,7 @@ class ReplaySheet extends StatelessWidget {
               children: [
                 EmptyState(
                   icon: Icons.cloud_off,
-                  title: 'Guide indisponible',
+                  title: context.l10n.replayGuideUnavailable,
                   subtitle: describeError(snap.error),
                   accentColor: kError,
                 ),
@@ -99,7 +99,8 @@ class ReplaySheet extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: p.hasArchive ? null : Colors.grey),
                 ),
-                subtitle: Text('${p.startLabel}  •  ${p.durationLabel}${p.hasArchive ? '' : '  • non disponible'}'),
+                subtitle: Text('${p.startLabel}  •  ${p.durationLabel}'
+                    '${p.hasArchive ? '' : '  • ${context.l10n.replayNotAvailable}'}'),
                 onTap: p.hasArchive ? () => Navigator.of(context).pop(p) : null,
               );
               if (!p.hasArchive) return tile;

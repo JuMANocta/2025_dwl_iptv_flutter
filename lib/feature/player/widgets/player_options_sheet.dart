@@ -112,7 +112,7 @@ Future<void> showVideoFitMenu(
     context: context,
     scrollable: false,
     builder: (sheetCtx) => OptionsSheetBody(
-      title: "Format d'image",
+      title: context.l10n.optFitTitle,
       icon: Icons.aspect_ratio_rounded,
       children: [
         for (final mode in VideoFitMode.values)
@@ -146,7 +146,7 @@ Future<void> showSpeedMenu(
     context: context,
     scrollable: false,
     builder: (sheetCtx) => OptionsSheetBody(
-      title: 'Vitesse',
+      title: context.l10n.optSpeedTitle,
       icon: Icons.speed_rounded,
       children: [
         for (final s in kPlaybackSpeeds)

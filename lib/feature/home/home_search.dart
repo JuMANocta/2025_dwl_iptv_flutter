@@ -600,7 +600,7 @@ class _PersonSectionState extends State<_PersonSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SearchSectionHeader(
-            title: 'Personnes',
+            title: context.l10n.searchPeople,
             icon: Icons.person_outline,
             count: _hits.length,
           ),

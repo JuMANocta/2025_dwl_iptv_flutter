@@ -69,7 +69,7 @@ class _TrackSelector extends StatelessWidget {
                         color: kAccentSecondary, size: 22),
                     const SizedBox(width: 10),
                     Text(
-                      'Pistes',
+                      context.l10n.tracksTitle,
                       style: TextStyle(
                         color: cs.onSurface,
                         fontSize: 18,
@@ -79,7 +79,7 @@ class _TrackSelector extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      'audio & sous-titres',
+                      context.l10n.tracksSubtitle,
                       style:
                           TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
                     ),
@@ -89,7 +89,7 @@ class _TrackSelector extends StatelessWidget {
 
                 // ── AUDIO (accent vert) ────────────────────────────────────
                 _SectionBar(
-                    label: 'Audio',
+                    label: context.l10n.tracksAudio,
                     icon: Icons.graphic_eq_rounded,
                     accent: kAccentPrimary),
                 const SizedBox(height: 8),
@@ -102,7 +102,7 @@ class _TrackSelector extends StatelessWidget {
 
                 // ── SOUS-TITRES (accent cyan) ──────────────────────────────
                 _SectionBar(
-                    label: 'Sous-titres',
+                    label: context.l10n.tracksSubtitles,
                     icon: Icons.closed_caption_rounded,
                     accent: kAccentSecondary),
                 const SizedBox(height: 8),

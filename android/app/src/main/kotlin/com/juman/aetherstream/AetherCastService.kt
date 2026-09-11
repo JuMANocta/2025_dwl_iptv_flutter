@@ -13,6 +13,7 @@ import android.graphics.BitmapFactory
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import java.net.HttpURLConnection
@@ -56,6 +57,7 @@ import java.net.URL
 class AetherCastService : Service() {
 
     companion object {
+        private const val TAG = "AetherCastService"
         private const val CHANNEL_ID = "aether_cast"
         private const val ONGOING_NOTIFICATION_ID = 2002
         const val ACTION_TOGGLE = "com.juman.aetherstream.action.CAST_TOGGLE"
@@ -76,10 +78,17 @@ class AetherCastService : Service() {
                 putExtra("image", image)
                 putExtra("lowBattery", lowBattery)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
+            try {
+                // §fgsSafeStart (2026-09-10) — ⚠️ `startForegroundService` arme
+                // un compte à rebours de 5 s ; le service détruit avant sa
+                // promotion = **processus tué**. Mesuré sur Galaxy S25 le
+                // 2026-09-05 pendant une conversion Cast : le service mettait
+                // 4,95 s à être créé, le téléphone étant occupé à convertir.
+                // Le paquet vendoré a été corrigé (patch 13), pas celui-ci.
+                @Suppress("DEPRECATION")
                 context.startService(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "démarrage du service refusé (${e.javaClass.simpleName})")
             }
         }
 
@@ -131,17 +140,12 @@ class AetherCastService : Service() {
         super.onCreate()
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createChannel()
+        // §fgsSafeStart — Se déclarer dès la CRÉATION, avec un repli.
+        promoteToForeground(buildNotification("AetherStream", "Diffusion en cours", true))
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val title = intent?.getStringExtra("title") ?: "AetherStream"
-        val text = intent?.getStringExtra("text") ?: "Diffusion en cours"
-        val playing = intent?.getBooleanExtra("playing", true) ?: true
-        val image = intent?.getStringExtra("image")
-        lowBattery = intent?.getBooleanExtra("lowBattery", false) ?: false
-        maybeLoadPoster(image, title, text, playing)
-
-        val notification = buildNotification(title, text, playing)
+    /// Déclare le service en premier plan. ⚠️ Ne lève jamais.
+    private fun promoteToForeground(notification: Notification) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
@@ -153,14 +157,24 @@ class AetherCastService : Service() {
                 startForeground(ONGOING_NOTIFICATION_ID, notification)
             }
         } catch (e: Exception) {
-            // Android 12+ : ForegroundServiceStartNotAllowedException si l'app
-            // est en arrière-plan au DÉMARRAGE du service. La diffusion démarre
-            // toujours depuis le lecteur (au premier plan) : ce cas ne devrait
-            // pas se produire ; s'il arrive, la diffusion continue sans
-            // notification, comme §dlNotif.
-            stopSelf()
-            return START_NOT_STICKY
+            Log.w(TAG, "startForeground refusé (${e.javaClass.simpleName})")
         }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val title = intent?.getStringExtra("title") ?: "AetherStream"
+        val text = intent?.getStringExtra("text") ?: "Diffusion en cours"
+        val playing = intent?.getBooleanExtra("playing", true) ?: true
+        val image = intent?.getStringExtra("image")
+        lowBattery = intent?.getBooleanExtra("lowBattery", false) ?: false
+        maybeLoadPoster(image, title, text, playing)
+
+        // §fgsSafeStart — Déjà promu dans `onCreate` ; on remplace le repli.
+        // ⛔ Plus de `stopSelf()` en rattrapage : se retirer sans s'être
+        // déclaré est exactement ce qui tue le processus. Et ici ce serait
+        // pire qu'ailleurs — `stopSelf()` emportait aussi §castAwake, donc la
+        // diffusion mourait dès l'écran éteint.
+        promoteToForeground(buildNotification(title, text, playing))
         // §castAwake — APRÈS `startForeground` : c'est le statut de premier
         // plan qui rend le verrou honoré en mode Sommeil. Idempotent : chaque
         // mise à jour de la notification repasse ici.

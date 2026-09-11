@@ -35,7 +35,3 @@ Future<bool> ensureNotificationPermission() async {
     return _granted = false;
   }
 }
-
-/// Tests uniquement : oublie la réponse mémorisée.
-@visibleForTesting
-void resetNotificationPermissionForTest() => _granted = null;

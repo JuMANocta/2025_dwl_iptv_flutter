@@ -30,6 +30,7 @@ import '../../widgets/tv/section_beacon.dart';
 import 'actor_details_page.dart';
 import 'm3u_filter.dart';
 import 'details_facts.dart';
+import 'details_header_image.dart';
 import 'details_versions.dart';
 import '../../widgets/playback_gate.dart';
 import '../../widgets/media_chips.dart' show buildDownloadName;
@@ -940,7 +941,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Active TMDB',
+                    Text(context.l10n.detEnableTmdb,
                         style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: cs.onSurface,
@@ -1016,17 +1017,18 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         ? stillPath
         : _tmdbData?.backdropPath;
     // §quickwin — fallback affiche playlist quand pas de backdrop TMDB.
-    // §23 — priorité au BACKDROP provider (champ v5 du catalogue JSON,
-    // format paysage = idéal pour le header), choisi selon la politique
-    // « plus grosse liste » ; sinon poster/logo (même politique) ; sinon
-    // épisode courant / entrée.
-    final String? playlistPoster = <String?>[
-      ParsedPlaylistService.bestBackdropUrl(_uniqueVersions),
-      widget.entry.backdropUrl,
-      ParsedPlaylistService.bestLogoUrl(_uniqueVersions),
-      _currentEpisode.logoUrl,
-      widget.entry.logoUrl,
-    ].firstWhere((l) => l != null && l.isNotEmpty, orElse: () => null);
+    // §posterFlash — ⚠️ L'ordre a CHANGÉ le 2026-09-10, sur mesure appareil :
+    // le décor du fournisseur passait devant (format paysage, idéal pour un
+    // en-tête) et affichait donc un champ que la vignette d'accueil ne regarde
+    // JAMAIS — sur « Heroes », c'était l'affiche de Speed 2. Voir
+    // `details_header_image.dart` pour le récit et l'interdiction associée.
+    final String? playlistPoster = playlistHeaderImage(
+      groupLogo: ParsedPlaylistService.bestLogoUrl(_uniqueVersions),
+      episodeLogo: _currentEpisode.logoUrl,
+      entryLogo: widget.entry.logoUrl,
+      groupBackdrop: ParsedPlaylistService.bestBackdropUrl(_uniqueVersions),
+      entryBackdrop: widget.entry.backdropUrl,
+    );
     // §imgDiskCache — le backdrop demandait `original` (2000-3800 px, plusieurs
     // Mo) alors qu'il s'affiche sur 360 px de haut max (180-300 sur TV). Avec
     // un cache DISQUE, chaque fiche visitée serait stockée en pleine résolution
@@ -1481,8 +1483,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
 
                   // CASTING — vignettes acteurs avec photo (carrousel horizontal)
                   if (hasTmdb && _tmdbData!.castMembers.isNotEmpty) ...[
-                    SectionMark('Casting principal',
-                        child: Text('Casting principal',
+                    SectionMark(context.l10n.detMainCast,
+                        child: Text(context.l10n.detMainCast,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleSmall
@@ -1518,8 +1520,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                   ]
                   // Fallback : anciens noms seuls si pas de casting enrichi.
                   else if (hasTmdb && _tmdbData!.cast.isNotEmpty) ...[
-                    SectionMark('Casting principal',
-                        child: Text('Casting principal',
+                    SectionMark(context.l10n.detMainCast,
+                        child: Text(context.l10n.detMainCast,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleSmall
@@ -1626,7 +1628,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                       cs,
                     ),
                   if (_similar.isNotEmpty)
-                    _relatedRow('Titres similaires disponibles', _similar, cs),
+                    _relatedRow(
+                        context.l10n.detSimilarAvailable, _similar, cs),
 
                   // LOADING
                   if (_isLoading && !isSeries)
@@ -2532,7 +2535,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     return _glowButton(
       color: kAccentTertiary,
       onPressed: _launchTrailer,
-      child: _btnContent(Icons.play_circle_outline, 'BANDE-ANNONCE'),
+      child: _btnContent(
+          Icons.play_circle_outline, context.l10n.detTrailerButton),
     );
   }
 

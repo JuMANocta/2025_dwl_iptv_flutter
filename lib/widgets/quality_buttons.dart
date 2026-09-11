@@ -213,7 +213,7 @@ class _QualityButtonsRowState extends State<QualityButtonsRow> {
                 children: [
                   const Icon(Icons.play_arrow_rounded, color: kWhite, size: 20),
                   const SizedBox(width: 6),
-                  Text('Regarder · $label',
+                  Text(context.l10n.qualityWatch(label),
                       style: const TextStyle(
                           color: kWhite,
                           fontWeight: FontWeight.bold,

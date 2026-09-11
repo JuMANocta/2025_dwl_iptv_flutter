@@ -82,6 +82,19 @@ final FocusRouteMemory focusRouteMemory = FocusRouteMemory();
 void main() async {
   // Séquence d'initialisation critique avant le lancement de l'UI.
   WidgetsFlutterBinding.ensureInitialized();
+
+  // §dpadBack (2026-09-10) — ⚠️ AVANT `runApp`, et ce n'est pas cosmétique :
+  // `handlePopRoute` parcourt les observateurs dans l'ordre d'inscription et
+  // s'arrête au premier qui rend `true`. `_WidgetsAppState` s'inscrit dans son
+  // `initState`, donc après `runApp` — inscrit plus tard, celui-ci ne verrait
+  // jamais l'événement.
+  //
+  // Ce qu'il corrige, MESURÉ sur émulateur TV : un seul appui physique sur
+  // Retour dépilait DEUX routes, parce que l'appui arrive à la fois par la
+  // touche (captée par `dpad` → `AppBack.pop`) et par la plateforme
+  // (`onBackPressed` → `popRoute`), et que la seconde voie ne passait par aucun
+  // garde-fou. Détail et preuve dans `focus_route_memory.dart`.
+  WidgetsBinding.instance.addObserver(AppBack.platformObserver);
   // §tvLogs — Capture des logs AVANT tout le reste : sur TV il n'y a pas de
   // logcat accessible, ce tampon est le seul moyen de voir ce qui se passe
   // (consultable et exportable depuis la console web du téléphone).
@@ -491,6 +504,25 @@ class _LaunchDeciderState extends State<_LaunchDecider> {
     // hoquette n'efface jamais les playlists de l'utilisateur.
     unawaited(StorageJanitor.sweepOrphans(
       knownAccountIds: accounts.map((a) => a.id).toSet(),
+    ));
+
+    // §dlPartSweep (2026-09-10) — Les fichiers PARTIELS d'un téléchargement
+    // n'étaient dans le périmètre d'aucun ménage : le balayage ci-dessus ne
+    // connaît que `.json`/`.m3u`/`.json.gz`, et il ne regarde que les deux
+    // dossiers privés — jamais le cache externe où vivent les partiels.
+    // Constaté sur le Galaxy S25 le 2026-09-09 : deux partiels de la veille.
+    //
+    // ⚠️ Un `.part` n'est PAS un déchet : c'est ce qui rend une reprise
+    // possible. Un partiel n'est orphelin que si AUCUNE tâche ne le désigne —
+    // et si la liste des tâches n'a pas pu être relue, elle arrive vide et le
+    // balayage se refuse à agir, exactement comme celui des comptes.
+    unawaited(StorageJanitor.sweepDownloadPartials(
+      liveTempPaths: DownloadManagerService()
+          .tasksNotifier
+          .value
+          .map((t) => t.tempPath)
+          .where((p) => p.isNotEmpty)
+          .toSet(),
     ));
 
     // §bootActiveCap (2026-09-09) — ⚠️ **Le compte PRINCIPAL n'avait AUCUNE

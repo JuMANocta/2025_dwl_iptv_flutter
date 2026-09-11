@@ -823,6 +823,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get reloadAllProgressTitle => 'Rechargement en cours';
 
   @override
+  String get reloadAllBackground => 'Continuer en arrière-plan';
+
+  @override
   String get reloadAllPreparing => 'Préparation…';
 
   @override
@@ -1212,7 +1215,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String perfStorageReclaimable(String size, int count) {
-    return '$size occupés par des fichiers qui n\'appartiennent plus à aucun compte ($count fichier(s)) — playlists et caches laissés derrière eux par des comptes supprimés.';
+    return '$size occupés par $count fichier(s) dont plus personne n\'a besoin : listes de comptes supprimés, et téléchargements interrompus qui ne peuvent plus reprendre.';
   }
 
   @override
@@ -2247,7 +2250,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get optTracksTitle => 'Pistes audio & sous-titres';
 
   @override
-  String get optSpeedTitle => 'Vitesse de lecture';
+  String get optSpeedTitle => 'Vitesse';
 
   @override
   String get optFitTitle => 'Format d\'image';
@@ -3084,12 +3087,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get detStatusCanceled => 'Annulée';
 
   @override
-  String get sheetChooseVersion => 'Choisir une version';
-
-  @override
-  String get sheetStandardUnknown => 'Standard / Inconnue';
-
-  @override
   String get sheetDetails => 'Fiche Détaillée & Infos';
 
   @override
@@ -3600,4 +3597,182 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get regLegendado => 'Legendado (sous-titré PT)';
+
+  @override
+  String get acctChipMain => 'PRINCIPAL';
+
+  @override
+  String get bootEnterManually => 'Saisir manuellement';
+
+  @override
+  String get bootConfigureWebConsole => 'Configurer via Console web';
+
+  @override
+  String get searchPeople => 'Personnes';
+
+  @override
+  String get personRoleDirector => 'Réalisateur';
+
+  @override
+  String get personRoleActor => 'Acteur';
+
+  @override
+  String get personRoleWriter => 'Scénariste';
+
+  @override
+  String get personRoleProduction => 'Production';
+
+  @override
+  String get personRoleMusic => 'Musique';
+
+  @override
+  String get personRoleCamera => 'Image';
+
+  @override
+  String get optSpeedCurrentNormal => 'Normale (1.0×)';
+
+  @override
+  String get tracksTitle => 'Pistes';
+
+  @override
+  String get tracksSubtitle => 'audio & sous-titres';
+
+  @override
+  String get tracksAudio => 'Audio';
+
+  @override
+  String get tracksSubtitles => 'Sous-titres';
+
+  @override
+  String get epgNow => 'EN COURS';
+
+  @override
+  String get epgNext => 'ENSUITE';
+
+  @override
+  String get replayPrograms => 'Programmes';
+
+  @override
+  String get replayToday => 'Aujourd’hui';
+
+  @override
+  String get replayYesterday => 'Hier';
+
+  @override
+  String replayWatchLabel(String label) {
+    return 'Regarder  •  $label';
+  }
+
+  @override
+  String qualityWatch(String label) {
+    return 'Regarder · $label';
+  }
+
+  @override
+  String get actorBiography => 'Biographie';
+
+  @override
+  String get actorBiographyMissing => 'Biographie indisponible.';
+
+  @override
+  String get actorAvailableBadge => 'DISPO';
+
+  @override
+  String get detMainCast => 'Casting principal';
+
+  @override
+  String get detSimilarAvailable => 'Titres similaires disponibles';
+
+  @override
+  String get detTrailerButton => 'BANDE-ANNONCE';
+
+  @override
+  String get themePreviewTitle => 'Titre du Film';
+
+  @override
+  String get sheetReplay => 'Replay';
+
+  @override
+  String sheetReplayDays(int days) {
+    return 'Replay (${days}j)';
+  }
+
+  @override
+  String get memComputing => 'Calcul en cours…';
+
+  @override
+  String get memRamProcess => 'RAM process';
+
+  @override
+  String memRamProcessValue(String current, String peak) {
+    return '$current (pic $peak)';
+  }
+
+  @override
+  String get memImageCacheDisk => 'Cache images (disque)';
+
+  @override
+  String get memImageCacheRam => 'Cache images (RAM)';
+
+  @override
+  String memImageCacheRamValue(
+      String used, String max, String count, String maxCount) {
+    return '$used / $max · $count / $maxCount img';
+  }
+
+  @override
+  String sizeBytes(String n) {
+    return '$n octets';
+  }
+
+  @override
+  String sizeKilobytes(String n) {
+    return '$n Ko';
+  }
+
+  @override
+  String sizeMegabytes(String n) {
+    return '$n Mo';
+  }
+
+  @override
+  String sizeGigabytes(String n) {
+    return '$n Go';
+  }
+
+  @override
+  String get dlActionRestart => 'Relancer';
+
+  @override
+  String get dlMoreActions => 'Autres actions';
+
+  @override
+  String get playerQuit => 'Quitter';
+
+  @override
+  String get nextEpContinue => 'Continuer';
+
+  @override
+  String get commonClear => 'Effacer';
+
+  @override
+  String get statsAnnouncedLabel => 'Annoncé';
+
+  @override
+  String get replayGuideUnavailable => 'Guide indisponible';
+
+  @override
+  String get replayNotAvailable => 'non disponible';
+
+  @override
+  String get detEnableTmdb => 'Active TMDB';
+
+  @override
+  String get dlRestartUpper => 'RELANCER';
+
+  @override
+  String get commonDecrease => 'Diminuer';
+
+  @override
+  String get commonIncrease => 'Augmenter';
 }

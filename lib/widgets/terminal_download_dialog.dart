@@ -569,7 +569,7 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                     alignment: WrapAlignment.end,
                     children: [
                       _terminalButton(
-                        label: 'RELANCER',
+                        label: context.l10n.dlRestartUpper,
                         color: kAccentSecondary,
                         onPressed: () {
                           final t = _lastTaskState;

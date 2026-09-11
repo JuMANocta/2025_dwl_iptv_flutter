@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme_config.dart';
@@ -36,6 +38,40 @@ class ThemeService {
       await prefs.setString(_kKey, jsonEncode(newConfig.toJson()));
     } catch (_) {}
   }
+
+  // ── §lightTheme — la luminosité EFFECTIVE ───────────────────────────────
+
+  /// Forçage réservé aux tests : la luminosité ne dépend plus de l'appareil.
+  @visibleForTesting
+  static Brightness? debugBrightnessOverride;
+
+  /// Clair ou sombre, MAINTENANT, tout compris : le mode choisi dans le thème,
+  /// et — s'il vaut `system` — le réglage de l'appareil.
+  ///
+  /// ⚠️ Existe parce que les alias sémantiques de `colors.dart` sont des
+  /// getters GLOBAUX (52 fichiers les lisent en direct, sans passer par
+  /// `ThemeData`). Corriger le seul `lightTheme()` n'aurait donc rien changé à
+  /// l'écran : il fallait un endroit où ces getters puissent savoir sur quel
+  /// fond ils vont être peints.
+  ///
+  /// ⚠️ Aucun `Listenable` ici, et c'est voulu : `MaterialApp` se reconstruit
+  /// déjà quand la luminosité système change, donc les getters sont réévalués
+  /// au build suivant. En faire un notifieur ajouterait une seconde source de
+  /// vérité pour rien.
+  static Brightness get effectiveBrightness {
+    final Brightness? forced = debugBrightnessOverride;
+    if (forced != null) return forced;
+    switch (config.value.themeMode) {
+      case ThemeMode.light:
+        return Brightness.light;
+      case ThemeMode.dark:
+        return Brightness.dark;
+      case ThemeMode.system:
+        return PlatformDispatcher.instance.platformBrightness;
+    }
+  }
+
+  static bool get isLight => effectiveBrightness == Brightness.light;
 
   static Future<void> reset() => save(AppThemeConfig.defaults);
 }

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
@@ -181,23 +182,32 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
           const SizedBox(height: 10),
           if (s == null)
             Text(
-              'Calcul en cours…',
+              context.l10n.memComputing,
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
             )
           else ...[
-            _statRow(context, 'RAM process',
-                '${s.rssMb} Mo (peak ${s.maxRssMb} Mo)'),
+            _statRow(
+                context,
+                context.l10n.memRamProcess,
+                context.l10n.memRamProcessValue(
+                    _fmtMb(s.rssMb), _fmtMb(s.maxRssMb))),
             const SizedBox(height: 4),
             // §imgDiskCache — vignettes persistées (évite les re-téléchargements).
-            _statRow(context, 'Cache images (disque)', '${s.imgCacheMb} Mo'),
+            _statRow(context, context.l10n.memImageCacheDisk,
+                _fmtMb(s.imgCacheMb)),
             const SizedBox(height: 4),
             // §imgThrash — Lecture : proche du plafond et STABLE = sain. Une
             // valeur qui retombe sans cesse près de zéro pendant qu'on scrolle
             // signale que les vignettes sont re-décodées en boucle.
             _statRow(
               context,
-              'Cache images (RAM)',
-              '${s.ramUsedMb} / ${s.ramMaxMb} Mo · ${s.ramCount} / ${s.ramMaxCount} img',
+              context.l10n.memImageCacheRam,
+              context.l10n.memImageCacheRamValue(
+                _fmtMb(s.ramUsedMb),
+                _fmtMb(s.ramMaxMb),
+                _fmtCount(s.ramCount),
+                _fmtCount(s.ramMaxCount),
+              ),
             ),
             const SizedBox(height: 6),
             for (final a in s.accounts)
@@ -265,13 +275,22 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
   /// fichiers bien présents.
   String _fmtBytes(int bytes) {
     if (bytes <= 0) return '—';
-    if (bytes < 1024) return '$bytes o';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} ko';
+    if (bytes < 1024) return L10n.current.sizeBytes('$bytes');
+    if (bytes < 1024 * 1024) {
+      return L10n.current.sizeKilobytes('${(bytes / 1024).round()}');
+    }
     final mb = bytes / (1024 * 1024);
-    return mb < 10
-        ? '${mb.toStringAsFixed(1).replaceAll('.', ',')} Mo'
-        : '${mb.round()} Mo';
+    // ⚠️ La virgule décimale est française : le séparateur suit la langue de
+    // l'interface, sinon un appareil anglais lit « 2,0 MB ».
+    return L10n.current.sizeMegabytes(mb < 10
+        ? NumberFormat.decimalPatternDigits(
+                locale: L10n.current.localeName, decimalDigits: 1)
+            .format(mb)
+        : '${mb.round()}');
   }
+
+  /// Un poids déjà exprimé en Mo (RAM, caches) — seule l'unité change de langue.
+  String _fmtMb(int mb) => L10n.current.sizeMegabytes('$mb');
 
   Widget _statRow(BuildContext context, String label, String value) {
     final cs = Theme.of(context).colorScheme;

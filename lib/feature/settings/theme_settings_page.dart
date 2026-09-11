@@ -535,7 +535,7 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage> with TvInitialFoc
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            'Titre du Film',
+                            context.l10n.themePreviewTitle,
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -665,7 +665,7 @@ class _TvStepperRow extends StatelessWidget {
           icon: const Icon(Icons.remove_circle_outline),
           onPressed: _decrement,
           color: value > min ? color : color.withAlpha(70),
-          tooltip: 'Diminuer',
+          tooltip: context.l10n.commonDecrease,
         ),
         Expanded(
           child: Container(
@@ -692,7 +692,7 @@ class _TvStepperRow extends StatelessWidget {
           icon: const Icon(Icons.add_circle_outline),
           onPressed: _increment,
           color: value < max ? color : color.withAlpha(70),
-          tooltip: 'Augmenter',
+          tooltip: context.l10n.commonIncrease,
         ),
       ],
     );

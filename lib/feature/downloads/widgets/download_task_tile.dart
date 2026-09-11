@@ -216,7 +216,7 @@ class DownloadTaskTile extends StatelessWidget {
   static String _actionLabel(DownloadAction a) => switch (a) {
         DownloadAction.play => L10n.current.dlActionPlay,
         DownloadAction.monitor => L10n.current.dlActionMonitor,
-        DownloadAction.restart => 'Relancer',
+        DownloadAction.restart => L10n.current.dlActionRestart,
         DownloadAction.cancel => L10n.current.dlActionCancel,
         DownloadAction.delete => L10n.current.dlActionDelete,
       };
@@ -582,7 +582,7 @@ class DownloadTaskTile extends StatelessWidget {
           child: _outlinedAction(
             context,
             icon: Icons.more_vert,
-            tooltip: 'Autres actions',
+            tooltip: context.l10n.dlMoreActions,
             color: Theme.of(context).colorScheme.onSurfaceVariant,
             onPressed: () => _openMenu(context),
           ),

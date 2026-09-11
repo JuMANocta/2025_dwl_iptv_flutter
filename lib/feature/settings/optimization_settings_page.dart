@@ -5,6 +5,7 @@ import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
+import 'package:aetherStream/data/services/download_manager_service.dart';
 import 'package:aetherStream/data/services/storage_janitor.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/widgets/confirm_or_undo.dart';
@@ -64,25 +65,47 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
 
   /// §acctPurge — Compte les fichiers sans propriétaire, sans rien supprimer.
   Future<void> _scanStorage() async {
-    final accounts = await StreamAccountService.listAccounts();
-    final res = await StorageJanitor.preview(
-      knownAccountIds: accounts.map((a) => a.id).toSet(),
-      // L'utilisateur a la page sous les yeux : s'il n'a aucun compte, c'est un
-      // fait qu'il voit, pas un stockage sécurisé qui a hoqueté au démarrage.
-      allowEmptyAccountList: true,
-    );
+    final res = await _measure(dryRun: true);
     if (mounted) setState(() => _reclaimable = res);
   }
 
-  /// §acctPurge — Supprime les fichiers des comptes qui n'existent plus.
+  /// §acctPurge + §dlPartSweep — Les DEUX ménages, en un seul chiffre.
+  ///
+  /// L'utilisateur n'a pas à savoir qu'il y a deux mécanismes : il voit une
+  /// place récupérable et un bouton. Les deux balayages passent
+  /// `allowEmpty…: true` — il a la page sous les yeux, donc une liste vide est
+  /// un fait qu'il constate, pas un stockage qui a hoqueté au démarrage.
+  Future<StorageSweepResult> _measure({required bool dryRun}) async {
+    final accounts = await StreamAccountService.listAccounts();
+    final accountFiles = await StorageJanitor.sweepOrphans(
+      knownAccountIds: accounts.map((a) => a.id).toSet(),
+      allowEmptyAccountList: true,
+      dryRun: dryRun,
+    );
+    final partials = await StorageJanitor.sweepDownloadPartials(
+      // ⚠️ TOUS les statuts : `failed` et `canceled` désignent des transferts
+      // que « Relancer » reprend à l'octet près par un en-tête `Range`.
+      liveTempPaths: DownloadManagerService()
+          .tasksNotifier
+          .value
+          .map((t) => t.tempPath)
+          .where((p) => p.isNotEmpty)
+          .toSet(),
+      allowEmptyTaskList: true,
+      dryRun: dryRun,
+    );
+    return StorageSweepResult(
+      fileCount: accountFiles.fileCount + partials.fileCount,
+      bytes: accountFiles.bytes + partials.bytes,
+    );
+  }
+
+  /// §acctPurge + §dlPartSweep — Supprime les fichiers des comptes qui
+  /// n'existent plus, ET les partiels de téléchargement abandonnés.
   Future<void> _purgeOrphans() async {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _purging = true);
-    final accounts = await StreamAccountService.listAccounts();
-    final res = await StorageJanitor.sweepOrphans(
-      knownAccountIds: accounts.map((a) => a.id).toSet(),
-      allowEmptyAccountList: true,
-    );
+    final res = await _measure(dryRun: false);
     if (!mounted) return;
     setState(() {
       _purging = false;
@@ -701,7 +724,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   ? () => onChanged((value - step).clamp(min, max))
                   : null,
               color: value > min ? color : color.withAlpha(70),
-              tooltip: 'Diminuer',
+              tooltip: context.l10n.commonDecrease,
             ),
             Expanded(
               child: Container(
@@ -730,7 +753,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   ? () => onChanged((value + step).clamp(min, max))
                   : null,
               color: value < max ? color : color.withAlpha(70),
-              tooltip: 'Augmenter',
+              tooltip: context.l10n.commonIncrease,
             ),
             SizedBox(
               width: (suffix.isEmpty && valueLabel == null) ? 26 : 52,

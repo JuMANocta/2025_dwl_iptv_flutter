@@ -5,6 +5,7 @@ import 'package:aetherStream/data/services/xmltv_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/widgets/aether_image.dart';
 import 'package:aetherStream/widgets/quality_buttons.dart';
+import '../l10n/l10n_ext.dart';
 
 class EpgNowNextBlock extends StatefulWidget {
   final String tvgId;
@@ -177,7 +178,9 @@ class EpgProgramRow extends StatelessWidget {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            isNow ? '● EN COURS' : 'ENSUITE',
+                            isNow
+                                ? '● ${context.l10n.epgNow}'
+                                : context.l10n.epgNext,
                             style: const TextStyle(color: kWhite, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.8),
                           ),
                         ),

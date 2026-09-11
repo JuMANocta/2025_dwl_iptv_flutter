@@ -149,7 +149,7 @@ class NextEpisodeOverlay extends StatelessWidget {
             _subtitle(context, nextTitle!),
           const SizedBox(height: 20),
           _actions(
-            primaryLabel: 'Continuer',
+            primaryLabel: context.l10n.nextEpContinue,
             primaryIcon: Icons.skip_next_rounded,
             onPrimary: onPlayNow,
             secondaryLabel: context.l10n.nextEpBackToDetails,

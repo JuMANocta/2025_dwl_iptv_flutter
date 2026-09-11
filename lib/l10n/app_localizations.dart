@@ -1466,6 +1466,12 @@ abstract class AppLocalizations {
   /// **'Reloading'**
   String get reloadAllProgressTitle;
 
+  /// Dismisses the reload progress dialog while the batch keeps running.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue in the background'**
+  String get reloadAllBackground;
+
   /// First line of the progress dialog, before the first list starts
   ///
   /// In en, this message translates to:
@@ -2135,7 +2141,7 @@ abstract class AppLocalizations {
   /// No description provided for @perfStorageReclaimable.
   ///
   /// In en, this message translates to:
-  /// **'{size} taken by files that no longer belong to any account ({count} file(s)) — playlists and caches left behind by deleted accounts.'**
+  /// **'{size} taken by {count} file(s) nothing needs any more: lists from deleted accounts, and interrupted downloads that can no longer resume.'**
   String perfStorageReclaimable(String size, int count);
 
   /// No description provided for @perfPurging.
@@ -3863,7 +3869,7 @@ abstract class AppLocalizations {
   /// No description provided for @optSpeedTitle.
   ///
   /// In en, this message translates to:
-  /// **'Playback speed'**
+  /// **'Speed'**
   String get optSpeedTitle;
 
   /// No description provided for @optFitTitle.
@@ -5252,18 +5258,6 @@ abstract class AppLocalizations {
   /// **'Canceled'**
   String get detStatusCanceled;
 
-  /// No description provided for @sheetChooseVersion.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose a version'**
-  String get sheetChooseVersion;
-
-  /// No description provided for @sheetStandardUnknown.
-  ///
-  /// In en, this message translates to:
-  /// **'Standard / Unknown'**
-  String get sheetStandardUnknown;
-
   /// No description provided for @sheetDetails.
   ///
   /// In en, this message translates to:
@@ -6205,6 +6199,325 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Legendado (PT subtitles)'**
   String get regLegendado;
+
+  /// No description provided for @acctChipMain.
+  ///
+  /// In en, this message translates to:
+  /// **'MAIN'**
+  String get acctChipMain;
+
+  /// No description provided for @bootEnterManually.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter manually'**
+  String get bootEnterManually;
+
+  /// No description provided for @bootConfigureWebConsole.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up via Web console'**
+  String get bootConfigureWebConsole;
+
+  /// No description provided for @searchPeople.
+  ///
+  /// In en, this message translates to:
+  /// **'People'**
+  String get searchPeople;
+
+  /// No description provided for @personRoleDirector.
+  ///
+  /// In en, this message translates to:
+  /// **'Director'**
+  String get personRoleDirector;
+
+  /// No description provided for @personRoleActor.
+  ///
+  /// In en, this message translates to:
+  /// **'Actor'**
+  String get personRoleActor;
+
+  /// No description provided for @personRoleWriter.
+  ///
+  /// In en, this message translates to:
+  /// **'Writer'**
+  String get personRoleWriter;
+
+  /// No description provided for @personRoleProduction.
+  ///
+  /// In en, this message translates to:
+  /// **'Production'**
+  String get personRoleProduction;
+
+  /// No description provided for @personRoleMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'Music'**
+  String get personRoleMusic;
+
+  /// No description provided for @personRoleCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Cinematography'**
+  String get personRoleCamera;
+
+  /// No description provided for @optSpeedCurrentNormal.
+  ///
+  /// In en, this message translates to:
+  /// **'Normal (1.0×)'**
+  String get optSpeedCurrentNormal;
+
+  /// No description provided for @tracksTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tracks'**
+  String get tracksTitle;
+
+  /// No description provided for @tracksSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'audio & subtitles'**
+  String get tracksSubtitle;
+
+  /// No description provided for @tracksAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio'**
+  String get tracksAudio;
+
+  /// No description provided for @tracksSubtitles.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitles'**
+  String get tracksSubtitles;
+
+  /// No description provided for @epgNow.
+  ///
+  /// In en, this message translates to:
+  /// **'ON NOW'**
+  String get epgNow;
+
+  /// No description provided for @epgNext.
+  ///
+  /// In en, this message translates to:
+  /// **'NEXT'**
+  String get epgNext;
+
+  /// No description provided for @replayPrograms.
+  ///
+  /// In en, this message translates to:
+  /// **'Programmes'**
+  String get replayPrograms;
+
+  /// No description provided for @replayToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get replayToday;
+
+  /// No description provided for @replayYesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get replayYesterday;
+
+  /// No description provided for @replayWatchLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch  •  {label}'**
+  String replayWatchLabel(String label);
+
+  /// No description provided for @qualityWatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch · {label}'**
+  String qualityWatch(String label);
+
+  /// No description provided for @actorBiography.
+  ///
+  /// In en, this message translates to:
+  /// **'Biography'**
+  String get actorBiography;
+
+  /// No description provided for @actorBiographyMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'No biography available.'**
+  String get actorBiographyMissing;
+
+  /// No description provided for @actorAvailableBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'AVAILABLE'**
+  String get actorAvailableBadge;
+
+  /// No description provided for @detMainCast.
+  ///
+  /// In en, this message translates to:
+  /// **'Main cast'**
+  String get detMainCast;
+
+  /// No description provided for @detSimilarAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Similar titles available'**
+  String get detSimilarAvailable;
+
+  /// No description provided for @detTrailerButton.
+  ///
+  /// In en, this message translates to:
+  /// **'TRAILER'**
+  String get detTrailerButton;
+
+  /// No description provided for @themePreviewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Movie Title'**
+  String get themePreviewTitle;
+
+  /// No description provided for @sheetReplay.
+  ///
+  /// In en, this message translates to:
+  /// **'Replay'**
+  String get sheetReplay;
+
+  /// No description provided for @sheetReplayDays.
+  ///
+  /// In en, this message translates to:
+  /// **'Replay ({days}d)'**
+  String sheetReplayDays(int days);
+
+  /// No description provided for @memComputing.
+  ///
+  /// In en, this message translates to:
+  /// **'Calculating…'**
+  String get memComputing;
+
+  /// No description provided for @memRamProcess.
+  ///
+  /// In en, this message translates to:
+  /// **'Process RAM'**
+  String get memRamProcess;
+
+  /// No description provided for @memRamProcessValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{current} (peak {peak})'**
+  String memRamProcessValue(String current, String peak);
+
+  /// No description provided for @memImageCacheDisk.
+  ///
+  /// In en, this message translates to:
+  /// **'Image cache (disk)'**
+  String get memImageCacheDisk;
+
+  /// No description provided for @memImageCacheRam.
+  ///
+  /// In en, this message translates to:
+  /// **'Image cache (RAM)'**
+  String get memImageCacheRam;
+
+  /// No description provided for @memImageCacheRamValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{used} / {max} · {count} / {maxCount} img'**
+  String memImageCacheRamValue(
+      String used, String max, String count, String maxCount);
+
+  /// No description provided for @sizeBytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} B'**
+  String sizeBytes(String n);
+
+  /// No description provided for @sizeKilobytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} kB'**
+  String sizeKilobytes(String n);
+
+  /// No description provided for @sizeMegabytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} MB'**
+  String sizeMegabytes(String n);
+
+  /// No description provided for @sizeGigabytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} GB'**
+  String sizeGigabytes(String n);
+
+  /// No description provided for @dlActionRestart.
+  ///
+  /// In en, this message translates to:
+  /// **'Restart'**
+  String get dlActionRestart;
+
+  /// No description provided for @dlMoreActions.
+  ///
+  /// In en, this message translates to:
+  /// **'More actions'**
+  String get dlMoreActions;
+
+  /// No description provided for @playerQuit.
+  ///
+  /// In en, this message translates to:
+  /// **'Quit'**
+  String get playerQuit;
+
+  /// No description provided for @nextEpContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get nextEpContinue;
+
+  /// No description provided for @commonClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get commonClear;
+
+  /// No description provided for @statsAnnouncedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Declared'**
+  String get statsAnnouncedLabel;
+
+  /// No description provided for @replayGuideUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Guide unavailable'**
+  String get replayGuideUnavailable;
+
+  /// No description provided for @replayNotAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'not available'**
+  String get replayNotAvailable;
+
+  /// No description provided for @detEnableTmdb.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on TMDB'**
+  String get detEnableTmdb;
+
+  /// No description provided for @dlRestartUpper.
+  ///
+  /// In en, this message translates to:
+  /// **'RESTART'**
+  String get dlRestartUpper;
+
+  /// No description provided for @commonDecrease.
+  ///
+  /// In en, this message translates to:
+  /// **'Decrease'**
+  String get commonDecrease;
+
+  /// No description provided for @commonIncrease.
+  ///
+  /// In en, this message translates to:
+  /// **'Increase'**
+  String get commonIncrease;
 }
 
 class _AppLocalizationsDelegate

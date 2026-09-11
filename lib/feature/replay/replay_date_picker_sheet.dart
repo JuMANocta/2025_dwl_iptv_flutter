@@ -187,7 +187,8 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
 
             // ---- Grille XMLTV ----
             if (hasXmltv) ...[
-              _sectionLabel(context, 'Programmes', Icons.tv_outlined),
+              _sectionLabel(
+                  context, context.l10n.replayPrograms, Icons.tv_outlined),
               const SizedBox(height: 10),
               _XmltvProgramList(
                 programs: _xmltvPrograms,
@@ -271,7 +272,7 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
                               color: kWhite, size: 22),
                           const SizedBox(width: 8),
                           Text(
-                            'Regarder  •  ${_buildLabel()}',
+                            context.l10n.replayWatchLabel(_buildLabel()),
                             style: const TextStyle(
                               color: kWhite,
                               fontWeight: FontWeight.bold,
@@ -325,7 +326,8 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
   }
 
   String _buildLabel() {
-    final dayFmt = DateFormat('EEE d MMM', 'fr_FR').format(_selectedDay);
+    final dayFmt =
+        DateFormat('EEE d MMM', L10n.current.localeName).format(_selectedDay);
     final timeFmt = _selectedTime.format(context);
     final dur = _durationMinutes < 60
         ? '${_durationMinutes}min'
@@ -523,9 +525,9 @@ class _XmltvProgramRow extends StatelessWidget {
                             color: kAccentTertiary.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text(
-                            '● EN COURS',
-                            style: TextStyle(
+                          child: Text(
+                            '● ${L10n.current.epgNow}',
+                            style: const TextStyle(
                               color: kWhite,
                               fontSize: 9,
                               fontWeight: FontWeight.w800,
@@ -627,11 +629,11 @@ class _DaySelector extends StatelessWidget {
 
           String label;
           if (isToday) {
-            label = "Aujourd'hui";
+            label = L10n.current.replayToday;
           } else if (isYesterday) {
-            label = 'Hier';
+            label = L10n.current.replayYesterday;
           } else {
-            label = DateFormat('EEE d', 'fr_FR').format(d);
+            label = DateFormat('EEE d', L10n.current.localeName).format(d);
           }
 
           return Padding(

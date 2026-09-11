@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'colors.dart';
+import 'light_palette.dart';
 import 'app_theme_config.dart';
 import 'aether_theme_extension.dart';
 
@@ -106,38 +107,52 @@ ChipThemeData _chipFocusTheme(Color ring) => ChipThemeData(
 
 // Thème Clair AetherStream
 ThemeData lightTheme(AppThemeConfig config) {
+  // §lightTheme (2026-09-10) — ⚠️ Les couleurs du thème sont pensées pour du
+  // NOIR. Posées telles quelles sur blanc, elles deviennent illisibles : le
+  // vert Matrix y vaut 1,37:1 quand le minimum lisible est 4,5:1. Chaque
+  // couleur qui sert de PREMIER PLAN (texte, icône, anneau de focus) est donc
+  // dérivée ; celles qui servent de FOND gardent leur éclat, et c'est le texte
+  // posé dessus qui s'adapte (`onColorFor`).
+  final Color primary = readableOn(config.primaryColor);
+  final Color accent = readableOn(config.accentColor);
+  final Color tertiary = readableOn(config.tertiaryColor);
+  final Color onPrimary = onColorFor(config.primaryColor);
   return ThemeData(
     brightness: Brightness.light,
-    primaryColor: config.primaryColor,
-    hintColor: config.accentColor,
+    primaryColor: primary,
+    hintColor: accent,
     scaffoldBackgroundColor: kWhite,
     cardColor: kWhite,
     colorScheme: ColorScheme.light(
-      primary:   config.primaryColor,
-      secondary: config.accentColor,
-      tertiary:  config.tertiaryColor,
-      error:     config.errorColor, // §themePlus
+      primary:   primary,
+      onPrimary: onPrimary,
+      secondary: accent,
+      tertiary:  tertiary,
+      error:     readableOn(config.errorColor), // §themePlus
     ),
     extensions: [
       AetherThemeExtension(
-        primaryColor:    config.primaryColor,
-        accentColor:     config.accentColor,
-        tertiaryColor:   config.tertiaryColor,
-        favoriteColor:   config.favoriteColor,
-        warningColor:    config.warningColor,
-        errorColor:      config.errorColor,
-        successColor:    config.successColor,
+        primaryColor:    primary,
+        accentColor:     accent,
+        tertiaryColor:   tertiary,
+        favoriteColor:   readableOn(config.favoriteColor),
+        warningColor:    readableOn(config.warningColor),
+        errorColor:      readableOn(config.errorColor),
+        successColor:    readableOn(config.successColor),
         glowIntensity:   config.glowIntensity,
         borderRadius:    config.borderRadius,
         // §3c-2 — focus TV : on s'aligne sur la couleur principale du thème.
-        focusGlowColor:  config.primaryColor,
+        // ⚠️ Sur TÉLÉVISEUR, l'anneau de focus est le SEUL repère de
+        // navigation : sous le contraste minimal, l'app n'est pas moins jolie,
+        // elle est impilotable à la télécommande.
+        focusGlowColor:  primary,
       ),
     ],
     textTheme: const TextTheme(
       headlineLarge:  TextStyle(color: kDarkGrey, fontWeight: FontWeight.bold),
       headlineMedium: TextStyle(color: kDarkGrey, fontWeight: FontWeight.bold),
       bodyLarge:      TextStyle(color: kDarkGrey),
-      bodyMedium:     TextStyle(color: kMediumGrey),
+      bodyMedium:     TextStyle(color: kLightTextSecondary),
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: kWhite,
@@ -153,31 +168,31 @@ ThemeData lightTheme(AppThemeConfig config) {
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: config.primaryColor,
-      foregroundColor: kWhite,
+      foregroundColor: onPrimary,
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        foregroundColor: kBlack,
+        foregroundColor: onPrimary,
         backgroundColor: config.primaryColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontWeight: FontWeight.bold),
       ).copyWith(
-        overlayColor: _focusOverlay(config.primaryColor),
-        side: _focusSide(config.primaryColor),
+        overlayColor: _focusOverlay(primary),
+        side: _focusSide(primary),
       ),
     ),
     // §focusVisibility — boutons pleins + boutons-icônes des sous-pages.
-    filledButtonTheme: _filledFocusTheme(config.primaryColor, Colors.black),
-    iconButtonTheme: _iconFocusTheme(config.primaryColor),
+    filledButtonTheme: _filledFocusTheme(config.primaryColor, onPrimary),
+    iconButtonTheme: _iconFocusTheme(primary),
     // §dpadChildFocus — ListTile / Chip / OutlinedButton : halo au D-pad.
-    outlinedButtonTheme: _outlinedFocusTheme(config.primaryColor),
-    focusColor: _listTileFocusColor(config.primaryColor),
-    chipTheme: _chipFocusTheme(config.primaryColor),
+    outlinedButtonTheme: _outlinedFocusTheme(primary),
+    focusColor: _listTileFocusColor(primary),
+    chipTheme: _chipFocusTheme(primary),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: config.primaryColor).copyWith(
-        overlayColor: _focusOverlay(config.primaryColor),
-        side: _focusSide(config.primaryColor),
+      style: TextButton.styleFrom(foregroundColor: primary).copyWith(
+        overlayColor: _focusOverlay(primary),
+        side: _focusSide(primary),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -189,10 +204,10 @@ ThemeData lightTheme(AppThemeConfig config) {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: config.primaryColor, width: 2),
+        borderSide: BorderSide(color: primary, width: 2),
       ),
-      labelStyle: const TextStyle(color: kMediumGrey),
-      hintStyle:  const TextStyle(color: kMediumGrey),
+      labelStyle: const TextStyle(color: kLightTextSecondary),
+      hintStyle:  const TextStyle(color: kLightTextTertiary),
     ),
     // §navBarSeparate — Pendant clair du réglage documenté côté sombre : le
     // `NavigationBar` Material 3 lit `navigationBarTheme`, pas
@@ -203,8 +218,8 @@ ThemeData lightTheme(AppThemeConfig config) {
     ),
     bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: kWhite,
-      selectedItemColor:   config.primaryColor,
-      unselectedItemColor: kMediumGrey,
+      selectedItemColor:   primary,
+      unselectedItemColor: kLightTextSecondary,
       selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
     ),
     snackBarTheme: _snackBarTheme(config),

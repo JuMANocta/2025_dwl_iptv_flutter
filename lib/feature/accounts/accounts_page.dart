@@ -1177,7 +1177,7 @@ class _AccountStateChips extends StatelessWidget {
   Widget _statusChip(AccountLoadState state, LoadFailure? failure) {
     if (isPriority && state == AccountLoadState.loaded) {
       return _Chip(
-        text: 'PRINCIPAL',
+        text: L10n.current.acctChipMain,
         color: kAccentPrimary,
         filled: true,
         glow: true,

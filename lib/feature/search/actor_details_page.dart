@@ -221,14 +221,15 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // BIOGRAPHIE
-                        Text('Biographie',
+                        Text(context.l10n.actorBiography,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleLarge
                                 ?.copyWith(color: cs.onSurface)),
                         Divider(color: cs.outlineVariant),
                         Text(
-                          person.biography ?? 'Biographie indisponible.',
+                          person.biography ??
+                              context.l10n.actorBiographyMissing,
                           style: TextStyle(color: cs.onSurfaceVariant, height: 1.5),
                         ),
                         const SizedBox(height: 32),
@@ -402,7 +403,7 @@ class _ActorDetailsPageState extends State<ActorDetailsPage> with TvInitialFocus
           ),
           const SizedBox(width: 3),
           Text(
-            'DISPO',
+            L10n.current.actorAvailableBadge,
             style: TextStyle(
                 fontSize: 10, fontWeight: FontWeight.bold, color: kDispo),
           ),

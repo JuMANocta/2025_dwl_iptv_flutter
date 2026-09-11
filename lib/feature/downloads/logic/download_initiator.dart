@@ -14,7 +14,9 @@ import '../../../core/utils/network.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/storage_file.dart';
 import '../../../widgets/terminal_download_dialog.dart';
+import 'direct_write_probe.dart';
 import 'download_naming.dart';
+import 'partial_sweep.dart' show downloadTmpPath, partialNameFor;
 import '../../../widgets/info_row.dart';
 import '../../../l10n/app_localizations.dart';
 import 'package:aetherStream/widgets/tv/tv_adaptive_modal.dart';
@@ -36,29 +38,9 @@ Future<String> _getTempDirectory() async {
   final basePath = (externalDirs != null && externalDirs.isNotEmpty)
       ? externalDirs.first.path
       : (await getTemporaryDirectory()).path;
-  final tmp = Directory("$basePath/dl_tmp");
+  final tmp = Directory(downloadTmpPath(basePath));
   if (!await tmp.exists()) await tmp.create(recursive: true);
   return tmp.path;
-}
-
-/// §dlDirectWrite — Le dossier accepte-t-il vraiment l'écriture ?
-///
-/// `Directory.exists()` ne suffit pas : sous scoped storage un dossier peut
-/// être listable sans être inscriptible. On écrit donc une sonde minuscule
-/// qu'on efface aussitôt — aucun résidu.
-Future<bool> _canWriteInto(String directory) async {
-  final probe = File('$directory/.aether_write_probe');
-  try {
-    await probe.writeAsString('x', flush: true);
-    return true;
-  } catch (e) {
-    debugPrint('⚠️ §dlDirectWrite: dossier non inscriptible ($directory) — $e');
-    return false;
-  } finally {
-    try {
-      if (await probe.exists()) await probe.delete();
-    } catch (_) {/* résidu inoffensif */}
-  }
 }
 
 /// §dlDirectWrite — Emplacement du fichier PARTIEL pendant le téléchargement.
@@ -73,9 +55,13 @@ Future<bool> _canWriteInto(String directory) async {
 /// Le manager déduit le mode à appliquer en comparant les dossiers parents —
 /// aucune migration des tâches déjà persistées n'est donc nécessaire.
 Future<String> _resolvePartPath(String finalDirectory, String fileName) async {
-  if (await _canWriteInto(finalDirectory)) {
-    return '$finalDirectory/.$fileName.part';
-  }
+  final String direct = '$finalDirectory/${partialNameFor(fileName)}';
+  // ⚠️ On sonde avec un nom construit COMME celui-là (même dossier, même
+  // chaîne d'extensions). La sonde d'origine écrivait un fichier SANS
+  // extension pour décider du sort d'un `.mkv.part` : sous stockage cloisonné,
+  // un dossier média décide fichier par fichier d'après l'extension, donc elle
+  // pouvait se tromper dans les deux sens. Cf. `DirectWriteProbe`.
+  if (await DirectWriteProbe.canWriteLike(direct)) return direct;
   final tempDirectory = await _getTempDirectory();
   debugPrint('↩️ §dlDirectWrite: repli cache privé → $tempDirectory');
   return '$tempDirectory/$fileName';

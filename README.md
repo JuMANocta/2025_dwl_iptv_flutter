@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.18.17+150-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.18.18+151-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -140,7 +140,7 @@ flutter run
 flutter build apk --release
 ```
 
-Les releases GitHub sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : analyse et 874 tests en parallèle du build, signature, empreinte SHA-256 publiée dans la release — et **pas de release si un test échoue**.
+Les releases GitHub sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : analyse et 955 tests en parallèle du build, signature, empreinte SHA-256 publiée dans la release — et **pas de release si un test échoue**.
 
 ---
 
@@ -236,6 +236,14 @@ lib/
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Sur téléviseur, Retour ne saute plus deux écrans** (§dpadBack, 2026-09-10) — un seul appui fermait le film au lieu du panneau d'options, et depuis une fiche deux appuis suffisaient à quitter l'application. Chaque appui ramène maintenant exactement un écran en arrière.
+- [x] **Le thème clair est lisible** (§lightTheme, 2026-09-10) — les couleurs de l'application, pensées pour un fond noir, devenaient presque invisibles sur fond blanc. Elles s'assombrissent maintenant juste assez pour rester lisibles, en gardant leur teinte — y compris tes couleurs personnalisées.
+- [x] **L'application est entièrement en anglais sur un téléphone en anglais** (2026-09-10) — une cinquantaine de textes restaient en français : casting, pistes audio, guide des programmes, replay, écran de première configuration.
+- [x] **« Tout recharger » ne bloque plus l'écran** (2026-09-10) — un bouton « Continuer en arrière-plan » rend la main pendant que les listes se rechargent.
+- [x] **Téléchargements et diffusion plus robustes** (2026-09-10) — un cas rare pouvait fermer brutalement l'application quand un téléchargement s'arrêtait juste après avoir démarré.
+- [x] **Plus de mauvaise affiche au chargement d'une fiche** (§posterFlash, 2026-09-10) — en ouvrant « Heroes », l'affiche de « Speed 2 » apparaissait une seconde avant la bonne. La cause n'était pas l'application : c'est la liste du fournisseur qui rattache cette image à la série. La fiche affiche maintenant la même image que la vignette sur laquelle tu as cliqué.
+- [x] **Les téléchargements ne demandent plus deux fois la place du film** (§dlProbeShape, 2026-09-10) — le fichier arrivait dans un dossier de travail, puis était recopié à sa place définitive : il fallait donc deux fois la taille du film sur l'appareil, et deux transferts d'un demi-gigaoctet avaient échoué là-dessus. Le fichier se pose maintenant directement au bon endroit. La copie devait déjà être évitée depuis longtemps — un détail de nommage l'en empêchait sur tous les appareils.
+- [x] **Les téléchargements interrompus ne laissent plus de fichiers derrière eux** (§dlPartSweep, 2026-09-10) — un transfert coupé laissait sur l'appareil un fichier de reprise que rien ne ramassait : ni le ménage automatique, ni le bouton d'Optimisation. Ils sont maintenant comptés avec les autres fichiers récupérables, et effacés avec eux. ⚠️ Un fichier de reprise encore utile n'est jamais touché : tant qu'un téléchargement peut repartir où il s'était arrêté, son fichier reste.
 - [x] **Les contrôles du lecteur ne clignotent plus sous le doigt** (§ctrlBlink, 2026-09-09) — en déplaçant la barre de lecture, le volume ou la luminosité, les boutons disparaissaient en plein geste puis revenaient. Deux causes : ils se cachaient au bout de trois secondes sans jamais tenir compte du geste en cours, et l'encart de volume programmait sa propre disparition sans pouvoir l'annuler. Les contrôles restent maintenant affichés tant que la main travaille.
 - [x] **Le démarrage ne peut plus rester bloqué sans issue** (§bootActiveCap, 2026-09-09) — si le chargement de ta liste principale n'avançait plus, l'écran de démarrage n'offrait aucun bouton : la seule sortie était de tuer l'application. Une sortie « Entrer sans attendre » apparaît maintenant au bout de 25 secondes, et les listes finissent de se charger en arrière-plan.
 - [x] **Le journal de diagnostic survit à une fermeture forcée** (§logPersist, 2026-09-09) — jusqu'ici il vivait en mémoire : tuer l'application effaçait tout, y compris ce qui aurait expliqué pourquoi on l'a tuée. La session précédente est désormais consultable depuis la Console web.

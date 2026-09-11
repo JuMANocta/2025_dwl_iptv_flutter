@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'light_palette.dart';
 import 'theme_service.dart';
 
 // ── Couleurs Neutres ────────────────────────────────────────────────────────
@@ -22,9 +23,20 @@ const Color kMatrixGreenDim       = Color(0xFF00C832); // Variante plus douce
 // ── Alias sémantiques dynamiques ─────────────────────────────────────────────
 // Getters lus depuis ThemeService à chaque build → réagissent aux changements
 // de thème in-app sans toucher les widgets. Changer le preset = toute l'UI se recolore.
-Color get kAccentPrimary   => ThemeService.config.value.primaryColor;
-Color get kAccentSecondary => ThemeService.config.value.accentColor;
-Color get kAccentTertiary  => ThemeService.config.value.tertiaryColor;
+///
+/// §lightTheme (2026-09-10) — ⚠️ Sur fond CLAIR, la valeur brute n'est pas
+/// utilisable : ces couleurs sont pensées pour du noir. Le vert Matrix
+/// `#00FF41` vaut 15,3:1 sur noir et **1,37:1 sur blanc**, soit onze fois
+/// moins que le minimum lisible. Elles sont donc ASSOMBRIES juste ce qu'il
+/// faut, teinte et saturation conservées (cf. `light_palette.dart`).
+/// ⛔ Ne pas contourner ce passage en lisant `ThemeService.config` en direct
+/// dans un widget : c'est précisément ce qui rendait le thème clair illisible.
+Color themedOnSurface(Color raw) =>
+    ThemeService.isLight ? readableOn(raw) : raw;
+
+Color get kAccentPrimary   => themedOnSurface(ThemeService.config.value.primaryColor);
+Color get kAccentSecondary => themedOnSurface(ThemeService.config.value.accentColor);
+Color get kAccentTertiary  => themedOnSurface(ThemeService.config.value.tertiaryColor);
 
 // ── Qualités vidéo (couleurs fixes — indépendantes du thème) ─────────────────
 const Color kQuality4K  = Color(0xFFE53935); // Rouge vif
@@ -68,10 +80,10 @@ Color get kBadgeSeriesType => kAccentPrimary;       // suit le thème
 // ── Statuts / alertes ────────────────────────────────────────────────────────
 // §themePlus (2026-06-11) — les 4 couleurs d'état suivent désormais le thème
 // (personnalisables in-app via ThemeSettingsPage, définies par les presets).
-Color get kWarning  => ThemeService.config.value.warningColor;  // reprise/alertes
-Color get kFavorite => ThemeService.config.value.favoriteColor; // favori actif
-Color get kError    => ThemeService.config.value.errorColor;    // erreur/danger
-Color get kSuccess  => ThemeService.config.value.successColor;  // succès/confirmé
+Color get kWarning  => themedOnSurface(ThemeService.config.value.warningColor);  // reprise/alertes
+Color get kFavorite => themedOnSurface(ThemeService.config.value.favoriteColor); // favori actif
+Color get kError    => themedOnSurface(ThemeService.config.value.errorColor);    // erreur/danger
+Color get kSuccess  => themedOnSurface(ThemeService.config.value.successColor);  // succès/confirmé
 Color get kDispo    => kAccentPrimary;   // suit le thème
 
 // ── Dégradé principal (boutons, pills actives) ───────────────────────────────

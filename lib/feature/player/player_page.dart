@@ -1175,7 +1175,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     await showPlayerOptions(
       context,
       hasNext: widget.onRequestNext != null,
-      speedLabel: _speed == 1.0 ? 'Normale (1.0×)' : '$_speed×',
+      speedLabel:
+          _speed == 1.0 ? context.l10n.optSpeedCurrentNormal : '$_speed×',
       fitMode: _fit,
       statsEnabled: _statsEnabled,
       onToggleStats: () {
@@ -1956,9 +1957,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                   const SizedBox(width: 12),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text(
-                      'Quitter',
-                      style: TextStyle(color: Colors.white70),
+                    child: Text(
+                      context.l10n.playerQuit,
+                      style: const TextStyle(color: Colors.white70),
                     ),
                   ),
                 ],

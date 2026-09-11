@@ -6,6 +6,7 @@ import '../models/tmdb_genres.dart';
 import 'tmdb_api_service.dart';
 import 'package:aetherStream/data/models/media_model.dart';
 import 'package:aetherStream/data/models/person_model.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// Titre tendance TMDB (léger) — sert à croiser avec la playlist par titre.
 /// On garde le titre localisé (fr-FR) ET le titre original (VO), car les
@@ -63,14 +64,15 @@ class PersonHit {
     this.popularity = 0,
   });
 
-  /// Métier affichable en français (null si TMDB ne le donne pas).
+  /// Métier affichable, dans la langue de l'interface (null si TMDB ne le
+  /// donne pas).
   String? get roleLabel => switch (knownForDepartment) {
-        'Directing' => 'Réalisateur',
-        'Acting' => 'Acteur',
-        'Writing' => 'Scénariste',
-        'Production' => 'Production',
-        'Sound' => 'Musique',
-        'Camera' => 'Image',
+        'Directing' => L10n.current.personRoleDirector,
+        'Acting' => L10n.current.personRoleActor,
+        'Writing' => L10n.current.personRoleWriter,
+        'Production' => L10n.current.personRoleProduction,
+        'Sound' => L10n.current.personRoleMusic,
+        'Camera' => L10n.current.personRoleCamera,
         _ => null,
       };
 }
