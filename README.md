@@ -160,7 +160,7 @@ flutter build apk --release --target-platform android-arm,android-arm64
 flutter build apk --release -Pabi-x86=true
 ```
 
-Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1386 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
+Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1389 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
 
 ---
 

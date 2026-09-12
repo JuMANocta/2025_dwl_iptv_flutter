@@ -664,7 +664,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     await _ctrl.pause();
     // L'écran de préparation (`CastPreparingOverlay`) prend le relais
     // dès que `CastRelayService.state` existe : pas de snackbar par-dessus.
-    _castMediaPath = _media.path;
     setState(() => _relayTarget = device);
     try {
       final String relayUrl = await CastRelayService.start(
@@ -672,6 +671,16 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         audioIndex: _relayAudioIndex(),
         startAt: _skipProgress ? Duration.zero : _ctrl.position,
       );
+      // ⚠️ Renseigné SEULEMENT ici, juste avant que la diffusion ne devienne
+      // celle de CE contenu. Posé avant la conversion (6 à 60 s), il rendait
+      // `_castsThisMedia` vrai pendant que le téléviseur lisait ENCORE le
+      // contenu précédent : le panneau de l'autre film affichait la position
+      // du relais, « Resynchroniser » mélangeait les deux diffusions, et
+      // « Reprendre sur le téléphone » écrivait la position de l'un sous la
+      // clé de l'autre. Tant que `CastService.state` est nul, `castsThisMedia`
+      // rend faux de toute façon (`castUrl == null`, cast_policy.dart) : plus
+      // tôt, cette ligne ne servait à rien — sauf à mentir.
+      _castMediaPath = _media.path;
       await CastService.start(
         device: device,
         url: relayUrl,
@@ -722,6 +731,44 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() => _relayTarget = null);
     _ctrl.play();
+  }
+
+  /// « Diffuser ce titre » du panneau de diffusion : le film ouvert n'est pas
+  /// celui que le téléviseur lit, on le lui envoie à son tour.
+  ///
+  /// §castRelay — Ce bouton court-circuitait la feuille Cast, donc la SEULE
+  /// protection du son : un film dont aucune piste n'est décodable par le
+  /// récepteur (AC3, E-AC3, DTS) partait tel quel — image sans son sur le
+  /// téléviseur, sans un mot. La feuille, elle, sonde le flux, énonce la
+  /// réserve et propose la conversion.
+  ///
+  /// ⛔ On ne lance JAMAIS `_startCastWithRelay` d'ici : la conversion fait du
+  /// téléphone le tuyau du film pendant toute la séance, elle ne démarre
+  /// qu'après un consentement LU (§castRelay). Dès que le son est en jeu, on
+  /// ouvre donc la feuille — c'est elle qui sonde, énonce la réserve et
+  /// présente le consentement — et l'utilisateur y reconfirme l'appareil.
+  ///
+  /// ⚠️ Le critère n'est PAS « une conversion est possible » (`_relayPlan`) :
+  /// il est plus étroit que le danger. Il exclut le direct, et il exclut le
+  /// cas où une seule piste passe — or le récepteur prend la piste PAR DÉFAUT
+  /// du fichier et on ne peut pas toujours la lui faire changer
+  /// (`cast_policy.dart:265-267`) : un film dont la piste par défaut est en
+  /// AC3 et qui porte une AAC en second peut donc sortir MUET, ce n'est pas
+  /// une affaire de langue. Le critère est donc la réserve elle-même, celle
+  /// que la feuille afficherait (`castAudioWarningForTracks`).
+  Future<void> _castThisTitle(CastDevice device) async {
+    // Décision LOCALE, sans requête réseau : le lecteur connaît déjà toutes
+    // les pistes du fichier et leur codec (§engineVendor patch 11).
+    final List<CastAudioTrack> tracks = _audioTracksForCast();
+    // Liste vide = on ne sait pas encore (le lecteur rouvert pendant une
+    // diffusion est mis en pause dès l'ouverture, il peut n'avoir jamais
+    // atteint l'état qui peuple les pistes). Le doute passe par la feuille :
+    // elle sait se rabattre sur le codec en cours de décodage.
+    if (tracks.isEmpty || castAudioWarningForTracks(tracks) != null) {
+      await _showCastSheet();
+      return;
+    }
+    await _startCast(device);
   }
 
   /// Envoie le contenu courant à [device], depuis la position locale.
@@ -1998,8 +2045,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                 onSeekBy: CastService.seekBy,
                 onBack: AppBack.popFromUi,
                 castThisTitle: _castsThisMedia ? null : _media.title,
-                onCastThis:
-                    _castsThisMedia ? null : () => _startCast(_cast!.device),
+                // §castRelay — passe par `_castThisTitle` : l'envoi direct
+                // ignorait la réserve sur le son (image muette sur un AC3).
+                onCastThis: _castsThisMedia
+                    ? null
+                    : () => _castThisTitle(_cast!.device),
                 // §castAudio — Sous « Infos vidéo » : ce que le récepteur dit
                 // avoir trouvé comme pistes. Les stats LOCALES n'ont rien à
                 // dire pendant une diffusion, celle-ci si.
@@ -2044,9 +2094,29 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // §1i — Overlay buffering central : visible quand le player charge
             // un nouveau segment HLS. Désactivé en mode lock pour ne pas troubler
             // la zone cliquable du cadenas.
+            //
+            // §castSend — ⛔ Masqué AUSSI dès qu'une diffusion est en cours
+            // ou en préparation, aux conditions EXACTES des deux couvertures
+            // ci-dessus (`CastPreparingOverlay` : `_cast == null && _relay
+            // != null` ; `CastOverlay` : `_cast != null`). Constaté sur
+            // appareil : le spinner a tourné par-dessus le panneau de
+            // diffusion pendant TOUT le film. Il était le seul overlay du
+            // lecteur local encore visible pendant une diffusion —
+            // `PlayerControls` (`_cast == null`) et `VideoStatsOverlay`
+            // (`_cast != null`) sont masqués depuis §castSend.
+            //
+            // ⚠️ La cause côté moteur n'est PAS établie, et ce masquage ne
+            // la traite pas. Deux pistes mesurables : `buffering` est publié
+            // dès l'état `loading` (`media3_engine.dart`) alors que le
+            // lecteur local est mis en pause avant d'atteindre `playing`
+            // (`_startCast`, `_startCastWithRelay`, et la pause d'un lecteur
+            // rouvert pendant une diffusion, plus bas) ; et une boucle de
+            // reprise locale (`_handleError`, qui n'a aucune garde Cast)
+            // produirait le même spinner sans fin. Ce qui est sûr, lui :
+            // ce que décode le téléviseur ne regarde pas le lecteur local.
             _BufferingOverlay(
               player: _ctrl,
-              hidden: _isLocked,
+              hidden: _isLocked || _cast != null || _relay != null,
               recoveryLabel: _recoveryLabel,
             ),
 

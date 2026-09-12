@@ -78,6 +78,15 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
   String _message = '';
   CastDevice? _pending;
 
+  /// R32 — Vrai dès qu'on a demandé la fermeture de la feuille. `mounted` ne
+  /// suffit pas : le `State` reste monté le temps de l'animation de sortie.
+  /// Sans ce verrou, taper « Arrêter la diffusion » pendant la sonde d'un
+  /// AUTRE appareil (phase `checking`, jusqu'à 6 s) laissait `_pick` reprendre
+  /// son cours au retour de la sonde : un SECOND `pop()` — qui dépilait le
+  /// lecteur — puis la diffusion sur l'appareil qu'on venait de refuser.
+  /// Impossible avant R32 : aucune ligne n'était tapable pendant `checking`.
+  bool _leaving = false;
+
   @override
   void initState() {
     super.initState();
@@ -124,7 +133,7 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
     } catch (e) {
       verdict = CastEligibility.no(describeError(e));
     }
-    if (!mounted) return;
+    if (!mounted || _leaving) return;
     if (!verdict.castable) {
       setState(() {
         _message = verdict.reason ?? L10n.current.castSheetNotCastable;
@@ -149,12 +158,16 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
   }
 
   Future<void> _go(CastDevice device) async {
+    if (_leaving) return;
+    _leaving = true;
     Navigator.of(context).pop();
     await widget.onCast(device);
   }
 
   /// §castRelay — L'utilisateur a lu et accepté : on convertit.
   Future<void> _goRelay(CastDevice device) async {
+    if (_leaving) return;
+    _leaving = true;
     Navigator.of(context).pop();
     await widget.onRelay!(device);
   }
@@ -162,6 +175,46 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
   /// La conversion n'est proposée QUE si elle changerait quelque chose.
   bool get _relayOffered =>
       widget.onRelay != null && (widget.relayPlan?.call().offered ?? false);
+
+  /// R32 — « Arrêter la diffusion » ne dépend PAS de la découverte : elle est
+  /// offerte dès qu'une diffusion est en cours, dans toutes les phases sauf le
+  /// consentement (on y répond à une question, on n'y pilote pas une
+  /// diffusion). Elle n'existait qu'en phase `list` : l'arrêt était
+  /// introuvable tant que le balayage durait, et il a fallu passer par
+  /// l'action « Arrêter » de la notification (constaté le 2026-09-12).
+  ///
+  /// ⚠️ `widget.connected` est FIGÉ à l'ouverture de la feuille. Si la
+  /// diffusion meurt pendant (fin du film, récepteur perdu), la ligne
+  /// proposerait d'arrêter un fantôme — et son gestionnaire, lui, relancerait
+  /// la lecture sur le téléphone. C'est le SERVICE qui dit si une diffusion
+  /// existe encore, pas la valeur lue à l'ouverture : la ligne disparaît avec
+  /// elle.
+  Widget? _stopCastRow() {
+    final CastDevice? device = widget.connected;
+    if (device == null || widget.onStopCast == null) return null;
+    return ValueListenableBuilder<CastState?>(
+      valueListenable: CastService.state,
+      builder: (context, live, _) {
+        if (live == null) return const SizedBox.shrink();
+        return OptionSheetRow(
+          icon: Icons.cast_connected_rounded,
+          accent: kAccentPrimary,
+          title: context.l10n.castSheetStop,
+          subtitle: context.l10n.castSheetStopSub(device.displayName),
+          // ⚠️ En surbrillance dans la LISTE seulement, où elle désigne
+          // l'appareil courant. Ailleurs, la même surbrillance ferait passer
+          // l'arrêt pour le choix par défaut — juste au-dessus de « Diffuser
+          // quand même », qui parle d'un AUTRE appareil.
+          selected: _phase == _Phase.list,
+          onTap: () async {
+            _leaving = true;
+            Navigator.of(context).pop();
+            await widget.onStopCast!();
+          },
+        );
+      },
+    );
+  }
 
   /// §castRelay — L'écran qui explique AVANT de demander : ce que ça fait, ce
   /// que ça coûte, ce que ça ne fera pas. Dans cet ordre, parce que c'est
@@ -219,6 +272,7 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final bool consent = _phase == _Phase.consent;
+    final Widget? stopRow = consent ? null : _stopCastRow();
     return OptionsSheetBody(
       // ⚠️ Aucun titre sur l'écran de consentement : « Diffuser sur… » n'y
       // veut rien dire (on ne choisit plus d'appareil, on répond à une
@@ -232,6 +286,7 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
       // télécommande, cette feuille du lecteur était une impasse — le même
       // défaut que le panneau d'options, signalé les 8 et 9 septembre.
       children: [
+        if (stopRow != null) stopRow,
         ...switch (_phase) {
         _Phase.searching => [
             _StatusLine(
@@ -315,19 +370,9 @@ class _CastSheetBodyState extends State<_CastSheetBody> {
               onTap: _search,
             ),
           ],
+        // R32 — « Arrêter la diffusion » n'est plus ici mais en tête de la
+        // feuille (`_stopCastRow`), pour être atteignable pendant le balayage.
         _Phase.list => [
-            if (widget.connected != null && widget.onStopCast != null)
-              OptionSheetRow(
-                icon: Icons.cast_connected_rounded,
-                accent: kAccentPrimary,
-                title: context.l10n.castSheetStop,
-                subtitle: context.l10n.castSheetStopSub(widget.connected!.displayName),
-                selected: true,
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await widget.onStopCast!();
-                },
-              ),
             if (_devices.isEmpty)
               _StatusLine(
                 icon: Icons.tv_off_rounded,

@@ -256,8 +256,17 @@ abstract final class CastRelayService {
     // continu (`/relay.mp4`), pas une liste de segments. Les endpoints HLS
     // restent servis, en repli/diagnostic.
     final String url = 'http://$ip:${_server!.port}/$_token/relay.mp4';
-    // ⚠️ L'URL porte le jeton : on ne journalise que le port.
-    debugPrint('🎞️ §castRelay — conversion démarrée, relais progressif '
+    // ⚠️ L'URL porte le jeton : on ne journalise que le port. La position de
+    // départ, elle, DOIT y être : sans elle, la vérification §castResume
+    // (« conversion démarrée à N s ») n'a rien à lire. En secondes ET en
+    // millisecondes : la relance journalise `at.inSeconds` de son côté, et
+    // deux troncatures indépendantes font croire à une dérive d'une seconde
+    // qui n'existe pas.
+    // ⚠️ §l10nAll — les accents restent sur la ligne qui porte `debugPrint(` :
+    // une suite accentuée serait comptée comme un texte d'écran (ce fichier
+    // est absent de `test/l10n_allowlist.txt`, son compte doit rester à 0).
+    debugPrint('🎞️ §castRelay — conversion démarrée à ${begin.inSeconds} s '
+        '(${begin.inMilliseconds} ms), relais progressif '
         '(port ${_server!.port})');
     state.value =
         CastRelayState(url: url, percent: 0, done: false, offset: begin);
