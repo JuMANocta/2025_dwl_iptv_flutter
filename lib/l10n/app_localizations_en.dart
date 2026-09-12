@@ -1582,6 +1582,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get perrDecoderInit => 'Cannot initialize the video decoder.';
 
   @override
+  String get perrDecoderReclaimed =>
+      'The system reclaimed the video decoder. Close other apps, then start playback again.';
+
+  @override
   String get perrDecodingFailed =>
       'Decoding failed: the stream may be damaged.';
 

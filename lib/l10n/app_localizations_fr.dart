@@ -1592,6 +1592,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get perrDecoderInit => 'Impossible d\'initialiser le décodeur vidéo.';
 
   @override
+  String get perrDecoderReclaimed =>
+      'Le système a repris le décodeur vidéo. Ferme les autres applications, puis relance la lecture.';
+
+  @override
   String get perrDecodingFailed =>
       'Échec du décodage : le flux est peut-être abîmé.';
 

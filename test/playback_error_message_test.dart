@@ -36,6 +36,21 @@ void main() {
           contains('décodage'));
     });
 
+    // §tvDecoderReclaim (2026-09-12, TV réelle) — le repli par préfixe
+    // `ERROR_CODE_DECOD` accusait le flux (« Échec du décodage vidéo ») alors
+    // que le système avait repris le décodeur et que le flux était intact.
+    test('un décodeur repris par le système dit le geste, pas « échec du décodage »',
+        () {
+      final String s = playbackErrorMessage(
+        codeName: 'ERROR_CODE_DECODING_RESOURCES_RECLAIMED',
+        rawMessage:
+            'MediaCodecVideoRenderer error, index=0, format=Format(1, video/avc), format_supported=YES',
+      );
+      expect(s, contains('applications'));
+      expect(s, isNot(contains('Échec du décodage vidéo')));
+      expect(s.toLowerCase(), isNot(contains('mediacodec')));
+    });
+
     test('le délai synthétique du paquet Dart (sans code) est reconnu', () {
       expect(
         playbackErrorMessage(

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.19.0+152-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.19.1+153-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -160,7 +160,7 @@ flutter build apk --release --target-platform android-arm,android-arm64
 flutter build apk --release -Pabi-x86=true
 ```
 
-Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1385 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
+Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1386 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
 
 ---
 
@@ -267,6 +267,7 @@ lib/
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Un message utile quand le téléviseur reprend la vidéo** (2026-09-12) — il arrive qu'Android récupère le décodeur vidéo pour une autre application, ou qu'il n'en ait plus à donner : l'image et le son s'arrêtent alors que le flux, lui, est parfaitement sain. L'application affichait « Échec du décodage vidéo », qui accusait le fournisseur à tort. Elle dit maintenant ce qui s'est passé et quoi faire : fermer les autres applications ouvertes, puis relancer la lecture.
 - [x] **Revue complète du code avant la version de production** (§review0911, 2026-09-11) — 192 défauts relevés, chacun vérifié dans le code avant d'être retenu, puis corrigés par lots. Ce que tu peux constater :
 - [x] **Un téléchargement ne peut plus finir corrompu** (revue, 2026-09-11) — quand le fournisseur refusait la connexion (« trop de connexions ») ou ignorait la reprise, sa réponse était collée au fichier et le film s'affichait « Terminé ». La réponse est maintenant vérifiée avant d'écrire ; un serveur sans reprise fait repartir de zéro proprement (fichier identique à l'original, vérifié) ; un disque plein arrête le transfert sans abîmer ce qui est déjà là ; un titre qui contient un point (« Mr. Robot ») garde son extension ; tirer pour rafraîchir la page n'interrompt plus les transferts en cours.
 - [x] **Les listes résistent à un fournisseur saturé** (revue, 2026-09-11) — la page d'erreur de quelques kilo-octets d'un serveur surchargé pouvait remplacer un catalogue sain ; ce n'est plus possible. « Entrer sans attendre » entre vraiment dans l'application, et une restauration de sauvegarde ratée n'efface plus rien.
@@ -428,6 +429,9 @@ lib/
 - [ ] **Mémoire** — libérer les listes secondaires aussi quand on est sur l'onglet Téléchargements
 - [ ] **Affiches** — oublier les « titres introuvables » enregistrés pendant une panne par les versions précédentes (au prix d'une vague de recherches)
 - [ ] **Titres** — mesurer les autres étiquettes techniques touchées par la même limite de reconnaissance des mots accentués
+- [ ] **Arrivée sur le Play Store** — l'application sera publiée sur le Play Store, puis ce dépôt sera fermé. Avant cela : une version Play sans la mise à jour intégrée (le Play Store s'en charge), une continuité garantie pour ceux qui ont installé l'APK (même signature, pas de réinstallation, pas de données perdues), une solution pour les Fire TV (absents du Play Store), et une dernière version publiée ici qui annonce le déménagement
+- [ ] **Prévenir quand une liste est déjà en lecture ailleurs** — la plupart des abonnements n'acceptent qu'un écran à la fois : avant de lancer un film, l'application pourra avertir (sans bloquer) que la liste est déjà utilisée sur un autre appareil
+- [ ] **Une petite fête quand l'application est à jour** — des confettis quand la vérification des mises à jour répond « à jour » (désactivable, et jamais sur les appareils modestes)
 
 **Autres** :
 - [ ] **Écran éteint : garder le son, couper l'image** (§bgAudio, 2026-09-05) — la lecture d'un film ou d'une chaîne continue déjà quand on éteint l'écran ; il reste à le mesurer sur l'appareil, puis à cesser de décoder la vidéo pendant ce temps pour économiser la batterie quand seul le son est utile

@@ -2708,6 +2708,12 @@ abstract class AppLocalizations {
   /// **'Cannot initialize the video decoder.'**
   String get perrDecoderInit;
 
+  /// No description provided for @perrDecoderReclaimed.
+  ///
+  /// In en, this message translates to:
+  /// **'The system reclaimed the video decoder. Close other apps, then start playback again.'**
+  String get perrDecoderReclaimed;
+
   /// No description provided for @perrDecodingFailed.
   ///
   /// In en, this message translates to:

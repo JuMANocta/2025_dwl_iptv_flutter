@@ -1453,6 +1453,7 @@
   "perrMalformed": "Unreadable stream (corrupted or unexpected data).",
   "perrUnsupportedFormat": "Stream format not supported.",
   "perrDecoderInit": "Cannot initialize the video decoder.",
+  "perrDecoderReclaimed": "The system reclaimed the video decoder. Close other apps, then start playback again.",
   "perrDecodingFailed": "Decoding failed: the stream may be damaged.",
   "perrExceedsCapabilities": "This stream exceeds the device capabilities (resolution or bitrate).",
   "perrCodecUnsupported": "Codec not supported by this device.",

@@ -1450,6 +1450,7 @@
   "perrMalformed": "Flux illisible (données corrompues ou inattendues).",
   "perrUnsupportedFormat": "Format de flux non pris en charge.",
   "perrDecoderInit": "Impossible d'initialiser le décodeur vidéo.",
+  "perrDecoderReclaimed": "Le système a repris le décodeur vidéo. Ferme les autres applications, puis relance la lecture.",
   "perrDecodingFailed": "Échec du décodage : le flux est peut-être abîmé.",
   "perrExceedsCapabilities": "Ce flux dépasse les capacités de l'appareil (définition ou débit).",
   "perrCodecUnsupported": "Codec non pris en charge par cet appareil.",
