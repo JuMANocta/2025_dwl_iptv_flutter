@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../playback_engine.dart';
 
 import '../../../core/themes/colors.dart';
+import '../../../core/utils/app_snackbar.dart';
 import '../../../data/services/track_preferences_service.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
@@ -108,8 +109,15 @@ class _TrackSelector extends StatelessWidget {
                 const SizedBox(height: 8),
                 if (subs.isEmpty)
                   _emptyHint(context.l10n.tracksNoSubtitles, cs)
-                else
+                else ...[
+                  // R42 — EN TÊTE et INCONDITIONNELLE. Elle ne dépendait que
+                  // d'une piste d'identifiant `'no'` (vestige mpv) qu'aucun
+                  // moteur ne fabrique : elle ne pouvait donc JAMAIS s'afficher,
+                  // et une piste FORCED auto-sélectionnée par ExoPlayer restait
+                  // incoupable.
+                  _subtitleOffRow(context, selected: curSub == null),
                   ...subs.map((t) => _subtitleRow(context, t, curSub)),
+                ],
 
                 // §tvOptionsBack — Même manque que le panneau d'options : à la
                 // télécommande, rien ne permettait de refermer cette feuille.
@@ -159,37 +167,81 @@ class _TrackSelector extends StatelessWidget {
     );
   }
 
+  /// R42 — « Désactivés » : coupure **sémantique** ([disableSubtitles]), jamais
+  /// un identifiant de piste — ceux-ci ne sont pas portables d'un moteur à
+  /// l'autre, et c'est exactement ce qui rendait cette ligne morte.
+  ///
+  /// [selected] vaut « aucune piste courante » : l'état se lit sur le moteur,
+  /// pas sur une entrée fantôme dans la liste.
+  Widget _subtitleOffRow(BuildContext context, {required bool selected}) {
+    return _TrackRow(
+      accent: kAccentSecondary,
+      leading: _IconBadge(Icons.subtitles_off_rounded, kAccentSecondary),
+      title: context.l10n.tracksDisabled,
+      subtitle: null,
+      selected: selected,
+      onTap: () async {
+        // Tout ce qui vient du contexte est pris AVANT l'attente : refermer la
+        // feuille invalide le contexte de la bottom sheet.
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        final nav = Navigator.of(context);
+        final echec = context.l10n.tracksDisableFailed;
+
+        // ⚠️ ATTENDUE, et la suite en dépend. Sans attente, une coupure ratée
+        // refermait quand même la feuille — donc se lisait comme un succès — et
+        // « coupés » restait mémorisé pour tous les titres suivants.
+        final ok = await player.disableSubtitles();
+        if (!ok) {
+          // La feuille RESTE ouverte : l'utilisateur voit que rien n'a changé
+          // et peut réessayer. La mémorisation appartient au moteur, qui ne l'a
+          // pas écrite non plus.
+          if (messenger != null) {
+            // ⚠️ Durée EXPLICITE : un `SnackBar` nu prend le défaut de Flutter
+            // (4 s), pas celui de l'app (2 s) — `showVia` ne l'impose pas.
+            AppSnackBar.showVia(
+              messenger,
+              SnackBar(
+                content: Text(echec),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+        nav.pop();
+      },
+    );
+  }
+
+  /// ⚠️ R42 — Plus de branches `'no'` / `'auto'` ici : `AetherTrack` n'est
+  /// construit qu'en deux points (`media3_engine.dart:270` et `:281`), toujours
+  /// avec `id: '<index>'` et un index ≥ 0. Elles étaient donc inatteignables —
+  /// et franchement trompeuses maintenant qu'une vraie ligne de coupure existe
+  /// juste au-dessus.
   Widget _subtitleRow(
       BuildContext context, AetherTrack t, AetherTrack? cur) {
-    final isNo = t.id == 'no';
-    final isAuto = t.id == 'auto';
-    final title = isNo
-        ? L10n.current.tracksDisabled
-        : isAuto
-            ? 'Auto'
-            : (_langName(t.language) ?? t.title?.trim() ?? L10n.current.tracksTrackN(t.id));
-    final sub = (!isNo &&
-            !isAuto &&
-            t.title != null &&
+    final title = _langName(t.language) ??
+        t.title?.trim() ??
+        L10n.current.tracksTrackN(t.id);
+    final sub = (t.title != null &&
             t.title!.trim().isNotEmpty &&
             t.title!.trim() != title)
         ? t.title!.trim()
         : null;
     return _TrackRow(
       accent: kAccentSecondary,
-      leading: isNo
-          ? _IconBadge(Icons.subtitles_off_rounded, kAccentSecondary)
-          : isAuto
-              ? _IconBadge(Icons.auto_awesome_rounded, kAccentSecondary)
-              : _LangBadge(_langShort(t.language), kAccentSecondary),
+      leading: _LangBadge(_langShort(t.language), kAccentSecondary),
       title: title,
       subtitle: sub,
       selected: t.id == cur?.id,
-      onTap: () {
-        player.setSubtitleTrack(t);
-        TrackPreferencesService.setSubtitle(
-            isNo ? 'no' : _trackKey(t.language, t.id));
-        Navigator.of(context).pop();
+      onTap: () async {
+        final nav = Navigator.of(context);
+        // ⚠️ ATTENDU avant d'écrire la langue : c'est pendant cet appel que le
+        // moteur LÈVE la coupure (il efface un `'no'` mémorisé). Écrire la
+        // langue d'abord, c'était courir contre lui et risquer de la perdre.
+        await player.setSubtitleTrack(t);
+        await TrackPreferencesService.setSubtitle(_trackKey(t.language, t.id));
+        nav.pop();
       },
     );
   }

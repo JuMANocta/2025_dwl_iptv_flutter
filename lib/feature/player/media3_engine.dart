@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/diagnostics/log_buffer.dart' show sanitizeForLog;
 import '../../core/settings/performance_settings_service.dart';
+import '../../data/services/track_preferences_service.dart';
 import 'playback_engine.dart';
 import 'playback_error_message.dart';
 import 'video_stats.dart';
@@ -321,6 +322,13 @@ class Media3Engine implements AetherPlaybackEngine {
     // §trackLangPref — Posée AVANT l'ouverture : changer de piste après coup
     // re-demuxe le flux ~3 s plus tard (« le film se relance »).
     await _applyLangPrefs(audioLang);
+    // R42 — AVANT le chargement, comme la préférence audio juste au-dessus.
+    // Après `loadUrl`, ExoPlayer avait déjà sélectionné la piste FORCED : elle
+    // s'affichait puis disparaissait (clignotement), et la coupure devenait un
+    // changement de paramètres en pleine lecture. Posée ici, la piste n'est
+    // jamais sélectionnée. Tant que `'no'` était inatteignable, cette ligne ne
+    // s'exécutait jamais : le correctif la rend vivante à chaque ouverture.
+    await _applySubPreference();
     await _c.loadUrl(
       url: url,
       // §nowPlaying — par chargement, pas par contrôleur (§engineVendor patch 9).
@@ -336,7 +344,6 @@ class Media3Engine implements AetherPlaybackEngine {
       // reproduire casserait des flux qui marchent aujourd'hui.
       allowInvalidCertificate: true,
     );
-    await _applySubPreference();
   }
 
   @override
@@ -348,12 +355,13 @@ class Media3Engine implements AetherPlaybackEngine {
     _subLang = subLang;
     await _c.initialize();
     await _applyLangPrefs(audioLang);
+    // R42 — AVANT le chargement, cf. `open`.
+    await _applySubPreference();
     await _c.load(
       url: 'file://$path',
       startAt: start,
       mediaInfo: _mediaInfoFor(nowPlaying),
     );
-    await _applySubPreference();
   }
 
   /// §trackLangPref — Préférence de langue audio.
@@ -422,6 +430,17 @@ class Media3Engine implements AetherPlaybackEngine {
     final match = all.where((e) => e.index == i);
     if (match.isEmpty) return;
     await _c.setSubtitleTrack(match.first);
+    // R42 — Choisir une vraie piste LÈVE la coupure, des DEUX côtés : le moteur
+    // porte la coupure entière (cf. `disableSubtitles`), c'est donc à lui de la
+    // défaire. Sans ça, un `'no'` posé plus tôt recouperait les sous-titres au
+    // chargement suivant et on ne pourrait plus jamais les rallumer.
+    // ⚠️ On efface `'no'`, on n'écrit PAS la langue : la clé de correspondance
+    // (langue sinon identifiant) est une notion de l'app, pas du moteur — elle
+    // reste à la feuille, qui l'écrit juste après.
+    _subLang = null;
+    if (TrackPreferencesService.subtitle == 'no') {
+      await TrackPreferencesService.setSubtitle(null);
+    }
     await _refreshTracks();
   }
 
@@ -430,6 +449,49 @@ class Media3Engine implements AetherPlaybackEngine {
   /// audio isolée comme mpv. Implémenté pour respecter le contrat.
   @override
   Future<void> disableAudio() async {}
+
+  /// R42 — Coupe les sous-titres. Rien à écrire côté Kotlin : l'index -1 de
+  /// [NativeVideoPlayerSubtitleTrack.off] devient un `setTrackTypeDisabled`
+  /// explicite sur le type texte, seule forme de coupure qu'ExoPlayer ne défait
+  /// pas de lui-même sur une piste marquée FORCED.
+  ///
+  /// ⚠️ **Sans lecteur natif, on ne ment pas** : tant que la vue n'existe pas,
+  /// le contrôleur n'a pas de canal et l'écriture part dans le vide sans lever
+  /// (`_methodChannel?.` ). C'est le cas `NO_VIEW` : on le refuse ici plutôt que
+  /// de rendre un succès imaginaire.
+  @override
+  Future<bool> disableSubtitles() async {
+    if (!_c.isInitialized) {
+      debugPrint('⚠️ R42 — coupure refusée : aucun lecteur natif prêt');
+      return false;
+    }
+    try {
+      await _c.setSubtitleTrack(NativeVideoPlayerSubtitleTrack.off());
+      await _refreshTracks();
+      // ⚠️ APRÈS le rafraîchissement, jamais avant. `_refreshTracks` relit
+      // `isSelected` depuis les pistes republiées par le thread de lecture, pas
+      // par l'écriture des paramètres : la FORCED pouvait y figurer encore
+      // cochée alors que l'image était bien coupée. La coche mentait, et
+      // l'utilisateur rallumait de lui-même. C'est NOTRE écriture qui fait foi.
+      _curSub = null;
+      // Le chargement suivant de cette session (épisode suivant, reprise en
+      // place) repasse par `_applySubPreference`.
+      _subLang = 'no';
+      // R42 — Le moteur porte la coupure ENTIÈRE, session ET mémoire : un autre
+      // appelant que la feuille obtenait sinon une coupure sans lendemain.
+      await TrackPreferencesService.setSubtitle('no');
+      debugPrint('🔇 R42 — sous-titres coupés (type texte désactivé)');
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ R42 — coupure des sous-titres impossible : $e');
+      return false;
+    }
+  }
+
+  /// R42 — Préférence de sous-titres telle que le moteur la porte. Tests
+  /// uniquement : c'est l'état qui décide de la reprise à l'ouverture suivante.
+  @visibleForTesting
+  String? get subtitlePreference => _subLang;
 
   // ── État ───────────────────────────────────────────────────────────────────
 

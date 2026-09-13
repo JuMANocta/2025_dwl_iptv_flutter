@@ -115,6 +115,115 @@ void main() {
     });
   });
 
+  // R35 — recette Cast du 2026-09-12 : `📡 CastService.start → … http://
+  // 192.168.1.70:42789/c689c486…/relay.mp4` dans un journal persisté
+  // (§logPersist) et servi sur le LAN (§tvLogs). Le jeton que §castLan avait
+  // ajouté pour empêcher un voisin de Wi-Fi d'aspirer le flux était publié par
+  // le canal même qu'il devait protéger.
+  group('R35 — le jeton de nos serveurs locaux ne sort pas au journal', () {
+    // 32 hexadécimaux : la forme exacte de `_newToken()` (16 octets) du relais
+    // Cast et du serveur de fichiers Cast.
+    const String jeton = '0123456789abcdef0123456789abcdef';
+
+    test('relais Cast — /<jeton>/relay.mp4, la fuite constatée', () {
+      final String out = redactUrl('http://192.168.1.20:45678/$jeton/relay.mp4');
+      expect(out, isNot(contains('0123456789abcdef')));
+      // Ce qui sert au diagnostic reste lisible.
+      expect(out, contains('192.168.1.20:45678'));
+      expect(out, contains('relay.mp4'));
+    });
+
+    test('relais Cast — les autres routes du même serveur', () {
+      for (final String route in <String>[
+        '/$jeton/relay.m3u8',
+        '/$jeton/init.mp4',
+        '/$jeton/seg/3.m4s',
+      ]) {
+        expect(redactUrl('http://10.0.0.5:45678$route'),
+            isNot(contains('0123456789abcdef')),
+            reason: route);
+      }
+    });
+
+    test('serveur de fichiers Cast — /local/<jeton>/media.mkv', () {
+      expect(redactUrl('http://192.168.1.70:42789/local/$jeton/media.mkv'),
+          isNot(contains('0123456789abcdef')));
+    });
+
+    test('⚠️ /local/ ne dépend PLUS d un accident de forme', () {
+      // Avant R35, ce jeton n'était masqué que parce que le prédicat §tourFix
+      // prenait (`local`, `<jeton>`) pour un couple user/pass — un accident
+      // qu'un changement de route aurait défait sans prévenir. Ici le premier
+      // segment porte un point : le prédicat rend `null` (garde anti-point),
+      // donc SEULE la règle du jeton peut masquer.
+      const String url = 'http://192.168.1.70:42789/v1.0/'
+          '0123456789abcdef0123456789abcdef/media.mkv';
+      expect(XtreamCredentials.tryExtract(url), isNull);
+      expect(xtreamPathCredentialIndexes(Uri.parse(url).pathSegments), isNull);
+      final String out = redactUrl(url);
+      expect(out, isNot(contains('0123456789abcdef')));
+      expect(out, contains('v1.0'));
+    });
+
+    test('console web — le jeton en query (?t=…)', () {
+      // 16 caractères de l'alphabet sans ambiguïté (D1B-02).
+      const String tk = 'HJKLMNPQRSTUVWXY';
+      expect(
+          redactUrl('http://192.168.1.70:8080/logs.txt?t=$tk&session=previous'),
+          isNot(contains(tk)));
+    });
+
+    test('au puits du journal (§tvLogs), dans une ligne quelconque', () {
+      final String line = sanitizeForLog(
+          'CastService.start (LIVE, video/mp4, depuis 0s) '
+          'http://192.168.1.70:42789/$jeton/relay.mp4');
+      expect(line, isNot(contains('0123456789abcdef')));
+    });
+
+    test('⛔ pas de faux positif : un hachage de CDN PUBLIC reste lisible', () {
+      // Mesuré dans les dumps (`lib/iptv_exemple/`) : de vraies chaînes sont
+      // servies avec un segment de 32 hexadécimaux. Masquer là rendrait deux
+      // chaînes indiscernables au journal sans rien protéger — d'où la borne
+      // sur l'adresse d'écoute.
+      const String url = 'https://shls-live-ak.akamaized.net/out/v1/'
+          '07a6ab2d57b2453a91bbdd2d46b5865a/index_2.m3u8';
+      expect(redactUrl(url), contains('07a6ab2d57b2453a91bbdd2d46b5865a'));
+    });
+
+    test('⚠️ la ponctuation collée à l URL ne défait pas le masquage', () {
+      // Le puits capture l'URL avec une classe qui n'exclut ni le point ni la
+      // parenthèse : la ponctuation de fin de phrase entre DANS l'URL. Une
+      // règle ancrée sur la valeur entière laissait alors le jeton lisible.
+      for (final String line in <String>[
+        'console ouverte : http://192.168.1.70:8080/?t=HJKLMNPQRSTUVWXY.',
+        'console ouverte (http://192.168.1.70:8080/?t=HJKLMNPQRSTUVWXY),',
+        'relais http://192.168.1.20:45678/$jeton/relay.mp4.',
+      ]) {
+        final String out = sanitizeForLog(line);
+        expect(out, isNot(contains('HJKLMNPQRSTUVWXY')), reason: line);
+        expect(out, isNot(contains('0123456789abcdef')), reason: line);
+      }
+    });
+
+    test('sans jeton, une URL locale traverse lisible', () {
+      final String out = redactUrl('http://127.0.0.1:8080/logs.txt?session=previous');
+      expect(out, contains('logs.txt'));
+      expect(out, contains('previous'));
+    });
+
+    test('la FORME reconnue comme jeton', () {
+      expect(looksLikeLocalServerToken(jeton), isTrue);
+      expect(looksLikeLocalServerToken('HJKLMNPQRSTUVWXY'), isTrue);
+      // Ce qui n'en est pas : un id de flux, un nom de fichier, un mot, et un
+      // hexadécimal trop court pour être un de nos jetons.
+      expect(looksLikeLocalServerToken('9541'), isFalse);
+      expect(looksLikeLocalServerToken('media.mkv'), isFalse);
+      expect(looksLikeLocalServerToken('relay.mp4'), isFalse);
+      expect(looksLikeLocalServerToken('local'), isFalse);
+      expect(looksLikeLocalServerToken('0123456789abcdef'), isFalse);
+    });
+  });
+
   group('le prédicat partagé', () {
     test('rangs (user, pass), préfixe optionnel et insensible à la casse', () {
       expect(xtreamPathCredentialIndexes(['jean', 's3cr3t', '1']),

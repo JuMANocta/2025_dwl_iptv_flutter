@@ -2,6 +2,86 @@ part of 'home_page.dart';
 
 // ─── Carte poster avec overlay gradient + titre ─────────────────────────────
 
+/// R38 — `true` quand [entry] est le **stub** d'une série : l'unique entrée que
+/// le catalogue Xtream porte pour la série entière
+/// (`/series/{user}/{pass}/{series_id}`, sans extension).
+///
+/// ⛔ **Ce n'est PAS un endpoint de stream.** Le parseur le dit déjà en toutes
+/// lettres (`xtream_catalog_parser`) : cette URL n'est qu'un marqueur, dont la
+/// fiche extrait le `series_id` pour aller chercher les épisodes à la demande.
+///
+/// **Le défaut qu'elle corrige.** La feuille d'appui long n'avait aucune garde
+/// de type : sa tuile « Lire » poussait `PlayerPage(path: entry.url)` avec ce
+/// stub — une lecture qui ne peut pas aboutir. Le tap simple, lui, gardait
+/// déjà la série pour la fiche. §heroSeriesResume l'a rendu VISIBLE : la
+/// progression d'un épisode s'écrit désormais AUSSI sous le stub, donc la même
+/// tuile se mettait à proposer « Reprendre · mm:ss » sur un chemin injouable.
+///
+/// ⚠️ Une série ne se reconnaît PAS à son type : une liste M3U porte ses
+/// épisodes comme autant d'entrées `series` à l'URL bien réelle (§Ultimate,
+/// `SxxExx`), et leur appui long doit continuer de lire. C'est la FORME de
+/// l'URL qui tranche, avec la règle EXACTE de
+/// `DetailsPage._extractSeriesIdFromUrl` — celle qui décide partout ailleurs
+/// qu'une entrée est un stub d'API (une entrée que cette règle ne reconnaît
+/// pas est aussi une entrée dont la fiche ne saurait pas tirer d'épisodes).
+///
+/// ⛔ **Cette règle est une COPIE de `DetailsPage._extractSeriesIdFromUrl`** :
+/// les deux doivent être tenues d'accord. Si l'une change, l'autre change —
+/// sinon l'accueil et la fiche ne s'entendront plus sur ce qu'est un stub.
+/// C'est §tourFix (deux copies d'une règle divergent toujours ; le projet l'a
+/// déjà payé sur `redactUrl`) : l'unification en un prédicat unique est un
+/// ticket ouvert, volontairement différé — un refactor inter-fichiers dans un
+/// arbre où plusieurs lots avancent en parallèle casserait plus qu'il ne règle.
+///
+/// Fonction pure : c'est elle qu'on teste.
+bool isSeriesStubEntry(M3uEntry entry) {
+  if (entry.type != M3uContentType.series) return false;
+  // Épisode numéroté (liste M3U) : son URL est jouable telle quelle.
+  //
+  // ⚠️ **Ce court-circuit ne protège d'aucun cas mesuré** : sur les 231 252 URL
+  // `/series/` des deux M3U réels, aucune ne porte à la fois une numérotation
+  // et une URL sans extension — le test d'extension plus bas les attrape déjà
+  // toutes. Sa valeur est la PARITÉ avec la fiche : `_buildSeasonEpisodes`
+  // (`details_page.dart:739-745`) teste lui aussi le TITRE avant l'URL. Le
+  // retirer ferait diverger l'accueil de la fiche sur ce qu'est un stub,
+  // c'est-à-dire aggraver la dette R44 au lieu de la contenir.
+  if (entry.title.isSeriesEpisode) return false;
+  try {
+    final List<String> segments = Uri.parse(entry.url).pathSegments;
+    if (segments.length < 4 || segments.first.toLowerCase() != 'series') {
+      return false;
+    }
+    final String last = segments.last;
+    if (last.contains('.')) return false; // une extension = URL d'épisode
+    return int.tryParse(last) != null;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// R38 — `true` si le GROUPE de la vignette contient un stub de série.
+///
+/// ⛔ **La question se pose sur le groupe, pas sur `versions.first`.** Un même
+/// titre peut MÉLANGER le stub d'API d'un compte Xtream et les épisodes réels
+/// d'une liste M3U : c'est conçu, pas hypothétique — `_buildSeasonEpisodes`
+/// sépare précisément les deux familles depuis une seule collecte
+/// (`details_page.dart:736-748`, §seriesMultiList). Interroger la seule
+/// première version laissait donc le défaut d'origine INTACT dès qu'un épisode
+/// M3U se trouvait en tête : « Lire » jouait alors un épisode arbitraire sous
+/// le nom de la série.
+///
+/// ⚠️ `any`, et surtout pas « toutes » : « toutes » rendrait `false` sur un
+/// groupe mixte, c'est-à-dire exactement le cas qu'on vient de décrire.
+///
+/// ⚠️ Le prix est assumé (**R45**) : un groupe mixte perd aussi « Télécharger »
+/// alors qu'il contient des épisodes téléchargeables. La bonne réponse est une
+/// décision par TUILE, qui demande une mesure préalable sur les dumps — elle ne
+/// se bricole pas ici.
+///
+/// Fonction pure : c'est elle qu'on teste.
+bool groupHasSeriesStub(Iterable<M3uEntry> versions) =>
+    versions.any(isSeriesStubEntry);
+
 class _HomeCard extends StatefulWidget {
   final List<M3uEntry> versions;
   final M3uContentType type;
@@ -160,6 +240,10 @@ class _HomeCardState extends State<_HomeCard> {
     if (widget.versions.isEmpty) return;
     HapticFeedback.mediumImpact();
     final entry = widget.versions.first;
+    // R38 — Décidé UNE fois, sur TOUT le groupe (cf. `groupHasSeriesStub` : un
+    // épisode M3U en tête d'un groupe mixte laissait passer la lecture du
+    // stub) : trois tuiles de la feuille en dépendent.
+    final bool isSeriesStub = groupHasSeriesStub(widget.versions);
 
     // §3c-4 — bifurque mobile/TV pour le menu contextuel long-press.
     await showAdaptiveActionSheet<void>(
@@ -213,6 +297,40 @@ class _HomeCardState extends State<_HomeCard> {
                         widget.versions.map((e) => e.url),
                       );
                 final hasResume = progress != null && progress.position.inSeconds > 5;
+
+                // R38 — ⛔ Le stub d'une série ne se lit pas : l'appui long
+                // mène au choix saison/épisode, comme le tap simple. La barre
+                // dit qu'elle est en cours (§heroSeriesResume écrit bien une
+                // reprise sous cette clé) sans promettre une lecture directe,
+                // qui n'existe qu'épisode par épisode.
+                if (isSeriesStub) {
+                  return Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.playlist_play),
+                        title: Text(sheetCtx.l10n.cardChooseEpisode),
+                        subtitle: hasResume
+                            ? LinearProgressIndicator(
+                                value: progress.ratio,
+                                minHeight: 3,
+                                backgroundColor: kOnImageFaint,
+                                valueColor:
+                                    AlwaysStoppedAnimation(kAccentSecondary),
+                              )
+                            : null,
+                        onTap: () {
+                          Navigator.pop(sheetCtx);
+                          _onTap();
+                        },
+                      ),
+                      // R38 — La SEULE façon de retirer une série de
+                      // « Reprendre » depuis l'accueil : sa clé de reprise EST
+                      // le stub, donc l'oubli porte bien sur elle.
+                      if (hasResume)
+                        _forgetResumeTile(sheetCtx, progress, isSeries: true),
+                    ],
+                  );
+                }
 
                 final badge = switch (widget.type) {
                   M3uContentType.movie  => PlayerBadgeType.movie,
@@ -291,61 +409,31 @@ class _HomeCardState extends State<_HomeCard> {
                         play();
                       },
                     ),
-                    // §forgetResume — Efface la reprise sans lancer la lecture.
-                    // Clear sur toutes les variantes du groupe (FHD + HD…) pour
-                    // que le film disparaisse vraiment de la pile "Reprendre".
-                    ListTile(
-                      leading: Icon(Icons.history_toggle_off, color: kWarning),
-                      title: Text(
-                        sheetCtx.l10n.cardForgetResume,
-                        style: TextStyle(fontSize: 13, color: kWarning),
-                      ),
-                      dense: true,
-                      // §undoTv — On demande AVANT de fermer la feuille : sur TV
-                      // `confirmOrUndo` ouvre un dialogue, qui exige un contexte
-                      // encore monté. Le `pop` passe après, et seulement si
-                      // l'oubli a bien eu lieu.
-                      onTap: () async {
-                        final snapshot = progress;
-                        final clearedUrl = entry.url;
-                        final done = await confirmOrUndo(
-                          sheetCtx,
-                          title: sheetCtx.l10n.cardForgetResumeTitle,
-                          question:
-                              sheetCtx.l10n.cardForgetResumeQuestion,
-                          confirmLabel: sheetCtx.l10n.cardForgetConfirm,
-                          doneMessage: sheetCtx.l10n.cardResumeForgotten,
-                          action: () async {
-                            for (final v in widget.versions) {
-                              await WatchProgressService.clearProgress(v.url);
-                            }
-                          },
-                          onUndo: () {
-                            WatchProgressService.saveProgress(
-                              clearedUrl,
-                              snapshot.position,
-                              snapshot.duration,
-                            );
-                          },
-                        );
-                        if (done && sheetCtx.mounted) Navigator.pop(sheetCtx);
-                      },
-                    ),
+                    _forgetResumeTile(sheetCtx, progress, isSeries: false),
                   ],
                 );
               },
             ),
             // ── Voir les détails (action sheet ou fiche TMDB) ─────────────
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: Text(sheetCtx.l10n.cardDetails),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                _onTap();
-              },
-            ),
+            // R38 — Muette pour un stub de série : « Choisir un épisode »
+            // ouvre DÉJÀ cette même fiche, deux tuiles pour une seule
+            // destination ne feraient qu'hésiter.
+            if (!isSeriesStub)
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: Text(sheetCtx.l10n.cardDetails),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _onTap();
+                },
+              ),
             // ── Télécharger (films/séries uniquement) ─────────────────────
-            if (widget.type != M3uContentType.tv)
+            // R38 — Le stub n'est pas plus téléchargeable que lisible : c'est
+            // la MÊME URL qui partirait au gestionnaire, sous le seul nom de
+            // la série (§dlEpisode : tous les épisodes viseraient ce fichier).
+            // Le téléchargement d'un épisode vit dans la fiche, qui sait
+            // lequel.
+            if (widget.type != M3uContentType.tv && !isSeriesStub)
               ListTile(
                 leading: const Icon(Icons.download),
                 title: Text(sheetCtx.l10n.download),
@@ -392,6 +480,87 @@ class _HomeCardState extends State<_HomeCard> {
           ],
         ),
       ),
+    );
+  }
+
+  /// §forgetResume — Efface la reprise sans lancer la lecture. Clear sur toutes
+  /// les variantes du groupe (FHD + HD…) pour que le titre disparaisse vraiment
+  /// de la pile « Reprendre ».
+  ///
+  /// R38 — Extraite parce qu'une SÉRIE en a besoin elle aussi : depuis
+  /// §heroSeriesResume, le stub porte une clé de reprise légitime, et cette
+  /// tuile est le seul endroit de l'accueil d'où l'on peut la retirer. Sur une
+  /// série, les URLs effacées sont donc les stubs du groupe ; la position de
+  /// l'ÉPISODE reste, la fiche sait toujours où reprendre.
+  ///
+  /// 🔴 **[isSeries] change la QUESTION posée, parce que l'ancienne mentait.**
+  /// « La position de lecture de ce titre sera oubliée » est vrai d'un film et
+  /// faux d'une série : c'est justement la position de l'épisode qui survit, et
+  /// la fiche l'affiche encore juste après. Qui voulait faire disparaître un
+  /// titre d'un téléviseur partagé croyait avoir effacé, alors qu'il n'avait
+  /// que caché. La question de la série dit donc le RÉSULTAT (§clientText) :
+  /// elle sort de « Reprendre », l'épisode garde sa position.
+  ///
+  /// ⚠️ **Portée volontairement plus large que celle de la fiche, et inverse.**
+  /// `seriesKeyToForget` (`details_page.dart:110-114`) REFUSE d'effacer la clé
+  /// de série tant qu'un épisode est en cours ; ici on l'efface toujours. Deux
+  /// gestes du même nom qui font le contraire — c'est voulu, les portées
+  /// diffèrent (« retire-la de mon accueil » contre « oublie CET épisode »), et
+  /// l'accueil ne peut de toute façon pas faire mieux : pour un compte Xtream
+  /// pur, le groupe ne contient que des stubs, aucune URL n'y permet de
+  /// dériver les clés d'épisode. ⛔ Ne pas « corriger » l'un vers l'autre en
+  /// croyant lire un oubli.
+  /// ⛔ R46 — Plus d'`entry` ici : l'ancienne version s'en servait pour
+  /// `clearedUrl`, la SEULE URL que l'annulation restaurait — c'est-à-dire la
+  /// cause même de la perte de données. Le laisser inviterait à s'en resservir.
+  /// La capture porte désormais sur `widget.versions` en entier.
+  Widget _forgetResumeTile(BuildContext sheetCtx, WatchProgress progress,
+      {required bool isSeries}) {
+    return ListTile(
+      leading: Icon(Icons.history_toggle_off, color: kWarning),
+      title: Text(
+        sheetCtx.l10n.cardForgetResume,
+        style: TextStyle(fontSize: 13, color: kWarning),
+      ),
+      dense: true,
+      // §undoTv — On demande AVANT de fermer la feuille : sur TV
+      // `confirmOrUndo` ouvre un dialogue, qui exige un contexte encore monté.
+      // Le `pop` passe après, et seulement si l'oubli a bien eu lieu.
+      onTap: () async {
+        // 🔴 R46 — Capturé AVANT l'effacement, et pour TOUTES les versions.
+        // L'action efface la reprise de chaque version du groupe ; l'annulation
+        // n'en rendait qu'une, et les autres étaient perdues pour de bon
+        // (mesuré sur appareil le 2026-09-13, deux comptes, une seule rendue).
+        final List<WatchProgress> avant = WatchProgressService.snapshotFor(
+          <String>[for (final v in widget.versions) v.url],
+        );
+        final done = await confirmOrUndo(
+          sheetCtx,
+          title: sheetCtx.l10n.cardForgetResumeTitle,
+          question: isSeries
+              ? sheetCtx.l10n.cardForgetResumeSeriesQuestion
+              : sheetCtx.l10n.cardForgetResumeQuestion,
+          confirmLabel: sheetCtx.l10n.cardForgetConfirm,
+          // 🔴 R46 — Au doigt, `confirmOrUndo` n'affiche QUE ce message : la
+          // question ci-dessus ne se voit QUE sur téléviseur. Sans un message
+          // qui dise lui aussi le résultat, la personne lisait « Reprise
+          // oubliée » alors que l'épisode garde sa position (§clientText).
+          doneMessage: isSeries
+              ? sheetCtx.l10n.cardResumeForgottenSeries
+              : sheetCtx.l10n.cardResumeForgotten,
+          action: () async {
+            for (final v in widget.versions) {
+              await WatchProgressService.clearProgress(v.url);
+            }
+          },
+          // Repli sur la progression affichée si le cache n'a rien rendu : une
+          // annulation ne doit jamais être un no-op silencieux.
+          onUndo: () => WatchProgressService.restoreAll(
+            avant.isEmpty ? <WatchProgress>[progress] : avant,
+          ),
+        );
+        if (done && sheetCtx.mounted) Navigator.pop(sheetCtx);
+      },
     );
   }
 

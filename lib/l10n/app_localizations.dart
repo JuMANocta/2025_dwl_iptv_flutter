@@ -2456,6 +2456,12 @@ abstract class AppLocalizations {
   /// **'The playback position for this title will be forgotten.'**
   String get cardForgetResumeQuestion;
 
+  /// No description provided for @cardForgetResumeSeriesQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'This series will leave “Resume”. The episode you were watching keeps its position on its own page.'**
+  String get cardForgetResumeSeriesQuestion;
+
   /// No description provided for @cardForgetConfirm.
   ///
   /// In en, this message translates to:
@@ -2467,6 +2473,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Resume point forgotten'**
   String get cardResumeForgotten;
+
+  /// No description provided for @cardResumeForgottenSeries.
+  ///
+  /// In en, this message translates to:
+  /// **'Series removed from “Resume”'**
+  String get cardResumeForgottenSeries;
+
+  /// No description provided for @cardChooseEpisode.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose an episode'**
+  String get cardChooseEpisode;
 
   /// No description provided for @cardDetails.
   ///
@@ -3073,6 +3091,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Disabled'**
   String get tracksDisabled;
+
+  /// No description provided for @tracksDisableFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitles could not be turned off.'**
+  String get tracksDisableFailed;
 
   /// No description provided for @langFrench.
   ///

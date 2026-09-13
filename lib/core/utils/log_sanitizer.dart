@@ -8,6 +8,11 @@
 /// Utiliser [redactUrl] dans tout `debugPrint` qui mentionne une URL utilisateur.
 library;
 
+// R35 — `isRfc1918` : la notion « adresse privée » existe déjà et n'a qu'UNE
+// définition (même raison qu'un seul prédicat Xtream, §tourFix). C'est aussi
+// exactement le prédicat qui décide où nos serveurs Cast acceptent d'écouter.
+import 'lan_address.dart' show isRfc1918;
+
 /// §tourFix — Préfixes de type de la forme Xtream « chemin »
 /// (`/live/{user}/{pass}/{id}`…). Comparés en minuscules.
 const Set<String> kXtreamPathPrefixes = {'live', 'movie', 'series', 'timeshift'};
@@ -62,6 +67,63 @@ const Set<String> kXtreamPathPrefixes = {'live', 'movie', 'series', 'timeshift'}
 /// rien n'a mesuré.
 const Set<String> _maskPrefixes = {...kXtreamPathPrefixes, 'playlist'};
 
+/// R35 (recette Cast du 2026-09-12) — La FORME d'un jeton de session de nos
+/// serveurs locaux : 32 caractères hexadécimaux pour le relais Cast et le
+/// serveur de fichiers (`Random.secure`, 16 octets), 16 caractères de
+/// l'alphabet sans ambiguïté (ni 0/O ni 1/I) pour la console web (D1B-02).
+///
+/// Le seuil est à 24 hexadécimaux et non à 32 : un jeton dont la longueur
+/// changerait doit rester masqué, et rien d'UTILE dans une URL n'a cette forme
+/// (un id de flux Xtream est court, un nom de fichier porte un point).
+/// Le motif, écrit UNE fois : les deux expressions ci-dessous n'en sont que
+/// deux ancrages.
+const String _tokenBody = r'(?:[0-9a-fA-F]{24,}|[A-HJ-NP-Z2-9]{16})';
+
+final RegExp _localServerToken = RegExp('^$_tokenBody\$');
+
+/// R35 — Le même motif cherché DANS une valeur, et non sur la valeur entière.
+///
+/// ⚠️ **Pourquoi pas seulement la version ancrée.** Le puits du journal
+/// capture l'URL avec `https?://[^\s"'<>\\]+` (`sanitizeForLog`), une classe
+/// qui n'exclut ni le point ni la parenthèse : la ponctuation de fin de phrase
+/// entre DANS l'URL. `…/?t=HJKLMNPQRSTUVWXY.` sortait donc en clair, une règle
+/// de FORME étant défaite par un seul caractère parasite là où les règles
+/// Xtream, qui masquent par POSITION, ne le sont pas.
+///
+/// Les bornes sont alphanumériques et non `\b` : `\b` ne coupe pas sur `_`, un
+/// caractère de mot — `sess_<jeton>` doit se masquer.
+final RegExp _localServerTokenRun =
+    RegExp('(?<![0-9A-Za-z])$_tokenBody(?![0-9A-Za-z])');
+
+/// R35 — `true` si [value] EST un jeton de nos serveurs locaux (valeur
+/// entière). Exposé pour que `test/xtream_redact_invariant_test.dart`
+/// verrouille la FORME elle-même, et pas seulement une URL d'exemple.
+bool looksLikeLocalServerToken(String value) =>
+    _localServerToken.hasMatch(value);
+
+/// R35 — Les adresses où NOS serveurs écoutent, et elles seules : une adresse
+/// privée RFC 1918 (`lanIpv4` — ce que le serveur de fichiers Cast et le
+/// relais EXIGENT avant de démarrer) ou la boucle locale (`adb forward` de la
+/// console web, §consoleLock).
+///
+/// ⚠️ **Pourquoi cette borne.** Sans elle, la règle masquerait aussi les
+/// hachages des CDN PUBLICS : mesuré dans les dumps (`lib/iptv_exemple/`), de
+/// vraies chaînes sont servies en `.../out/v1/<32 hexa>/index_2.m3u8`. Deux
+/// chaînes deviendraient indiscernables au journal — précisément ce qu'on y
+/// cherche quand une lecture échoue — sans rien protéger de plus.
+///
+/// ⚠️ **Arbitrage assumé, en sens inverse** : sur une adresse privée, rien ne
+/// distingue nos serveurs d'un panel IPTV ou d'un NAS auto-hébergé — un
+/// identifiant de session HLS en 32 hexadécimaux y sera masqué lui aussi. Même
+/// arbitrage que `/api/v2/status.json` plus bas : un faux positif ne coûte que
+/// de la lisibilité au journal, un faux négatif ouvre le flux au voisin de
+/// Wi-Fi.
+bool _isLocalServerHost(String host) =>
+    isRfc1918(host) ||
+    host == '127.0.0.1' ||
+    host == 'localhost' ||
+    host == '::1';
+
 /// Masque les credentials dans une URL Xtream Codes / IPTV.
 ///
 /// - Query `username` / `password` → `***`
@@ -71,6 +133,11 @@ const Set<String> _maskPrefixes = {...kXtreamPathPrefixes, 'playlist'};
 ///   prédicat que l'extraction : [xtreamPathCredentialIndexes])
 /// - `user:pass@hôte` → `***@hôte` (revue 2026-09-11, D1B-09 fusionné dans
 ///   D1B-03 : un compte « URL complète » peut porter ses identifiants là)
+/// - R35 — Sur une adresse où NOS serveurs écoutent ([_isLocalServerHost]),
+///   toute suite ayant la forme d'un jeton ([_localServerTokenRun]), dans un
+///   segment de chemin comme dans une valeur de query → `***`. ⚠️ Le prédicat
+///   public [looksLikeLocalServerToken] répond à une autre question : « cette
+///   valeur ENTIÈRE est-elle un jeton » — il ne décrit pas le masquage.
 /// - Renvoie une chaîne vide si l'URL est invalide / nulle.
 String redactUrl(String? url) {
   if (url == null || url.isEmpty) return '';
@@ -121,6 +188,40 @@ String redactUrl(String? url) {
   if (idx != null) {
     segs[nonEmpty[idx.user]] = '***'; // user
     segs[nonEmpty[idx.pass]] = '***'; // pass
+  }
+
+  // §castLan / R35 — recette Cast du 2026-09-12 : le jeton était publié par le
+  // canal même qu'il devait protéger. Le relais Cast sert `/<jeton>/relay.mp4`
+  // — DEUX segments : ni la règle à préfixe (elle exige `i + 2 < segs.length`)
+  // ni le prédicat §tourFix (moins de 3 segments → `null`) ne mordaient, et
+  // l'URL partait telle quelle au journal persisté (§logPersist) puis servi
+  // sur le LAN (§tvLogs).
+  //
+  // La règle porte sur la FORME et sur l'adresse d'écoute, jamais sur une
+  // route : une route qui change (`/local/…` déplacé, un serveur de plus)
+  // reste couverte. C'était le défaut du masquage ACCIDENTEL de
+  // `/local/<jeton>/media.mkv`, que §tourFix prenait pour un couple user/pass.
+  // ⚠️ Ce n'est PAS une deuxième copie du filet `token=` de `sanitizeForLog` :
+  // celui-là masque par NOM de paramètre dans du texte libre (`token: abc`),
+  // celui-ci par FORME de valeur à l'intérieur d'une URL. Aucun des deux ne
+  // sait faire le travail de l'autre — le filet par nom ignore `?t=`, et une
+  // règle de forme ne peut pas masquer un mot de passe choisi par l'humain.
+  if (_isLocalServerHost(uri.host)) {
+    for (var i = 0; i < segs.length; i++) {
+      segs[i] = segs[i].replaceAll(_localServerTokenRun, '***');
+    }
+    // La console web, elle, porte son jeton en query (`?t=…`).
+    for (final String k in qp.keys.toList()) {
+      final Object? v = qp[k];
+      final List<String> values = v is List
+          ? <String>[for (final Object? e in v) '$e']
+          : <String>['$v'];
+      if (values.any((String s) => s.contains(_localServerTokenRun))) {
+        qp[k] = values
+            .map((String s) => s.replaceAll(_localServerTokenRun, '***'))
+            .join(',');
+      }
+    }
   }
 
   final rebuilt = uri.replace(

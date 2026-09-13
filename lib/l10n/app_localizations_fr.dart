@@ -1432,10 +1432,20 @@ class AppLocalizationsFr extends AppLocalizations {
       'La position de lecture de ce titre sera oubliée.';
 
   @override
+  String get cardForgetResumeSeriesQuestion =>
+      'Cette série sortira de « Reprendre ». L\'épisode en cours, lui, garde sa position dans sa fiche.';
+
+  @override
   String get cardForgetConfirm => 'Oublier';
 
   @override
   String get cardResumeForgotten => 'Reprise oubliée';
+
+  @override
+  String get cardResumeForgottenSeries => 'Série retirée de « Reprendre »';
+
+  @override
+  String get cardChooseEpisode => 'Choisir un épisode';
 
   @override
   String get cardDetails => 'Voir les détails';
@@ -1815,6 +1825,9 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get tracksDisabled => 'Désactivés';
+
+  @override
+  String get tracksDisableFailed => 'Impossible de couper les sous-titres.';
 
   @override
   String get langFrench => 'Français';

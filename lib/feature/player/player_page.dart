@@ -107,6 +107,21 @@ class PlayerPage extends StatefulWidget {
   /// effacées avec la sienne quand la lecture va au bout.
   final List<String> siblingResumeKeys;
 
+  /// §heroSeriesResume — Clé de progression au niveau **SÉRIE** : l'URL stub
+  /// `/series/{user}/{pass}/{id}` de l'entrée du catalogue, `null` hors épisode.
+  /// Reportée telle quelle dans [initialMedia] ; voir
+  /// `PlayerMedia.seriesResumeKey` pour le pourquoi.
+  ///
+  /// ⚠️ **Indispensable ICI** et pas seulement sur `PlayerMedia` : le lancement
+  /// du premier épisode depuis la fiche passe par ce constructeur, pas par un
+  /// `PlayerMedia` déjà assemblé. Sans ce paramètre, seule la bascule
+  /// automatique vers l'épisode suivant porterait la clé — le hero ne verrait
+  /// donc une série qu'à partir du 2e épisode enchaîné.
+  ///
+  /// ⛔ Jamais dans `allResumeKeys` (`player_media.dart`) : la boucle
+  /// d'effacement de fin d'épisode effacerait la reprise de TOUTE la série.
+  final String? seriesResumeKey;
+
   /// §episodeMeta — Fournit le contenu à lire ENSUITE (séries).
   ///
   /// Si défini, le bouton ▶▶ apparaît dans les contrôles et l'enchaînement
@@ -151,6 +166,7 @@ class PlayerPage extends StatefulWidget {
     this.startPosition,
     this.progressKey,
     this.siblingResumeKeys = const [],
+    this.seriesResumeKey,
     this.onRequestNext,
     this.seasonNumber,
   });
@@ -170,6 +186,7 @@ class PlayerPage extends StatefulWidget {
         startPosition: startPosition,
         progressKey: progressKey,
         siblingResumeKeys: siblingResumeKeys,
+        seriesResumeKey: seriesResumeKey,
         seasonNumber: seasonNumber,
         accountId: accountId,
         posterUrl: posterUrl,
@@ -315,6 +332,20 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// L'appareil visé par la conversion en cours, pour le nommer à l'écran.
   CastDevice? _relayTarget;
 
+  /// R36 (recette Cast, 2026-09-12) — Le téléviseur a-t-il DÉJÀ pris ce relais ?
+  ///
+  /// C'est ce qui sépare les deux moments où `_cast == null && _relay != null`
+  /// est vrai : la PRÉPARATION (rien n'a encore été diffusé, l'écran doit le
+  /// dire) et l'ARRÊT (le relais ne se vide qu'après la fermeture de son
+  /// serveur — sans ce drapeau, « Préparation » repassait par-dessus le film
+  /// qui reprend, à chaque fin de diffusion relayée).
+  ///
+  /// ⚠️ Se lève sur l'ÉTAT observé (une diffusion et un relais coexistent),
+  /// pas sur le geste : il vaut donc aussi pour un lecteur rouvert pendant une
+  /// diffusion relayée, et pour les arrêts qui ne passent pas par cette page
+  /// (fin du film, notification, connexion perdue). Retombe avec le relais.
+  bool _relayCastStarted = false;
+
   /// Copie locale de `CastService.state` (état GLOBAL : la diffusion survit à
   /// la fermeture de cette page, c'est le but). Non nul ⇒ le téléphone est la
   /// télécommande : contrôles et gestes locaux masqués, panneau à la place.
@@ -439,6 +470,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // §castResume / revue 2026-09-11, D2A-05 — lu dès l'ouverture, comme
     // `_cast` : sans ça, `_relay` restait nul jusqu'au premier signal du relais.
     _relay = CastRelayService.state.value;
+    // R36 — Ouvert PENDANT une diffusion relayée : ce relais a déjà été pris,
+    // son arrêt ne doit pas rouvrir l'écran de préparation.
+    _relayCastStarted = _cast != null && _relay != null;
     CastService.state.addListener(_onCastStateChanged);
     CastRelayService.state.addListener(_onRelayStateChanged);
     _castMsgSub = CastService.messages.listen((m) {
@@ -509,7 +543,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// §castRelay — La conversion a bougé : l'écran de préparation en vit.
   void _onRelayStateChanged() {
     if (!mounted) return;
-    setState(() => _relay = CastRelayService.state.value);
+    setState(() {
+      _relay = CastRelayService.state.value;
+      // R36 — Plus de relais : la prochaine conversion repart d'une page
+      // blanche et son écran de préparation doit revenir.
+      if (_relay == null) _relayCastStarted = false;
+    });
   }
 
   /// `CastService.state` a changé : reflète l'état global dans la page.
@@ -519,7 +558,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // c'est la bascule « le téléviseur lisait CE contenu → plus maintenant »
     // qui dit que la position locale est devenue périmée.
     final bool wasCastingThis = _castsThisMedia;
-    setState(() => _cast = CastService.state.value);
+    setState(() {
+      _cast = CastService.state.value;
+      // R36 — Le téléviseur a pris le relais : à partir d'ici, un état de
+      // relais sans diffusion n'est plus une préparation mais un ARRÊT en
+      // cours.
+      if (_cast != null && _relay != null) _relayCastStarted = true;
+    });
     final bool handedBack = castHandedBackAfter(
       previous: _castHandedBack,
       wasCastingThis: wasCastingThis,
@@ -845,6 +890,17 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _castHandedBack = true;
     await CastService.stop();
     if (!mounted) return;
+    // R34 — Le lecteur local est en erreur définitive (son écran était masqué
+    // par le panneau, ce bouton est donc atteignable dans cet état) : il n'a
+    // rien à reprendre. Le repositionner puis le laisser écrire remplacerait la
+    // bonne reprise, que `CastService.stop()` vient de sauver, par sa position
+    // PÉRIMÉE. On garde donc le silence (`_castHandedBack` reste levé) :
+    // l'écran d'erreur reparaît avec Réessayer / Quitter, et c'est `_retry()`
+    // qui rendra la parole au lecteur local.
+    if (_hasError) {
+      debugPrint('❌ R34 — arrêt de la diffusion sur un lecteur local en erreur : pas de reprise locale, écran d’erreur rendu');
+      return;
+    }
     if (pos != null && pos > Duration.zero && !_skipProgress) {
       await _ctrl.seek(pos);
     }
@@ -986,7 +1042,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       case AppLifecycleState.resumed:
         // Retour au premier plan : si on était en erreur définitive → tenter un
         // nouveau cycle de retry. Sinon, re-armer le wakelock si on joue.
-        if (_hasError) {
+        // R34 — Jamais pendant une diffusion : rouvrir le flux local ajouterait
+        // un décodage et une seconde connexion au panel derrière le panneau,
+        // sans que personne ne voie le résultat.
+        if (_hasError && _cast == null) {
           _retry();
         } else if (_ctrl.playing) {
           _acquireWakelock();
@@ -1047,7 +1106,17 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // §episodeMeta — clé du contenu COURANT, pas celle du widget : après une
     // bascule d'épisode, écrire sur l'ancienne clé fausserait les reprises.
     // saveProgress applique ses propres règles (min duration, threshold 95%, etc.).
-    WatchProgressService.saveProgress(_media.resumeKey, p.position, p.duration);
+    // §heroSeriesResume — Et, pour un épisode, la MÊME écriture sous la clé de
+    // la SÉRIE : l'entrée que le catalogue connaît (une seule par série). Sans
+    // elle, une série en cours n'apparaît ni dans le hero ni sur sa carte, où
+    // une reprise se résout par l'URL de l'entrée. `null` hors épisode, et une
+    // seule écriture disque pour les deux clés.
+    WatchProgressService.saveProgress(
+      _media.resumeKey,
+      p.position,
+      p.duration,
+      seriesKey: _media.seriesResumeKey,
+    );
   }
 
   // ── §episodeMeta / §autoNextEp — Enchaînement d'épisodes ─────────────────
@@ -1740,6 +1809,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   void _retry() {
+    // R34 / D2L-01 — Le lecteur local repart : sa position redevient la vérité.
+    // Il a pu se taire depuis l'arrêt d'une diffusion sur un moteur en erreur
+    // (`_stopCast`) ; sans ceci, plus une seule reprise ne serait écrite de
+    // toute la séance.
+    _castHandedBack = false;
     setState(() {
       _hasError = false;
       _retryCount = 0;
@@ -1866,7 +1940,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    if (_hasError) return _buildErrorScreen();
+    // R34 (recette Cast, 2026-09-12) — ⛔ **Pas pendant une diffusion.** Cet
+    // écran est rendu avant tout le reste, `CastOverlay` compris : une erreur
+    // du lecteur LOCAL — qui est en pause et ne dit RIEN de ce que le
+    // téléviseur décode — emportait le panneau de diffusion, donc la
+    // télécommande, l'arrêt et « Reprendre sur le téléphone », pendant que la
+    // télé lisait très bien. L'erreur n'est pas oubliée : `_hasError` reste
+    // levé et l'écran revient dès que la diffusion cesse.
+    //
+    // ⚠️ Le critère est la diffusion GLOBALE (`_cast`), pas `_castsThisMedia` :
+    // le panneau est la télécommande de ce que la télé lit, quel que soit le
+    // titre ouvert ici — et le lecteur local est de toute façon en pause et
+    // sans contrôles dans les deux cas (`PlayerControls.visible`). Contrepartie
+    // assumée : une erreur locale survenue pendant la diffusion d'un AUTRE
+    // titre ne se voit qu'à la fin de celle-ci.
+    if (_hasError && _cast == null) return _buildErrorScreen();
 
     // §3c-5 — Sur Android TV : wrap Shortcuts/Actions/Focus pour mapper le
     // D-pad sur les actions du player. Sur mobile : pass-through neutre.
@@ -2027,7 +2115,17 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // §castRelay — Entre l'accord et la lecture sur la télé : la
             // conversion peut durer, l'écran doit le dire au lieu de rester
             // sur le film en pause.
-            if (_cast == null && _relay != null)
+            //
+            // R36 — ⚠️ **Et le téléviseur n'a pas encore pris ce relais**
+            // ([_relayCastStarted]). Sans ce troisième critère, TOUT démontage
+            // d'une diffusion relayée (« Reprendre sur le téléphone », fin du
+            // film, arrêt depuis la notification) repassait par
+            // `_cast == null && _relay != null` le temps que le serveur du
+            // relais se ferme, et « Préparation » réapparaissait par-dessus le
+            // film qui reprenait. ⛔ Ne pas le remplacer par « c'est MA page
+            // qui a lancé la conversion » (`_relayTarget`) : un lecteur rouvert
+            // pendant la conversion perdrait l'écran ET son bouton Annuler.
+            if (_cast == null && _relay != null && !_relayCastStarted)
               CastPreparingOverlay(
                 deviceName: _relayTarget?.displayName ??
                     context.l10n.castSheetDeviceFallback,
@@ -2096,9 +2194,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             // la zone cliquable du cadenas.
             //
             // §castSend — ⛔ Masqué AUSSI dès qu'une diffusion est en cours
-            // ou en préparation, aux conditions EXACTES des deux couvertures
-            // ci-dessus (`CastPreparingOverlay` : `_cast == null && _relay
-            // != null` ; `CastOverlay` : `_cast != null`). Constaté sur
+            // ou en préparation. ⚠️ La couverture est ici la PLUS LARGE des
+            // deux ci-dessus : depuis R36, `CastPreparingOverlay` exige en plus
+            // `!_relayCastStarted` — le spinner, lui, doit rester masqué
+            // pendant TOUTE la vie d'un relais (`_relay != null`), y compris la
+            // fenêtre d'arrêt. `CastOverlay` : `_cast != null`. Constaté sur
             // appareil : le spinner a tourné par-dessus le panneau de
             // diffusion pendant TOUT le film. Il était le seul overlay du
             // lecteur local encore visible pendant une diffusion —

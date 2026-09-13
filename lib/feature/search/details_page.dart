@@ -55,6 +55,64 @@ Color _qualityColor(String? quality) {
   };
 }
 
+/// §heroSeriesResume — L'URL stub `/series/{user}/{pass}/{id}` sous laquelle la
+/// SÉRIE de [episode] est rangée au catalogue, ou `null` quand la question n'a
+/// pas de sens (film, chaîne, épisode sans stub API).
+///
+/// **Pourquoi une clé de plus.** La progression d'un épisode s'écrit sous l'URL
+/// de l'ÉPISODE, alors que le catalogue Xtream ne contient qu'UNE entrée par
+/// série : son stub (`xtream_catalog_parser`). L'accueil ne résout une reprise
+/// qu'en retrouvant son URL dans l'index des entrées (`resumeGroupsFor` : « une
+/// URL inconnue est ignorée ») — une série en cours n'y était donc JAMAIS
+/// trouvée, ni dans le hero ni dans la barre de sa vignette. Les films
+/// marchaient parce que l'URL jouée EST celle de leur entrée.
+///
+/// **Quel stub.** Celui du compte d'où vient l'épisode joué : c'est le seul
+/// dont on sait qu'il est en mémoire tant que cette liste-là est chargée.
+/// Repli sur le premier stub connu du titre — l'accueil indexe les stubs de
+/// TOUS les comptes vers le MÊME groupe, donc n'importe lequel retrouve la
+/// bonne carte.
+///
+/// ⚠️ Rend `null` plutôt qu'un à-peu-près : sans stub (série d'une liste M3U
+/// qui porte directement ses épisodes SxxExx), écrire l'URL d'un épisode
+/// n'ajouterait qu'une clé que l'accueil ignore de toute façon.
+String? seriesResumeKeyFor({
+  required List<M3uEntry> stubs,
+  required M3uEntry episode,
+}) {
+  // Hors série la question ne se pose pas : un film EST déjà son entrée de
+  // catalogue, une chaîne n'a pas de reprise.
+  if (episode.type != M3uContentType.series) return null;
+  // Sans numérotation, ce n'est pas un épisode mais le stub lui-même (fiche
+  // ouverte sans sélection) : ne rien écrire plutôt qu'une reprise fantôme.
+  if (episode.title.seasonNumber == null ||
+      episode.title.episodeNumber == null) {
+    return null;
+  }
+  for (final M3uEntry stub in stubs) {
+    if (stub.accountId == episode.accountId) return stub.url;
+  }
+  return stubs.isEmpty ? null : stubs.first.url;
+}
+
+/// §heroSeriesResume — La clé de série à effacer quand on oublie la reprise de
+/// l'épisode courant, ou `null` s'il n'y a rien à effacer.
+///
+/// **Pourquoi ce n'est pas inconditionnel.** « Oublier la reprise » agit sur
+/// l'épisode SÉLECTIONNÉ. Si une autre saison est encore en cours, la série est
+/// légitimement « en cours » : lui retirer sa clé la ferait disparaître du hero
+/// alors qu'il reste quelque chose à reprendre. On n'efface donc la clé de
+/// série que lorsque plus AUCUN épisode n'a de reprise.
+///
+/// ⚠️ [anyEpisodeStillInProgress] se mesure APRÈS l'effacement des clés
+/// d'épisode : avant, l'épisode qu'on est en train d'oublier compterait
+/// lui-même comme « encore en cours » et la clé de série ne partirait jamais.
+String? seriesKeyToForget({
+  required String? seriesKey,
+  required bool anyEpisodeStillInProgress,
+}) =>
+    (seriesKey == null || anyEpisodeStillInProgress) ? null : seriesKey;
+
 class DetailsPage extends StatefulWidget {
   final M3uEntry entry;
   final List<M3uEntry> versions;
@@ -2345,6 +2403,14 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         startPosition: from,
         // §endOfMovie — toutes les versions du titre s'effacent à la fin.
         siblingResumeKeys: _resumeUrls(),
+        // §heroSeriesResume — la clé au niveau SÉRIE, pour que l'accueil
+        // retrouve une série en cours (l'URL d'un épisode n'est pas au
+        // catalogue). ⛔ Jamais dans `_resumeUrls()` : ces clés-là s'effacent
+        // à la fin de l'épisode, ce qui effacerait la reprise de la série.
+        seriesResumeKey: seriesResumeKeyFor(
+          stubs: _apiSeriesStubs,
+          episode: _selectedEntry,
+        ),
         seasonNumber: _selectedEntry.title.seasonNumber,
         // §nowPlaying — affiche TMDB pour l'écran verrouillé, logo en repli.
         posterUrl: TmdbService.getPosterUrl(_tmdbData?.posterPath) ??
@@ -2409,6 +2475,14 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
       badgeType: PlayerBadgeType.series,
       seasonNumber: season,
       siblingResumeKeys: _resumeUrls(), // §endOfMovie
+      // §heroSeriesResume — la clé au niveau SÉRIE, pour que l'accueil retrouve
+      // une série en cours (l'URL d'un épisode n'est pas au catalogue).
+      // ⛔ Jamais dans `_resumeUrls()` : ces clés-là s'effacent à la fin de
+      // l'épisode, ce qui effacerait la reprise de TOUTE la série.
+      seriesResumeKey: seriesResumeKeyFor(
+        stubs: _apiSeriesStubs,
+        episode: _selectedEntry,
+      ),
       // §nowPlaying — l'épisode suivant garde une image dans la notification.
       posterUrl: TmdbService.getPosterUrl(_tmdbData?.posterPath) ??
           _selectedEntry.logoUrl,
@@ -2590,6 +2664,24 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// D-pad. Dans les deux cas, la restauration passe par `saveProgress` du
   /// snapshot capturé par l'appelant.
   Future<void> _forgetResume(WatchProgress snapshot) async {
+    // §heroSeriesResume — Une série en cours vit sous DEUX clés : celle de
+    // l'épisode (la position exacte) et celle de la série (sa présence au
+    // hero de l'accueil). N'effacer que la première laissait la série dans
+    // « Reprendre » alors que l'utilisateur venait de demander le contraire.
+    // ⛔ Le stub ne rejoint pas `_resumeUrls()` pour autant : cette liste part
+    // aussi en `siblingResumeKeys`, où la FIN d'un épisode l'effacerait.
+    final String? seriesKey = seriesResumeKeyFor(
+      stubs: _apiSeriesStubs,
+      episode: _selectedEntry,
+    );
+    // La clé de série réellement effacée, donc à rendre en cas d'annulation.
+    String? forgottenSeriesKey;
+    // 🔴 R46 — Capturé AVANT, et pour TOUTES les versions : `action` efface
+    // `_resumeUrls()` en entier (qualités + listes, §resumeUnify) alors que
+    // l'annulation ne rendait que `snapshot.url`. Sur un titre présent sur
+    // plusieurs comptes, les autres reprises disparaissaient sans retour.
+    final List<WatchProgress> avant =
+        WatchProgressService.snapshotFor(_resumeUrls());
     await confirmOrUndo(
       context,
       title: context.l10n.cardForgetResumeTitle,
@@ -2600,14 +2692,25 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         for (final u in _resumeUrls()) {
           await WatchProgressService.clearProgress(u);
         }
-      },
-      onUndo: () {
-        WatchProgressService.saveProgress(
-          snapshot.url,
-          snapshot.position,
-          snapshot.duration,
+        // Mesuré APRÈS l'effacement : sinon l'épisode qu'on oublie compterait
+        // lui-même comme « encore en cours ».
+        final String? toForget = seriesKeyToForget(
+          seriesKey: seriesKey,
+          anyEpisodeStillInProgress: _mostAdvancedInProgress() != null,
         );
+        if (toForget != null) {
+          await WatchProgressService.clearProgress(toForget);
+          forgottenSeriesKey = toForget;
+        }
       },
+      // §heroSeriesResume — rendre AUSSI la série au hero quand on l'en a
+      // retirée : une annulation qui n'en rend que la moitié ment. La clé de
+      // série ne part qu'à la PREMIÈRE écriture (une seule réécriture du stub).
+      // 🔴 R46 — et rendre TOUTES les versions, pas seulement `snapshot`.
+      onUndo: () => WatchProgressService.restoreAll(
+        avant.isEmpty ? <WatchProgress>[snapshot] : avant,
+        seriesKey: forgottenSeriesKey,
+      ),
     );
   }
 

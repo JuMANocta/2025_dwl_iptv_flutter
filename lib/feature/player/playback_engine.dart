@@ -97,6 +97,32 @@ abstract class AetherPlaybackEngine {
   /// regardable, un écran d'erreur non.
   Future<void> disableAudio();
 
+  /// Coupe les sous-titres, quel que soit le moteur.
+  ///
+  /// ⚠️ R42 — Même raison d'être que [disableAudio], et l'oubli symétrique de
+  /// la migration : les sous-titres n'avaient PAS reçu ce traitement. La feuille
+  /// de pistes cherchait une piste d'identifiant `'no'` (vestige mpv) que
+  /// `Media3Engine` ne fabrique jamais, et [setSubtitleTrack] refusait cet
+  /// identifiant faute de savoir le parser. Résultat : sur un flux dont
+  /// ExoPlayer sélectionne seul la piste FORCED, rien ne permettait de la
+  /// couper.
+  ///
+  /// ⚠️ Une vraie coupure est un **type de piste désactivé** explicite, pas une
+  /// langue préférée nulle : le sélecteur d'ExoPlayer rallumerait aussitôt une
+  /// piste marquée FORCED ou DEFAULT.
+  ///
+  /// ⚠️ **Le moteur porte la coupure ENTIÈRE** : l'état de session ET la
+  /// préférence persistée. Elles étaient à deux demi-propriétaires (le moteur
+  /// posait l'une, la feuille l'autre) : tout appelant autre que la feuille
+  /// obtenait une coupure qui ne survivait pas à la session. L'appelant n'a donc
+  /// rien à mémoriser — seule la LANGUE choisie reste à sa charge.
+  ///
+  /// Renvoie `false` si la coupure n'a **pas** pu être posée. ⚠️ Un `false` doit
+  /// se voir : la feuille ne se ferme pas et le dit. Sans cette valeur, un échec
+  /// fermait la feuille en silence tout en mémorisant « coupés » pour tous les
+  /// titres suivants.
+  Future<bool> disableSubtitles();
+
   // ── Ouverture ──────────────────────────────────────────────────────────────
 
   /// Ouvre un flux réseau.

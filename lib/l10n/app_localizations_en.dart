@@ -1423,10 +1423,20 @@ class AppLocalizationsEn extends AppLocalizations {
       'The playback position for this title will be forgotten.';
 
   @override
+  String get cardForgetResumeSeriesQuestion =>
+      'This series will leave “Resume”. The episode you were watching keeps its position on its own page.';
+
+  @override
   String get cardForgetConfirm => 'Forget';
 
   @override
   String get cardResumeForgotten => 'Resume point forgotten';
+
+  @override
+  String get cardResumeForgottenSeries => 'Series removed from “Resume”';
+
+  @override
+  String get cardChooseEpisode => 'Choose an episode';
 
   @override
   String get cardDetails => 'See details';
@@ -1803,6 +1813,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tracksDisabled => 'Disabled';
+
+  @override
+  String get tracksDisableFailed => 'Subtitles could not be turned off.';
 
   @override
   String get langFrench => 'French';

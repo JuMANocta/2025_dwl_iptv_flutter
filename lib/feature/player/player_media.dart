@@ -62,6 +62,27 @@ class PlayerMedia {
   /// venu de la version 4K). À la fin, on efface TOUT le titre.
   final List<String> siblingResumeKeys;
 
+  /// §heroSeriesResume (2026-09-12) — Clé de progression au niveau **SÉRIE** :
+  /// l'URL stub `/series/{user}/{pass}/{series_id}` de l'entrée du catalogue,
+  /// `null` pour tout ce qui n'est pas un épisode.
+  ///
+  /// **Le défaut qu'elle corrige** : la progression d'un épisode est enregistrée
+  /// sous l'URL de l'ÉPISODE, or le catalogue ne contient qu'une entrée par
+  /// SÉRIE (`xtream_catalog_parser`, URL stub). L'accueil résout une reprise en
+  /// cherchant son URL dans l'index des entrées (`resumeGroupsFor`, « une URL
+  /// inconnue est ignorée ») : une série en cours n'y était donc JAMAIS
+  /// trouvée — ni dans le hero, ni dans la barre de progression de sa carte.
+  /// Les films marchaient parce que l'URL jouée EST celle de leur entrée.
+  ///
+  /// ⚠️ La position exacte reste écrite sous la clé de l'épisode ([resumeKey]) :
+  /// c'est elle qui fait reprendre le BON épisode (§resumeUnify). Cette clé-ci
+  /// ne porte que « cette série a été regardée récemment, à tel avancement ».
+  ///
+  /// ⛔ **Jamais dans [allResumeKeys]** : finir un épisode efface les clés du
+  /// titre courant (§endOfMovie) ; y joindre la série effacerait la reprise de
+  /// TOUTE la série au moment précis où l'épisode suivant devient le bon.
+  final String? seriesResumeKey;
+
   /// §autoNextEp — Saison du contenu (séries uniquement, `null` sinon).
   ///
   /// Sert à détecter un **franchissement de saison** : on enchaîne
@@ -97,6 +118,7 @@ class PlayerMedia {
     this.replayDuration,
     this.startPosition,
     this.progressKey,
+    this.seriesResumeKey,
     this.siblingResumeKeys = const [],
     this.seasonNumber,
   });
