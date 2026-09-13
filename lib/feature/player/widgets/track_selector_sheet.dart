@@ -7,17 +7,23 @@ import '../../../data/services/track_preferences_service.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
 import '../../../l10n/l10n_ext.dart';
+import '../track_language_names.dart';
 import 'player_options_sheet.dart' show BackToVideoRow;
 
-/// §5 — Sélecteur de pistes **audio** et **sous-titres** (libmpv expose tout
-/// via `player.state.tracks` / `setAudioTrack` / `setSubtitleTrack`). Ouvert
-/// depuis le bouton CC de `PlayerControls`. Sheet adaptatif (bottom sheet mobile,
+/// §5 — Sélecteur de pistes **audio** et **sous-titres**. Ouvert depuis le
+/// bouton CC de `PlayerControls`. Sheet adaptatif (bottom sheet mobile,
 /// Dialog + D-pad sur TV via [showAdaptiveActionSheet]).
 ///
 /// §trackSheetUI — Style aligné sur l'app : en-tête, sections colorées (audio
 /// vert / sous-titres cyan) avec barre d'accent, badges de langue, et état
-/// sélectionné en contour néon + glow. Le choix est mémorisé globalement
-/// ([TrackPreferencesService]) et ré-appliqué aux médias suivants.
+/// sélectionné en contour néon + glow.
+///
+/// R43 — Ce que la feuille MÉMORISE, et le dit : une langue AUDIO choisie vaut
+/// pour les prochains titres ; une piste de SOUS-TITRES ne vaut que pour
+/// celui-ci ; « Désactivés » vaut pour les suivants. Quand une mémoire existe,
+/// une ligne de fin de section l'annonce (« … pour les prochains titres
+/// aussi ») et la DÉFAIT d'un geste. Avant, la coupure était retenue sans le
+/// dire, et le seul retour épinglait une langue pour toujours.
 Future<void> showTrackSelector(
     BuildContext context, AetherPlaybackEngine player) {
   return showAdaptiveActionSheet<void>(
@@ -98,6 +104,20 @@ class _TrackSelector extends StatelessWidget {
                   _emptyHint(context.l10n.tracksNoAudio, cs)
                 else
                   ...audio.map((t) => _audioRow(context, t, curAudio)),
+                // R43 — La mémoire audio, visible et réversible. EN FIN de
+                // section : à la télécommande, la première ligne est l'action
+                // par défaut du bouton OK, et « oublier ma langue » ne doit
+                // pas l'être.
+                if (TrackPreferencesService.audio != null)
+                  _memoryRow(
+                    context,
+                    accent: kAccentPrimary,
+                    title: context.l10n.tracksMemoryAudio(
+                      trackLanguageName(TrackPreferencesService.audio) ??
+                          TrackPreferencesService.audio!.toUpperCase(),
+                    ),
+                    onTap: () => _resetAudio(context),
+                  ),
 
                 const SizedBox(height: 20),
 
@@ -118,6 +138,19 @@ class _TrackSelector extends StatelessWidget {
                   _subtitleOffRow(context, selected: curSub == null),
                   ...subs.map((t) => _subtitleRow(context, t, curSub)),
                 ],
+                // R43 — La coupure mémorisée, visible et réversible — MÊME sur
+                // un titre sans piste : c'est justement là qu'on ne pouvait
+                // plus la lever (le seul retour était de choisir une piste).
+                // « Désactivés » reste en tête (R42) ; celle-ci ferme la
+                // section.
+                if (TrackPreferencesService.subtitle ==
+                    TrackPreferencesService.kSubtitlesOff)
+                  _memoryRow(
+                    context,
+                    accent: kAccentSecondary,
+                    title: context.l10n.tracksMemorySubOff,
+                    onTap: () => _resetSubtitles(context),
+                  ),
 
                 // §tvOptionsBack — Même manque que le panneau d'options : à la
                 // télécommande, rien ne permettait de refermer cette feuille.
@@ -133,37 +166,98 @@ class _TrackSelector extends StatelessWidget {
     );
   }
 
+  /// ⚠️ R43 — Plus de branches `'auto'` / `'no'` ici : même constat que
+  /// `_subtitleRow` (R42), `Media3Engine` ne fabrique que des `id: '<index>'`.
+  /// Elles portaient le dernier « Auto » écrit en dur de la feuille.
   Widget _audioRow(
       BuildContext context, AetherTrack t, AetherTrack? cur) {
-    final isAuto = t.id == 'auto';
-    final isNo = t.id == 'no';
-    final title = isAuto
-        ? 'Auto'
-        : isNo
-            ? L10n.current.tracksNone
-            : (_langName(t.language) ?? t.title?.trim() ?? L10n.current.tracksTrackN(t.id));
-    final sub = (!isAuto &&
-            !isNo &&
-            t.title != null &&
+    final title = trackLanguageName(t.language) ??
+        t.title?.trim() ??
+        L10n.current.tracksTrackN(t.id);
+    final sub = (t.title != null &&
             t.title!.trim().isNotEmpty &&
             t.title!.trim() != title)
         ? t.title!.trim()
         : null;
     return _TrackRow(
       accent: kAccentPrimary,
-      leading: isAuto
-          ? _IconBadge(Icons.auto_awesome_rounded, kAccentPrimary)
-          : isNo
-              ? _IconBadge(Icons.volume_off_rounded, kAccentPrimary)
-              : _LangBadge(_langShort(t.language), kAccentPrimary),
+      leading: _LangBadge(trackLanguageShort(t.language), kAccentPrimary),
       title: title,
       subtitle: sub,
       selected: t.id == cur?.id,
-      onTap: () {
-        player.setAudioTrack(t);
-        TrackPreferencesService.setAudio(_trackKey(t.language, t.id));
-        Navigator.of(context).pop();
+      onTap: () async {
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        final nav = Navigator.of(context);
+        final echec = context.l10n.tracksTrackFailed;
+        // R43 — ATTENDU, et la mémoire n'est écrite QUE si la piste est
+        // posée : avant, le canal vendoré avalait l'échec et l'app mémorisait
+        // une langue qu'aucune piste ne portait.
+        final ok = await player.setAudioTrack(t);
+        if (!ok) {
+          _toast(messenger, echec);
+          return;
+        }
+        // Un geste de l'utilisateur sur une piste audio = sa langue pour les
+        // prochains titres. ⛔ Jamais un numéro ni « unknown » : une piste sans
+        // langue ne touche pas à la mémoire (`languageKeyFor`).
+        final key = TrackPreferencesService.languageKeyFor(t.language);
+        if (key != null) await TrackPreferencesService.setAudio(key);
+        nav.pop();
       },
+    );
+  }
+
+  /// R43 — La ligne de mémoire d'une section : dit ce qui s'appliquera aux
+  /// prochains titres, et rend la main au moteur d'un geste. Jamais cochée :
+  /// ce n'est pas une piste, c'est un retour en arrière.
+  Widget _memoryRow(
+    BuildContext context, {
+    required Color accent,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return _TrackRow(
+      accent: accent,
+      leading: _IconBadge(Icons.restart_alt_rounded, accent),
+      title: title,
+      subtitle: context.l10n.tracksMemoryForget,
+      selected: false,
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _resetSubtitles(BuildContext context) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final nav = Navigator.of(context);
+    final echec = context.l10n.tracksResetFailed;
+    final ok = await player.resetSubtitlesToAuto();
+    if (!ok) {
+      _toast(messenger, echec);
+      return;
+    }
+    nav.pop();
+  }
+
+  Future<void> _resetAudio(BuildContext context) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final nav = Navigator.of(context);
+    final echec = context.l10n.tracksResetFailed;
+    final ok = await player.resetAudioToAuto();
+    if (!ok) {
+      _toast(messenger, echec);
+      return;
+    }
+    nav.pop();
+  }
+
+  /// Un échec se DIT, et la feuille reste ouverte (R42) — même toast partout.
+  /// ⚠️ Durée EXPLICITE : un `SnackBar` nu prend le défaut de Flutter (4 s),
+  /// pas celui de l'app (2 s) — `showVia` ne l'impose pas.
+  static void _toast(ScaffoldMessengerState? messenger, String text) {
+    if (messenger == null) return;
+    AppSnackBar.showVia(
+      messenger,
+      SnackBar(content: Text(text), duration: const Duration(seconds: 3)),
     );
   }
 
@@ -195,17 +289,7 @@ class _TrackSelector extends StatelessWidget {
           // La feuille RESTE ouverte : l'utilisateur voit que rien n'a changé
           // et peut réessayer. La mémorisation appartient au moteur, qui ne l'a
           // pas écrite non plus.
-          if (messenger != null) {
-            // ⚠️ Durée EXPLICITE : un `SnackBar` nu prend le défaut de Flutter
-            // (4 s), pas celui de l'app (2 s) — `showVia` ne l'impose pas.
-            AppSnackBar.showVia(
-              messenger,
-              SnackBar(
-                content: Text(echec),
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+          _toast(messenger, echec);
           return;
         }
         nav.pop();
@@ -220,7 +304,7 @@ class _TrackSelector extends StatelessWidget {
   /// juste au-dessus.
   Widget _subtitleRow(
       BuildContext context, AetherTrack t, AetherTrack? cur) {
-    final title = _langName(t.language) ??
+    final title = trackLanguageName(t.language) ??
         t.title?.trim() ??
         L10n.current.tracksTrackN(t.id);
     final sub = (t.title != null &&
@@ -230,17 +314,23 @@ class _TrackSelector extends StatelessWidget {
         : null;
     return _TrackRow(
       accent: kAccentSecondary,
-      leading: _LangBadge(_langShort(t.language), kAccentSecondary),
+      leading: _LangBadge(trackLanguageShort(t.language), kAccentSecondary),
       title: title,
       subtitle: sub,
       selected: t.id == cur?.id,
       onTap: () async {
+        final messenger = ScaffoldMessenger.maybeOf(context);
         final nav = Navigator.of(context);
-        // ⚠️ ATTENDU avant d'écrire la langue : c'est pendant cet appel que le
-        // moteur LÈVE la coupure (il efface un `'no'` mémorisé). Écrire la
-        // langue d'abord, c'était courir contre lui et risquer de la perdre.
-        await player.setSubtitleTrack(t);
-        await TrackPreferencesService.setSubtitle(_trackKey(t.language, t.id));
+        final echec = context.l10n.tracksTrackFailed;
+        // R43 — La feuille n'écrit plus RIEN ici : c'est le moteur qui lève la
+        // coupure mémorisée pendant cet appel, et une piste choisie ne vaut
+        // que pour ce titre (mémoriser sa langue allumerait les sous-titres
+        // français de tous les films français).
+        final ok = await player.setSubtitleTrack(t);
+        if (!ok) {
+          _toast(messenger, echec);
+          return;
+        }
         nav.pop();
       },
     );
@@ -432,79 +522,4 @@ class _TrackRow extends StatelessWidget {
       ),
     );
   }
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/// Clé de mémorisation/match d'une piste : langue si dispo, sinon id.
-String _trackKey(String? language, String id) =>
-    (language != null && language.isNotEmpty) ? language : id;
-
-/// Code court 2 lettres pour le badge (ex. « FR »). Fallback : 2 premières
-/// lettres du code en majuscules, ou « ? ».
-String _langShort(String? code) {
-  if (code == null || code.trim().isEmpty) return '?';
-  final c = code.toLowerCase().trim();
-  const map = {
-    'fr': 'FR',
-    'fre': 'FR',
-    'fra': 'FR',
-    'en': 'EN',
-    'eng': 'EN',
-    'es': 'ES',
-    'spa': 'ES',
-    'de': 'DE',
-    'ger': 'DE',
-    'deu': 'DE',
-    'it': 'IT',
-    'ita': 'IT',
-    'pt': 'PT',
-    'por': 'PT',
-    'ar': 'AR',
-    'ara': 'AR',
-    'ru': 'RU',
-    'rus': 'RU',
-    'nl': 'NL',
-    'dut': 'NL',
-    'nld': 'NL',
-    'ja': 'JA',
-    'jpn': 'JA',
-    'zh': 'ZH',
-    'chi': 'ZH',
-    'zho': 'ZH',
-    'ko': 'KO',
-    'kor': 'KO',
-    'tr': 'TR',
-    'tur': 'TR',
-    'pl': 'PL',
-    'pol': 'PL',
-  };
-  return map[c] ?? c.substring(0, c.length >= 2 ? 2 : 1).toUpperCase();
-}
-
-/// Mappe les codes ISO 639 (libmpv renvoie souvent du 639-2/B : fre, ger…) vers
-/// un libellé FR lisible. Fallback : code en majuscules.
-String? _langName(String? code) {
-  if (code == null || code.trim().isEmpty) return null;
-  final c = code.toLowerCase().trim();
-  // §l10nAll — Le CODE reste la clé (stable) ; le nom vient de la l10n.
-  final l10n = L10n.current;
-  return switch (c) {
-    'fr' || 'fre' || 'fra' => l10n.langFrench,
-    'en' || 'eng' => l10n.langEnglish,
-    'es' || 'spa' => l10n.langSpanish,
-    'de' || 'ger' || 'deu' => l10n.langGerman,
-    'it' || 'ita' => l10n.langItalian,
-    'pt' || 'por' => l10n.langPortuguese,
-    'ar' || 'ara' => l10n.langArabic,
-    'ru' || 'rus' => l10n.langRussian,
-    'nl' || 'dut' || 'nld' => l10n.langDutch,
-    'ja' || 'jpn' => l10n.langJapanese,
-    'zh' || 'chi' || 'zho' => l10n.langChinese,
-    'ko' || 'kor' => l10n.langKorean,
-    'tr' || 'tur' => l10n.langTurkish,
-    'pl' || 'pol' => l10n.langPolish,
-    'vostfr' => 'VOSTFR',
-    _ => code.toUpperCase(),
-  };
 }

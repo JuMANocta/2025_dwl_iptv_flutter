@@ -1809,13 +1809,58 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tracksNoSubtitles => 'No subtitle detected';
 
   @override
-  String get tracksNone => 'None';
-
-  @override
   String get tracksDisabled => 'Disabled';
 
   @override
   String get tracksDisableFailed => 'Subtitles could not be turned off.';
+
+  @override
+  String get tracksTrackFailed => 'This track could not be enabled.';
+
+  @override
+  String get tracksResetFailed => 'Could not go back to automatic.';
+
+  @override
+  String get tracksMemorySubOff => 'Off for the next titles too';
+
+  @override
+  String tracksMemoryAudio(String lang) {
+    return '$lang for the next titles too';
+  }
+
+  @override
+  String get tracksMemoryForget => 'Back to automatic';
+
+  @override
+  String get settingsTracks => 'Track languages';
+
+  @override
+  String get settingsTracksAuto =>
+      'Automatic: each title picks its audio and subtitles';
+
+  @override
+  String settingsTracksAudioLang(String lang) {
+    return 'Audio: $lang';
+  }
+
+  @override
+  String get settingsTracksSubsOff => 'Subtitles: off';
+
+  @override
+  String get settingsTracksResetTitle => 'Back to automatic?';
+
+  @override
+  String get settingsTracksResetQuestion =>
+      'The next titles will pick their own audio language and subtitles.';
+
+  @override
+  String get settingsTracksResetConfirm => 'Back to automatic';
+
+  @override
+  String get settingsTracksResetDone => 'Automatic tracks restored';
+
+  @override
+  String get settingsTracksNothing => 'Already automatic: nothing to forget.';
 
   @override
   String get langFrench => 'French';

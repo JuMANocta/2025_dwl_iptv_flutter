@@ -16,6 +16,10 @@ import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/data/services/search_history_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/data/services/track_preferences_service.dart';
+import 'package:aetherStream/core/utils/app_snackbar.dart';
+import 'package:aetherStream/feature/settings/track_memory_summary.dart';
+import 'package:aetherStream/widgets/confirm_or_undo.dart';
 import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -41,6 +45,39 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
+  /// R43 — « Revenir à l'automatique » pour les pistes.
+  ///
+  /// Avant, une coupure de sous-titres (ou une langue audio) valait pour tous
+  /// les titres suivants sans que rien ne le dise, et aucun réglage ne
+  /// permettait de l'annuler : le seul retour était de choisir une piste dans
+  /// un titre qui en avait, ce qui épinglait une langue à la place.
+  ///
+  /// Au doigt : on agit, puis « Annuler » 5 s ; à la télécommande : on demande
+  /// avant (§undoTv). L'instantané est pris AVANT l'appel, jamais dedans.
+  Future<void> _resetTrackMemory() async {
+    if (!TrackPreferencesService.hasMemory) {
+      AppSnackBar.show(context, context.l10n.settingsTracksNothing);
+      return;
+    }
+    final String? oldAudio = TrackPreferencesService.audio;
+    final String? oldSub = TrackPreferencesService.subtitle;
+    await confirmOrUndo(
+      context,
+      title: context.l10n.settingsTracksResetTitle,
+      question: context.l10n.settingsTracksResetQuestion,
+      confirmLabel: context.l10n.settingsTracksResetConfirm,
+      doneMessage: context.l10n.settingsTracksResetDone,
+      // Rien n'est perdu qu'on ne puisse rechoisir au prochain titre : pas la
+      // couleur du danger.
+      destructive: false,
+      action: TrackPreferencesService.resetToAuto,
+      onUndo: () async {
+        await TrackPreferencesService.setAudio(oldAudio);
+        await TrackPreferencesService.setSubtitle(oldSub);
+      },
+    );
+  }
+
   /// §tvReloadReach — « Tout recharger » depuis le hub, pour la TÉLÉCOMMANDE.
   /// Même chemin que le ↻ de l'accueil et que la page Comptes : `showReloadAllFlow`.
   Future<void> _reloadAllLists() async {
@@ -288,6 +325,19 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
               title: context.l10n.settingsRegions,
               subtitle: context.l10n.settingsRegionsSub,
               onTap: _openRegionFilter,
+            ),
+            // R43 — La mémoire des pistes se VOIT ici et se DÉFAIT ici. Le
+            // sous-titre dit ce qui s'appliquera au prochain titre ; il suit
+            // le service par son notifieur, pas par un rebuild de hasard.
+            ValueListenableBuilder<int>(
+              valueListenable: TrackPreferencesService.version,
+              builder: (ctx, _, child) => _SettingsTile(
+                icon: Icons.subtitles_outlined,
+                accentColor: kAccentSecondary,
+                title: ctx.l10n.settingsTracks,
+                subtitle: trackMemorySummary(ctx.l10n),
+                onTap: _resetTrackMemory,
+              ),
             ),
             _SettingsTile(
               icon: Icons.palette_outlined,

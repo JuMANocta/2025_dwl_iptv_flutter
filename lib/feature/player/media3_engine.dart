@@ -263,10 +263,24 @@ class Media3Engine implements AetherPlaybackEngine {
     }
   }
 
+  /// R43 (point 2) — Jeton de génération : `_refreshTracks` n'est pas
+  /// sérialisé, et une relecture partie AVANT un changement de piste pouvait se
+  /// terminer APRÈS lui et réécrire un état périmé. Chaque appel prend un
+  /// numéro ; seul le plus récent a le droit d'écrire. ⛔ Pas d'écouteur
+  /// `subtitleChange` à la place : il n'est émis que sur commande de l'app, il
+  /// ignore donc l'auto-sélection d'une piste FORCED au chargement — et ce
+  /// serait une seconde source de vérité plus un désabonnement dans
+  /// `dispose()` (terrain D2A-01).
+  int _trackGen = 0;
+
   Future<void> _refreshTracks() async {
+    final gen = ++_trackGen;
     try {
       final a = await _c.getAvailableAudioTracks();
       final t = await _c.getAvailableSubtitleTracks();
+      // Une relecture plus récente est partie pendant l'attente : la nôtre est
+      // périmée, elle n'écrit rien.
+      if (gen != _trackGen) return;
       _audio = a
           .map((e) => AetherTrack(
                 id: '${e.index}',
@@ -369,14 +383,18 @@ class Media3Engine implements AetherPlaybackEngine {
   /// ⚠️ Le paquet amont ne gérait QUE les sous-titres : la préférence audio
   /// était silencieusement perdue et un film multi-langue repartait sur la
   /// piste par défaut du fichier (§engineVendor patch 8).
+  ///
+  /// R43 — Posée MÊME quand elle est nulle : un contrôleur réutilisé (épisode
+  /// suivant, §episodeMeta) gardait sinon la langue du chargement précédent
+  /// après un « Revenir à l'automatique ». `null` efface, côté natif.
   Future<void> _applyLangPrefs(String? audioLang) async {
-    if (audioLang == null || audioLang.isEmpty) return;
-    await _c.setPreferredAudioLanguage(audioLang);
+    final lang = (audioLang == null || audioLang.isEmpty) ? null : audioLang;
+    await _c.setPreferredAudioLanguage(lang);
   }
 
   /// §trackLangPref — `subLang == 'no'` signifie « sous-titres désactivés ».
   Future<void> _applySubPreference() async {
-    if (_subLang == 'no') {
+    if (_subLang == TrackPreferencesService.kSubtitlesOff) {
       try {
         await _c.setSubtitleTrack(NativeVideoPlayerSubtitleTrack.off());
       } catch (_) {}
@@ -411,37 +429,102 @@ class Media3Engine implements AetherPlaybackEngine {
   @override
   Future<void> setVolume(double volume) => _c.setVolume(volume / 100.0);
 
+  /// R43 — Toute écriture de piste passe ici : sans vue de plateforme, le
+  /// contrôleur vendoré n'a pas de canal et l'appel part dans le vide SANS
+  /// lever (`_methodChannel?.`). C'est le cas `NO_VIEW` : on le refuse plutôt
+  /// que de rendre un succès imaginaire. Depuis le patch 22 du vendoré, un
+  /// refus du natif (`INVALID_INDEX`…) remonte, lui, en exception.
+  bool get _hasNativePlayer => _c.isInitialized;
+
   @override
-  Future<void> setAudioTrack(AetherTrack track) async {
+  Future<bool> setAudioTrack(AetherTrack track) async {
     final i = int.tryParse(track.id);
-    if (i == null) return;
-    final all = await _c.getAvailableAudioTracks();
-    final match = all.where((e) => e.index == i);
-    if (match.isEmpty) return;
-    await _c.setAudioTrack(match.first);
-    await _refreshTracks();
+    if (i == null || !_hasNativePlayer) return false;
+    try {
+      final all = await _c.getAvailableAudioTracks();
+      final match = all.where((e) => e.index == i);
+      if (match.isEmpty) return false;
+      await _c.setAudioTrack(match.first);
+      await _refreshTracks();
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ R43 — piste audio refusée : $e');
+      return false;
+    }
   }
 
   @override
-  Future<void> setSubtitleTrack(AetherTrack track) async {
+  Future<bool> setSubtitleTrack(AetherTrack track) async {
     final i = int.tryParse(track.id);
-    if (i == null) return;
-    final all = await _c.getAvailableSubtitleTracks();
-    final match = all.where((e) => e.index == i);
-    if (match.isEmpty) return;
-    await _c.setSubtitleTrack(match.first);
+    if (i == null || !_hasNativePlayer) return false;
+    try {
+      final all = await _c.getAvailableSubtitleTracks();
+      final match = all.where((e) => e.index == i);
+      if (match.isEmpty) return false;
+      await _c.setSubtitleTrack(match.first);
+    } catch (e) {
+      debugPrint('⚠️ R43 — piste de sous-titres refusée : $e');
+      return false;
+    }
     // R42 — Choisir une vraie piste LÈVE la coupure, des DEUX côtés : le moteur
     // porte la coupure entière (cf. `disableSubtitles`), c'est donc à lui de la
     // défaire. Sans ça, un `'no'` posé plus tôt recouperait les sous-titres au
     // chargement suivant et on ne pourrait plus jamais les rallumer.
-    // ⚠️ On efface `'no'`, on n'écrit PAS la langue : la clé de correspondance
-    // (langue sinon identifiant) est une notion de l'app, pas du moteur — elle
-    // reste à la feuille, qui l'écrit juste après.
+    // R43 — Et on n'écrit RIEN d'autre : une piste choisie ne vaut que pour ce
+    // titre. Mémoriser sa langue (ce que faisait la feuille) ne servait à
+    // rien — `_applySubPreference` ne lit que la coupure — et l'appliquer
+    // allumerait les sous-titres français de tous les films français.
     _subLang = null;
-    if (TrackPreferencesService.subtitle == 'no') {
+    if (TrackPreferencesService.subtitle == TrackPreferencesService.kSubtitlesOff) {
       await TrackPreferencesService.setSubtitle(null);
     }
     await _refreshTracks();
+    return true;
+  }
+
+  /// R43 — cf. `AetherPlaybackEngine.resetSubtitlesToAuto`.
+  ///
+  /// ⚠️ L'ordre est celui de `disableSubtitles` : l'écriture native d'abord,
+  /// la mémoire ensuite. Un refus n'efface donc rien — une mémoire effacée
+  /// sans que le natif ait suivi ferait revenir la coupure au titre suivant
+  /// tout en affichant « automatique ».
+  @override
+  Future<bool> resetSubtitlesToAuto() async {
+    if (!_hasNativePlayer) {
+      debugPrint('⚠️ R43 — retour à l\'automatique refusé : aucun lecteur natif prêt');
+      return false;
+    }
+    try {
+      await _c.setSubtitleTrack(NativeVideoPlayerSubtitleTrack.auto());
+      _subLang = null;
+      await TrackPreferencesService.setSubtitle(null);
+      await _refreshTracks();
+      debugPrint('📝 R43 — sous-titres rendus au moteur (automatique)');
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ R43 — retour à l\'automatique impossible : $e');
+      return false;
+    }
+  }
+
+  /// R43 — cf. `AetherPlaybackEngine.resetAudioToAuto`. Même ordre, même
+  /// raison : le natif d'abord, la mémoire ensuite.
+  @override
+  Future<bool> resetAudioToAuto() async {
+    if (!_hasNativePlayer) {
+      debugPrint('⚠️ R43 — audio automatique refusé : aucun lecteur natif prêt');
+      return false;
+    }
+    try {
+      await _c.setAudioTrack(NativeVideoPlayerAudioTrack.auto());
+      await TrackPreferencesService.setAudio(null);
+      await _refreshTracks();
+      debugPrint('🔊 R43 — audio rendu au moteur (automatique)');
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ R43 — audio automatique impossible : $e');
+      return false;
+    }
   }
 
   /// §audioFallback — Lire **sans son** plutôt qu'abandonner.
@@ -461,7 +544,7 @@ class Media3Engine implements AetherPlaybackEngine {
   /// de rendre un succès imaginaire.
   @override
   Future<bool> disableSubtitles() async {
-    if (!_c.isInitialized) {
+    if (!_hasNativePlayer) {
       debugPrint('⚠️ R42 — coupure refusée : aucun lecteur natif prêt');
       return false;
     }
@@ -476,10 +559,11 @@ class Media3Engine implements AetherPlaybackEngine {
       _curSub = null;
       // Le chargement suivant de cette session (épisode suivant, reprise en
       // place) repasse par `_applySubPreference`.
-      _subLang = 'no';
+      _subLang = TrackPreferencesService.kSubtitlesOff;
       // R42 — Le moteur porte la coupure ENTIÈRE, session ET mémoire : un autre
       // appelant que la feuille obtenait sinon une coupure sans lendemain.
-      await TrackPreferencesService.setSubtitle('no');
+      await TrackPreferencesService.setSubtitle(
+          TrackPreferencesService.kSubtitlesOff);
       debugPrint('🔇 R42 — sous-titres coupés (type texte désactivé)');
       return true;
     } catch (e) {

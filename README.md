@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.19.2+154-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.19.3+155-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -160,7 +160,7 @@ flutter build apk --release --target-platform android-arm,android-arm64
 flutter build apk --release -Pabi-x86=true
 ```
 
-Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1461 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
+Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1484 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
 
 ---
 
@@ -267,6 +267,7 @@ lib/
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Les pistes savent revenir à l'automatique** (2026-09-13) — couper les sous-titres valait pour tous les titres suivants sans le dire, et rien ne permettait de l'annuler ; la feuille de pistes annonce désormais ce qui est retenu (« … pour les prochains titres aussi ») et le défait d'un geste, et Réglages → « Langues des pistes » montre et efface la mémoire. Une piste sans langue n'écrase plus la langue choisie
 - [x] **Les sous-titres se coupent enfin, et « Annuler » ne perd plus rien** (2026-09-13) — quatre corrections nées d'essais sur téléphone et téléviseur. Sur certains films, des sous-titres apparaissaient tout seuls et **rien ne permettait de les enlever** : « Désactivés » est désormais toujours proposé dans la liste des sous-titres, le choix est réellement appliqué, il reste coché quand on rouvre la liste, et il est retenu pour la lecture suivante — plus de sous-titres qui reviennent le temps d'un clignotement au démarrage. Un appui long sur une série proposait **« Lire »**, qui ne pouvait pas fonctionner : c'est maintenant **« Choisir un épisode »**. « Vider les journaux » laissait en réalité le journal de la session précédente sur l'appareil, toujours consultable depuis la console web : il est bien supprimé. Enfin, quand un film ou une série existe sur **plusieurs de tes abonnements**, « Oublier la reprise » puis **« Annuler »** ne rendait qu'une seule position et **perdait les autres définitivement** — toutes reviennent désormais, chacune là où tu t'étais arrêté.
 - [x] **Un message utile quand le téléviseur reprend la vidéo** (2026-09-12) — il arrive qu'Android récupère le décodeur vidéo pour une autre application, ou qu'il n'en ait plus à donner : l'image et le son s'arrêtent alors que le flux, lui, est parfaitement sain. L'application affichait « Échec du décodage vidéo », qui accusait le fournisseur à tort. Elle dit maintenant ce qui s'est passé et quoi faire : fermer les autres applications ouvertes, puis relancer la lecture.
 - [x] **Revue complète du code avant la version de production** (§review0911, 2026-09-11) — 192 défauts relevés, chacun vérifié dans le code avant d'être retenu, puis corrigés par lots. Ce que tu peux constater :
@@ -430,6 +431,7 @@ lib/
 - [ ] **Mémoire** — libérer les listes secondaires aussi quand on est sur l'onglet Téléchargements
 - [ ] **Affiches** — oublier les « titres introuvables » enregistrés pendant une panne par les versions précédentes (au prix d'une vague de recherches)
 - [ ] **Titres** — mesurer les autres étiquettes techniques touchées par la même limite de reconnaissance des mots accentués
+- [ ] **L'application dans toutes les langues** (2026-09-13) — pour qu'elle soit utilisable partout où l'IPTV est répandue : d'abord l'espagnol, l'italien, l'allemand et le portugais, puis le turc, l'arabe et les autres langues proposées par le Play Store ; chaque vague est relue par une personne qui parle la langue
 - [ ] **Arrivée sur le Play Store** — l'application sera publiée sur le Play Store, puis ce dépôt sera fermé. Avant cela : une version Play sans la mise à jour intégrée (le Play Store s'en charge), une continuité garantie pour ceux qui ont installé l'APK (même signature, pas de réinstallation, pas de données perdues), une solution pour les Fire TV (absents du Play Store), et une dernière version publiée ici qui annonce le déménagement
 - [ ] **Prévenir quand une liste est déjà en lecture ailleurs** — la plupart des abonnements n'acceptent qu'un écran à la fois : avant de lancer un film, l'application pourra avertir (sans bloquer) que la liste est déjà utilisée sur un autre appareil
 - [ ] **Une petite fête quand l'application est à jour** — des confettis quand la vérification des mises à jour répond « à jour » (désactivable, et jamais sur les appareils modestes)
@@ -465,7 +467,7 @@ lib/
 - [x] **Format d'image du lecteur** (§videoFit, 2026-08-29) — **Original** (image entière), **Zoom** (efface les bandes noires en rognant les bords) ou **Plein écran** (remplit en déformant). Choix mémorisé d'une vidéo à l'autre ; accessible via le bouton ⚙ des contrôles (mobile) ou ↑ → Options (TV) → « Format d'image »
 - [x] **Piste audio de secours** (§audioFallback, 2026-08-29) — quand une piste TrueHD/Atmos ne se décode pas (fréquent sur les rips 4K), le lecteur bascule sur une autre piste au lieu d'abandonner, et lit sans son en dernier recours plutôt que d'afficher une erreur — ⚠️ depuis le changement de moteur vidéo (septembre 2026), ce secours n'est plus déclenché : le rebrancher ou le retirer reste à décider
 - [x] **Catégorie Radio séparée** (§radioCat, 2026-08-29) — les webradios ne noient plus les chaînes de télévision
-- [x] **Pistes audio + sous-titres (embarqués)** — sélecteur in-player (bouton CC) + préférence de langue mémorisée
+- [x] **Pistes audio + sous-titres (embarqués)** — sélecteur in-player (bouton CC) ; la langue audio choisie vaut pour les titres suivants, une piste de sous-titres ne vaut que pour le titre en cours, et ce qui est retenu se voit et s'annule (feuille de pistes, Réglages → « Langues des pistes », 2026-09-13)
 - [ ] **Sous-titres externes** — fichier/URL `.srt` + recherche en ligne auto par TMDB
 - [x] **File d'attente DL + WiFi-only** — ✅ fait le 2026-09-06 (une file par abonnement, pas un simple sémaphore ; voir « Terminé »)
 - [x] **Background audio** — ✅ déjà en place (vérifié dans le code le 2026-09-05) : le lecteur tient un verrou CPU / WiFi pendant la lecture et le service de premier plan de §nowPlaying garde l'app vivante ; le son continue écran éteint tant que le lecteur est ouvert. Reste à mesurer sur l'appareil (voir §bgAudio)

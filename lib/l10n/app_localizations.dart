@@ -3080,12 +3080,6 @@ abstract class AppLocalizations {
   /// **'No subtitle detected'**
   String get tracksNoSubtitles;
 
-  /// No description provided for @tracksNone.
-  ///
-  /// In en, this message translates to:
-  /// **'None'**
-  String get tracksNone;
-
   /// No description provided for @tracksDisabled.
   ///
   /// In en, this message translates to:
@@ -3097,6 +3091,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Subtitles could not be turned off.'**
   String get tracksDisableFailed;
+
+  /// No description provided for @tracksTrackFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'This track could not be enabled.'**
+  String get tracksTrackFailed;
+
+  /// No description provided for @tracksResetFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not go back to automatic.'**
+  String get tracksResetFailed;
+
+  /// No description provided for @tracksMemorySubOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off for the next titles too'**
+  String get tracksMemorySubOff;
+
+  /// No description provided for @tracksMemoryAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'{lang} for the next titles too'**
+  String tracksMemoryAudio(String lang);
+
+  /// No description provided for @tracksMemoryForget.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to automatic'**
+  String get tracksMemoryForget;
+
+  /// No description provided for @settingsTracks.
+  ///
+  /// In en, this message translates to:
+  /// **'Track languages'**
+  String get settingsTracks;
+
+  /// No description provided for @settingsTracksAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic: each title picks its audio and subtitles'**
+  String get settingsTracksAuto;
+
+  /// No description provided for @settingsTracksAudioLang.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio: {lang}'**
+  String settingsTracksAudioLang(String lang);
+
+  /// No description provided for @settingsTracksSubsOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitles: off'**
+  String get settingsTracksSubsOff;
+
+  /// No description provided for @settingsTracksResetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to automatic?'**
+  String get settingsTracksResetTitle;
+
+  /// No description provided for @settingsTracksResetQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'The next titles will pick their own audio language and subtitles.'**
+  String get settingsTracksResetQuestion;
+
+  /// No description provided for @settingsTracksResetConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to automatic'**
+  String get settingsTracksResetConfirm;
+
+  /// No description provided for @settingsTracksResetDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic tracks restored'**
+  String get settingsTracksResetDone;
+
+  /// No description provided for @settingsTracksNothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Already automatic: nothing to forget.'**
+  String get settingsTracksNothing;
 
   /// No description provided for @langFrench.
   ///

@@ -1821,13 +1821,58 @@ class AppLocalizationsFr extends AppLocalizations {
   String get tracksNoSubtitles => 'Aucun sous-titre détecté';
 
   @override
-  String get tracksNone => 'Aucune';
-
-  @override
   String get tracksDisabled => 'Désactivés';
 
   @override
   String get tracksDisableFailed => 'Impossible de couper les sous-titres.';
+
+  @override
+  String get tracksTrackFailed => 'Cette piste n\'a pas pu être activée.';
+
+  @override
+  String get tracksResetFailed => 'Le retour à l\'automatique n\'a pas abouti.';
+
+  @override
+  String get tracksMemorySubOff => 'Coupés pour les prochains titres aussi';
+
+  @override
+  String tracksMemoryAudio(String lang) {
+    return '$lang pour les prochains titres aussi';
+  }
+
+  @override
+  String get tracksMemoryForget => 'Revenir à l\'automatique';
+
+  @override
+  String get settingsTracks => 'Langues des pistes';
+
+  @override
+  String get settingsTracksAuto =>
+      'Automatique : chaque titre choisit son audio et ses sous-titres';
+
+  @override
+  String settingsTracksAudioLang(String lang) {
+    return 'Audio : $lang';
+  }
+
+  @override
+  String get settingsTracksSubsOff => 'Sous-titres : coupés';
+
+  @override
+  String get settingsTracksResetTitle => 'Revenir à l\'automatique ?';
+
+  @override
+  String get settingsTracksResetQuestion =>
+      'Les prochains titres choisiront eux-mêmes leur langue audio et leurs sous-titres.';
+
+  @override
+  String get settingsTracksResetConfirm => 'Revenir à l\'automatique';
+
+  @override
+  String get settingsTracksResetDone => 'Pistes automatiques rétablies';
+
+  @override
+  String get settingsTracksNothing => 'Déjà automatique : rien à oublier.';
 
   @override
   String get langFrench => 'Français';

@@ -26,8 +26,23 @@ class NativeVideoPlayerAudioTrack {
     );
   }
 
+  /// §engineVendor patch 22 — « Automatique » : retire la piste imposée ET la
+  /// langue préférée, le lecteur repart sur la piste par défaut du flux. Sans
+  /// ce chemin, une langue audio posée une fois ne pouvait plus être défaite
+  /// autrement qu'en imposant une autre piste.
+  factory NativeVideoPlayerAudioTrack.auto() =>
+      const NativeVideoPlayerAudioTrack(
+        index: -1,
+        language: 'auto',
+        displayName: 'Auto',
+        isSelected: false,
+      );
+
   /// Track index within the platform's audio track enumeration.
   final int index;
+
+  /// §engineVendor patch 22 — Whether this is the "Auto" option.
+  bool get isAuto => index == -1;
 
   /// Language code (e.g. "en", "nl", "en-US").
   final String language;

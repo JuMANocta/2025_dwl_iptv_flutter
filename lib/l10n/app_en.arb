@@ -1623,9 +1623,36 @@
   "castSheetSearchAgain": "Search again",
   "tracksNoAudio": "No audio track detected",
   "tracksNoSubtitles": "No subtitle detected",
-  "tracksNone": "None",
   "tracksDisabled": "Disabled",
   "tracksDisableFailed": "Subtitles could not be turned off.",
+  "tracksTrackFailed": "This track could not be enabled.",
+  "tracksResetFailed": "Could not go back to automatic.",
+  "tracksMemorySubOff": "Off for the next titles too",
+  "tracksMemoryAudio": "{lang} for the next titles too",
+  "@tracksMemoryAudio": {
+    "placeholders": {
+      "lang": {
+        "type": "String"
+      }
+    }
+  },
+  "tracksMemoryForget": "Back to automatic",
+  "settingsTracks": "Track languages",
+  "settingsTracksAuto": "Automatic: each title picks its audio and subtitles",
+  "settingsTracksAudioLang": "Audio: {lang}",
+  "@settingsTracksAudioLang": {
+    "placeholders": {
+      "lang": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsTracksSubsOff": "Subtitles: off",
+  "settingsTracksResetTitle": "Back to automatic?",
+  "settingsTracksResetQuestion": "The next titles will pick their own audio language and subtitles.",
+  "settingsTracksResetConfirm": "Back to automatic",
+  "settingsTracksResetDone": "Automatic tracks restored",
+  "settingsTracksNothing": "Already automatic: nothing to forget.",
   "langFrench": "French",
   "langEnglish": "English",
   "langSpanish": "Spanish",

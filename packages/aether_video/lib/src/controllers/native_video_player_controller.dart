@@ -1941,15 +1941,23 @@ class NativeVideoPlayerController {
         return;
       }
       // Prevent double captions: disable any embedded native track.
-      await _methodChannel?.setSubtitleTrack(
-        NativeVideoPlayerSubtitleTrack.off(),
-      );
+      // §engineVendor patch 22 — le canal lève désormais ; ici l'échec de la
+      // coupure native ne doit pas casser l'affichage du sidecar déjà chargé.
+      try {
+        await _methodChannel?.setSubtitleTrack(
+          NativeVideoPlayerSubtitleTrack.off(),
+        );
+      } catch (e) {
+        debugPrint('Error disabling embedded track for sidecar: $e');
+      }
       _emitSubtitleChanged(track);
       return;
     }
 
-    // Embedded track (or Off): stop sidecar rendering, delegate to native
-    // (which emits its own subtitleChange event).
+    // Embedded track (Off, or Auto since §engineVendor patch 22): stop sidecar
+    // rendering, delegate to native (which emits its own subtitleChange event).
+    // ⚠️ Sans vue de plateforme, `_methodChannel` est nul et l'appel ne fait
+    // RIEN sans lever : c'est à l'appelant de tester `isInitialized` avant.
     _sidecarSubtitles.deselect();
     await _methodChannel?.setSubtitleTrack(track);
   }

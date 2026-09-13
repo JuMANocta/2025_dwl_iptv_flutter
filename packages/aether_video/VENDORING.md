@@ -192,6 +192,35 @@ ne coûte aucune capacité ; retirer du code en coûte.
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).
 
+## patch 22 — les pistes savent revenir à « automatique », et un échec de piste remonte (2026-09-13, R43)
+
+**Le manque.** Le natif ne connaissait que deux gestes par type de piste : *imposer*
+un index ≥ 0 (`TrackSelectionOverride`) ou, pour le texte seulement, *couper*
+(`-1` → `setTrackTypeDisabled(TEXT, true)`). Aucun chemin ne rendait la main au
+sélecteur d'ExoPlayer : après une coupure, le seul retour était d'imposer une
+piste, donc d'épingler une LANGUE ; après une langue audio (patch 8), rien ne la
+défaisait. Côté Dart, `setSubtitleTrack` / `setAudioTrack` du canal avalaient
+toute `PlatformException` dans un `debugPrint` : l'app ne pouvait pas distinguer
+une piste posée d'une écriture perdue (R42, point 6 de R43).
+
+**Le patch.**
+- `VideoPlayerMethodHandler.handleSetSubtitleTrack` : index **`-2`** = automatique →
+  `setTrackTypeDisabled(TEXT, false)` + `clearOverridesOfType(TEXT)` +
+  `setPreferredTextLanguage(null)` ; événement `subtitleChange` index -2, langue `auto`.
+- `handleSetAudioTrack` : index **`-1`** = automatique → `clearOverridesOfType(AUDIO)` +
+  `setPreferredAudioLanguage(null)` ; événement `audioTrackChange` index -1. ⚠️ Peut
+  re-demuxer (~3 s, §trackRebuffer) : c'est un geste explicite de l'utilisateur.
+- Dart : `NativeVideoPlayerSubtitleTrack.auto()` (`isAuto`), `NativeVideoPlayerAudioTrack.auto()`
+  (`isAuto`) ; `video_player_method_channel.dart` **laisse remonter** l'exception des deux
+  méthodes ; le contrôleur protège seul le chemin sidecar (inutilisé par l'app).
+- ⚠️ Sans vue de plateforme, `_methodChannel` est nul et le contrôleur ne fait RIEN sans
+  lever : le pré-contrôle `isInitialized` côté app reste nécessaire (`Media3Engine`).
+- Android seulement ; le côté iOS du paquet n'est pas touché (jamais construit).
+
+⚠️ Reprise d'une version amont : rejouer les deux branches natives et retirer les
+`try/catch` des deux méthodes du canal, sinon « Revenir à l'automatique » tombe en
+`INVALID_INDEX` et les échecs redeviennent muets.
+
 ## patch 21 — le canal de la notification de lecture parle la langue de l'appareil (2026-09-11, revue de code, lot 7)
 
 Numéroté 21 à la fusion : le lot 6 de la même revue a pris le patch 20 (voir

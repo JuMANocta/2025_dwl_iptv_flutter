@@ -1083,6 +1083,32 @@ class VideoPlayerMethodHandler(
                 return
             }
 
+            // §engineVendor patch 22 — Index -1 = « automatique » : on retire
+            // la piste imposee ET la langue preferee (patch 8), le selecteur
+            // d'ExoPlayer reprend la main (piste par defaut du flux). Avant, -1
+            // tombait en INVALID_INDEX : une langue audio posee une fois ne
+            // pouvait etre defaite qu'en imposant une autre piste.
+            // /!\ Peut re-demuxer (~3 s) : c'est un geste explicite, assume.
+            if (requestedIndex == -1) {
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setPreferredAudioLanguage(null)
+                    .build()
+                NpLog.d(TAG, "🔊 Audio track back to automatic")
+                eventHandler.sendEvent(
+                    "audioTrackChange",
+                    mapOf(
+                        "index" to -1,
+                        "language" to "auto",
+                        "displayName" to "Auto",
+                        "isSelected" to false
+                    )
+                )
+                result.success(null)
+                return
+            }
+
             var flatIndex = 0
             for (group in player.currentTracks.groups) {
                 if (group.type != C.TRACK_TYPE_AUDIO) continue
@@ -1562,6 +1588,30 @@ class VideoPlayerMethodHandler(
 
             if (index == null) {
                 result.error("INVALID_TRACK", "Invalid subtitle track data", null)
+                return
+            }
+
+            // §engineVendor patch 22 — Index -2 = « automatique » : le type
+            // texte est REACTIVE, sans piste imposee ni langue preferee. C'est
+            // l'inverse exact de la coupure (-1) : le selecteur d'ExoPlayer
+            // reprend la main (FORCED/DEFAULT du flux, ou rien). Avant ce
+            // patch, l'activation exigeait un index >= 0 : apres une coupure,
+            // le seul retour etait d'imposer une piste, donc une langue.
+            if (index == -2) {
+                NpLog.d(TAG, "📝 Subtitles back to automatic")
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setPreferredTextLanguage(null)
+                    .build()
+                eventHandler.sendEvent("subtitleChange", mapOf(
+                    "index" to -2,
+                    "language" to "auto",
+                    "displayName" to "Auto",
+                    "isSelected" to false
+                ))
+                result.success(null)
                 return
             }
 

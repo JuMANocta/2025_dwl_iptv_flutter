@@ -86,8 +86,36 @@ abstract class AetherPlaybackEngine {
   /// faible niveau, l'app démarre à 125 % sur TV (§audio).
   Future<void> setVolume(double volume);
 
-  Future<void> setAudioTrack(AetherTrack track);
-  Future<void> setSubtitleTrack(AetherTrack track);
+  /// Impose une piste audio pour CE titre. La langue mémorisée pour les
+  /// suivants reste à la charge de l'appelant (un geste utilisateur = une
+  /// préférence, une sélection programmée n'en est pas une).
+  ///
+  /// R43 — Renvoie `false` si la piste n'a PAS été posée (aucun lecteur natif
+  /// prêt, piste introuvable, refus du natif). ⚠️ Un `false` doit se voir :
+  /// avant, le canal vendoré avalait l'échec et l'app mémorisait une langue
+  /// qu'aucune piste ne portait.
+  Future<bool> setAudioTrack(AetherTrack track);
+
+  /// Impose une piste de sous-titres pour CE titre seulement — et LÈVE une
+  /// coupure mémorisée (cf. [disableSubtitles]). Même contrat de retour que
+  /// [setAudioTrack].
+  Future<bool> setSubtitleTrack(AetherTrack track);
+
+  /// R43 — Rend la main au moteur pour les sous-titres : type texte réactivé,
+  /// aucune piste imposée, aucune langue préférée (le flux choisit — FORCED,
+  /// DEFAULT, ou rien) — ET efface la coupure mémorisée pour les titres
+  /// suivants. C'est le seul retour possible après [disableSubtitles] qui
+  /// n'épingle pas une langue.
+  ///
+  /// Renvoie `false` si rien n'a pu être posé ; alors rien n'est effacé.
+  Future<bool> resetSubtitlesToAuto();
+
+  /// R43 — Rend la main au moteur pour l'audio : piste imposée et langue
+  /// préférée retirées, piste par défaut du flux — ET efface la langue
+  /// mémorisée. ⚠️ Peut re-demuxer (~3 s, §trackRebuffer) : geste explicite.
+  ///
+  /// Renvoie `false` si rien n'a pu être posé ; alors rien n'est effacé.
+  Future<bool> resetAudioToAuto();
 
   /// Coupe l'audio en sélectionnant « aucune piste ».
   ///
@@ -121,6 +149,11 @@ abstract class AetherPlaybackEngine {
   /// se voir : la feuille ne se ferme pas et le dit. Sans cette valeur, un échec
   /// fermait la feuille en silence tout en mémorisant « coupés » pour tous les
   /// titres suivants.
+  ///
+  /// ⚠️ R43 (point 4) — Une coupure LOCALE ne touche pas un téléviseur en
+  /// diffusion Cast : le récepteur choisit ses propres sous-titres, et
+  /// `CastService` ne transmet aucune piste. Comportement voulu, documenté ici
+  /// pour ne plus le chercher.
   Future<bool> disableSubtitles();
 
   // ── Ouverture ──────────────────────────────────────────────────────────────
