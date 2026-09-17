@@ -849,10 +849,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get perfParallelDownloadsTitle => 'Downloads at once';
 
   @override
-  String get perfParallelDownloadsSub =>
-      'One transfer at a time per subscription: providers accept a single connection, and the player keeps one. This number only applies across different subscriptions; the others wait their turn.';
-
-  @override
   String get taskStatusQueuedWhy =>
       'Waiting: one transfer at a time per subscription';
 
@@ -1276,26 +1272,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String acctExpiryInDays(int days) {
     return 'In $days days';
-  }
-
-  @override
-  String unitBytes(String value) {
-    return '$value B';
-  }
-
-  @override
-  String unitKilobytes(String value) {
-    return '$value kB';
-  }
-
-  @override
-  String unitMegabytes(String value) {
-    return '$value MB';
-  }
-
-  @override
-  String unitGigabytes(String value) {
-    return '$value GB';
   }
 
   @override
@@ -2477,7 +2453,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Memory freed; the playlist comes back as soon as it is needed.';
 
   @override
-  String get failExplainDeferred => 'Update postponed until after start-up.';
+  String get failExplainDeferred =>
+      'Update postponed: this list will be picked up.';
 
   @override
   String get failExplainPanelBusy =>
@@ -3157,26 +3134,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'The conversion produced nothing playable.';
 
   @override
-  String get healthNoStall => 'no stall';
-
-  @override
   String get reloadLessThanMinute => 'less than a minute';
-
-  @override
-  String get plNoActiveAccount =>
-      'No active account selected. Please choose one in the settings.';
-
-  @override
-  String get plNoActiveAccountShort => 'No active account selected.';
-
-  @override
-  String plInvalidUrl(String label) {
-    return 'The playlist URL for the account “$label” is invalid. Check its configuration.';
-  }
-
-  @override
-  String get plEmptyFile =>
-      'The server returned an empty file. Check the playlist URL.';
 
   @override
   String get bkFileTooShort => 'Backup file too short or corrupted.';
@@ -3589,8 +3547,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String sizeBytes(String n) {
-    return '$n B';
+  String sizeBytes(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n B',
+      one: '$n B',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -3917,4 +3881,310 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get themePresetMinimaliste => 'Minimalist';
+
+  @override
+  String settingsTracksResetTile(String memory) {
+    return '$memory — back to automatic';
+  }
+
+  @override
+  String dlNoticeSizeOf(String received, String total) {
+    return '$received of $total';
+  }
+
+  @override
+  String get dlNotifChannelDone => 'Finished downloads';
+
+  @override
+  String get dlActionCast => 'Cast';
+
+  @override
+  String perfParallelDownloadsPerHostSub(int count) {
+    return 'One transfer at a time per subscription; up to $count subscriptions can work together.';
+  }
+
+  @override
+  String get playOffline => 'Play offline';
+
+  @override
+  String get dlBadgeDownloaded => 'Downloaded';
+
+  @override
+  String get dlErrFileMissing => 'This file is no longer on the device.';
+
+  @override
+  String get playBusyTitle => 'This subscription is busy';
+
+  @override
+  String get playBusyElsewhere =>
+      'Another screen is already watching this subscription. Playback may be refused.';
+
+  @override
+  String get playBusyOwnTransfer =>
+      'Your downloads are using every connection of this subscription. Pausing one frees it up for playback.';
+
+  @override
+  String get playBusyContinue => 'Play anyway';
+
+  @override
+  String bkPartSavedThemes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count saved themes',
+      one: '1 saved theme',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get themeSectionMyThemes => 'My themes';
+
+  @override
+  String get themeMyThemesEmpty =>
+      'No saved theme. Set your colours, then use Save as…';
+
+  @override
+  String get themeSaveAs => 'Save as…';
+
+  @override
+  String get themeSaveAsTitle => 'Save this theme';
+
+  @override
+  String get themeNameHint => 'Theme name';
+
+  @override
+  String themeSavedDone(String name) {
+    return 'Theme “$name” saved';
+  }
+
+  @override
+  String themeSaveFull(int count) {
+    return 'You can keep $count themes at most. Delete one to save another.';
+  }
+
+  @override
+  String get themeNameTaken => 'A theme already goes by that name.';
+
+  @override
+  String themeAppliedDone(String name) {
+    return 'Theme “$name” applied';
+  }
+
+  @override
+  String get themeRename => 'Rename';
+
+  @override
+  String get themeRenameTitle => 'Rename this theme';
+
+  @override
+  String themeDeleteTitle(String name) {
+    return 'Delete “$name”?';
+  }
+
+  @override
+  String get themeDeleteQuestion =>
+      'It disappears from the list. The colours on screen do not change.';
+
+  @override
+  String get themeDeleteDone => 'Theme deleted';
+
+  @override
+  String get themeKeepBeforeResetTitle => 'Keep these colours?';
+
+  @override
+  String get themeKeepBeforeResetBody =>
+      'They match no preset and no saved theme: resetting loses them.';
+
+  @override
+  String get themeKeepBeforeResetSave => 'Save first';
+
+  @override
+  String get themeKeepBeforeResetSkip => 'Reset anyway';
+
+  @override
+  String get themeColorFree => 'Any colour';
+
+  @override
+  String get themeColorFreeTitle => 'Pick a colour';
+
+  @override
+  String get themeHex => 'Hex code';
+
+  @override
+  String get themeHexInvalid => 'Six characters after #, for example #00FF41';
+
+  @override
+  String get themeHue => 'Hue';
+
+  @override
+  String get themeSaturation => 'Saturation';
+
+  @override
+  String get themeLightness => 'Lightness';
+
+  @override
+  String get themePreviewFavorite => 'Favourite';
+
+  @override
+  String get themePreviewAlert => 'Resume';
+
+  @override
+  String get themePreviewError => 'Stream unavailable';
+
+  @override
+  String get themePreviewSuccess => 'Downloaded';
+
+  @override
+  String themeEditColor(String label) {
+    return 'Change $label';
+  }
+
+  @override
+  String get themeSavedApply => 'Apply';
+
+  @override
+  String get acctReadingPlaylist => 'Reading the playlist…';
+
+  @override
+  String get optQualityTitle => 'Quality';
+
+  @override
+  String get optQualityAuto => 'Automatic';
+
+  @override
+  String get optQualityAutoSub => 'Follows your connection';
+
+  @override
+  String get optQualityFailed => 'This quality could not be applied';
+
+  @override
+  String get optStatsShow => 'Show the panel';
+
+  @override
+  String get optStatsShowSub => 'What your device really decodes';
+
+  @override
+  String get optStatsPermanent => 'Keep it on screen';
+
+  @override
+  String get optStatsPermanentSub => 'Stays visible while you watch';
+
+  @override
+  String get optStatsRows => 'Lines shown';
+
+  @override
+  String get detMoreBelow => 'More below';
+
+  @override
+  String get detSeeMoreCast => 'See more';
+
+  @override
+  String get settingsSubtitles => 'Online subtitles';
+
+  @override
+  String get settingsSubtitlesSub => 'Find subtitles for a film that has none';
+
+  @override
+  String get subProviderTitle => 'Online subtitles';
+
+  @override
+  String get subProviderActive => 'Ready';
+
+  @override
+  String get subProviderActiveSub =>
+      'You can now look for subtitles while watching';
+
+  @override
+  String get subProviderInactive => 'No key saved';
+
+  @override
+  String get subProviderInactiveSub =>
+      'A key lets the app look for subtitles for you';
+
+  @override
+  String get subProviderIntro =>
+      'Some films and episodes come without subtitles. The app can go and look for some, but the subtitle service needs to know who is asking. Getting your own access is free and takes a minute.';
+
+  @override
+  String get subProviderStep1 =>
+      'Open the subtitle service and confirm your e-mail address.';
+
+  @override
+  String get subProviderStep2 => 'Copy the key it gives you.';
+
+  @override
+  String get subProviderStep3 => 'Paste it below, then save.';
+
+  @override
+  String get subProviderGetKey => 'Get a free key';
+
+  @override
+  String get subProviderSection => 'YOUR KEY';
+
+  @override
+  String get subProviderHint => 'Paste your key here';
+
+  @override
+  String get subProviderShow => 'Show';
+
+  @override
+  String get subProviderHide => 'Hide';
+
+  @override
+  String get subProviderSave => 'Save';
+
+  @override
+  String get subProviderRemove => 'Remove this key';
+
+  @override
+  String get subProviderSaved => 'Key saved';
+
+  @override
+  String get subProviderRemoved => 'Key removed';
+
+  @override
+  String get tracksSearchOnline => 'Look for subtitles online';
+
+  @override
+  String get tracksSearchOnlineSub => 'For this film or episode';
+
+  @override
+  String get tracksOnlineSearching => 'Looking…';
+
+  @override
+  String get tracksOnlineTitle => 'Subtitles found';
+
+  @override
+  String get tracksOnlineHearing => 'For deaf and hard of hearing';
+
+  @override
+  String get tracksOnlineAdded => 'Subtitles added';
+
+  @override
+  String get tracksOnlineAddFailed => 'These subtitles could not be added';
+
+  @override
+  String get tracksOnlineNone => 'No subtitles found for this one';
+
+  @override
+  String get tracksOnlineNoTitle => 'This title could not be recognised';
+
+  @override
+  String get tracksOnlineNoKey => 'Set up online subtitles in Settings first';
+
+  @override
+  String get tracksOnlineBadKey =>
+      'Your key was refused — check it in Settings';
+
+  @override
+  String get tracksOnlineQuota => 'You have used today\'s searches';
+
+  @override
+  String get tracksOnlineFailed => 'The search could not be completed';
+
+  @override
+  String themeDefaultName(int n) {
+    return 'My theme $n';
+  }
 }

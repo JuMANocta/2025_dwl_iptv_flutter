@@ -1857,6 +1857,13 @@ class NativeVideoPlayerController {
   Future<bool> retryPlayback() =>
       _methodChannel?.retryPlayback() ?? Future<bool>.value(false);
 
+  /// §engineVendor patch 26 (§bgAudio) — Coupe (`false`) ou rallume (`true`)
+  /// la piste VIDÉO, le son continuant. `false` en retour si aucun lecteur
+  /// natif n'est prêt ou si le natif a refusé.
+  Future<bool> setVideoTrackEnabled(bool enabled) =>
+      _methodChannel?.setVideoTrackEnabled(enabled) ??
+      Future<bool>.value(false);
+
   /// §engineVendor patch 6 — Rapidité du saut dans le flux.
   ///
   /// `true` (défaut) : saut à l'image-clé la plus proche, réponse immédiate.

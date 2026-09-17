@@ -38,9 +38,58 @@ class AetherDownloadService : Service() {
     companion object {
         private const val TAG = "AetherDownloadService"
         private const val CHANNEL_ID = "aether_download"
+
+        /**
+         * §notifAudit P5 — Canal SÉPARÉ pour la fin de transfert.
+         *
+         * La notification de fin partageait le canal de progression, en
+         * `IMPORTANCE_LOW` : elle arrivait donc muette, sans bandeau, et se
+         * perdait dans le tiroir. Or c'est le seul moment où l'utilisateur a
+         * quelque chose à apprendre. Un canal à part lui rend un son — et
+         * laisse la progression, elle, rester discrète.
+         *
+         * ⚠️ L'importance d'un canal ne se change QU'À SA CRÉATION : un canal
+         * existant garde la sienne (seul son nom se met à jour). D'où un
+         * identifiant neuf, et non une importance relevée sur l'ancien.
+         */
+        private const val DONE_CHANNEL_ID = "aether_download_done"
         private const val ONGOING_NOTIFICATION_ID = 2001
         const val ACTION_CANCEL = "com.juman.aetherstream.action.CANCEL_DOWNLOAD"
+
+        /**
+         * §notifAudit P6 — « Relancer » depuis la notification d'échec.
+         *
+         * ⚠️ Exige d'être reçu côté `MainActivity` (même récepteur que
+         * [ACTION_CANCEL], `IntentFilter` à compléter) : sans cela le bouton
+         * ne fait rien.
+         */
+        const val ACTION_RESTART = "com.juman.aetherstream.action.RESTART_DOWNLOAD"
         const val EXTRA_TASK_ID = "taskId"
+
+        /**
+         * §notifAudit P5 — Extra posé sur l'`Intent` de lancement : « appuyer
+         * pour ouvrir » doit tomber sur l'onglet Téléchargements, pas sur
+         * l'accueil. ⚠️ Inerte tant que `MainActivity` ne le relaie pas à Dart
+         * (l'app s'ouvre alors comme avant, sans régression).
+         */
+        const val EXTRA_OPEN_ROUTE = "aether_open_route"
+        const val ROUTE_DOWNLOADS = "downloads"
+
+        /**
+         * R13 — L'instance vivante, s'il y en a une.
+         *
+         * **Le défaut payé** : [start] appelait `startService` à CHAQUE mise à
+         * jour de progression — un aller-retour IPC par seconde et par
+         * transfert, plus un `onStartCommand` complet, pour ne changer qu'un
+         * texte. Quand le service tourne déjà, `notify()` sur le même
+         * identifiant suffit et ne coûte rien.
+         *
+         * ⚠️ §fgsSafeStart intact : la promotion en premier plan reste dans
+         * `onCreate`, ce chemin ne fait que REMPLACER la notification d'un
+         * service déjà promu.
+         */
+        @Volatile
+        private var live: AetherDownloadService? = null
 
         // Revue 2026-09-11, D2B-10 — Le drapeau `isRunning` était écrit
         // (`onStartCommand`, `onDestroy`) mais JAMAIS lu : son commentaire
@@ -66,6 +115,12 @@ class AetherDownloadService : Service() {
                 putExtra("cancelTaskId", cancelTaskId)
                 // Revue 2026-09-11, D3L-02 — libellé du bouton, traduit par Dart.
                 putExtra("cancelLabel", cancelLabel)
+            }
+            // R13 — Service déjà vivant : on remplace la notification sur
+            // place, sans repasser par le système.
+            live?.let { svc ->
+                svc.refresh(title, text, progress, indeterminate, cancelTaskId, cancelLabel)
+                return
             }
             try {
                 // §fgsSafeStart (2026-09-10) — ⚠️ **`startService`, PAS
@@ -113,23 +168,34 @@ class AetherDownloadService : Service() {
             id: Int,
             title: String,
             success: Boolean,
-            text: String? = null
+            text: String? = null,
+            restartTaskId: String? = null,
+            restartLabel: String? = null,
+            doneChannelName: String? = null
         ) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 // Revue 2026-09-11, D2B-17 — (re)créé à chaque fois : sur un
                 // canal existant, Android met à jour son NOM, qui suit donc la
                 // langue de l'appareil (l'importance, elle, ne bouge pas).
+                // §notifAudit P5 — Canal PROPRE à la fin de transfert, en
+                // importance par défaut : c'est le seul moment qui mérite un son.
                 nm.createNotificationChannel(
                     NotificationChannel(
-                        CHANNEL_ID,
-                        context.getString(R.string.notif_channel_downloads),
-                        NotificationManager.IMPORTANCE_LOW
+                        DONE_CHANNEL_ID,
+                        doneChannelName?.takeIf { it.isNotBlank() }
+                            ?: context.getString(R.string.notif_channel_downloads),
+                        NotificationManager.IMPORTANCE_DEFAULT
                     )
                 )
             }
+            // §notifAudit P5 — « Appuyer pour ouvrir » visait l'accueil : on
+            // demande l'onglet Téléchargements. L'extra est lu par
+            // `MainActivity` (cf. EXTRA_OPEN_ROUTE) ; sans lui, l'app s'ouvre
+            // simplement comme avant.
             val contentIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                putExtra(EXTRA_OPEN_ROUTE, ROUTE_DOWNLOADS)
             }
             val contentPending = PendingIntent.getActivity(
                 context, id, contentIntent,
@@ -143,15 +209,30 @@ class AetherDownloadService : Service() {
                 )
             val iconRes = context.resources.getIdentifier("ic_notification", "drawable", context.packageName)
                 .let { if (it != 0) it else context.applicationInfo.icon }
-            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            val builder = NotificationCompat.Builder(context, DONE_CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(body)
+                // Le nom d'un fichier et la raison d'un échec dépassent une
+                // ligne : sans ça, l'essentiel finissait en trois points.
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setSmallIcon(iconRes)
                 .setAutoCancel(true)
                 .setContentIntent(contentPending)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .build()
-            nm.notify(id, notification)
+            // §notifAudit P6 — « Relancer », seulement sur un échec et
+            // seulement quand la tâche est désignée.
+            if (!success && restartTaskId != null && restartLabel != null) {
+                val restartIntent = Intent(ACTION_RESTART).apply {
+                    setPackage(context.packageName)
+                    putExtra(EXTRA_TASK_ID, restartTaskId)
+                }
+                val restartPending = PendingIntent.getBroadcast(
+                    context, restartTaskId.hashCode(), restartIntent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                builder.addAction(0, restartLabel, restartPending)
+            }
+            nm.notify(id, builder.build())
         }
     }
 
@@ -169,10 +250,44 @@ class AetherDownloadService : Service() {
         promoteToForeground(
             buildNotification(getString(R.string.notif_download_title), "", -1, true, null, null)
         )
+        // R13 — Publié EN DERNIER : tant que `notificationManager` n'est pas
+        // posé et le service pas promu, `refresh()` n'aurait rien sur quoi
+        // écrire. Une mise à jour arrivée avant passe par `startService`,
+        // comme avant.
+        live = this
     }
 
     override fun onDestroy() {
+        // R13 — L'instance meurt : la prochaine mise a jour devra repasser par
+        // `startService`, sinon elle ecrirait dans le vide.
+        if (live === this) live = null
         super.onDestroy()
+    }
+
+    /**
+     * R13 — Remplace la notification d'un service DEJA promu, sans IPC.
+     *
+     * ⚠️ Ne promeut rien et n'arrete rien : §fgsSafeStart veut que la
+     * promotion reste dans `onCreate` et qu'aucun chemin ne se retire avant
+     * elle. Si la permission de notification est refusee, `notify` ne montre
+     * rien — et le service continue de tourner (§notifAudit P3).
+     */
+    fun refresh(
+        title: String,
+        text: String,
+        progress: Int,
+        indeterminate: Boolean,
+        cancelTaskId: String?,
+        cancelLabel: String?
+    ) {
+        try {
+            notificationManager.notify(
+                ONGOING_NOTIFICATION_ID,
+                buildNotification(title, text, progress, indeterminate, cancelTaskId, cancelLabel)
+            )
+        } catch (e: Exception) {
+            AetherLog.w(TAG, "mise a jour de la notification refusee (" + e.javaClass.simpleName + ")")
+        }
     }
 
     /// Déclare le service en premier plan. ⚠️ Ne lève jamais : Android 12+ peut

@@ -3,56 +3,103 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:aetherStream/feature/player/player_error.dart';
 
 void main() {
-  group('§audioFallback — reconnaître un échec de décodage audio', () {
-    test('les deux formulations réellement observées sur device', () {
-      // Relevées au logcat sur l'émulateur, sur deux fichiers 4K différents.
-      // La seconde ne contient PAS le mot « audio » : un test naïf sur ce mot
-      // laisserait passer le cas qui a fait échouer la lecture.
-      expect(isAudioDecodeError('Error decoding audio.'), isTrue);
+  group('R5 / §audioFallback — reconnaître un échec qui ne concerne que le son', () {
+    test('un décodeur AUDIO qui ne s\'initialise pas (message brut Media3)', () {
       expect(
-        isAudioDecodeError("Failed to initialize a decoder for codec 'truehd'."),
+        isMedia3AudioError(
+          codeName: 'ERROR_CODE_DECODER_INIT_FAILED',
+          rawMessage: 'MediaCodecAudioRenderer error, index=1, '
+              'format=Format(1, null, null, audio/true-hd, mlpa, -1, null, '
+              '[-1, -1, -1.0, null], [8, 48000]), format_supported=NO_UNSUPPORTED_TYPE',
+        ),
         isTrue,
       );
     });
 
-    test('les autres codecs audio courants des rips 4K', () {
-      for (final codec in ['eac3', 'ac3', 'dts', 'dtshd', 'aac', 'opus',
-                           'flac', 'mp3', 'vorbis', 'alac', 'pcm_s24le']) {
-        expect(
-          isAudioDecodeError("Failed to initialize a decoder for codec '$codec'."),
-          isTrue,
-          reason: codec,
-        );
-      }
+    test('un échec de décodage en cours de lecture, côté audio', () {
+      expect(
+        isMedia3AudioError(
+          codeName: 'ERROR_CODE_DECODING_FAILED',
+          rawMessage: 'MediaCodecAudioRenderer error, index=1, '
+              'format=Format(…, audio/eac3, ec-3, …), format_supported=YES',
+        ),
+        isTrue,
+      );
     });
 
-    test('la casse ne change pas le verdict', () {
-      expect(isAudioDecodeError('ERROR DECODING AUDIO.'), isTrue);
-    });
-
-    test('un codec VIDÉO ne doit jamais déclencher la bascule audio', () {
-      // Y glisser un codec vidéo ferait changer de piste audio pour un problème
-      // d'image : on perdrait le son sans rien résoudre, et on masquerait la
-      // vraie panne — celle que §video4k cherche justement à identifier.
-      for (final codec in ['hevc', 'h264', 'av1', 'vp9', 'mpeg2video']) {
-        expect(
-          isAudioDecodeError("Failed to initialize a decoder for codec '$codec'."),
-          isFalse,
-          reason: codec,
-        );
-      }
-    });
-
-    test('une panne réseau reste une panne réseau', () {
-      // Ces erreurs doivent continuer à passer par la reconnexion ×3.
-      for (final e in [
-        'Failed to open http://serveur/movie/1234.mkv.',
-        'Connection timed out.',
-        'HTTP error 403 Forbidden',
-        '',
+    test('les codes de SORTIE audio sont audio par nature, quel que soit le message', () {
+      for (final code in [
+        'ERROR_CODE_AUDIO_TRACK_INIT_FAILED',
+        'ERROR_CODE_AUDIO_TRACK_WRITE_FAILED',
+        'ERROR_CODE_AUDIO_TRACK_OFFLOAD_INIT_FAILED',
+        'ERROR_CODE_AUDIO_TRACK_OFFLOAD_WRITE_FAILED',
       ]) {
-        expect(isAudioDecodeError(e), isFalse, reason: e);
+        expect(isMedia3AudioError(codeName: code, rawMessage: ''), isTrue,
+            reason: code);
+        expect(isMedia3AudioError(codeName: code.toLowerCase(), rawMessage: ''),
+            isTrue, reason: 'casse de $code');
       }
+    });
+
+    test('un décodeur VIDÉO en échec ne déclenche JAMAIS la bascule audio', () {
+      for (final msg in [
+        'MediaCodecVideoRenderer error, index=0, format=Format(…, video/hevc, …)',
+        'Decoder init failed: c2.qti.hevc.decoder, Format(…, video/hevc, …)',
+        'MediaCodecVideoRenderer error, index=0, format=Format(…, video/av01, …)',
+      ]) {
+        for (final code in [
+          'ERROR_CODE_DECODER_INIT_FAILED',
+          'ERROR_CODE_DECODING_FAILED',
+          'ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES',
+        ]) {
+          expect(isMedia3AudioError(codeName: code, rawMessage: msg), isFalse,
+              reason: '$code / $msg');
+        }
+      }
+    });
+
+    test('un code de décodeur sans indice de piste ne se devine pas', () {
+      expect(
+        isMedia3AudioError(
+            codeName: 'ERROR_CODE_DECODER_INIT_FAILED', rawMessage: ''),
+        isFalse,
+      );
+      expect(
+        isMedia3AudioError(
+            codeName: 'ERROR_CODE_DECODING_FAILED',
+            rawMessage: 'Decoder failed'),
+        isFalse,
+      );
+    });
+
+    test('une panne réseau ou de source reste une panne, même si le message parle d\'audio', () {
+      for (final code in [
+        'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED',
+        'ERROR_CODE_IO_BAD_HTTP_STATUS',
+        'ERROR_CODE_PARSING_CONTAINER_MALFORMED',
+        'ERROR_CODE_BEHIND_LIVE_WINDOW',
+        'ERROR_CODE_UNSPECIFIED',
+        null,
+      ]) {
+        expect(
+          isMedia3AudioError(
+              codeName: code,
+              rawMessage: 'MediaCodecAudioRenderer error, format=audio/aac'),
+          isFalse,
+          reason: '$code',
+        );
+      }
+    });
+
+    test('sincérité : sans le nom du rendu ni le type MIME, un code de décodeur ne suffit pas', () {
+      // Retirer le test sur le message (ne garder que le code) ferait passer
+      // ce cas à vrai : c'est la mutation que ce test attrape.
+      expect(
+        isMedia3AudioError(
+            codeName: 'ERROR_CODE_DECODING_FORMAT_UNSUPPORTED',
+            rawMessage: 'Format unsupported'),
+        isFalse,
+      );
     });
   });
 }

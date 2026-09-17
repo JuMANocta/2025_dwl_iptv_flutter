@@ -38,11 +38,27 @@ class NativeVideoPlayerAudioTrack {
         isSelected: false,
       );
 
+  /// §engineVendor patch 25 (R5, §audioFallback) — « Sans son » : la piste
+  /// audio est COUPÉE (`setTrackTypeDisabled(AUDIO, true)`), l'image continue.
+  /// C'est le dernier recours quand aucune piste audio ne se décode : une
+  /// image sans son reste regardable, un écran d'erreur non. Toute sélection
+  /// ultérieure (index ≥ 0 ou `auto()`) rallume le type.
+  factory NativeVideoPlayerAudioTrack.off() =>
+      const NativeVideoPlayerAudioTrack(
+        index: -2,
+        language: 'off',
+        displayName: 'Off',
+        isSelected: false,
+      );
+
   /// Track index within the platform's audio track enumeration.
   final int index;
 
   /// §engineVendor patch 22 — Whether this is the "Auto" option.
   bool get isAuto => index == -1;
+
+  /// §engineVendor patch 25 — Whether this is the "Off" option.
+  bool get isOff => index == -2;
 
   /// Language code (e.g. "en", "nl", "en-US").
   final String language;

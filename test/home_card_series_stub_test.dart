@@ -24,7 +24,9 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:aetherStream/data/models/m3u_entry.dart';
-import 'package:aetherStream/feature/home/home_page.dart';
+// R44 — Les règles ont quitté `home_card.dart` (une `part` de `home_page.dart`)
+// pour le prédicat PARTAGÉ avec la fiche.
+import 'package:aetherStream/feature/search/series_stub.dart';
 
 /// Le stub tel que `xtream_catalog_parser` en produit un par série et par
 /// compte : type `series`, aucune numérotation, dernier segment entier nu.
@@ -192,6 +194,79 @@ void main() {
 
     test('groupe vide : rien à bloquer', () {
       expect(groupHasSeriesStub(const <M3uEntry>[]), isFalse);
+    });
+  });
+
+  // R45 — Mesuré sur les six dumps réels : 5 836 groupes de série sur 21 025
+  // sont MIXTES (27,76 %), et l'élément de tête n'est pas une propriété du
+  // contenu — il suit l'ordre d'ajout des comptes par l'utilisateur (dans un
+  // sens 100 % des têtes sont des épisodes, dans l'autre 100 % des stubs).
+  // Une décision prise sur la tête est donc un tirage au sort : c'est ce que
+  // ces tests interdisent.
+  group('firstPlayableVersion — la tête du groupe ne décide de rien', () {
+    test('⚠️ groupe mixte, STUB en tête : on lit quand même un épisode', () {
+      final versions = <M3uEntry>[
+        _stub(account: 'xtream'),
+        _episodeM3u(),
+      ];
+      expect(firstPlayableVersion(versions), same(versions[1]));
+    });
+
+    test('⚠️ groupe mixte, ÉPISODE en tête : même verdict', () {
+      final versions = <M3uEntry>[
+        _episodeM3u(),
+        _stub(account: 'xtream'),
+      ];
+      expect(firstPlayableVersion(versions), same(versions[0]));
+    });
+
+    test('les DEUX ordres d\'un même groupe donnent la même URL jouable', () {
+      final stub = _stub(account: 'xtream');
+      final ep = _episodeM3u();
+      expect(
+        firstPlayableVersion(<M3uEntry>[stub, ep])?.url,
+        firstPlayableVersion(<M3uEntry>[ep, stub])?.url,
+      );
+    });
+
+    test('groupe de stubs seuls : rien à lire', () {
+      expect(
+        firstPlayableVersion([_stub(account: 'a'), _stub(account: 'b')]),
+        isNull,
+      );
+    });
+
+    test('groupe vide : rien à lire non plus', () {
+      expect(firstPlayableVersion(const <M3uEntry>[]), isNull);
+    });
+  });
+
+  group('groupIsOnlySeriesStubs — « Choisir un épisode » et rien d\'autre', () {
+    test('tout stub : la fiche est la seule destination honnête', () {
+      expect(
+        groupIsOnlySeriesStubs([_stub(account: 'a'), _stub(account: 'b')]),
+        isTrue,
+      );
+    });
+
+    test('⚠️ groupe MIXTE : il garde « Lire » ET « Télécharger »', () {
+      // C'est la moitié de R45 qui restait ouverte : `groupHasSeriesStub`
+      // rendait `true` ici et retirait « Télécharger » à 5 836 groupes qui
+      // portent pourtant des épisodes parfaitement téléchargeables.
+      final versions = <M3uEntry>[_stub(account: 'xtream'), _episodeM3u()];
+      expect(groupHasSeriesStub(versions), isTrue, reason: 'ancienne règle');
+      expect(groupIsOnlySeriesStubs(versions), isFalse, reason: 'R45');
+    });
+
+    test('épisodes M3U seuls : inchangé', () {
+      expect(
+        groupIsOnlySeriesStubs([_episodeM3u(), _episodeM3u(account: 'm3u2')]),
+        isFalse,
+      );
+    });
+
+    test('groupe vide : ce n\'est pas « tout stub », c\'est rien', () {
+      expect(groupIsOnlySeriesStubs(const <M3uEntry>[]), isFalse);
     });
   });
 }

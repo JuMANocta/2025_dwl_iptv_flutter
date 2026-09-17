@@ -57,6 +57,17 @@ class DownloadTaskTile extends StatelessWidget {
 
       case DownloadAction.delete:
         if (context.mounted) await _deleteTask(context);
+
+      case DownloadAction.cast:
+        // Lot 6b §castLocal — ⚠️ On n'envoie PAS depuis la tuile : elle
+        // n'ouvre aucun moteur vidéo, donc elle ne connaît pas les pistes du
+        // fichier. Elle ne saurait ni énoncer la réserve sur le son (un AC3
+        // donne l'image sans le son sur le récepteur, mesuré le 2026-09-04),
+        // ni présenter le consentement au relais — ⛔ §castRelay ne démarre
+        // jamais sans qu'il ait été LU. On ouvre donc le lecteur sur le
+        // fichier avec la feuille de diffusion armée : tout le chemin
+        // §castRecetteD s'applique, sans une seule règle recopiée ici.
+        _openFile(context, castOnStart: true);
     }
   }
 
@@ -194,9 +205,6 @@ class DownloadTaskTile extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           foregroundColor: color,
           side: BorderSide(color: color.withAlpha(120)),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           minimumSize: const Size(44, 44),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -208,6 +216,7 @@ class DownloadTaskTile extends StatelessWidget {
 
   static IconData _actionIcon(DownloadAction a) => switch (a) {
         DownloadAction.play => Icons.play_arrow_rounded,
+        DownloadAction.cast => Icons.cast,
         DownloadAction.monitor => Icons.terminal,
         DownloadAction.restart => Icons.refresh,
         DownloadAction.cancel => Icons.stop_circle_outlined,
@@ -216,6 +225,7 @@ class DownloadTaskTile extends StatelessWidget {
 
   static String _actionLabel(DownloadAction a) => switch (a) {
         DownloadAction.play => L10n.current.dlActionPlay,
+        DownloadAction.cast => L10n.current.dlActionCast,
         DownloadAction.monitor => L10n.current.dlActionMonitor,
         DownloadAction.restart => L10n.current.dlActionRestart,
         DownloadAction.cancel => L10n.current.dlActionCancel,
@@ -333,7 +343,11 @@ class DownloadTaskTile extends StatelessWidget {
     }
   }
 
-  Future<void> _openFile(BuildContext context) async {
+  /// [castOnStart] — lot 6b §castLocal : ouvrir la feuille de diffusion dès
+  /// que le lecteur joue et connaît ses pistes. C'est le chemin de l'action
+  /// « Diffuser » de la tuile ; la règle du bon moment vit dans
+  /// `cast_autostart_policy.dart`, pas ici.
+  void _openFile(BuildContext context, {bool castOnStart = false}) {
     // §forgetResume — On joue le fichier LOCAL mais on garde l'URL réseau
     // comme clé de progression. Effet : la lecture du fichier téléchargé
     // continue à alimenter la pile "Reprendre" de la home (qui regarde par
@@ -348,7 +362,14 @@ class DownloadTaskTile extends StatelessWidget {
           title: task.displayName,
           sourceType: VideoSourceType.file,
           progressKey: task.url,
+          // R39 / §heroSeriesResume — La clé de SÉRIE, posée au téléchargement
+          // (elle n'est pas dérivable de l'URL de l'épisode). Sans elle, un
+          // épisode regardé depuis sa tuile n'entrait jamais au hero de
+          // l'accueil. ⛔ Jamais dans `allResumeKeys` : la fin d'un épisode
+          // effacerait la reprise de TOUTE la série.
+          seriesResumeKey: task.seriesKey,
           startPosition: progress?.position,
+          openCastOnStart: castOnStart,
         ),
       ),
     );

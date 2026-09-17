@@ -651,6 +651,25 @@ class VideoPlayerMethodHandler(
                     result.success(false)
                 }
             }
+            // §engineVendor patch 26 (§bgAudio) — coupe ou rallume la piste
+            // VIDEO seule. Ecran eteint, `clearVideoSurface` laisse le rendu
+            // decoder sur une surface de substitution : de la batterie pour
+            // du son seul. Le type reste desactive jusqu'au rappel avec
+            // enabled=true (retour au premier plan).
+            "setVideoTrackEnabled" -> {
+                try {
+                    val enabled = call.argument<Boolean>("enabled") ?: true
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !enabled)
+                        .build()
+                    NpLog.d(TAG, "setVideoTrackEnabled($enabled)")
+                    result.success(true)
+                } catch (e: Exception) {
+                    NpLog.w(TAG, "setVideoTrackEnabled: $e")
+                    result.success(false)
+                }
+            }
             // §engineVendor patch 6 — bascule precision/rapidite du seek.
             "setFastSeek" -> {
                 fastSeek = call.argument<Boolean>("enabled") ?: true
@@ -1089,10 +1108,34 @@ class VideoPlayerMethodHandler(
             // tombait en INVALID_INDEX : une langue audio posee une fois ne
             // pouvait etre defaite qu'en imposant une autre piste.
             // /!\ Peut re-demuxer (~3 s) : c'est un geste explicite, assume.
+            // §engineVendor patch 25 (R5, §audioFallback) — Index -2 = « sans
+            // son » : la piste AUDIO est coupee (`setTrackTypeDisabled`), la
+            // video continue. Dernier recours quand aucune piste audio ne se
+            // decode ; -1 et tout index >= 0 rallument le type.
+            if (requestedIndex == -2) {
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .build()
+                NpLog.d(TAG, "🔇 Audio track disabled (playing without sound)")
+                eventHandler.sendEvent(
+                    "audioTrackChange",
+                    mapOf(
+                        "index" to -2,
+                        "language" to "off",
+                        "displayName" to "Off",
+                        "isSelected" to false
+                    )
+                )
+                result.success(null)
+                return
+            }
             if (requestedIndex == -1) {
                 player.trackSelectionParameters = player.trackSelectionParameters
                     .buildUpon()
                     .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                     .setPreferredAudioLanguage(null)
                     .build()
                 NpLog.d(TAG, "🔊 Audio track back to automatic")
@@ -1116,6 +1159,9 @@ class VideoPlayerMethodHandler(
                     if (flatIndex == requestedIndex) {
                         player.trackSelectionParameters = player.trackSelectionParameters
                             .buildUpon()
+                            // patch 25 — une piste choisie rallume le type,
+                            // au cas ou « sans son » (-2) l'avait coupe.
+                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                             .setOverrideForType(
                                 TrackSelectionOverride(group.mediaTrackGroup, trackIndex)
                             )

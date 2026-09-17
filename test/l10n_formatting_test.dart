@@ -56,8 +56,28 @@ void main() {
       const int gib = 1024 * 1024 * 1024;
       expect(formatFileSize(gib + gib ~/ 2, en), '1.50 GB');
       expect(formatFileSize(gib + gib ~/ 2, fr), '1,50 Go');
-      expect(formatFileSize(512 * 1024, en), '512.00 kB');
-      expect(formatFileSize(0, fr), '0 octets');
+    });
+
+    // R8 (2026-09-16) — UN seul formateur de tailles, et une précision qui se
+    // lit. ⚠️ « 512.00 kB » et « 0 octets » étaient les sorties d'avant :
+    // deux décimales inutiles sur des kilooctets, et un pluriel sur zéro.
+    test("R8 — la précision suit l'unité", () {
+      const int kib = 1024;
+      expect(formatFileSize(512 * kib, en), '512 kB');
+      expect(formatFileSize(300 * kib, fr), '300 Ko');
+      // ⚠️ Le cas qui a fait naître la règle : 300 Ko arrondis au mégaoctet
+      // donneraient « 0,0 Mo », c'est-à-dire « rien à récupérer ».
+      expect(formatFileSize(300 * kib, fr), isNot(contains('Mo')));
+      expect(formatFileSize(217 * kib * kib, fr), '217,0 Mo');
+      expect(formatFileSize((12.3 * kib * kib).round(), fr), '12,3 Mo');
+      expect(formatFileSize((12.3 * kib * kib).round(), en), '12.3 MB');
+    });
+
+    test('R8 — « 0 octet » au singulier, « 2 octets » au pluriel', () {
+      expect(formatFileSize(0, fr), '0 octet');
+      expect(formatFileSize(1, fr), '1 octet');
+      expect(formatFileSize(2, fr), '2 octets');
+      expect(formatFileSize(0, en), '0 B');
     });
 
     test('durées courtes', () {
@@ -77,8 +97,12 @@ void main() {
           .failDetailTooLong(formatShortDelay(const Duration(minutes: 3))),
       at: DateTime(2026, 9, 11),
     ));
+    // R8 (2026-09-16) — Le motif ne dit plus « après le démarrage » : ce n'est
+    // vrai que d'UN des trois endroits qui reportent une liste. Les deux
+    // autres (le chargement de la flotte, 4 s après le boot, et son délai
+    // dépassé) reportent alors que le démarrage est fini depuis longtemps.
     expect(text,
-        'Update postponed until after start-up. (still not ready after 3 min)');
+        'Update postponed: this list will be picked up. (still not ready after 3 min)');
     expect(
         describeFailure(LoadFailure(LoadFailureKind.cacheGone,
             detail: L10n.current.failDetailCacheCleared,

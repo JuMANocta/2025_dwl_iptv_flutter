@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/themes.dart';
 import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/backup_service.dart';
@@ -382,11 +383,7 @@ class _ActionCard extends StatelessWidget {
               buttonLabel,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            style: FilledButton.styleFrom(
-              backgroundColor: color,
-              foregroundColor: onColorFor(color), // D4B-08
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
+            style: aetherFilledStyle(color),
           ),
         ],
       ),

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/themes.dart';
 import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/core/navigation/playlist_visibility.dart';
@@ -16,6 +17,7 @@ import 'package:aetherStream/data/services/playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
 import 'package:aetherStream/data/services/storage_janitor.dart';
 import 'package:aetherStream/data/services/playlist_reload_service.dart';
+import 'package:aetherStream/core/utils/formatters.dart' show formatFileSize;
 import 'package:aetherStream/data/models/account_info.dart';
 import 'package:aetherStream/feature/accounts/edit_account_sheet.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
@@ -54,6 +56,19 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
   late Future<List<StreamAccount>> _accountsFuture;
   String? _priorityAccountId;
   bool _priorityChanged = false;
+
+  /// R18 / R22 (D4B-10) — La dernière liste de comptes RÉELLEMENT obtenue.
+  ///
+  /// ⛔ Un rafraîchissement ne doit pas faire disparaître la page. `_refresh()`
+  /// remplace le `Future` du `FutureBuilder`, qui repassait alors par
+  /// `ConnectionState.waiting` : la liste s'effaçait sous un spinner, puis se
+  /// reconstruisait EN HAUT (la position du scrollable était perdue avec les
+  /// éléments), et au D-pad le focus retombait au premier compte. Or on sait
+  /// déjà quoi montrer — les comptes ne changent pas parce qu'on recharge une
+  /// liste. On garde donc l'affichage et on le remplace quand la réponse
+  /// arrive. Le spinner ne reste que pour le PREMIER chargement, quand on n'a
+  /// effectivement rien à montrer.
+  List<StreamAccount>? _lastAccounts;
 
   /// §reloadAll — Empêche un second lot pendant qu'un premier tourne.
   bool _reloadingAll = false;
@@ -479,10 +494,16 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
           child: FutureBuilder<List<StreamAccount>>(
             future: _accountsFuture,
             builder: (ctx, snap) {
-              if (snap.connectionState != ConnectionState.done) {
+              // R18 / R22 (D4B-10) — cf. `_lastAccounts` : on ne retombe sur le
+              // spinner que si on n'a VRAIMENT rien à montrer.
+              final List<StreamAccount>? accounts =
+                  snap.connectionState == ConnectionState.done
+                      ? (snap.data ?? const <StreamAccount>[])
+                      : _lastAccounts;
+              if (accounts == null) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final accounts = snap.data ?? [];
+              _lastAccounts = accounts;
               if (accounts.isEmpty) return _buildEmptyState(cs);
               // §fabOverlap — Le FAB « Ajouter » flotte au-dessus de la liste
               // et recouvrait le bouton ⋯ de la dernière carte (constaté sur
@@ -501,6 +522,9 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                 child: RefreshIndicator(
                   onRefresh: _refresh,
                   child: ListView.builder(
+                    // §rowStorageKey — Sans clé propre, ce scrollable partage
+                    // sa case de position avec les autres de la même route.
+                    key: const PageStorageKey<String>('accounts_list'),
                     padding: EdgeInsets.fromLTRB(12, 16, 12, isTv ? 12 : 100),
                     itemCount: accounts.length + 1, // +1 pour le bandeau info
                     itemBuilder: (_, i) {
@@ -508,6 +532,11 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                       final acc = accounts[i - 1];
                       final isPriority = _priorityAccountId == acc.id;
                       return _AccountCard(
+                        // R22 (D4B-10) — La carte s'identifie par son COMPTE,
+                        // pas par son rang : au retour d'un rafraîchissement,
+                        // Flutter réapparie alors les états (et le focus
+                        // D-pad) sur le bon compte, même si l'ordre a bougé.
+                        key: ValueKey<String>(acc.id),
                         account: acc,
                         isPriority: isPriority,
                         onTap: () => _setPriority(acc.id),
@@ -727,6 +756,7 @@ class _AccountCard extends StatefulWidget {
   final VoidCallback onReloaded;
 
   const _AccountCard({
+    super.key,
     required this.account,
     required this.isPriority,
     required this.onTap,
@@ -1082,38 +1112,53 @@ class _AccountCardState extends State<_AccountCard> {
     return Row(
       children: [
         Expanded(
-          child: FocusableChip(
-            enabled: !_reloading,
-            onTap: _reload,
-            borderRadius: BorderRadius.circular(12),
-            child: FilledButton.icon(
-              onPressed: _reloading ? null : _reload,
-              icon: _reloading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.black,
-                      ),
-                    )
-                  : const Icon(Icons.refresh),
-              label: Text(
-                _reloading
-                    ? context.l10n.acctDownloading
-                    : context.l10n.acctReloadPlaylist,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: kAccentPrimary,
-                foregroundColor: onColorFor(kAccentPrimary), // D4B-08
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                // Coins alignés sur le halo de la chip (le stadium M3 par
-                // défaut laisserait le halo déborder dans les angles).
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
+          // R18 — Le bouton disait « Téléchargement… » du premier octet à la
+          // dernière entrée, alors que le téléchargement est fini depuis
+          // longtemps quand la liste se lit. La phase EXISTE déjà
+          // (`AccountLoadState`, c'est elle qui peint la chip juste au-dessus) :
+          // il suffisait de la lire au lieu d'un booléen local.
+          child: ValueListenableBuilder<Map<String, AccountLoadState>>(
+            valueListenable: ParsedPlaylistService.loadStates,
+            builder: (context, states, _) {
+              final AccountLoadState? phase = states[widget.account.id];
+              // ⚠️ Sans état publié, on ne devine pas : le premier libellé
+              // reste celui du téléchargement, qui est bien ce qui commence.
+              final String busyLabel =
+                  phase == AccountLoadState.parsing
+                      ? context.l10n.acctReadingPlaylist
+                      : context.l10n.acctDownloading;
+              return FocusableChip(
+                enabled: !_reloading,
+                onTap: _reload,
+                borderRadius: BorderRadius.circular(12),
+                child: FilledButton.icon(
+                  onPressed: _reloading ? null : _reload,
+                  icon: _reloading
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            // §lightTheme — le contraste se dérive du fond du
+                            // bouton, il ne se décrète pas noir.
+                            color: onColorFor(kAccentPrimary),
+                          ),
+                        )
+                      : const Icon(Icons.refresh),
+                  label: Text(
+                    _reloading ? busyLabel : context.l10n.acctReloadPlaylist,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  // Le style commun, plus des coins alignés sur le halo de la
+                  // chip (le stadium M3 par défaut laisserait le halo déborder
+                  // dans les angles).
+                  style: aetherFilledStyle(kAccentPrimary).copyWith(
+                    shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12))),
+                  ),
+                ),
+              );
+            },
           ),
         ),
         const SizedBox(width: 8),
@@ -1191,7 +1236,7 @@ class _AccountStateChips extends StatelessWidget {
                       spacing: 6,
                       runSpacing: 4,
                       children: [
-                        _statusChip(state, failure),
+                        _statusChip(state, failure, cs.onSurfaceVariant),
                         if (daysLeft != null &&
                             daysLeft <=
                                 ExpirationAlertService.kAlertThresholdDays)
@@ -1232,7 +1277,12 @@ class _AccountStateChips extends StatelessWidget {
   /// reste) : le peindre en rouge ferait chercher une panne là où il n'y en a
   /// pas. On garde donc le gris neutre pour le bénin, et `kError` uniquement
   /// pour ce qui a vraiment échoué.
-  Widget _statusChip(AccountLoadState state, LoadFailure? failure) {
+  /// [neutralChipColor] — le gris d'une chip BÉNIGNE (« SUR DISQUE »,
+  /// « NON CHARGÉ ») : celui du thème, jamais `Colors.grey`, qui restait
+  /// identique en clair et en sombre et disparaissait sur le fond clair.
+  /// Passé en paramètre parce que cette méthode n'a pas de `BuildContext`.
+  Widget _statusChip(AccountLoadState state, LoadFailure? failure,
+      Color neutralChipColor) {
     if (isPriority && state == AccountLoadState.loaded) {
       return _Chip(
         text: L10n.current.acctChipMain,
@@ -1255,11 +1305,13 @@ class _AccountStateChips extends StatelessWidget {
         if (failure == null) {
           return state == AccountLoadState.error
               ? _Chip(text: L10n.current.acctChipError, color: kError)
-              : _Chip(text: L10n.current.acctChipNotLoaded, color: Colors.grey);
+              : _Chip(
+                  text: L10n.current.acctChipNotLoaded,
+                  color: neutralChipColor);
         }
         return _Chip(
           text: labelForFailure(failure.kind),
-          color: failure.isBenign ? Colors.grey : kError,
+          color: failure.isBenign ? neutralChipColor : kError,
         );
     }
   }
@@ -1310,7 +1362,10 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = filled ? Colors.black : color;
+    // §lightTheme — Le contraste se DÉRIVE du fond, il ne se décrète pas :
+    // un accent clair (préréglage Tron) laissait un texte noir illisible sur
+    // une chip pleine, et un accent sombre l'inverse.
+    final fg = filled ? onColorFor(color) : color;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -1519,7 +1574,12 @@ class _FileStatsBlock extends StatelessWidget {
                 child: _MiniStat(
                   icon: Icons.sd_storage_outlined,
                   label: L10n.current.acctM3uSize,
-                  value: stats == null ? '—' : _formatSize(stats.size),
+                  // R8 — Un QUATRIÈME formateur de tailles vivait ici, avec
+                  // ses propres clés `unit*`, son propre arrondi et un point
+                  // décimal en dur : « 12.3 Mo » sur un écran français, à côté
+                  // de « 12,3 Mo » ailleurs dans l'app. Un seul formateur
+                  // désormais (`formatFileSize`), qui suit la locale.
+                  value: stats == null ? '—' : formatFileSize(stats.size),
                 ),
               ),
               Container(width: 1, height: 26, color: cs.outlineVariant.withAlpha(80)),
@@ -1551,15 +1611,6 @@ class _FileStatsBlock extends StatelessWidget {
     } catch (_) {
       return null;
     }
-  }
-
-  static String _formatSize(int bytes) {
-    if (bytes < 1024) return L10n.current.unitBytes('$bytes');
-    if (bytes < 1024 * 1024) {
-      return L10n.current.unitKilobytes((bytes / 1024).toStringAsFixed(1));
-    }
-    return L10n.current.unitMegabytes(
-        (bytes / 1024 / 1024).toStringAsFixed(1));
   }
 
   static String _formatAge(DateTime when) {

@@ -12,7 +12,11 @@ import 'package:aetherStream/data/services/replay_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
+import 'package:aetherStream/feature/player/launch_playback.dart';
 import 'package:aetherStream/feature/search/details_page.dart';
+// R39 — `isSeriesStubEntry` : le stub d'une série, la seule source possible
+// d'une clé de série au moment du téléchargement.
+import 'package:aetherStream/feature/search/series_stub.dart';
 import 'package:aetherStream/feature/replay/replay_widget.dart';
 import 'package:aetherStream/feature/replay/replay_date_picker_sheet.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
@@ -298,6 +302,13 @@ Future<void> showMediaActionSheet(BuildContext context, M3uEntry entry) async {
                 url: entry.url,
                 nom: buildDownloadName(entry),
                 releaseYear: releaseYear,
+                // R39 — Les versions sœurs du titre portent parfois le stub de
+                // sa série : la clé se pose alors ici, au téléchargement.
+                // `null` sinon (§heroSeriesResume : jamais un à-peu-près).
+                seriesKey: seriesResumeKeyFor(
+                  stubs: _siblingEntriesOf(entry).where(isSeriesStubEntry).toList(),
+                  episode: entry,
+                ),
                 context: navigatorKey.currentContext!,
               );
             },
@@ -498,6 +509,20 @@ String _formatResumeLabel(Duration d) {
   return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
 }
 
+/// §endOfMovie / §dlPlayLocal — Les URL de TOUTES les versions du titre de
+/// [entry], relues en mémoire avec la règle partagée de la fiche
+/// (§detailsLive). Une seule définition : le libellé de la tuile et le
+/// lancement doivent regarder le MÊME groupe, sinon la feuille dirait « Lire »
+/// là où la lecture choisit un fichier local.
+List<M3uEntry> _siblingEntriesOf(M3uEntry entry) => entriesOfTitle(
+      ParsedPlaylistService.byTypeWithPriority(entry.accountId)[entry.type] ??
+          const <M3uEntry>[],
+      entry,
+    ).toList();
+
+List<String> _siblingUrlsOf(M3uEntry entry) =>
+    <String>[for (final e in _siblingEntriesOf(entry)) e.url];
+
 Future<void> _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPosition}) async {
   final BuildContext root = navigatorKey.currentContext ?? context;
   Navigator.pop(context);
@@ -508,17 +533,20 @@ Future<void> _launchPlayer(BuildContext context, M3uEntry entry, {Duration? star
   FavoritesService.addEntry(entry);
   // §endOfMovie — La feuille ne reçoit qu'UNE entrée : ses versions sœurs se
   // relisent en mémoire avec la règle partagée de la fiche (§detailsLive).
-  final List<String> siblings = [
-    for (final e in entriesOfTitle(
-        ParsedPlaylistService.byTypeWithPriority(entry.accountId)[entry.type] ??
-            const <M3uEntry>[],
-        entry))
-      e.url,
-  ];
+  final List<String> siblings = _siblingUrlsOf(entry);
   // ⚠️ `root`, pas `context` : la feuille est refermée et son contexte est
   // mort après l'attente de la porte.
-  Navigator.push(root, MaterialPageRoute(builder: (_) => PlayerPage(
-    path: entry.url,
+  // §dlPlayLocal — le fichier téléchargé passe avant le flux, ici comme
+  // depuis la fiche : la feuille d'appui long ne doit pas être le seul geste
+  // qui ignore un téléchargement.
+  await launchPlayback(root,
+      networkPath: entry.url,
+      groupUrls: siblings,
+      // R23 — avertir quand l'abonnement n'a plus de connexion libre.
+      accountId: entry.accountId,
+      build: (src) => PlayerPage(
+    path: src.path,
+    progressKey: src.progressKey,
     title: entry.displayName,
     siblingResumeKeys: siblings,
     // §stallCount — rattache les blocages au fournisseur.
@@ -526,13 +554,13 @@ Future<void> _launchPlayer(BuildContext context, M3uEntry entry, {Duration? star
     // §watchContext a/b — badges qualité + saison/épisode.
     qualityTag: entry.title.qualityOrDefault,
     episodeTag: entry.title.seasonEpisodeLabel,
-    sourceType: VideoSourceType.network,
+    sourceType: src.sourceType,
     badgeType: entry.type == M3uContentType.series
         ? PlayerBadgeType.series
         : PlayerBadgeType.movie,
     startPosition: startPosition,
     posterUrl: entry.logoUrl, // §nowPlaying
-  )));
+  ));
 }
 
 class _PlayResumeTiles extends StatelessWidget {
@@ -548,9 +576,15 @@ class _PlayResumeTiles extends StatelessWidget {
         final p = WatchProgressService.getProgress(entry.url);
         final hasResume = p != null && p.position.inSeconds > 5;
         if (!hasResume) {
+          // §dlPlayLocal — la feuille dit ce qui va se passer : ce titre est
+          // sur l'appareil, il se lira sans réseau.
+          final bool hasLocal = hasLocalFileFor(
+            networkPath: entry.url,
+            groupUrls: _siblingUrlsOf(entry),
+          );
           return ListTile(
             leading: const Icon(Icons.play_arrow),
-            title: Text(l10n.actionSheetPlay),
+            title: Text(hasLocal ? l10n.playOffline : l10n.actionSheetPlay),
             onTap: () => _launchPlayer(context, entry),
           );
         }

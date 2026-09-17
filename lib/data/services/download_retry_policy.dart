@@ -19,6 +19,8 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+import '../models/download_task.dart';
+
 /// Ce qui a interrompu un transfert.
 enum DownloadFailureKind {
   /// Le réseau a lâché (coupure, DNS, socket fermée, délai dépassé). La source
@@ -113,4 +115,81 @@ bool shouldRequeueAfterFailure({
 }) {
   if (kind != DownloadFailureKind.network) return false;
   return requeues < maxRequeues;
+}
+
+/// §dlQueueFix (recette AVD du 2026-09-17) — Avancée, en octets, à partir de
+/// laquelle un transfert a PROUVÉ que la source répond : ses remises en file
+/// lui sont rendues.
+const int kRequeueCreditBytes = 8 * 1024 * 1024;
+
+/// Nombre de remises en file à COMPTER contre la tâche au moment d'un échec.
+///
+/// ⚠️ Mesuré sur un vrai fournisseur : il ferme la connexion toutes les ~30 s.
+/// Chaque reprise `Range` avançait de ~290 Mo, mais les crédits n'étaient
+/// jamais rendus : un film de 2 Go tombait en échec à la 3e coupure, en plein
+/// progrès. Le plafond vise une source qui ne répond PLUS (boucle sans
+/// avancée), pas une source qui coupe souvent. [bytesAtLastRequeue] est `null`
+/// tant qu'aucune remise en file n'a eu lieu.
+int effectiveRequeues({
+  required int requeues,
+  required int? bytesAtLastRequeue,
+  required int bytesNow,
+  int creditBytes = kRequeueCreditBytes,
+}) {
+  if (requeues <= 0 || bytesAtLastRequeue == null) return requeues;
+  return (bytesNow - bytesAtLastRequeue) >= creditBytes ? 0 : requeues;
+}
+
+/// §dlQueueFix — Ce qu'il faut faire d'une tâche retrouvée au DÉMARRAGE.
+enum StartupReconcileVerdict {
+  /// Rien à faire : son statut est déjà juste.
+  keep,
+
+  /// Remise en file : le fichier partiel est là, la reprise `Range` repartira
+  /// exactement au bon octet.
+  requeue,
+
+  /// Le flux était fini : la finalisation (renommage / MediaStore) se rejoue.
+  refinalize,
+
+  /// Le fichier final est là et complet : la tâche avait abouti, seul son
+  /// statut n'avait pas eu le temps d'être écrit.
+  complete,
+
+  /// Rien à reprendre : on l'annonce en échec, l'utilisateur relancera.
+  fail,
+}
+
+/// §dlQueueFix — **Le défaut payé** : après un arrêt de l'application (balayage
+/// dans les Récents, processus tué par Android), TOUT ce qui était
+/// `downloading` ou `finalizing` basculait en `failed`. Or le fichier partiel,
+/// lui, est toujours sur le disque et la reprise `Range` existe depuis
+/// toujours : un film à 90 % demandait un geste manuel pour continuer, et une
+/// finalisation interrompue perdait un fichier entièrement téléchargé.
+///
+/// [partialExists] — le `.part` (`tempPath`) est présent sur le disque.
+/// [finalSizeOk] — le fichier final existe ET n'est pas tronqué (taille
+/// attendue inconnue = on fait confiance).
+///
+/// ⚠️ `downloading` ne regarde JAMAIS le fichier final : son nom n'est encore
+/// qu'un nom RÉSERVÉ (§dlEpisode), un homonyme déposé par l'utilisateur ne
+/// doit pas faire passer pour « terminé » un transfert qui n'a rien écrit.
+StartupReconcileVerdict startupReconcileVerdict({
+  required DownloadStatus status,
+  required bool partialExists,
+  required bool finalSizeOk,
+}) {
+  switch (status) {
+    case DownloadStatus.downloading:
+      return partialExists
+          ? StartupReconcileVerdict.requeue
+          : StartupReconcileVerdict.fail;
+    case DownloadStatus.finalizing:
+      if (partialExists) return StartupReconcileVerdict.refinalize;
+      return finalSizeOk
+          ? StartupReconcileVerdict.complete
+          : StartupReconcileVerdict.fail;
+    default:
+      return StartupReconcileVerdict.keep;
+  }
 }

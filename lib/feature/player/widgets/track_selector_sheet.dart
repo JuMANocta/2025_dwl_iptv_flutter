@@ -1,8 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import '../playback_engine.dart';
 
 import '../../../core/themes/colors.dart';
 import '../../../core/utils/app_snackbar.dart';
+import '../../../data/services/online_subtitles_service.dart';
+import '../../../data/services/subtitle_api_service.dart';
+import '../../../data/services/tmdb_service.dart';
 import '../../../data/services/track_preferences_service.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
@@ -24,8 +30,15 @@ import 'player_options_sheet.dart' show BackToVideoRow;
 /// une ligne de fin de section l'annonce (« … pour les prochains titres
 /// aussi ») et la DÉFAIT d'un geste. Avant, la coupure était retenue sans le
 /// dire, et le seul retour épinglait une langue pour toujours.
+///
+/// Lot 11 — [onlineSearch] décrit le contenu en cours pour la recherche de
+/// sous-titres en ligne. `null` = la ligne « Chercher en ligne » n'existe pas
+/// (contenu non identifiable : une chaîne en direct, un titre vide).
 Future<void> showTrackSelector(
-    BuildContext context, AetherPlaybackEngine player) {
+  BuildContext context,
+  AetherPlaybackEngine player, {
+  SubtitleSearchContext? onlineSearch,
+}) {
   return showAdaptiveActionSheet<void>(
     context: context,
     // §5 — Le sélecteur fournit son PROPRE scroll borné (cf. _TrackSelector) :
@@ -34,6 +47,7 @@ Future<void> showTrackSelector(
     scrollable: false,
     builder: (sheetCtx) => _TrackSelector(
       player: player,
+      onlineSearch: onlineSearch,
       onClose: () => Navigator.of(sheetCtx).pop(),
     ),
   );
@@ -42,11 +56,18 @@ Future<void> showTrackSelector(
 class _TrackSelector extends StatelessWidget {
   final AetherPlaybackEngine player;
 
+  /// Lot 11 — Ce qu'il faut pour chercher en ligne, ou `null`.
+  final SubtitleSearchContext? onlineSearch;
+
   /// §tvOptionsBack — Ferme la feuille. Sans elle, la seule sortie à la
   /// télécommande était la touche Retour.
   final VoidCallback onClose;
 
-  const _TrackSelector({required this.player, required this.onClose});
+  const _TrackSelector({
+    required this.player,
+    required this.onClose,
+    this.onlineSearch,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -150,6 +171,17 @@ class _TrackSelector extends StatelessWidget {
                     accent: kAccentSecondary,
                     title: context.l10n.tracksMemorySubOff,
                     onTap: () => _resetSubtitles(context),
+                  ),
+
+                // Lot 11 — Chercher des sous-titres en ligne. EN FIN de
+                // section, pour la même raison que la ligne de mémoire : à la
+                // télécommande, la première ligne est l'action par défaut du
+                // bouton OK, et partir sur le réseau ne doit pas l'être.
+                if (onlineSearch != null)
+                  _OnlineSubtitleRow(
+                    player: player,
+                    search: onlineSearch!,
+                    onLoaded: onClose,
                   ),
 
                 // §tvOptionsBack — Même manque que le panneau d'options : à la
@@ -521,5 +553,243 @@ class _TrackRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Lot 11 — La ligne « Chercher en ligne » et tout ce qu'elle déclenche.
+///
+/// Elle porte son PROPRE état de chargement : la feuille de pistes est
+/// `StatelessWidget`, et la chaîne (identifier le titre auprès de TMDB, puis
+/// interroger le fournisseur) prend deux à trois secondes — sans indicateur,
+/// l'utilisateur appuie une deuxième fois.
+///
+/// ⚠️ Elle n'ouvre la feuille de résultats qu'APRÈS avoir obtenu la liste, et
+/// par-dessus la feuille de pistes plutôt qu'à sa place : refermer celle-ci
+/// d'abord invaliderait le contexte dont on a besoin pour ouvrir la suivante.
+class _OnlineSubtitleRow extends StatefulWidget {
+  final AetherPlaybackEngine player;
+  final SubtitleSearchContext search;
+
+  /// Appelé quand un sous-titre est posé : la feuille de pistes se referme,
+  /// on revient à la vidéo qui les affiche déjà.
+  final VoidCallback onLoaded;
+
+  const _OnlineSubtitleRow({
+    required this.player,
+    required this.search,
+    required this.onLoaded,
+  });
+
+  @override
+  State<_OnlineSubtitleRow> createState() => _OnlineSubtitleRowState();
+}
+
+class _OnlineSubtitleRowState extends State<_OnlineSubtitleRow> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return _TrackRow(
+      accent: kAccentSecondary,
+      leading: _busy
+          ? const SizedBox(
+              width: 42,
+              height: 30,
+              child: Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          : _IconBadge(Icons.travel_explore_rounded, kAccentSecondary),
+      title: context.l10n.tracksSearchOnline,
+      subtitle: _busy
+          ? context.l10n.tracksOnlineSearching
+          : context.l10n.tracksSearchOnlineSub,
+      selected: false,
+      // ⚠️ §boundFocus — la ligne reste TOUJOURS activable : la neutraliser
+      // pendant la recherche lui ferait perdre le focus à la télécommande.
+      // C'est `_start` qui refuse un second départ.
+      onTap: _start,
+    );
+  }
+
+  Future<void> _start() async {
+    if (_busy) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final l10n = context.l10n;
+    setState(() => _busy = true);
+    try {
+      final String? key = await SubtitleApiService.getApiKey();
+      if (key == null || key.isEmpty) {
+        _TrackSelector._toast(messenger, l10n.tracksOnlineNoKey);
+        return;
+      }
+
+      // La langue de l'interface d'abord, l'anglais ensuite : c'est la paire
+      // qui couvre presque tout, et demander TOUTES les langues rendait des
+      // centaines de lignes à faire défiler à la télécommande.
+      final String ui = l10n.localeName;
+      final String languages = ui == 'en' ? 'en' : '$ui,en';
+
+      // Le fournisseur travaille sur un identifiant TMDB ; nos listes n'en
+      // portent pas. `resolveTmdbId` fait la recherche et la mémorise.
+      final int? tmdbId = await TmdbService.instance.resolveTmdbId(
+        query: widget.search.query,
+        isTv: widget.search.isTv,
+      );
+      if (tmdbId == null) {
+        _TrackSelector._toast(messenger, l10n.tracksOnlineNoTitle);
+        return;
+      }
+
+      final SubtitleSearchOutcome outcome = await OnlineSubtitlesService.search(
+        tmdbId: tmdbId,
+        languages: languages,
+        apiKey: key,
+        season: widget.search.season,
+        episode: widget.search.episode,
+      );
+      if (!outcome.isOk) {
+        _TrackSelector._toast(
+          messenger,
+          switch (outcome.error!) {
+            SubtitleSearchError.badKey => l10n.tracksOnlineBadKey,
+            SubtitleSearchError.quota => l10n.tracksOnlineQuota,
+            SubtitleSearchError.network => l10n.tracksOnlineFailed,
+          },
+        );
+        return;
+      }
+      if (outcome.results.isEmpty) {
+        _TrackSelector._toast(messenger, l10n.tracksOnlineNone);
+        return;
+      }
+      if (!mounted) return;
+      await _showResults(outcome.results);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _showResults(List<OnlineSubtitle> results) {
+    return showAdaptiveActionSheet<void>(
+      context: context,
+      builder: (sheetCtx) => _OnlineResults(
+        results: results,
+        onPick: (s) => _apply(sheetCtx, s),
+        onClose: () => Navigator.of(sheetCtx).pop(),
+      ),
+    );
+  }
+
+  /// Télécharge puis pose le fichier. ⚠️ Tout ce qui vient d'un contexte est
+  /// pris AVANT les attentes : les deux feuilles se referment en chemin.
+  Future<void> _apply(BuildContext sheetCtx, OnlineSubtitle s) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final l10n = context.l10n;
+    final nav = Navigator.of(sheetCtx);
+
+    final Directory cache = await getTemporaryDirectory();
+    final String? path =
+        await OnlineSubtitlesService.download(s, cacheDir: cache);
+    if (path == null) {
+      _TrackSelector._toast(messenger, l10n.tracksOnlineAddFailed);
+      return;
+    }
+    // Le moteur charge le fichier ET le sélectionne ; la piste rejoint ensuite
+    // la liste ordinaire (cf. `loadExternalSubtitle`).
+    final bool ok = await widget.player.loadExternalSubtitle(
+      filePath: path,
+      language: s.language,
+      label: s.display,
+    );
+    if (!ok) {
+      _TrackSelector._toast(messenger, l10n.tracksOnlineAddFailed);
+      return;
+    }
+    debugPrint('✅ lot 11 — sous-titre en ligne posé (${s.language})');
+    if (nav.canPop()) nav.pop();
+    widget.onLoaded();
+    _TrackSelector._toast(messenger, l10n.tracksOnlineAdded);
+  }
+}
+
+/// Lot 11 — La liste des sous-titres proposés. Le sous-titre d'une ligne dit
+/// la VERSION à laquelle il est calé : c'est la seule chose qui distingue deux
+/// entrées de la même langue, et donc la seule qui aide à choisir.
+class _OnlineResults extends StatelessWidget {
+  final List<OnlineSubtitle> results;
+  final ValueChanged<OnlineSubtitle> onPick;
+  final VoidCallback onClose;
+
+  const _OnlineResults({
+    required this.results,
+    required this.onPick,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final maxH = MediaQuery.of(context).size.height * 0.72;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxH),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.travel_explore_rounded,
+                        color: kAccentSecondary, size: 22),
+                    const SizedBox(width: 10),
+                    Text(
+                      context.l10n.tracksOnlineTitle,
+                      style: TextStyle(
+                        color: cs.onSurface,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                ...results.map((s) => _TrackRow(
+                      accent: kAccentSecondary,
+                      leading: _LangBadge(
+                          trackLanguageShort(s.language), kAccentSecondary),
+                      title: trackLanguageName(s.language) ?? s.display,
+                      subtitle: _describe(context, s),
+                      selected: false,
+                      onTap: () => onPick(s),
+                    )),
+                // §tvOptionsBack — La sortie, en dernier.
+                const SizedBox(height: 18),
+                BackToVideoRow(onTap: onClose),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Ce qui distingue cette ligne des autres : la version, la provenance, et
+  /// la mention « sourds et malentendants » quand elle s'applique.
+  static String? _describe(BuildContext context, OnlineSubtitle s) {
+    final parts = <String>[
+      if (s.release != null) s.release!,
+      if (s.source != null && s.source!.isNotEmpty) s.source!,
+      if (s.hearingImpaired) context.l10n.tracksOnlineHearing,
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
   }
 }

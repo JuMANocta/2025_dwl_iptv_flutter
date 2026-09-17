@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
@@ -278,21 +279,12 @@ class _MemoryStatsCardState extends State<MemoryStatsCard> {
 
   /// Poids lisible : sous le Mo, un arrondi au Mo affichait « 0 Mo » pour des
   /// fichiers bien présents.
-  String _fmtBytes(int bytes) {
-    if (bytes <= 0) return '—';
-    if (bytes < 1024) return L10n.current.sizeBytes('$bytes');
-    if (bytes < 1024 * 1024) {
-      return L10n.current.sizeKilobytes('${(bytes / 1024).round()}');
-    }
-    final mb = bytes / (1024 * 1024);
-    // ⚠️ La virgule décimale est française : le séparateur suit la langue de
-    // l'interface, sinon un appareil anglais lit « 2,0 MB ».
-    return L10n.current.sizeMegabytes(mb < 10
-        ? NumberFormat.decimalPatternDigits(
-                locale: L10n.current.localeName, decimalDigits: 1)
-            .format(mb)
-        : '${mb.round()}');
-  }
+  ///
+  /// R8 (2026-09-16) — C'était le TROISIÈME formateur de tailles de l'app, avec
+  /// sa propre règle d'arrondi. Un seul désormais ([formatFileSize]) ; la seule
+  /// particularité qui reste ici est le tiret : une carte mémoire vide n'écrit
+  /// pas « 0 octet », elle dit qu'il n'y a rien à mesurer.
+  String _fmtBytes(int bytes) => bytes <= 0 ? '—' : formatFileSize(bytes);
 
   /// Un poids déjà exprimé en Mo (RAM, caches) — seule l'unité change de langue.
   String _fmtMb(int mb) => L10n.current.sizeMegabytes('$mb');

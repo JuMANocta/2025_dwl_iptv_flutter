@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/themes/colors.dart';
+// §lightTheme — `onColorFor` : le texte posé sur un accent se DÉRIVE du fond.
+import '../../core/themes/light_palette.dart';
 import '../../data/services/replay_service.dart';
 import '../../data/services/xmltv_service.dart';
 import '../../data/models/xmltv_program.dart';
@@ -9,6 +11,7 @@ import '../../widgets/tv/focusable_chip.dart';
 import '../../widgets/sheet_close_tile.dart';
 import '../../l10n/l10n_ext.dart';
 import 'replay_day_label.dart';
+import 'replay_days.dart';
 
 /// Sheet permettant à l'utilisateur de choisir manuellement
 /// un jour, une heure et une durée pour lancer un replay.
@@ -60,9 +63,11 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    // Par défaut : hier, heure actuelle arrondie à la demi-heure précédente
-    _selectedDay = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 1));
+    // Par défaut : hier, heure actuelle arrondie à la demi-heure précédente.
+    // ⛔ Lot 7 — `subtract(Duration(days: 1))` rendait le 28 mars à 01:00 la
+    // nuit du passage à l'heure d'été : la grille du jour se vidait et la
+    // pastille « guide disponible » s'éteignait (cf. `replay_days.dart`).
+    _selectedDay = replayDefaultDay(now);
     final roundedMinute = now.minute >= 30 ? 30 : 0;
     _selectedTime = TimeOfDay(hour: now.hour, minute: roundedMinute);
     _initXmltv();
@@ -269,13 +274,17 @@ class _ReplayDatePickerSheetState extends State<ReplayDatePickerSheet> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.play_arrow_rounded,
-                              color: kWhite, size: 22),
+                          // §lightTheme — Le dégradé part de l'accent
+                          // principal : c'est LUI qui décide de la couleur du
+                          // texte. Un `kWhite` en dur devenait illisible dès
+                          // qu'un préréglage donnait un accent clair (Tron).
+                          Icon(Icons.play_arrow_rounded,
+                              color: onColorFor(kAccentPrimary), size: 22),
                           const SizedBox(width: 8),
                           Text(
                             context.l10n.replayWatchLabel(_buildLabel()),
-                            style: const TextStyle(
-                              color: kWhite,
+                            style: TextStyle(
+                              color: onColorFor(kAccentPrimary),
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
                             ),
@@ -528,8 +537,8 @@ class _XmltvProgramRow extends StatelessWidget {
                           ),
                           child: Text(
                             '● ${L10n.current.epgNow}',
-                            style: const TextStyle(
-                              color: kWhite,
+                            style: TextStyle(
+                              color: onColorFor(kAccentTertiary),
                               fontSize: 9,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 0.8,
@@ -610,26 +619,27 @@ class _DaySelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = DateTime.now();
-    final days = List.generate(maxDays, (i) {
-      final d = DateTime(today.year, today.month, today.day)
-          .subtract(Duration(days: i));
-      return d;
-    });
+    // ⛔ Lot 7 — Même piège que la veille par défaut : un jour de calendrier se
+    // retire en jours, pas en `Duration` (`replay_days.dart`). Sur la fenêtre
+    // de 7 à 14 jours d'un fournisseur, un changement d'heure décalait TOUS
+    // les jours d'avant la bascule.
+    final days = replayDays(today, maxDays);
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: days.map((d) {
-          final isSelected = d.day == selected.day &&
-              d.month == selected.month &&
-              d.year == selected.year;
+          final isSelected = isSameCalendarDay(d, selected);
           // Revue 2026-09-11, D2A-19 — dates calendaires complètes : l'ancien
           // test sur le seul jour du mois ratait « Hier » le 1er de chaque
           // mois (la puce sélectionnée par défaut), cf. `replay_day_label.dart`.
           final ReplayDayLabelKind kind = replayDayLabelKind(d, today);
           final isToday = kind == ReplayDayLabelKind.today;
           final isYesterday = kind == ReplayDayLabelKind.yesterday;
-          final hasEpg = daysWithData.contains(d);
+          // ⚠️ Pas `contains` : un `Set<DateTime>` compare des INSTANTS. Deux
+          // valeurs qui désignent le même jour à une heure près ne s'y
+          // retrouvent pas — c'est ce qui éteignait la pastille.
+          final hasEpg = daysWithData.any((e) => isSameCalendarDay(e, d));
 
           String label;
           if (isToday) {
@@ -656,7 +666,7 @@ class _DaySelector extends StatelessWidget {
                     onSelected: (_) => onChanged(d),
                     selectedColor: kAccentPrimary,
                     labelStyle: TextStyle(
-                      color: isSelected ? kWhite : null,
+                      color: isSelected ? onColorFor(kAccentPrimary) : null,
                       fontWeight:
                           isSelected ? FontWeight.bold : FontWeight.normal,
                     ),
@@ -833,7 +843,7 @@ class _ChipRow<T> extends StatelessWidget {
             onSelected: (_) => onSelected(item),
             selectedColor: kAccentPrimary,
             labelStyle: TextStyle(
-              color: isSelected ? kWhite : null,
+              color: isSelected ? onColorFor(kAccentPrimary) : null,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
           ),

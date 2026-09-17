@@ -309,7 +309,12 @@ class _SectionPill extends StatelessWidget {
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: const Color(0xCC000000),
+              // ⚠️ Volontairement FIXE et sombre : ce repère flotte AU-DESSUS
+              // du contenu (affiches comprises), comme un voile posé sur une
+              // image — il ne suit donc pas le fond de l'app (§lightTheme,
+              // même famille que `kImageScrim80`). Le littéral, lui, n'avait
+              // rien à faire ici.
+              color: kImageScrim80,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: kAccentPrimary.withAlpha(110)),
             ),

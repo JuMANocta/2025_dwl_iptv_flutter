@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/themes.dart';
 import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/xmltv_service.dart';
@@ -190,11 +191,7 @@ class _XmltvPageState extends State<XmltvPage> with TvInitialFocus {
                         ? context.l10n.xmltvDownloading
                         : context.l10n.xmltvForceUpdate,
                   ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: kAccentSecondary,
-                    foregroundColor: onColorFor(kAccentSecondary), // D4B-08
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
+                  style: aetherFilledStyle(kAccentSecondary),
                 ),
               ),
 

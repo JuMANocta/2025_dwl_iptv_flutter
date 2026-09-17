@@ -50,6 +50,29 @@ class DownloadTask {
   final String? errorMessage;
   final String? releaseYear;   // L'année de sortie du contenu
 
+  /// §heroSeriesResume / R39 — Clé de progression au niveau **SÉRIE** du
+  /// contenu téléchargé : l'URL stub `/series/{user}/{pass}/{series_id}` de
+  /// l'entrée du CATALOGUE, `null` pour tout ce qui n'est pas un épisode.
+  ///
+  /// **Pourquoi elle est portée par la TÂCHE et pas recalculée.** Elle n'est
+  /// PAS dérivable de [url] : l'épisode est `…/series/u/p/{episode_id}.{ext}`
+  /// et le stub `…/series/u/p/{series_id}` — un identifiant ne se déduit pas
+  /// de l'autre. Et le catalogue ne contient QUE le stub, jamais l'épisode
+  /// (§heroSeriesResume) : partir de [url] ne mène donc à rien. Seul le site
+  /// qui lance le téléchargement la connaît (la fiche a ses stubs d'API sous
+  /// la main) — il la pose ici, une fois, et la lecture du fichier comme sa
+  /// diffusion la retrouvent.
+  ///
+  /// ⛔ **Jamais dans `PlayerMedia.allResumeKeys`** : la fin d'un épisode
+  /// efface les clés du titre courant (§endOfMovie) ; y joindre la série
+  /// effacerait la reprise de TOUTE la série.
+  ///
+  /// ⚠️ Optionnelle à la lecture : une tâche enregistrée avant R39 rend
+  /// `null`, et se comporte comme avant. ⛔ Ni `schemaVersion` (qui porte le
+  /// parsing des listes) ni l'ordre de `DownloadStatus` (persisté par index)
+  /// ne sont concernés.
+  final String? seriesKey;
+
   /// §dlWatchdog — Nombre de relances subies par ce transfert.
   ///
   /// ⚠️ Il vivait UNIQUEMENT dans `TerminalDownloadDialog` (`_retryCount`) :
@@ -71,6 +94,7 @@ class DownloadTask {
     this.updatedAt,
     this.errorMessage,
     this.releaseYear,
+    this.seriesKey,
     this.retryCount = 0,
   });
 
@@ -82,6 +106,7 @@ class DownloadTask {
     String? finalPath,
     String? tempPath,
     String? releaseYear,
+    String? seriesKey,
     int? retryCount,
   }) {
     String? finalErrorMessage = errorMessage;
@@ -102,6 +127,7 @@ class DownloadTask {
       totalSize: totalSize ?? this.totalSize,
       errorMessage: finalErrorMessage,
       releaseYear: releaseYear ?? this.releaseYear,
+      seriesKey: seriesKey ?? this.seriesKey,
       retryCount: retryCount ?? this.retryCount,
     );
   }
@@ -120,6 +146,9 @@ class DownloadTask {
       updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'] as String) : null,
       errorMessage: json['errorMessage'] as String?,
       releaseYear: json['releaseYear'] as String?,
+      // R39 — Tâche enregistrée avant la clé de série : `null`, donc l'ancien
+      // comportement (l'épisode n'entre pas au hero depuis la tuile).
+      seriesKey: json['seriesKey'] as String?,
       // Tâche enregistrée avant §dlWatchdog : aucune relance connue.
       retryCount: json['retryCount'] as int? ?? 0,
     );
@@ -139,6 +168,7 @@ class DownloadTask {
       'updatedAt': updatedAt?.toIso8601String(),
       'errorMessage': errorMessage,
       'releaseYear': releaseYear,
+      'seriesKey': seriesKey,
       'retryCount': retryCount,
     };
   }

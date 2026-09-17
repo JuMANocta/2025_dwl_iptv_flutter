@@ -37,6 +37,7 @@ class CastState {
     this.subtitle,
     this.imageUrl,
     this.progressKey,
+    this.seriesProgressKey,
     this.batteryWarning,
   });
 
@@ -54,6 +55,14 @@ class CastState {
   /// Clé de reprise (§1e, `PlayerMedia.resumeKey`) : la progression suit le
   /// TÉLÉVISEUR tant qu'il lit, même lecteur fermé. `null` = pas de suivi.
   final String? progressKey;
+
+  /// R39 / §heroSeriesResume — La clé de la SÉRIE (URL stub de son entrée du
+  /// catalogue), écrite EN PLUS de [progressKey] à chaque sauvegarde, comme le
+  /// fait le lecteur local. Sans elle, une série suivie entièrement sur le
+  /// téléviseur n'apparaissait jamais dans « Reprendre » ni au hero : le
+  /// catalogue ne connaît que l'entrée de la série, pas l'URL de l'épisode.
+  /// `null` hors épisode et pour un direct.
+  final String? seriesProgressKey;
 
   /// Dernier statut poussé par le récepteur.
   final nvp.CastSessionStatus status;
@@ -80,6 +89,7 @@ class CastState {
         imageUrl: imageUrl,
         live: live,
         progressKey: progressKey,
+        seriesProgressKey: seriesProgressKey,
         status: status ?? this.status,
         batteryWarning: clearBatteryWarning
             ? null
@@ -245,6 +255,7 @@ abstract final class CastService {
     String? subtitle,
     String? imageUrl,
     String? progressKey,
+    String? seriesProgressKey,
     Duration startAt = Duration.zero,
     String? streamType,
   }) async {
@@ -298,6 +309,7 @@ abstract final class CastService {
       imageUrl: imageUrl,
       live: live,
       progressKey: live ? null : progressKey,
+      seriesProgressKey: live ? null : seriesProgressKey,
       status: const nvp.CastSessionStatus(playerState: 'BUFFERING'),
     );
     debugPrint('📡 CastService.start → ${device.displayName} '
@@ -406,10 +418,13 @@ abstract final class CastService {
         // §1e — Fin naturelle : position = durée → le service efface la
         // reprise (règle des 95 %), le film n'apparaît plus dans « Reprendre ».
         if (s.idleReason == 'FINISHED') {
-          final Duration? dur = current.duration;
-          final String? key = current.progressKey;
-          if (key != null && dur != null && dur > Duration.zero) {
-            WatchProgressService.saveProgress(key, dur, dur);
+          // R39 — Même écriture que le lecteur local en fin d'épisode : la
+          // reprise de l'ÉPISODE s'efface, celle de la SÉRIE se rafraîchit
+          // (plafonnée par `seriesPositionFor`, §heroSeriesResume).
+          final w = progressWriteFor(current, finished: true);
+          if (w != null) {
+            WatchProgressService.saveProgress(w.key, w.position, w.duration,
+                seriesKey: w.seriesKey);
           }
         } else {
           _saveProgress(force: true);
@@ -471,13 +486,35 @@ abstract final class CastService {
   static void _saveProgress({bool force = false}) {
     final s = state.value;
     if (s == null) return;
-    final String? key = s.progressKey;
-    final Duration? dur = s.duration;
-    if (key == null || dur == null || dur <= Duration.zero) return;
+    final w = progressWriteFor(s, finished: false);
+    if (w == null) return;
     final now = DateTime.now();
     if (!force && now.difference(_lastProgressSave) < _progressInterval) return;
     _lastProgressSave = now;
-    WatchProgressService.saveProgress(key, s.position, dur);
+    WatchProgressService.saveProgress(w.key, w.position, w.duration,
+        seriesKey: w.seriesKey);
+  }
+
+  /// R39 — Ce que le service écrit dans la progression pour l'état [s] : la
+  /// clé de l'ÉPISODE (ou du film), sa position, sa durée, et la clé de la
+  /// SÉRIE s'il y en a une. `null` quand il n'y a rien à écrire (direct, pas
+  /// de clé, durée inconnue). [finished] = fin naturelle annoncée par le
+  /// récepteur : position = durée, ce qui efface la reprise de l'épisode et
+  /// rafraîchit celle de la série (`WatchProgressService.saveProgress`).
+  ///
+  /// Fonction pure, partagée par les trois écritures : c'est elle qu'on teste.
+  @visibleForTesting
+  static ({String key, Duration position, Duration duration, String? seriesKey})?
+      progressWriteFor(CastState s, {required bool finished}) {
+    final String? key = s.progressKey;
+    final Duration? dur = s.duration;
+    if (key == null || dur == null || dur <= Duration.zero) return null;
+    return (
+      key: key,
+      position: finished ? dur : s.position,
+      duration: dur,
+      seriesKey: s.seriesProgressKey,
+    );
   }
 
   static void _onSessionClosed() {

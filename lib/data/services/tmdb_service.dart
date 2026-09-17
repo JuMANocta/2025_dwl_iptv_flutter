@@ -336,11 +336,15 @@ class TmdbService {
           // MÊME réponse (zéro appel réseau en plus pour les « similaires »).
           // §tmdbBadges — release_dates (films) / content_ratings (séries) pour
           // la certification d'âge (badge « 12 », « 16 », « TP »…).
+          // Lot 9 (§tmdbPlus) — `watch/providers` : la réponse HONNÊTE à
+          // « où puis-je le regarder », y compris pour un FILM, qui n'a
+          // jamais de `networks`. Toujours zéro requête de plus.
           'append_to_response':
-              'credits,videos,recommendations,release_dates,content_ratings',
+              'credits,videos,recommendations,release_dates,content_ratings,watch/providers',
         },
       );
-      return Media.fromJson(detailResponse.data);
+      return Media.fromJson(detailResponse.data,
+          watchRegion: watchRegionForLanguageTag(_lang));
     } catch (e) {
       debugPrint('⚠️ TMDB byId($id, isTv=$isTv) échec : $e — fallback recherche titre');
       return null;
@@ -454,13 +458,17 @@ class TmdbService {
             // (recherche par titre, sans tmdb_id provider) perdait sinon les
             // recommandations ET la certification d'âge. `credits` porte
             // aussi `crew` → réalisateur (§directorView).
+            // Lot 9 (§tmdbPlus) — cf. `getFullDetailsById` : les deux
+            // chemins doivent porter les MÊMES champs, sinon la fiche perd
+            // « Disponible sur » dès qu'aucun `tmdb_id` fournisseur n'existe.
             'append_to_response':
-                'credits,videos,recommendations,release_dates,content_ratings',
+                'credits,videos,recommendations,release_dates,content_ratings,watch/providers',
           }
       );
 
       // Le parsing de ces nouveaux champs (cast, trailerKey) doit être fait dans Media.fromJson
-      return Media.fromJson(detailResponse.data);
+      return Media.fromJson(detailResponse.data,
+          watchRegion: watchRegionForLanguageTag(_lang));
 
     } catch (e) {
       debugPrint("❌ Glitch TMDB : $e");

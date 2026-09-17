@@ -192,6 +192,59 @@ ne coûte aucune capacité ; retirer du code en coûte.
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).
 
+## patch 26 — la piste vidéo se coupe écran éteint, le son continue (2026-09-16, §bgAudio)
+
+**Le manque.** Écran éteint, `VideoPlayerView` fait `clearVideoSurface` et
+`MediaCodecVideoRenderer` continue de décoder sur une surface de substitution :
+de la batterie dépensée pour du son seul (fiche §bgAudio, point 2).
+**Le patch.** Méthode `setVideoTrackEnabled(enabled)` (Kotlin
+`VideoPlayerMethodHandler`, canal + contrôleur Dart) : `setTrackTypeDisabled(
+C.TRACK_TYPE_VIDEO, !enabled)`. L'app la pose en `AppLifecycleState.paused`
+(téléphone seulement, ni PiP, ni Cast — `background_video_policy.dart`) et la
+défait en `resumed` : ExoPlayer resélectionne la piste vidéo à la position
+courante, sans réouverture.
+⚠️ Le GAIN n'est pas encore mesuré (batterie avant/après sur le S25, 30 min
+écran éteint, même film) : c'est la recette de la fiche. Sans cette mesure, le
+patch reste une hypothèse raisonnable, pas un résultat.
+
+## patch 25 — « sans son » : la piste audio se coupe, l'image continue (2026-09-16, R5 / §audioFallback)
+
+**Le manque.** `Media3Engine.disableAudio()` était vide : la branche « lecture
+sans son » de §audioFallback l'annonçait sans rien couper — et de toute façon
+inatteignable, la reconnaissance de l'erreur étant taillée sur les messages de
+mpv (D2A-10). Le natif ne connaissait pour l'audio que « imposer » (≥ 0) et
+« automatique » (-1, patch 22).
+**Le patch.** Index **-2** dans `handleSetAudioTrack` = `setTrackTypeDisabled(
+C.TRACK_TYPE_AUDIO, true)` (`NativeVideoPlayerAudioTrack.off()` côté Dart) ;
+`-1` et tout index ≥ 0 rallument le type. Côté app : `player_error.dart`
+classe l'erreur sur le CODE Media3 (`AUDIO_TRACK_*` audio par nature ;
+`DECODER_*` / `DECODING_*` départagés sur le message brut : rendu et type
+MIME), `Media3Engine.lastErrorWasAudio` porte le verdict, et le lecteur
+enchaîne bascule PUIS `retryPlayback` (après une erreur, ExoPlayer est à
+l'arrêt : changer la sélection seul ne relance rien).
+Test : `test/player_error_test.dart`.
+
+## patch 24 — le canal `native_video_player/assets` retiré (2026-09-16, R6 / D2B-09 e)
+
+`resolveAssetPath` (extraction d'un asset Flutter vers le cache pour ExoPlayer)
+n'avait aucun appelant Dart ; le README amont le listait comme fonctionnalité.
+Retiré de `NativeVideoPlayerPlugin.onAttachedToEngine`, README ajusté.
+↩️ Récupérable par `git revert` si une vidéo embarquée revenait un jour.
+⚠️ **La copie iOS reste en place, volontairement** (`ios/…/Factory/
+VideoPlayerViewFactory.swift`, le même canal `native_video_player/assets`) :
+le projet est Android-only (`ios: false`), ce fichier n'est jamais compilé, et
+le laisser garde le diff avec l'amont lisible. Décision du coordinateur,
+2026-09-17.
+
+## patch 23 — `FullscreenManager.exitFullscreen` restaure vraiment les barres (2026-09-16, R20 / §barsRestore)
+
+Même défaut que celui corrigé dans le lecteur de l'app (§barsRestore) :
+`SystemUiMode.edgeToEdge` seul ne fait que `setDecorFitsSystemWindows` et
+n'efface jamais les drapeaux de masquage d'`immersiveSticky` — les barres
+restaient cachées pour le reste de la session. Désormais `manual` + toutes
+les surcouches, PUIS `edgeToEdge`. L'app n'utilise pas ce gestionnaire
+aujourd'hui ; le patch évite qu'il resserve avec le défaut.
+
 ## patch 22 — les pistes savent revenir à « automatique », et un échec de piste remonte (2026-09-13, R43)
 
 **Le manque.** Le natif ne connaissait que deux gestes par type de piste : *imposer*
@@ -282,9 +335,9 @@ retiré avec lui).
 **(d)** — `NativeVideoPlayerPlugin.getAllViews()` : aucun appelant ; son
 commentaire « Used by MainActivity » était faux (le PiP passe par le canal
 maison `aetherstream/pip`, §pipPhone).
-⏳ **(e) NON traité** : le canal `native_video_player/assets`
-(`resolveAssetPath`) n'a aucun appelant Dart, mais c'est une API amont hors de
-la réserve §engineFeatures — à retirer seulement sur décision explicite.
+✅ **(e) traité le 2026-09-16 (patch 24, R6)** : le canal `native_video_player/assets`
+(`resolveAssetPath`) n'avait aucun appelant Dart ; retiré sur décision du
+coordinateur (revue, R6).
 
 **D2B-19** — Restes versionnés supprimés :
 `android/src/test/kotlin/com/example/native_video_player/NativeVideoPlayerPluginTest.kt`

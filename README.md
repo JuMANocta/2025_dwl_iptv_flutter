@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.19.3+155-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.20.0+156-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -160,7 +160,7 @@ flutter build apk --release --target-platform android-arm,android-arm64
 flutter build apk --release -Pabi-x86=true
 ```
 
-Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1484 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
+Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1750 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
 
 ---
 
@@ -465,7 +465,14 @@ lib/
 - [x] **Les affiches ne disparaissent plus** (§logoFallback, 2026-08-29) — il suffisait qu'une seule de vos listes fournisse une adresse d'image **morte** pour que la vignette reste vide, alors qu'une autre liste en proposait une valide. L'application essaie désormais toutes les adresses du titre, puis TMDB en dernier recours
 - [x] **Vérité sur la qualité** (§qualityTruth/§videoStats, 2026-08-29) — la qualité affichée par les listes vient de leur **titre**, et certaines annoncent du 4K pour servir du 1080p. L'app mesure désormais la définition **réellement décodée** à chaque lecture et l'affiche **sur la fiche** (sous la version, épisodes compris), **sur les vignettes d'accueil** et **sur les chaînes TV** : `⚠ réel FHD` quand la liste survend, `✓ 1080p` quand elle dit vrai. Un encart de diagnostic en direct par-dessus l'image donne le détail. Affiche aussi décodage **matériel ou logiciel**, codec, images/s tenu contre annoncé, images perdues, débit. Activable via le bouton ⚙ des contrôles (mobile) ou ↑ → Options (TV) → « Infos vidéo » ; le relevé part aussi dans le journal de diagnostic, lisible depuis la console web
 - [x] **Format d'image du lecteur** (§videoFit, 2026-08-29) — **Original** (image entière), **Zoom** (efface les bandes noires en rognant les bords) ou **Plein écran** (remplit en déformant). Choix mémorisé d'une vidéo à l'autre ; accessible via le bouton ⚙ des contrôles (mobile) ou ↑ → Options (TV) → « Format d'image »
-- [x] **Piste audio de secours** (§audioFallback, 2026-08-29) — quand une piste TrueHD/Atmos ne se décode pas (fréquent sur les rips 4K), le lecteur bascule sur une autre piste au lieu d'abandonner, et lit sans son en dernier recours plutôt que d'afficher une erreur — ⚠️ depuis le changement de moteur vidéo (septembre 2026), ce secours n'est plus déclenché : le rebrancher ou le retirer reste à décider
+- [x] **Piste audio de secours** (§audioFallback, 2026-08-29) — quand une piste TrueHD/Atmos ne se décode pas (fréquent sur les rips 4K), le lecteur bascule sur une autre piste au lieu d'abandonner, et lit sans son en dernier recours plutôt que d'afficher une erreur — ✅ rebranché en septembre 2026 sur les codes d'erreur du nouveau moteur, avec une vraie coupure du son en dernier recours.
+- [x] **Lire hors ligne ce qu'on a téléchargé** (§dlPlayLocal, 2026-09-17) — un film ou un épisode déjà téléchargé se lit depuis l'appareil, que l'on parte de sa fiche, de l'accueil, d'un appui long ou de l'épisode suivant automatique ; la fiche l'indique (« Lire hors ligne », pastille « Téléchargé ») et, si le fichier a disparu, la lecture repasse en ligne et la tâche le dit
+- [x] **Téléchargements qui tiennent les coupures** (§dlQueueFix, 2026-09-17) — une coupure réseau ne coûte plus qu'une tentative, la reprise attend quelques secondes avant de repartir, un transfert interrompu par la fermeture de l'app reprend seul au lancement suivant, et un fournisseur qui coupe souvent n'empêche plus un gros fichier d'aboutir tant qu'il avance
+- [x] **Abonnement déjà utilisé ailleurs** (R23, 2026-09-17) — avant une lecture en ligne, l'app prévient quand l'abonnement est occupé par un autre écran ou par un de vos téléchargements, sans jamais empêcher de lire
+- [x] **Personnalisation complète** (§themeStudio, 2026-09-17) — aperçu fidèle du thème en cours (clair comme sombre), palette en grille, couleur libre à la roue ou par son code, et « Mes thèmes » pour enregistrer, renommer, supprimer et retrouver ses réglages après une réinitialisation ou une sauvegarde `.aether`
+- [x] **Sous-titres en ligne** (2026-09-17) — quand un film n'en a pas, le lecteur peut en chercher avec votre propre clé de service (aucune clé fournie par l'app)
+- [x] **Infos vidéo à la carte et qualité du direct** (§videoStatsTags, 2026-09-17) — on choisit les lignes affichées et si l'encart reste à l'écran ; sur un flux à plusieurs qualités, un menu permet d'en fixer une
+- [x] **Écran éteint** (§bgAudio, 2026-09-17) — sur téléphone, le son continue et l'image cesse d'être décodée tant que l'écran est éteint
 - [x] **Catégorie Radio séparée** (§radioCat, 2026-08-29) — les webradios ne noient plus les chaînes de télévision
 - [x] **Pistes audio + sous-titres (embarqués)** — sélecteur in-player (bouton CC) ; la langue audio choisie vaut pour les titres suivants, une piste de sous-titres ne vaut que pour le titre en cours, et ce qui est retenu se voit et s'annule (feuille de pistes, Réglages → « Langues des pistes », 2026-09-13)
 - [ ] **Sous-titres externes** — fichier/URL `.srt` + recherche en ligne auto par TMDB

@@ -61,13 +61,26 @@ class ThemeService {
   static Brightness get effectiveBrightness {
     final Brightness? forced = debugBrightnessOverride;
     if (forced != null) return forced;
-    switch (config.value.themeMode) {
+    return brightnessFor(
+        config.value.themeMode, PlatformDispatcher.instance.platformBrightness);
+  }
+
+  /// La même règle, **pure** : ce que donne [mode] quand l'appareil est en
+  /// [platform].
+  ///
+  /// §themeStudio — Existe pour que l'APERÇU de la page des thèmes peigne
+  /// exactement ce que l'app peindra, y compris en mode « système » : il lit
+  /// la luminosité de son `MediaQuery` au lieu de celle du `PlatformDispatcher`
+  /// (les tests, eux, n'en ont aucune). ⛔ Une seconde règle écrite à côté
+  /// serait précisément ce qui fait mentir un aperçu.
+  static Brightness brightnessFor(ThemeMode mode, Brightness platform) {
+    switch (mode) {
       case ThemeMode.light:
         return Brightness.light;
       case ThemeMode.dark:
         return Brightness.dark;
       case ThemeMode.system:
-        return PlatformDispatcher.instance.platformBrightness;
+        return platform;
     }
   }
 

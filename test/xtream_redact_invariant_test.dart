@@ -234,4 +234,103 @@ void main() {
       expect(xtreamPathCredentialIndexes(['a.b', 'c', 'd']), isNull);
     });
   });
+
+  // ── §subOnline (2026-09-17) — la clé d'API en query ───────────────────────
+  //
+  // Le trou : les formes Xtream portent sur le CHEMIN, et le masquage par
+  // FORME de R35 est borné aux adresses où NOS serveurs écoutent. Une clé
+  // d'API part vers un hôte PUBLIC — `sub.wyzie.io` (sous-titres en ligne),
+  // `api.themoviedb.org` (TMDB) — et aucune des deux règles ne mordait : la
+  // clé de l'utilisateur partait en clair dans le journal persisté
+  // (§logPersist), lui-même servi sur le LAN (§tvLogs). Même forme que R35.
+  group('§subOnline — une clé d\'API ne sort pas au journal', () {
+    test('la clé d\'une URL de sous-titres est masquée, le reste reste lisible',
+        () {
+      const url =
+          'https://sub.wyzie.io/search?id=286217&language=fr&format=srt&key=abc123DEF';
+      final out = redactUrl(url);
+      expect(out, isNot(contains('abc123DEF')));
+      expect(out, contains('key=***'));
+      // Ce qui sert à diagnostiquer doit survivre : sans l'identifiant ni la
+      // langue, la ligne de journal ne dit plus rien d'utile.
+      expect(out, contains('id=286217'));
+      expect(out, contains('language=fr'));
+    });
+
+    test('la clé TMDB aussi : la règle porte sur le NOM, pas sur l\'hôte', () {
+      const url =
+          'https://api.themoviedb.org/3/movie/550?api_key=0123456789abcdef';
+      final out = redactUrl(url);
+      expect(out, isNot(contains('0123456789abcdef')));
+      expect(out, contains('api_key=***'));
+    });
+
+    test('les variantes de casse et d\'orthographe sont couvertes', () {
+      for (final String nom in const ['key', 'API_KEY', 'apiKey', 'token',
+        'access_token', 'auth', 'secret']) {
+        final out = redactUrl('https://exemple.com/x?$nom=s3cr3t');
+        expect(out, isNot(contains('s3cr3t')), reason: 'paramètre « $nom »');
+      }
+    });
+
+    test('un hôte public sans paramètre sensible n\'est pas touché', () {
+      // Sincérité : sans cette assertion, une règle qui masquerait TOUTE la
+      // query passerait les tests ci-dessus.
+      const url = 'https://exemple.com/x?id=42&lang=fr';
+      expect(redactUrl(url), url);
+    });
+
+    test('les DEUX voies masquent la même ligne', () {
+      // §tvLogs — `sanitizeForLog` est le PUITS : il passe l'URL par
+      // `redactUrl`, puis repasse par nom sur le texte libre. Une clé recopiée
+      // hors d'une URL (message d'exception tronqué, phrase écrite à la main)
+      // doit tomber elle aussi.
+      const ligne =
+          'échec https://sub.wyzie.io/search?id=1&key=abc123DEF (key: abc123DEF)';
+      final out = sanitizeForLog(ligne);
+      expect(out, isNot(contains('abc123DEF')),
+          reason: 'ni dans l\'URL, ni dans le texte libre');
+    });
+
+    test('sanitizeForLog masque api_key sans le confondre avec key', () {
+      final out = sanitizeForLog('appel api_key=zzz111 puis key=yyy222');
+      expect(out, contains('api_key=***'));
+      expect(out, contains('key=***'));
+      expect(out, isNot(contains('zzz111')));
+      expect(out, isNot(contains('yyy222')));
+    });
+
+    test('un mot qui finit par « key » n\'est pas un secret', () {
+      // `\b` ne coupe pas au milieu d'un mot : « monkey=3 » n'est pas une clé.
+      expect(sanitizeForLog('monkey=3'), contains('monkey=3'));
+    });
+
+    test('une URL masquée reste une URL VALIDE, sans crochets ni %2A', () {
+      // Défaut trouvé en écrivant les tests ci-dessus : les valeurs de query
+      // venant de `queryParametersAll` sont des `List<String>`, et un
+      // `v.toString()` les rendait entre crochets — `?id=42` sortait en
+      // `?id=%5B42%5D`. Personne ne le voyait : les assertions existantes ne
+      // cherchaient qu'une sous-chaîne, et `%5Bm3u_plus%5D` contient encore
+      // `m3u_plus`. Une URL recopiée d'un journal était pourtant inutilisable.
+      final out = redactUrl(
+          'http://panel.example.com/get.php?username=jean&password=s3cr3t&type=m3u_plus');
+      expect(out, contains('type=m3u_plus'),
+          reason: 'la valeur doit rester telle quelle, sans crochets');
+      expect(out, isNot(contains('%5B')));
+      expect(out, isNot(contains('%2A')), reason: 'le masque doit se lire');
+      expect(out, contains('username=***'));
+      expect(out, contains('password=***'));
+      // Et elle doit se re-analyser : c'est ça, « rester une URL ».
+      final reparse = Uri.parse(out);
+      expect(reparse.queryParameters['type'], 'm3u_plus');
+      expect(reparse.queryParameters['username'], '***');
+    });
+
+    test('un paramètre répété garde sa forme répétée', () {
+      // Sincérité du correctif : passer les `List` telles quelles doit rendre
+      // `a=1&a=2`, pas `a=1,2` ni `a=%5B1,%202%5D`.
+      final out = redactUrl('http://h/x?a=1&a=2');
+      expect(Uri.parse(out).queryParametersAll['a'], ['1', '2']);
+    });
+  });
 }

@@ -797,8 +797,16 @@ final RegExp _cookieHeader = RegExp(
 /// Trois filets successifs :
 ///   1. toute URL `http(s)://…` passe par [redactUrl] (formes Xtream en path
 ///      `/movie/USER/PASS/…` **et** en query `?username=…&password=…`) ;
-///   2. un `username=` / `password=` isolé (hors URL) est masqué par regex ;
+///   2. un `username=` / `password=` isolé (hors URL) est masqué par regex —
+///      et, depuis §subOnline, tout nom de secret connu : `key`, `api_key`,
+///      `token`, `secret`… Le nom survit, la valeur part ;
 ///   3. §cookieScope — un en-tête `Cookie:` / `Set-Cookie:`.
+///
+/// ⚠️ **Les filets 1 et 2 se recouvrent volontairement** sur une URL à clé
+/// (`…?key=abc`) : `redactUrl` la masque parce qu'elle est une URL, la regex
+/// la masquerait même tronquée ou recopiée à la main dans une phrase. §subOnline
+/// a montré que le recouvrement n'était pas acquis — ni l'un ni l'autre ne
+/// connaissait `key=` avant, et une clé d'API partait en clair sur le LAN.
 ///
 /// ⚠️ **Pourquoi les cookies MAINTENANT** : un panel Xtream authentifie souvent
 /// par session, et un cookie de session vaut exactement ce que vaut le couple
@@ -807,12 +815,30 @@ final RegExp _cookieHeader = RegExp(
 /// une fuite de la même gravité qu'une URL non masquée. Invariant §tourFix : ce
 /// qu'on sait extraire d'une trace réseau, on doit savoir le masquer.
 String sanitizeForLog(String line) {
+  // Recette AVD du 2026-09-17 — `HttpException: …, uri = http://IP/live/play/<jeton>` :
+  // l'adresse d'une exception HTTP est celle de la REDIRECTION du fournisseur,
+  // dont le chemin EST le jeton de lecture — une forme qu'aucun prédicat de
+  // `redactUrl` ne peut deviner. Derrière « uri = », on ne garde que l'hôte.
   String out = line.replaceAllMapped(
+    RegExp(r'(\buri\s*=\s*https?://[^/\s]+)/\S*', caseSensitive: false),
+    (Match m) => '${m.group(1)}/***',
+  );
+  out = out.replaceAllMapped(
     RegExp(r'https?://[^\s"' r"'" r'<>\\]+'),
     (Match m) => redactUrl(m.group(0)),
   );
+  // §subOnline — Les noms LONGS d'abord (`access_token` avant `token`,
+  // `api_key` avant `key`) : dans une alternation, la première branche qui
+  // colle gagne, et c'est elle que `$1` réécrit. Ici les deux ordres
+  // donneraient le même résultat — `_` étant un caractère de mot, il n'y a pas
+  // de `\b` entre `api_` et `key`, donc la branche courte ne peut pas mordre
+  // au milieu du nom long — mais compter là-dessus, c'est être juste par
+  // accident : le jour où un nom se sépare par un tiret (`api-key`), l'ordre
+  // est la seule chose qui tienne encore.
   out = out.replaceAllMapped(
-    RegExp(r'\b(username|password|pass|pwd|token)\s*[=:]\s*([^\s,;&)\]}"]+)',
+    RegExp(
+        r'\b(username|password|pass|pwd|access_token|auth_token|token'
+        r'|api_key|apikey|key|secret)\s*[=:]\s*([^\s,;&)\]}"]+)',
         caseSensitive: false),
     (Match m) => '${m.group(1)}=***',
   );

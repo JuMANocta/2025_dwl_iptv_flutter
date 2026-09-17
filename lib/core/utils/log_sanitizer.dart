@@ -124,9 +124,47 @@ bool _isLocalServerHost(String host) =>
     host == 'localhost' ||
     host == '::1';
 
+/// §subOnline (2026-09-17) — Les paramètres de query dont la VALEUR est un
+/// secret, masqués **quel que soit l'hôte**.
+///
+/// ⚠️ **Pourquoi « quel que soit l'hôte ».** Les deux autres règles de ce
+/// fichier sont bornées : les formes Xtream portent sur le CHEMIN, et le
+/// masquage par forme (R35) ne s'applique qu'aux adresses où NOS serveurs
+/// écoutent. Une clé d'API part, elle, vers un hôte PUBLIC — `sub.wyzie.io`
+/// pour les sous-titres en ligne, `api.themoviedb.org` pour TMDB — et aucune
+/// des deux règles ne mordait. Le journal étant persisté (§logPersist) puis
+/// servi en clair sur le LAN (§tvLogs), c'était la forme exacte de la fuite
+/// R35, à ceci près que la clé appartient à l'utilisateur et qu'il l'a payée
+/// de son inscription.
+///
+/// ⚠️ **Arbitrage assumé, le même que partout ici** : masquer par NOM est
+/// large. Un paramètre légitimement nommé `key` (un identifiant de tri, une
+/// clé de cache) sera masqué lui aussi. Un faux positif coûte de la lisibilité
+/// au journal ; un faux négatif publie une clé d'API sur le réseau local.
+///
+/// ⛔ Ce n'est PAS un doublon du masquage par forme de R35 : celui-là attrape
+/// une valeur de jeton sous N'IMPORTE quel nom (`?t=…`), mais seulement sur un
+/// hôte local ; celui-ci attrape N'IMPORTE quelle valeur sous un nom connu, sur
+/// tout hôte. Aucun des deux ne sait faire le travail de l'autre.
+const Set<String> _secretQueryParams = <String>{
+  'username',
+  'password',
+  'pass',
+  'pwd',
+  'key',
+  'api_key',
+  'apikey',
+  'token',
+  'access_token',
+  'auth_token',
+  'auth',
+  'secret',
+};
+
 /// Masque les credentials dans une URL Xtream Codes / IPTV.
 ///
-/// - Query `username` / `password` → `***`
+/// - Query `username` / `password`, et tout nom de [_secretQueryParams]
+///   (`key`, `api_key`, `token`…), sur TOUT hôte → `***`
 /// - Path Xtream `/{type}/{user}/{pass}/{id}` → `/{type}/***/***/{id}`
 /// - Path timeshift `/timeshift/{user}/{pass}/{min}/{date}/{id}` → idem
 /// - Path Xtream NU `/{user}/{pass}/{…}` → `/***/***/{…}` (§tourFix, même
@@ -148,9 +186,12 @@ String redactUrl(String? url) {
     return '<url invalide>';
   }
 
+  // Masquage par NOM de paramètre, sur TOUT hôte (cf. [_secretQueryParams]).
+  // ⚠️ Comparaison en minuscules : `apiKey=` et `API_KEY=` valent `api_key=`.
   final qp = Map<String, dynamic>.from(uri.queryParametersAll);
-  if (qp.containsKey('username')) qp['username'] = '***';
-  if (qp.containsKey('password')) qp['password'] = '***';
+  for (final String k in qp.keys.toList()) {
+    if (_secretQueryParams.contains(k.toLowerCase())) qp[k] = '***';
+  }
 
   // Redact path segments after known Xtream prefixes (live/movie/series/timeshift).
   // Règle historique, plus LARGE que l'extraction (elle masque après un
@@ -228,9 +269,23 @@ String redactUrl(String? url) {
     // D1B-09 — `http://user:pass@hôte/…` : `replace` CONSERVAIT l'userInfo.
     userInfo: uri.userInfo.isEmpty ? null : '***',
     pathSegments: segs,
-    queryParameters: qp.isEmpty ? null : qp.map((k, v) => MapEntry(k, v.toString())),
+    // §subOnline (2026-09-17) — Les valeurs sont passées TELLES QUELLES.
+    //
+    // ⚠️ Défaut trouvé en verrouillant le masquage des clés : ce `map` faisait
+    // `v.toString()` sur des valeurs qui viennent de `queryParametersAll`,
+    // c'est-à-dire des `List<String>`. Un paramètre non masqué ressortait donc
+    // entre CROCHETS — `?id=286217` devenait `?id=%5B286217%5D` — et toute URL
+    // recopiée d'un journal était inutilisable. Aucun test ne le voyait :
+    // `%5Bm3u_plus%5D` contient encore `m3u_plus`. `Uri.replace` sait recevoir
+    // une `Iterable<String>` et rend alors le paramètre répété, ce qui est la
+    // forme d'origine.
+    queryParameters: qp.isEmpty ? null : qp,
   );
-  return rebuilt.toString();
+  // ⚠️ `Uri` encode `*` en `%2A` : le masque ressortait en `%2A%2A%2A`, que
+  // personne ne lit comme « masqué ». On le rétablit APRÈS l'encodage — c'est
+  // la seule suite qui ne peut pas venir des données, puisqu'on vient de
+  // l'écrire nous-mêmes.
+  return rebuilt.toString().replaceAll('%2A%2A%2A', '***');
 }
 
 /// Masque les credentials d'un objet `XtreamCredentials` pour les logs.

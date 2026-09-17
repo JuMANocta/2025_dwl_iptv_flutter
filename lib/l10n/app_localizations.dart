@@ -1538,12 +1538,6 @@ abstract class AppLocalizations {
   /// **'Downloads at once'**
   String get perfParallelDownloadsTitle;
 
-  /// No description provided for @perfParallelDownloadsSub.
-  ///
-  /// In en, this message translates to:
-  /// **'One transfer at a time per subscription: providers accept a single connection, and the player keeps one. This number only applies across different subscriptions; the others wait their turn.'**
-  String get perfParallelDownloadsSub;
-
   /// No description provided for @taskStatusQueuedWhy.
   ///
   /// In en, this message translates to:
@@ -2215,30 +2209,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'In {days} days'**
   String acctExpiryInDays(int days);
-
-  /// No description provided for @unitBytes.
-  ///
-  /// In en, this message translates to:
-  /// **'{value} B'**
-  String unitBytes(String value);
-
-  /// No description provided for @unitKilobytes.
-  ///
-  /// In en, this message translates to:
-  /// **'{value} kB'**
-  String unitKilobytes(String value);
-
-  /// No description provided for @unitMegabytes.
-  ///
-  /// In en, this message translates to:
-  /// **'{value} MB'**
-  String unitMegabytes(String value);
-
-  /// No description provided for @unitGigabytes.
-  ///
-  /// In en, this message translates to:
-  /// **'{value} GB'**
-  String unitGigabytes(String value);
 
   /// No description provided for @acctAgeHoursMinutes.
   ///
@@ -4295,7 +4265,7 @@ abstract class AppLocalizations {
   /// No description provided for @failExplainDeferred.
   ///
   /// In en, this message translates to:
-  /// **'Update postponed until after start-up.'**
+  /// **'Update postponed: this list will be picked up.'**
   String get failExplainDeferred;
 
   /// No description provided for @failExplainPanelBusy.
@@ -5384,41 +5354,11 @@ abstract class AppLocalizations {
   /// **'The conversion produced nothing playable.'**
   String get relayNothingReadable;
 
-  /// No description provided for @healthNoStall.
-  ///
-  /// In en, this message translates to:
-  /// **'no stall'**
-  String get healthNoStall;
-
   /// No description provided for @reloadLessThanMinute.
   ///
   /// In en, this message translates to:
   /// **'less than a minute'**
   String get reloadLessThanMinute;
-
-  /// No description provided for @plNoActiveAccount.
-  ///
-  /// In en, this message translates to:
-  /// **'No active account selected. Please choose one in the settings.'**
-  String get plNoActiveAccount;
-
-  /// No description provided for @plNoActiveAccountShort.
-  ///
-  /// In en, this message translates to:
-  /// **'No active account selected.'**
-  String get plNoActiveAccountShort;
-
-  /// No description provided for @plInvalidUrl.
-  ///
-  /// In en, this message translates to:
-  /// **'The playlist URL for the account “{label}” is invalid. Check its configuration.'**
-  String plInvalidUrl(String label);
-
-  /// No description provided for @plEmptyFile.
-  ///
-  /// In en, this message translates to:
-  /// **'The server returned an empty file. Check the playlist URL.'**
-  String get plEmptyFile;
 
   /// No description provided for @bkFileTooShort.
   ///
@@ -6202,8 +6142,8 @@ abstract class AppLocalizations {
   /// No description provided for @sizeBytes.
   ///
   /// In en, this message translates to:
-  /// **'{n} B'**
-  String sizeBytes(String n);
+  /// **'{n, plural, one{{n} B} other{{n} B}}'**
+  String sizeBytes(int n);
 
   /// No description provided for @sizeKilobytes.
   ///
@@ -6696,6 +6636,546 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Minimalist'**
   String get themePresetMinimaliste;
+
+  /// No description provided for @settingsTracksResetTile.
+  ///
+  /// In en, this message translates to:
+  /// **'{memory} — back to automatic'**
+  String settingsTracksResetTile(String memory);
+
+  /// No description provided for @dlNoticeSizeOf.
+  ///
+  /// In en, this message translates to:
+  /// **'{received} of {total}'**
+  String dlNoticeSizeOf(String received, String total);
+
+  /// No description provided for @dlNotifChannelDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Finished downloads'**
+  String get dlNotifChannelDone;
+
+  /// No description provided for @dlActionCast.
+  ///
+  /// In en, this message translates to:
+  /// **'Cast'**
+  String get dlActionCast;
+
+  /// No description provided for @perfParallelDownloadsPerHostSub.
+  ///
+  /// In en, this message translates to:
+  /// **'One transfer at a time per subscription; up to {count} subscriptions can work together.'**
+  String perfParallelDownloadsPerHostSub(int count);
+
+  /// No description provided for @playOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'Play offline'**
+  String get playOffline;
+
+  /// No description provided for @dlBadgeDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloaded'**
+  String get dlBadgeDownloaded;
+
+  /// No description provided for @dlErrFileMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'This file is no longer on the device.'**
+  String get dlErrFileMissing;
+
+  /// No description provided for @playBusyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This subscription is busy'**
+  String get playBusyTitle;
+
+  /// No description provided for @playBusyElsewhere.
+  ///
+  /// In en, this message translates to:
+  /// **'Another screen is already watching this subscription. Playback may be refused.'**
+  String get playBusyElsewhere;
+
+  /// No description provided for @playBusyOwnTransfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Your downloads are using every connection of this subscription. Pausing one frees it up for playback.'**
+  String get playBusyOwnTransfer;
+
+  /// No description provided for @playBusyContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Play anyway'**
+  String get playBusyContinue;
+
+  /// No description provided for @bkPartSavedThemes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 saved theme} other{{count} saved themes}}'**
+  String bkPartSavedThemes(int count);
+
+  /// No description provided for @themeSectionMyThemes.
+  ///
+  /// In en, this message translates to:
+  /// **'My themes'**
+  String get themeSectionMyThemes;
+
+  /// No description provided for @themeMyThemesEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No saved theme. Set your colours, then use Save as…'**
+  String get themeMyThemesEmpty;
+
+  /// No description provided for @themeSaveAs.
+  ///
+  /// In en, this message translates to:
+  /// **'Save as…'**
+  String get themeSaveAs;
+
+  /// No description provided for @themeSaveAsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Save this theme'**
+  String get themeSaveAsTitle;
+
+  /// No description provided for @themeNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme name'**
+  String get themeNameHint;
+
+  /// No description provided for @themeSavedDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme “{name}” saved'**
+  String themeSavedDone(String name);
+
+  /// No description provided for @themeSaveFull.
+  ///
+  /// In en, this message translates to:
+  /// **'You can keep {count} themes at most. Delete one to save another.'**
+  String themeSaveFull(int count);
+
+  /// No description provided for @themeNameTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'A theme already goes by that name.'**
+  String get themeNameTaken;
+
+  /// No description provided for @themeAppliedDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme “{name}” applied'**
+  String themeAppliedDone(String name);
+
+  /// No description provided for @themeRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get themeRename;
+
+  /// No description provided for @themeRenameTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename this theme'**
+  String get themeRenameTitle;
+
+  /// No description provided for @themeDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete “{name}”?'**
+  String themeDeleteTitle(String name);
+
+  /// No description provided for @themeDeleteQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'It disappears from the list. The colours on screen do not change.'**
+  String get themeDeleteQuestion;
+
+  /// No description provided for @themeDeleteDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme deleted'**
+  String get themeDeleteDone;
+
+  /// No description provided for @themeKeepBeforeResetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep these colours?'**
+  String get themeKeepBeforeResetTitle;
+
+  /// No description provided for @themeKeepBeforeResetBody.
+  ///
+  /// In en, this message translates to:
+  /// **'They match no preset and no saved theme: resetting loses them.'**
+  String get themeKeepBeforeResetBody;
+
+  /// No description provided for @themeKeepBeforeResetSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save first'**
+  String get themeKeepBeforeResetSave;
+
+  /// No description provided for @themeKeepBeforeResetSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset anyway'**
+  String get themeKeepBeforeResetSkip;
+
+  /// No description provided for @themeColorFree.
+  ///
+  /// In en, this message translates to:
+  /// **'Any colour'**
+  String get themeColorFree;
+
+  /// No description provided for @themeColorFreeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a colour'**
+  String get themeColorFreeTitle;
+
+  /// No description provided for @themeHex.
+  ///
+  /// In en, this message translates to:
+  /// **'Hex code'**
+  String get themeHex;
+
+  /// No description provided for @themeHexInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Six characters after #, for example #00FF41'**
+  String get themeHexInvalid;
+
+  /// No description provided for @themeHue.
+  ///
+  /// In en, this message translates to:
+  /// **'Hue'**
+  String get themeHue;
+
+  /// No description provided for @themeSaturation.
+  ///
+  /// In en, this message translates to:
+  /// **'Saturation'**
+  String get themeSaturation;
+
+  /// No description provided for @themeLightness.
+  ///
+  /// In en, this message translates to:
+  /// **'Lightness'**
+  String get themeLightness;
+
+  /// No description provided for @themePreviewFavorite.
+  ///
+  /// In en, this message translates to:
+  /// **'Favourite'**
+  String get themePreviewFavorite;
+
+  /// No description provided for @themePreviewAlert.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume'**
+  String get themePreviewAlert;
+
+  /// No description provided for @themePreviewError.
+  ///
+  /// In en, this message translates to:
+  /// **'Stream unavailable'**
+  String get themePreviewError;
+
+  /// No description provided for @themePreviewSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloaded'**
+  String get themePreviewSuccess;
+
+  /// No description provided for @themeEditColor.
+  ///
+  /// In en, this message translates to:
+  /// **'Change {label}'**
+  String themeEditColor(String label);
+
+  /// No description provided for @themeSavedApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get themeSavedApply;
+
+  /// No description provided for @acctReadingPlaylist.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the playlist…'**
+  String get acctReadingPlaylist;
+
+  /// No description provided for @optQualityTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Quality'**
+  String get optQualityTitle;
+
+  /// No description provided for @optQualityAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic'**
+  String get optQualityAuto;
+
+  /// No description provided for @optQualityAutoSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Follows your connection'**
+  String get optQualityAutoSub;
+
+  /// No description provided for @optQualityFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'This quality could not be applied'**
+  String get optQualityFailed;
+
+  /// No description provided for @optStatsShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the panel'**
+  String get optStatsShow;
+
+  /// No description provided for @optStatsShowSub.
+  ///
+  /// In en, this message translates to:
+  /// **'What your device really decodes'**
+  String get optStatsShowSub;
+
+  /// No description provided for @optStatsPermanent.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep it on screen'**
+  String get optStatsPermanent;
+
+  /// No description provided for @optStatsPermanentSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Stays visible while you watch'**
+  String get optStatsPermanentSub;
+
+  /// No description provided for @optStatsRows.
+  ///
+  /// In en, this message translates to:
+  /// **'Lines shown'**
+  String get optStatsRows;
+
+  /// No description provided for @detMoreBelow.
+  ///
+  /// In en, this message translates to:
+  /// **'More below'**
+  String get detMoreBelow;
+
+  /// No description provided for @detSeeMoreCast.
+  ///
+  /// In en, this message translates to:
+  /// **'See more'**
+  String get detSeeMoreCast;
+
+  /// No description provided for @settingsSubtitles.
+  ///
+  /// In en, this message translates to:
+  /// **'Online subtitles'**
+  String get settingsSubtitles;
+
+  /// No description provided for @settingsSubtitlesSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Find subtitles for a film that has none'**
+  String get settingsSubtitlesSub;
+
+  /// No description provided for @subProviderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Online subtitles'**
+  String get subProviderTitle;
+
+  /// No description provided for @subProviderActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get subProviderActive;
+
+  /// No description provided for @subProviderActiveSub.
+  ///
+  /// In en, this message translates to:
+  /// **'You can now look for subtitles while watching'**
+  String get subProviderActiveSub;
+
+  /// No description provided for @subProviderInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'No key saved'**
+  String get subProviderInactive;
+
+  /// No description provided for @subProviderInactiveSub.
+  ///
+  /// In en, this message translates to:
+  /// **'A key lets the app look for subtitles for you'**
+  String get subProviderInactiveSub;
+
+  /// No description provided for @subProviderIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Some films and episodes come without subtitles. The app can go and look for some, but the subtitle service needs to know who is asking. Getting your own access is free and takes a minute.'**
+  String get subProviderIntro;
+
+  /// No description provided for @subProviderStep1.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the subtitle service and confirm your e-mail address.'**
+  String get subProviderStep1;
+
+  /// No description provided for @subProviderStep2.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the key it gives you.'**
+  String get subProviderStep2;
+
+  /// No description provided for @subProviderStep3.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste it below, then save.'**
+  String get subProviderStep3;
+
+  /// No description provided for @subProviderGetKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Get a free key'**
+  String get subProviderGetKey;
+
+  /// No description provided for @subProviderSection.
+  ///
+  /// In en, this message translates to:
+  /// **'YOUR KEY'**
+  String get subProviderSection;
+
+  /// No description provided for @subProviderHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste your key here'**
+  String get subProviderHint;
+
+  /// No description provided for @subProviderShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get subProviderShow;
+
+  /// No description provided for @subProviderHide.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get subProviderHide;
+
+  /// No description provided for @subProviderSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get subProviderSave;
+
+  /// No description provided for @subProviderRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this key'**
+  String get subProviderRemove;
+
+  /// No description provided for @subProviderSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Key saved'**
+  String get subProviderSaved;
+
+  /// No description provided for @subProviderRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'Key removed'**
+  String get subProviderRemoved;
+
+  /// No description provided for @tracksSearchOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Look for subtitles online'**
+  String get tracksSearchOnline;
+
+  /// No description provided for @tracksSearchOnlineSub.
+  ///
+  /// In en, this message translates to:
+  /// **'For this film or episode'**
+  String get tracksSearchOnlineSub;
+
+  /// No description provided for @tracksOnlineSearching.
+  ///
+  /// In en, this message translates to:
+  /// **'Looking…'**
+  String get tracksOnlineSearching;
+
+  /// No description provided for @tracksOnlineTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitles found'**
+  String get tracksOnlineTitle;
+
+  /// No description provided for @tracksOnlineHearing.
+  ///
+  /// In en, this message translates to:
+  /// **'For deaf and hard of hearing'**
+  String get tracksOnlineHearing;
+
+  /// No description provided for @tracksOnlineAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitles added'**
+  String get tracksOnlineAdded;
+
+  /// No description provided for @tracksOnlineAddFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'These subtitles could not be added'**
+  String get tracksOnlineAddFailed;
+
+  /// No description provided for @tracksOnlineNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No subtitles found for this one'**
+  String get tracksOnlineNone;
+
+  /// No description provided for @tracksOnlineNoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This title could not be recognised'**
+  String get tracksOnlineNoTitle;
+
+  /// No description provided for @tracksOnlineNoKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up online subtitles in Settings first'**
+  String get tracksOnlineNoKey;
+
+  /// No description provided for @tracksOnlineBadKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Your key was refused — check it in Settings'**
+  String get tracksOnlineBadKey;
+
+  /// No description provided for @tracksOnlineQuota.
+  ///
+  /// In en, this message translates to:
+  /// **'You have used today\'s searches'**
+  String get tracksOnlineQuota;
+
+  /// No description provided for @tracksOnlineFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The search could not be completed'**
+  String get tracksOnlineFailed;
+
+  /// No description provided for @themeDefaultName.
+  ///
+  /// In en, this message translates to:
+  /// **'My theme {n}'**
+  String themeDefaultName(int n);
 }
 
 class _AppLocalizationsDelegate

@@ -71,6 +71,10 @@ class Fmp4Index {
   final List<_Frag> _frags = <_Frag>[];
   _Frag? _pendingMoof;
 
+  /// R30 — Premier `tfdt` vu pour CHAQUE piste (un `moof` porte un `traf` par
+  /// piste ; `_frags` ne retient que celui de la vidéo).
+  final Map<int, int> _firstTfdt = <int, int>{};
+
   /// Fin du segment d'initialisation (`ftyp`+`moov`), `null` tant que le
   /// `moov` n'est pas entièrement écrit.
   int? get initEnd => _initEnd;
@@ -79,6 +83,25 @@ class Fmp4Index {
 
   /// Fragments complets vus jusqu'ici (publiés ou non).
   int get fragmentCount => _frags.length;
+
+  /// R30 — Temps de décodage du PREMIER fragment de chaque piste (`tfdt`
+  /// converti par le `timescale` de la piste), par identifiant de piste.
+  ///
+  /// C'est la mesure que la recette Cast réclamait : un son « décalé » se lit
+  /// d'abord ici, dans l'écart entre le départ de la piste vidéo (recopiée,
+  /// donc sur une image clé) et celui de la piste audio (réencodée, donc à la
+  /// position demandée). Un écart nul n'exclut pas une dérive plus loin,
+  /// mais un écart non nul, lui, est une cause. Vide tant que rien n'est
+  /// fragmenté ; une piste sans `timescale` connu est omise.
+  Map<int, Duration> firstDecodeTimes() {
+    final out = <int, Duration>{};
+    for (final MapEntry<int, int> e in _firstTfdt.entries) {
+      final int? ts = _timescales[e.key];
+      if (ts == null || ts <= 0) continue;
+      out[e.key] = Duration(microseconds: (e.value * 1000000 / ts).round());
+    }
+    return out;
+  }
 
   /// Avance l'index sur les octets `[0, available)` désormais présents.
   /// Idempotent : rappeler avec la même valeur ne fait rien.
@@ -327,6 +350,7 @@ class Fmp4Index {
       if (id != null && t != null) {
         tfdtByTrack[id] = t;
         firstTrack ??= id;
+        _firstTfdt.putIfAbsent(id, () => t);
       }
     });
     final int? video = _videoTrackId;

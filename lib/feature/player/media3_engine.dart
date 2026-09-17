@@ -8,6 +8,7 @@ import '../../core/settings/performance_settings_service.dart';
 import '../../data/services/track_preferences_service.dart';
 import 'playback_engine.dart';
 import 'playback_error_message.dart';
+import 'player_error.dart';
 import 'video_stats.dart';
 import '../../l10n/l10n_ext.dart';
 
@@ -90,6 +91,108 @@ class Media3Engine implements AetherPlaybackEngine {
   /// §liveRecover — Message et code de la dernière erreur du moteur.
   String _lastError = '';
   int _lastErrorCode = 0;
+  bool _lastErrorAudio = false;
+
+  @override
+  bool get lastErrorWasAudio => _lastErrorAudio;
+
+  // ── §engineFeatures — qualité HLS ─────────────────────────────────────────
+
+  List<NativeVideoPlayerQuality> _nativeQualities = const [];
+  List<AetherQuality> _qualities = const [];
+  AetherQuality? _currentQuality;
+  final _qualitiesCtrl = StreamController<List<AetherQuality>>.broadcast();
+
+  @override
+  List<AetherQuality> get qualities => _qualities;
+
+  @override
+  AetherQuality? get currentQuality => _currentQuality;
+
+  @override
+  Stream<List<AetherQuality>> get qualitiesStream => _qualitiesCtrl.stream;
+
+  static AetherQuality _mapQuality(NativeVideoPlayerQuality q) => AetherQuality(
+        id: q.isAuto ? 'auto' : q.url,
+        label: q.height != null ? '${q.height}p' : q.label,
+        height: q.height,
+        bitrate: q.bitrate,
+        isAuto: q.isAuto,
+      );
+
+  void _onQualities(List<NativeVideoPlayerQuality> list) {
+    final bool hasAuto = list.any((q) => q.isAuto);
+    _nativeQualities = [
+      if (list.isNotEmpty && !hasAuto) NativeVideoPlayerQuality.auto(),
+      ...list,
+    ];
+    // Les variantes triées de la plus haute à la plus basse, « auto » en tête.
+    final variants = _nativeQualities.where((q) => !q.isAuto).toList()
+      ..sort((a, b) => (b.height ?? b.bitrate ?? 0).compareTo(a.height ?? a.bitrate ?? 0));
+    _qualities = [
+      for (final q in _nativeQualities.where((q) => q.isAuto)) _mapQuality(q),
+      for (final q in variants) _mapQuality(q),
+    ];
+    _currentQuality ??= _qualities.isEmpty ? null : _qualities.first;
+    if (_qualities.isEmpty) _currentQuality = null;
+    debugPrint('🎚️ §engineFeatures — ${variants.length} variante(s) HLS annoncée(s)');
+    _qualitiesCtrl.add(_qualities);
+  }
+
+  @override
+  Future<bool> setQuality(AetherQuality quality) async {
+    if (!_hasNativePlayer) return false;
+    final match = _nativeQualities.where(
+        (q) => quality.isAuto ? q.isAuto : (!q.isAuto && q.url == quality.id));
+    if (match.isEmpty) return false;
+    try {
+      await _c.setQuality(match.first);
+      _currentQuality = quality;
+      _qualitiesCtrl.add(_qualities);
+      debugPrint('🎚️ §engineFeatures — qualité imposée : ${quality.label}');
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ §engineFeatures — qualité refusée : $e');
+      return false;
+    }
+  }
+
+  // ── Lot 11 — sous-titres externes ─────────────────────────────────────────
+
+  /// cf. `AetherPlaybackEngine.loadExternalSubtitle`. Le paquet vendoré porte
+  /// déjà un moteur de sous-titres « sidecar » (VTT/SRT, rendu par la surcouche
+  /// Flutter, et attaché nativement sur Android pour le PiP) : on lui donne le
+  /// fichier, puis on sélectionne la piste qu'il fabrique.
+  @override
+  Future<bool> loadExternalSubtitle({
+    required String filePath,
+    required String language,
+    required String label,
+  }) async {
+    if (!_hasNativePlayer) {
+      debugPrint('⚠️ lot 11 — sous-titre externe refusé : aucun lecteur natif prêt');
+      return false;
+    }
+    try {
+      await _c.setSidecarSubtitles([
+        NativeVideoPlayerSidecarSubtitle.file(filePath,
+            language: language, label: label),
+      ]);
+      final all = await _c.getAvailableSubtitleTracks();
+      final sidecar =
+          all.where((t) => t.source == SubtitleTrackSource.sidecar).toList();
+      if (sidecar.isEmpty) return false;
+      await _c.setSubtitleTrack(sidecar.last);
+      await _refreshTracks();
+      _curSub = _subtitles.where((t) => t.id == '${sidecar.last.index}').firstOrNull ??
+          _curSub;
+      debugPrint('📝 lot 11 — sous-titre externe chargé : $label ($language)');
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ lot 11 — sous-titre externe impossible : $e');
+      return false;
+    }
+  }
 
   /// Fenêtre d'amnistie après un `seek`.
   ///
@@ -222,6 +325,13 @@ class Media3Engine implements AetherPlaybackEngine {
     _subs.add(_c.positionStream.listen((p) => _position = p));
     _subs.add(_c.durationStream.listen((d) => _duration = d));
     _subs.add(_c.bufferedPositionStream.listen((b) => _buffered = b));
+    // §engineFeatures — Variantes HLS annoncées par le manifeste, et celle
+    // que le moteur applique. Vide hors HLS multi-débit.
+    _subs.add(_c.qualitiesStream.listen(_onQualities));
+    _subs.add(_c.qualityChangedStream.listen((q) {
+      _currentQuality = _mapQuality(q);
+      _qualitiesCtrl.add(_qualities);
+    }));
     _subs.add(_c.videoSizeStream.listen((s) {
       // ⚠️ `0` signifie « pas encore décodé » → on publie `null`, jamais zéro :
       // §qualityTruth enregistrerait sinon une définition de 0×0 comme une
@@ -238,6 +348,9 @@ class Media3Engine implements AetherPlaybackEngine {
     _lastError = (e.data?['message'] as String?)?.trim() ?? '';
     _lastErrorCode = (e.data?['errorCode'] as int?) ?? 0;
     final name = e.data?['errorCodeName'] as String?;
+    // R5 — Le verdict « son seul » se prend ICI, sur le code et le message
+    // BRUTS : ce qui sort sur `errorStream` est traduit et ne dit plus rien.
+    _lastErrorAudio = isMedia3AudioError(codeName: name, rawMessage: _lastError);
     debugPrint('❌ §liveRecover — erreur moteur : '
         '${name ?? 'inconnue'} ($_lastErrorCode) — ${sanitizeForLog(_lastError)}');
     // §userError — Ce qui part ici finit À L'ÉCRAN (`player_page` l'affiche
@@ -527,11 +640,39 @@ class Media3Engine implements AetherPlaybackEngine {
     }
   }
 
-  /// §audioFallback — Lire **sans son** plutôt qu'abandonner.
-  /// ⚠️ Sans objet ici en pratique : ExoPlayer ne remonte pas d'erreur de piste
-  /// audio isolée comme mpv. Implémenté pour respecter le contrat.
+  /// §audioFallback / R5 (patch 25) — Lire **sans son** plutôt qu'abandonner :
+  /// la piste audio est coupée par `setTrackTypeDisabled(AUDIO)` (index -2 du
+  /// natif), l'image continue. Le natif rallume le type dès qu'une piste est
+  /// choisie ou rendue à l'automatique.
+  ///
+  /// ⚠️ Après une erreur, ExoPlayer est à l'ARRÊT : couper la piste ne relance
+  /// rien, l'appelant enchaîne sur [recoverInPlace].
   @override
-  Future<void> disableAudio() async {}
+  Future<void> disableAudio() async {
+    if (!_hasNativePlayer) {
+      debugPrint('⚠️ R5 — coupure audio refusée : aucun lecteur natif prêt');
+      return;
+    }
+    try {
+      await _c.setAudioTrack(NativeVideoPlayerAudioTrack.off());
+      await _refreshTracks();
+      debugPrint('🔇 R5 — piste audio coupée, lecture sans son');
+    } catch (e) {
+      debugPrint('⚠️ R5 — coupure audio impossible : $e');
+    }
+  }
+
+  /// §bgAudio (patch 26) — cf. `AetherPlaybackEngine.setVideoEnabled`.
+  @override
+  Future<bool> setVideoEnabled(bool enabled) async {
+    if (!_hasNativePlayer) return false;
+    try {
+      return await _c.setVideoTrackEnabled(enabled);
+    } catch (e) {
+      debugPrint('⚠️ §bgAudio — piste vidéo ${enabled ? 'rallumage' : 'coupure'} impossible : $e');
+      return false;
+    }
+  }
 
   /// R42 — Coupe les sous-titres. Rien à écrire côté Kotlin : l'index -1 de
   /// [NativeVideoPlayerSubtitleTrack.off] devient un `setTrackTypeDisabled`
@@ -748,6 +889,7 @@ class Media3Engine implements AetherPlaybackEngine {
     _playing.close();
     _buffering.close();
     _completed.close();
+    _qualitiesCtrl.close();
     _error.close();
     _videoParams.close();
     _c.dispose();

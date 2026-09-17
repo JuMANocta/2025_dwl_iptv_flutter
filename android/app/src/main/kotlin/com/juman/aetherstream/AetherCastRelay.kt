@@ -139,12 +139,44 @@ class AetherCastRelay(private val context: Context) {
         // §castResume — La coupe se cale sur l'image clé précédente : on
         // repart au plus quelques secondes AVANT la position demandée, jamais
         // après. C'est le bon sens de l'erreur (on ne saute rien).
+        //
+        // R30 (2026-09-16) — ⛔ `setStartsAtKeyFrame(true)` n'est PAS une
+        // option de confort : sans lui, ce commentaire MENTAIT et le son
+        // partait décalé. Le drapeau vaut `false` par défaut (vérifié dans le
+        // bytecode de `ClippingConfiguration.Builder`, Media3 1.5.0 : le
+        // constructeur ne pose que `endPositionUs`), ce qui demande un départ
+        // à l'image PRÈS. Or `TransformerUtil.shouldTranscodeVideo` ne regarde
+        // pas du tout la coupe — ses critères portent sur le `Format`, et
+        // `RelayExtractorsFactory` les neutralise tous : la vidéo est donc
+        // RECOPIÉE, et un flux recopié ne peut commencer que sur une image
+        // clé. Le son, lui, est réencodé et partait exactement à `startMs` :
+        // l'image commençait jusqu'à quelques secondes plus tôt que le son,
+        // ce qui s'entend comme « le son est en avance » (recette D, R30).
+        // Avec ce drapeau, les deux pistes partent du MÊME instant — l'image
+        // clé — par construction.
+        //
+        // ⚠️ Ce que la mesure dit et ne dit PAS. L'écart relevé en fin de
+        // conversion (`⏱️ §castRelay R30`) vaut la distance à l'image clé :
+        // il reste NON NUL après ce correctif, puisque les deux pistes
+        // reculent ensemble. Ce n'est donc pas lui qui valide le correctif,
+        // c'est l'OREILLE (son juste dès la PREMIÈRE conversion, sans avoir à
+        // relancer). L'alignement piste à piste n'est pas lisible dans le
+        // conteneur : le muxeur rebase chaque `tfdt` à zéro — c'est pourquoi
+        // la mesure du 09-12 lisait 0,000000 s des deux côtés.
+        //
+        // ⚠️ Conséquence à connaître : `CastRelayState.offset` vaut `startMs`
+        // alors que le contenu servi commence à `startMs - écart`. La position
+        // de film rendue est donc surestimée de cet écart (quelques secondes),
+        // et la reprise enregistrée avec. Borné, connu, non corrigé : le
+        // corriger demanderait de faire redescendre l'écart du natif jusqu'au
+        // Dart, ce qui ne se décide pas sans la recette.
         val item = if (startMs > 0) {
             MediaItem.Builder()
                 .setUri(url)
                 .setClippingConfiguration(
                     MediaItem.ClippingConfiguration.Builder()
                         .setStartPositionMs(startMs)
+                        .setStartsAtKeyFrame(true)
                         .build()
                 )
                 .build()

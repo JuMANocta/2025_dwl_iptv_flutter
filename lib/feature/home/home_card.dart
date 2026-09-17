@@ -1,86 +1,12 @@
 part of 'home_page.dart';
 
 // ─── Carte poster avec overlay gradient + titre ─────────────────────────────
-
-/// R38 — `true` quand [entry] est le **stub** d'une série : l'unique entrée que
-/// le catalogue Xtream porte pour la série entière
-/// (`/series/{user}/{pass}/{series_id}`, sans extension).
-///
-/// ⛔ **Ce n'est PAS un endpoint de stream.** Le parseur le dit déjà en toutes
-/// lettres (`xtream_catalog_parser`) : cette URL n'est qu'un marqueur, dont la
-/// fiche extrait le `series_id` pour aller chercher les épisodes à la demande.
-///
-/// **Le défaut qu'elle corrige.** La feuille d'appui long n'avait aucune garde
-/// de type : sa tuile « Lire » poussait `PlayerPage(path: entry.url)` avec ce
-/// stub — une lecture qui ne peut pas aboutir. Le tap simple, lui, gardait
-/// déjà la série pour la fiche. §heroSeriesResume l'a rendu VISIBLE : la
-/// progression d'un épisode s'écrit désormais AUSSI sous le stub, donc la même
-/// tuile se mettait à proposer « Reprendre · mm:ss » sur un chemin injouable.
-///
-/// ⚠️ Une série ne se reconnaît PAS à son type : une liste M3U porte ses
-/// épisodes comme autant d'entrées `series` à l'URL bien réelle (§Ultimate,
-/// `SxxExx`), et leur appui long doit continuer de lire. C'est la FORME de
-/// l'URL qui tranche, avec la règle EXACTE de
-/// `DetailsPage._extractSeriesIdFromUrl` — celle qui décide partout ailleurs
-/// qu'une entrée est un stub d'API (une entrée que cette règle ne reconnaît
-/// pas est aussi une entrée dont la fiche ne saurait pas tirer d'épisodes).
-///
-/// ⛔ **Cette règle est une COPIE de `DetailsPage._extractSeriesIdFromUrl`** :
-/// les deux doivent être tenues d'accord. Si l'une change, l'autre change —
-/// sinon l'accueil et la fiche ne s'entendront plus sur ce qu'est un stub.
-/// C'est §tourFix (deux copies d'une règle divergent toujours ; le projet l'a
-/// déjà payé sur `redactUrl`) : l'unification en un prédicat unique est un
-/// ticket ouvert, volontairement différé — un refactor inter-fichiers dans un
-/// arbre où plusieurs lots avancent en parallèle casserait plus qu'il ne règle.
-///
-/// Fonction pure : c'est elle qu'on teste.
-bool isSeriesStubEntry(M3uEntry entry) {
-  if (entry.type != M3uContentType.series) return false;
-  // Épisode numéroté (liste M3U) : son URL est jouable telle quelle.
-  //
-  // ⚠️ **Ce court-circuit ne protège d'aucun cas mesuré** : sur les 231 252 URL
-  // `/series/` des deux M3U réels, aucune ne porte à la fois une numérotation
-  // et une URL sans extension — le test d'extension plus bas les attrape déjà
-  // toutes. Sa valeur est la PARITÉ avec la fiche : `_buildSeasonEpisodes`
-  // (`details_page.dart:739-745`) teste lui aussi le TITRE avant l'URL. Le
-  // retirer ferait diverger l'accueil de la fiche sur ce qu'est un stub,
-  // c'est-à-dire aggraver la dette R44 au lieu de la contenir.
-  if (entry.title.isSeriesEpisode) return false;
-  try {
-    final List<String> segments = Uri.parse(entry.url).pathSegments;
-    if (segments.length < 4 || segments.first.toLowerCase() != 'series') {
-      return false;
-    }
-    final String last = segments.last;
-    if (last.contains('.')) return false; // une extension = URL d'épisode
-    return int.tryParse(last) != null;
-  } catch (_) {
-    return false;
-  }
-}
-
-/// R38 — `true` si le GROUPE de la vignette contient un stub de série.
-///
-/// ⛔ **La question se pose sur le groupe, pas sur `versions.first`.** Un même
-/// titre peut MÉLANGER le stub d'API d'un compte Xtream et les épisodes réels
-/// d'une liste M3U : c'est conçu, pas hypothétique — `_buildSeasonEpisodes`
-/// sépare précisément les deux familles depuis une seule collecte
-/// (`details_page.dart:736-748`, §seriesMultiList). Interroger la seule
-/// première version laissait donc le défaut d'origine INTACT dès qu'un épisode
-/// M3U se trouvait en tête : « Lire » jouait alors un épisode arbitraire sous
-/// le nom de la série.
-///
-/// ⚠️ `any`, et surtout pas « toutes » : « toutes » rendrait `false` sur un
-/// groupe mixte, c'est-à-dire exactement le cas qu'on vient de décrire.
-///
-/// ⚠️ Le prix est assumé (**R45**) : un groupe mixte perd aussi « Télécharger »
-/// alors qu'il contient des épisodes téléchargeables. La bonne réponse est une
-/// décision par TUILE, qui demande une mesure préalable sur les dumps — elle ne
-/// se bricole pas ici.
-///
-/// Fonction pure : c'est elle qu'on teste.
-bool groupHasSeriesStub(Iterable<M3uEntry> versions) =>
-    versions.any(isSeriesStubEntry);
+//
+// R44/R45 — Les règles « stub de série » ne vivent plus ici : elles sont
+// PARTAGÉES avec la fiche dans `lib/feature/search/series_stub.dart`
+// (`seriesIdFromUrl`, `isSeriesStubEntry`, `firstPlayableVersion`,
+// `groupIsOnlySeriesStubs`). L'import se fait dans `home_page.dart`, dont ce
+// fichier est une `part`.
 
 class _HomeCard extends StatefulWidget {
   final List<M3uEntry> versions;
@@ -240,10 +166,24 @@ class _HomeCardState extends State<_HomeCard> {
     if (widget.versions.isEmpty) return;
     HapticFeedback.mediumImpact();
     final entry = widget.versions.first;
-    // R38 — Décidé UNE fois, sur TOUT le groupe (cf. `groupHasSeriesStub` : un
-    // épisode M3U en tête d'un groupe mixte laissait passer la lecture du
-    // stub) : trois tuiles de la feuille en dépendent.
-    final bool isSeriesStub = groupHasSeriesStub(widget.versions);
+    // R45 — La feuille décide sur la première version JOUABLE du groupe, jamais
+    // sur `versions.first` ni sur la simple présence d'un stub.
+    //
+    // ⛔ La tête du groupe est un tirage au sort : elle suit l'ORDRE D'AJOUT DES
+    // COMPTES. Mesuré sur les six dumps réels — 5 836 groupes de série mixtes
+    // sur 21 025 (27,76 %) — dans un ordre de comptes 100 % des têtes sont des
+    // épisodes, dans l'ordre inverse 100 % sont des stubs.
+    //
+    // ⚠️ `groupHasSeriesStub` (R38) était trop large : il retirait aussi
+    // « Télécharger » à ces 5 836 groupes, qui portent pourtant des épisodes
+    // parfaitement téléchargeables. La question n'est pas « y a-t-il un
+    // stub ? » mais « y a-t-il quelque chose à lire ? ».
+    final M3uEntry? playable = firstPlayableVersion(widget.versions);
+    final bool isSeriesStub = playable == null;
+    // Ce que « Lire » et « Télécharger » visent : une URL qui aboutit.
+    // ⚠️ `entry` reste la tête du groupe pour tout le RESTE (affiche, titre,
+    // favori) : c'est bien lui le représentant du titre.
+    final M3uEntry playTarget = playable ?? entry;
 
     // §3c-4 — bifurque mobile/TV pour le menu contextuel long-press.
     await showAdaptiveActionSheet<void>(
@@ -340,19 +280,31 @@ class _HomeCardState extends State<_HomeCard> {
 
                 Future<void> play({Duration? from}) async {
                   Navigator.pop(sheetCtx);
+                  // R45 — On lit `playTarget`, pas la tête du groupe : dans un
+                  // groupe mixte, la tête peut être le stub d'API d'un compte
+                  // Xtream, dont l'URL n'aboutit jamais.
                   // §deviceCaps — la porte, même règle que la fiche.
-                  if (!await PlaybackGate.allow(context, entry)) return;
+                  if (!await PlaybackGate.allow(context, playTarget)) return;
                   if (!mounted) return;
                   FavoritesService.addEntry(entry);
-                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerPage(
-                    path: entry.url,
-                    title: entry.displayName,
+                  // §dlPlayLocal — la carte de l'accueil aussi : un titre
+                  // téléchargé se lit depuis le disque, avec la même reprise.
+                  await launchPlayback(
+                    context,
+                    networkPath: playTarget.url,
+                    groupUrls: [for (final v in widget.versions) v.url],
+                    // R23 — avertir quand l'abonnement est saturé.
+                    accountId: playTarget.accountId,
+                    build: (src) => PlayerPage(
+                    path: src.path,
+                    progressKey: src.progressKey,
+                    title: playTarget.displayName,
                     // §stallCount — rattache les blocages au fournisseur.
-                    accountId: entry.accountId,
+                    accountId: playTarget.accountId,
                     // §watchContext a/b — badges qualité + saison/épisode.
-                    qualityTag: entry.title.qualityOrDefault,
-                    episodeTag: entry.title.seasonEpisodeLabel,
-                    sourceType: VideoSourceType.network,
+                    qualityTag: playTarget.title.qualityOrDefault,
+                    episodeTag: playTarget.title.seasonEpisodeLabel,
+                    sourceType: src.sourceType,
                     badgeType: badge,
                     startPosition: from,
                     // §endOfMovie — toutes les versions du titre s'effacent à la fin.
@@ -360,13 +312,22 @@ class _HomeCardState extends State<_HomeCard> {
                     // §nowPlaying — la même image que la vignette.
                     posterUrl: _tmdbPoster ??
                         (_logoCandidates.isEmpty ? null : _logoCandidates.first),
-                  )));
+                  ),
+                  );
                 }
 
                 if (!hasResume) {
+                  // §dlPlayLocal — la carte dit ce qui va se passer : ce titre
+                  // est sur l'appareil, il se lira sans réseau.
+                  final bool hasLocal = hasLocalFileFor(
+                    networkPath: playTarget.url,
+                    groupUrls: [for (final v in widget.versions) v.url],
+                  );
                   return ListTile(
                     leading: const Icon(Icons.play_arrow),
-                    title: Text(sheetCtx.l10n.cardPlay),
+                    title: Text(hasLocal
+                        ? sheetCtx.l10n.playOffline
+                        : sheetCtx.l10n.cardPlay),
                     onTap: () => play(),
                   );
                 }
@@ -433,17 +394,34 @@ class _HomeCardState extends State<_HomeCard> {
             // la série (§dlEpisode : tous les épisodes viseraient ce fichier).
             // Le téléchargement d'un épisode vit dans la fiche, qui sait
             // lequel.
+            //
+            // R45 — Mais un groupe MIXTE porte, lui, des épisodes bien réels :
+            // il garde « Télécharger », qui vise `playTarget` (l'épisode) et
+            // jamais le stub. C'est la moitié du ticket qui restait ouverte :
+            // 5 836 groupes sur 21 025 perdaient l'action pour rien.
             if (widget.type != M3uContentType.tv && !isSeriesStub)
               ListTile(
                 leading: const Icon(Icons.download),
                 title: Text(sheetCtx.l10n.download),
                 onTap: () {
                   Navigator.pop(sheetCtx);
-                  final releaseYear = widget.type == M3uContentType.movie ? entry.title.year : null;
+                  final releaseYear = widget.type == M3uContentType.movie ? playTarget.title.year : null;
                   verifierEtTelecharger(
-                    url: entry.url,
-                    nom: buildDownloadName(entry),
+                    url: playTarget.url,
+                    // §dlEpisode — le nom porte la numérotation de l'épisode
+                    // visé, jamais le seul nom de la série : `rename()`
+                    // remplace sa cible sans lever, deux épisodes au même nom
+                    // s'écraseraient.
+                    nom: buildDownloadName(playTarget),
                     releaseYear: releaseYear,
+                    // R39 — Le groupe porte parfois le stub de sa série à côté
+                    // de ses épisodes (groupe mixte, 27,76 % des séries) : la
+                    // clé se pose alors ici. `null` sinon, jamais un
+                    // à-peu-près (§heroSeriesResume).
+                    seriesKey: seriesResumeKeyFor(
+                      stubs: widget.versions.where(isSeriesStubEntry).toList(),
+                      episode: playTarget,
+                    ),
                     context: context,
                   );
                 },

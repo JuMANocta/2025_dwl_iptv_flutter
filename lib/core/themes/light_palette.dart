@@ -137,6 +137,44 @@ Color brandReadableOn(
   return hsl.toColor();
 }
 
+/// §lightTheme (2026-09-16) — Une couleur ATTÉNUÉE qui reste visible.
+///
+/// **Le défaut corrigé** : un état désactivé ou non choisi s'écrivait partout
+/// de la même façon — une opacité posée sur la couleur, parfois deux
+/// (`Opacity(0.45)` par-dessus un `withAlpha(90)`, soit 16 % au total). Sur
+/// fond sombre, une couleur vive à 16 % se devine encore ; sur le fond BLANC du
+/// thème clair, la même opération la fait disparaître. Mesuré sur la planche :
+/// une pastille de version non choisie et un réglage grisé n'étaient plus là.
+///
+/// On ne fixe donc plus l'opacité, on fixe le **plancher de contraste** :
+/// [color] est d'abord rendue lisible sur [surface] (`brandReadableOn`, qui
+/// sait assombrir sur du clair ET éclaircir sur du sombre), puis fondue vers
+/// [surface] aussi loin que possible SANS descendre sous [minRatio]. Le
+/// résultat est atténué au maximum, et jamais invisible.
+///
+/// ⚠️ Ça ne remplace pas `readableOn` : celui-ci sert au premier plan NORMAL
+/// (4,5:1), celui-là à ce qui doit se lire comme secondaire (3:1, le seuil des
+/// éléments non textuels).
+///
+/// ⛔ Ne pas revenir à une opacité « qui marchait bien en sombre » : le thème
+/// clair est l'autre moitié du problème. **Pure** — testée.
+Color mutedOn(
+  Color color,
+  Color surface, {
+  double minRatio = kMinUiContrast,
+}) {
+  final Color base = brandReadableOn(color, surface, minRatio: kMinTextContrast);
+  Color best = base;
+  // 19 paliers de 5 % : assez fin pour que l'atténuation se voie, assez court
+  // pour rester négligeable dans un build.
+  for (int i = 1; i < 20; i++) {
+    final Color candidate = Color.lerp(base, surface, i * 0.05)!;
+    if (contrastRatio(candidate, surface) < minRatio) break;
+    best = candidate;
+  }
+  return best;
+}
+
 /// La couleur du TEXTE à poser sur un aplat de [background].
 ///
 /// ⚠️ Le piège que ça évite : un même jeton sémantique sert tantôt de

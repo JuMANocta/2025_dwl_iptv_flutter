@@ -9,7 +9,6 @@ A Flutter plugin for native video playback on iOS and Android with advanced feat
 - ✅ Native video players: **AVPlayerViewController** on iOS and **ExoPlayer (Media3)** on Android
 - ✅ **Multiple video formats**: HLS streams (.m3u8), MP4, and other common formats
 - ✅ **Local file support**: Play videos from device storage using file:// URIs
-- ✅ **Asset video support**: Play videos bundled in Flutter assets
 - ✅ **HLS streaming** support with adaptive quality selection
 - ✅ **Video looping**: Smooth native video looping without stuttering
 - ✅ **Picture-in-Picture (PiP)** mode on both platforms with automatic state management
@@ -59,7 +58,7 @@ The plugin supports various video formats through native platform players:
 
 ### Local Files
 - **Device Storage**: Videos stored on device using `file://` URIs
-- **App Bundle**: Videos bundled with your app (iOS: via `NSBundle`, Android: via assets or external storage)
+- **App Bundle**: Videos bundled with your app (iOS: via `NSBundle`; Android: via external storage — the `native_video_player/assets` extraction channel was removed in this vendored copy, patch 24)
 
 ### Examples
 

@@ -10,6 +10,7 @@ import 'package:aetherStream/data/services/playback_health_service.dart';
 import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/data/services/track_preferences_service.dart';
 import 'package:aetherStream/data/services/remote_control_service.dart';
+import 'package:aetherStream/data/services/online_subtitles_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/utils/app_snackbar.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
@@ -22,7 +23,8 @@ import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
 import 'widgets/track_selector_sheet.dart';
 import '../../data/services/measured_quality_service.dart';
-import 'player_error.dart';
+import 'background_video_policy.dart';
+import 'cast_autostart_policy.dart';
 import 'video_fit.dart';
 import 'video_stats.dart';
 import 'widgets/player_options_sheet.dart';
@@ -149,6 +151,20 @@ class PlayerPage extends StatefulWidget {
   /// de la liste). Optionnel : sans elle, la notification est texte seul.
   final String? posterUrl;
 
+  /// Lot 6b / §castLocal — Ouvrir la feuille « Diffuser » d'elle-même, une
+  /// fois le média chargé et ses pistes énumérées.
+  ///
+  /// **Pourquoi passer par le lecteur** : la tuile « Diffuser » d'un
+  /// téléchargement ne connaît pas les pistes audio du fichier — seul le
+  /// moteur les énumère. Une tuile qui diffuserait directement enverrait un
+  /// AC3 au téléviseur sans la réserve sur le son (image sans son, §castSend).
+  /// En ouvrant le lecteur avec ce drapeau, tout le chemin existant
+  /// s'applique : sonde, réserve, consentement au relais.
+  ///
+  /// ⛔ Jamais avant l'énumération des pistes, jamais deux fois par
+  /// chargement — la règle vit dans `cast_autostart_policy.dart`.
+  final bool openCastOnStart;
+
   const PlayerPage({
     super.key,
     required this.path,
@@ -169,6 +185,7 @@ class PlayerPage extends StatefulWidget {
     this.seriesResumeKey,
     this.onRequestNext,
     this.seasonNumber,
+    this.openCastOnStart = false,
   });
 
   /// §episodeMeta — Contenu initial, assemblé depuis les champs du widget.
@@ -317,6 +334,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// `true` tant que la fenêtre PiP est affichée — masque les contrôles
   /// (rien n'y est cliquable) et neutralise les gestes.
   bool _inPip = false;
+
+  /// §bgAudio — `true` tant que la piste VIDÉO est coupée parce que l'app est
+  /// en arrière-plan (écran éteint) ; rallumée au retour au premier plan.
+  bool _videoDropped = false;
+
+  /// R17 — Hauteur MESURÉE de la barre haute des contrôles (encoche comprise),
+  /// sous laquelle se pose l'encart des stats vidéo. Repli le temps de la
+  /// première mise en page : une barre nue sur un téléphone sans encoche.
+  double _topBarHeight = 72;
 
   /// Dernière taille vidéo mesurée (§qualityTruth la publie déjà) : sert de
   /// ratio à la fenêtre PiP. `null` tant que rien n'est décodé → repli 16:9.
@@ -486,6 +512,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   void _onPipActiveChanged() {
     if (!mounted) return;
     setState(() => _inPip = PlatformPip.active.value);
+    // §bgAudio — Filet de sécurité : l'ordre entre le cycle de vie Flutter et
+    // `onPictureInPictureModeChanged` du natif n'est garanti par rien. Si
+    // « arrière-plan » est arrivé AVANT « PiP actif », l'image a été coupée
+    // pour une fenêtre qui, elle, est visible : on la rend dès qu'on l'apprend.
+    if (_inPip && _videoDropped) {
+      _videoDropped = false;
+      unawaited(_ctrl.setVideoEnabled(true));
+      debugPrint('🌞 §bgAudio — fenêtre PiP visible : image rendue');
+    }
   }
 
   /// §pipPhone — Réarme l'autorisation d'auto-PiP à chaque changement
@@ -577,6 +612,61 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     }
     _castHandedBack = handedBack;
     _syncAutoPip(); // §pipPhone — pas de fenêtre flottante pendant une diffusion
+  }
+
+  /// Lot 6b / §castLocal — La feuille Cast s'est-elle déjà ouverte seule pour
+  /// ce chargement, et depuis quand la lecture tourne-t-elle ?
+  bool _castSheetAutoOpened = false;
+  DateTime? _playbackStartedAt;
+  Timer? _castAutoOpenTimer;
+
+  /// Lot 6b / §castLocal — Armé au premier « ça joue ». Réévalue la règle
+  /// jusqu'à ce qu'elle dise oui (pistes énumérées) ou que le délai de grâce
+  /// tombe ; s'éteint tout seul dans les deux cas.
+  ///
+  /// ⚠️ Un minuteur, pas une attente sur un flux : le moteur ne publie AUCUN
+  /// événement « pistes énumérées » (cf. `AetherPlaybackEngine`), et inventer
+  /// un flux pour ce seul besoin coûterait plus que 16 réveils bornés.
+  void _armCastAutoOpen() {
+    if (!widget.openCastOnStart || _castSheetAutoOpened) return;
+    _playbackStartedAt ??= DateTime.now();
+    _castAutoOpenTimer?.cancel();
+    _castAutoOpenTimer = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (t) => _tickCastAutoOpen(t),
+    );
+    _tickCastAutoOpen(_castAutoOpenTimer!);
+  }
+
+  void _tickCastAutoOpen(Timer t) {
+    if (!mounted) {
+      t.cancel();
+      return;
+    }
+    final DateTime? since = _playbackStartedAt;
+    final Duration waited =
+        since == null ? Duration.zero : DateTime.now().difference(since);
+    final int n = _ctrl.audioTracks.where((a) => !a.isSpecial).length;
+    if (!shouldOpenCastSheetOnStart(
+      requested: widget.openCastOnStart,
+      alreadyOpened: _castSheetAutoOpened,
+      playing: _ctrl.playing,
+      audioTrackCount: n,
+      waited: waited,
+    )) {
+      // ⚠️ Borne dure : la règle exige que ça JOUE. Une pause posée juste
+      // après le lancement ferait tourner ce minuteur sans fin — au bout d'une
+      // demi-minute, le geste a perdu son sens, le bouton de la barre reste.
+      if (waited > kCastAutostartGrace + const Duration(seconds: 30)) {
+        t.cancel();
+        debugPrint('⚠️ §castLocal — feuille Cast non ouverte seule : la lecture n\'a pas démarré');
+      }
+      return;
+    }
+    t.cancel();
+    _castSheetAutoOpened = true;
+    debugPrint('📡 §castLocal — feuille Cast ouverte seule ($n piste(s) audio connue(s))');
+    unawaited(_showCastSheet());
   }
 
   /// Bouton « Diffuser » de la barre du haut : feuille de choix d'appareil.
@@ -715,6 +805,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         _media.path,
         audioIndex: _relayAudioIndex(),
         startAt: _skipProgress ? Duration.zero : _ctrl.position,
+        // R30 — Pour le seul relevé de fin de conversion : la durée que le
+        // lecteur connaît, à confronter à celle du fichier produit.
+        sourceDuration: _ctrl.duration,
       );
       // ⚠️ Renseigné SEULEMENT ici, juste avant que la diffusion ne devienne
       // celle de CE contenu. Posé avant la conversion (6 à 60 s), il rendait
@@ -853,6 +946,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         // réécrite), sauvée par le service toutes les 10 s, lecteur ouvert
         // ou non.
         progressKey: _skipProgress ? null : _media.resumeKey,
+        // R39 — Et la clé de la SÉRIE, comme `_saveProgress` du lecteur
+        // local : sans elle, un épisode suivi sur le téléviseur n'entrait
+        // jamais au hero (§heroSeriesResume).
+        seriesProgressKey: _skipProgress ? null : _media.seriesResumeKey,
         startAt: pos,
       );
     } catch (e) {
@@ -969,6 +1066,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         _retryCount = 0;
         _recoveryLabel.value =
             null; // §recoverLabel — ça joue, plus rien à dire
+        // Lot 6b / §castLocal — C'est ICI que « chargé » devient vrai : le
+        // moteur rend. On n'arme qu'à partir de là, jamais à l'ouverture.
+        _armCastAutoOpen();
       } else {
         _releaseWakelock();
       }
@@ -1038,8 +1138,41 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         _releaseWakelock();
         // Sauvegarde immédiate de la progression (l'OS peut tuer l'app à tout moment).
         _saveProgress();
+        // §bgAudio — Le son continue (wake mode réseau + §nowPlaying), mais le
+        // rendu vidéo décodait pour personne sur une surface de substitution :
+        // on coupe la piste VIDÉO seule, ni sur TV, ni en PiP, ni sous Cast.
+        if (!_videoDropped &&
+            shouldDropVideoInBackground(
+              isTv: PlatformTv.isTv,
+              inPip: _inPip,
+              casting: _cast != null,
+            )) {
+          _videoDropped = true;
+          // ⚠️ §l10nAll — un `debugPrint` tient sur UNE ligne : une ligne de
+          // continuation accentuée compterait comme un texte d'écran.
+          unawaited(_ctrl.setVideoEnabled(false).then((ok) {
+            if (!ok) _videoDropped = false;
+            if (ok) {
+              debugPrint('🌙 §bgAudio — image coupée en arrière-plan, le son continue');
+            } else {
+              debugPrint('⚠️ §bgAudio — image non coupée : le moteur a refusé');
+            }
+          }));
+        }
         break;
       case AppLifecycleState.resumed:
+        // §bgAudio — L'image revient AVANT tout le reste : sans rouvrir le
+        // flux, ExoPlayer resélectionne la piste vidéo à la position courante.
+        if (_videoDropped) {
+          _videoDropped = false;
+          unawaited(_ctrl.setVideoEnabled(true).then((ok) {
+            if (ok) {
+              debugPrint('🌞 §bgAudio — image rétablie au retour');
+            } else {
+              debugPrint('⚠️ §bgAudio — image non rétablie : le moteur a refusé');
+            }
+          }));
+        }
         // Retour au premier plan : si on était en erreur définitive → tenter un
         // nouveau cycle de retry. Sinon, re-armer le wakelock si on joue.
         // R34 — Jamais pendant une diffusion : rouvrir le flux local ajouterait
@@ -1400,7 +1533,22 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// vidéo est géré nativement par `dpad` (`restoreFocus`).
   Future<void> _showTrackSelector() async {
     _hideTimer?.cancel();
-    await showTrackSelector(context, _ctrl);
+    await showTrackSelector(
+      context,
+      _ctrl,
+      // Lot 11 — De quoi chercher des sous-titres en ligne. `null` pour ce
+      // qui ne s'identifie pas auprès de TMDB : une chaîne en direct, un
+      // replay, un titre vide — la ligne n'apparaît alors pas du tout,
+      // plutôt que de promettre une recherche qui ne rendrait rien.
+      onlineSearch: _media.badgeType == PlayerBadgeType.live
+          ? null
+          : subtitleSearchContextFor(
+              title: _media.title,
+              seriesName: _media.seriesName,
+              episodeTag: _media.episodeTag,
+              seasonNumber: _media.seasonNumber,
+            ),
+    );
     if (mounted) _startHideTimer();
   }
 
@@ -1420,9 +1568,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           _speed == 1.0 ? context.l10n.optSpeedCurrentNormal : '$_speed×',
       fitMode: _fit,
       statsEnabled: _statsEnabled,
-      onToggleStats: () {
+      onStats: () {
         Navigator.of(context).pop();
-        _toggleStats();
+        _showStatsMenu();
+      },
+      qualities: _ctrl.qualities,
+      currentQuality: _ctrl.currentQuality,
+      onQuality: () {
+        Navigator.of(context).pop();
+        _showQualityMenu();
       },
       onFit: () {
         Navigator.of(context).pop();
@@ -1446,11 +1600,48 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (mounted) _startHideTimer();
   }
 
-  /// §videoStats — Bascule l'encart de diagnostic vidéo.
-  void _toggleStats() {
-    final next = !_statsEnabled;
-    setState(() => _statsEnabled = next);
-    VideoStatsPreference.set(next);
+  /// §videoStats / §videoStatsTags — Sous-menu de l'encart de diagnostic :
+  /// oui / non, toujours à l'écran ou avec les contrôles, lignes affichées.
+  Future<void> _showStatsMenu() async {
+    _hideTimer?.cancel();
+    await showVideoStatsMenu(
+      context,
+      enabled: _statsEnabled,
+      permanent: VideoStatsRowsPreference.permanent,
+      rows: VideoStatsRowsPreference.rows,
+      onEnabled: (v) {
+        setState(() => _statsEnabled = v);
+        VideoStatsPreference.set(v);
+      },
+      onPermanent: (v) {
+        VideoStatsRowsPreference.setPermanent(v);
+        if (mounted) setState(() {});
+      },
+      onRow: (k, shown) {
+        VideoStatsRowsPreference.setRow(k, shown);
+        if (mounted) setState(() {});
+      },
+    );
+    if (mounted) _startHideTimer();
+  }
+
+  /// §engineFeatures — Sous-menu Qualité HLS.
+  Future<void> _showQualityMenu() async {
+    _hideTimer?.cancel();
+    await showQualityMenu(
+      context,
+      qualities: _ctrl.qualities,
+      current: _ctrl.currentQuality,
+      onSelect: (q) async {
+        Navigator.of(context).pop();
+        final bool ok = await _ctrl.setQuality(q);
+        if (!ok && mounted) {
+          AppSnackBar.show(context, context.l10n.optQualityFailed);
+        }
+        if (mounted) setState(() {});
+      },
+    );
+    if (mounted) _startHideTimer();
   }
 
   /// §videoFit — Sous-menu Format d'image (Original / Zoom / Plein écran).
@@ -1495,15 +1686,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   /// §audioFallback — Bascule sur une autre piste audio, sinon coupe le son.
   ///
-  /// ⚠️ §tourFix (2026-09-02) — Chemin actuellement INATTEIGNABLE : il n'est
-  /// déclenché que par [isAudioDecodeError], qui reconnaît des libellés
-  /// d'erreur **mpv**, alors que Media3Engine émet (depuis §liveRecover) une
-  /// phrase traduite construite à partir du CODE d'erreur Media3
-  /// (`playbackErrorMessage`) — jamais un libellé mpv. ⚠️ Et
-  /// `Media3Engine.disableAudio()` est vide : la branche « lecture sans son »
-  /// l'annoncerait sans rien couper. Conservé tel quel en attendant la
-  /// décision (rebrancher sur les codes typés, ou retirer) — cf. l'en-tête de
-  /// `player_error.dart` (revue 2026-09-11, D2A-10).
+  /// ✅ R5 (2026-09-16) — Chemin REBRANCHÉ. Il était inatteignable depuis
+  /// §engineVendor : son déclencheur reconnaissait des libellés d'erreur
+  /// **mpv**, quand Media3Engine émet une phrase TRADUITE bâtie sur le code
+  /// (§liveRecover) ; et `Media3Engine.disableAudio()` était vide. Désormais le
+  /// verdict vient du moteur (`lastErrorWasAudio`, pris sur le CODE et le
+  /// message BRUTS, cf. `player_error.dart`), la coupure du son existe
+  /// vraiment (patch 25 du vendoré) et la bascule est suivie d'une reprise en
+  /// place — après une erreur, ExoPlayer est à l'arrêt (revue D2A-10).
   ///
   /// Retourne `true` si on a pris la main (donc pas de retry réseau : le flux
   /// n'a rien fait de mal, c'est la piste choisie qui ne se décode pas).
@@ -1530,7 +1720,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       final next = candidates.first;
       debugPrint('🔈 §audioFallback — piste « ${current.id} » indécodable, '
           'bascule sur « ${next.id} » (${next.language ?? "langue inconnue"})');
-      _ctrl.setAudioTrack(next);
+      unawaited(_applyAudioRecovery(next));
       if (mounted) {
         AppSnackBar.show(
           context,
@@ -1547,7 +1737,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _audioGaveUp = true;
     debugPrint('🔇 §audioFallback — aucune piste audio décodable, '
         'lecture sans son');
-    _ctrl.disableAudio();
+    unawaited(_applyAudioRecovery(null));
     if (mounted) {
       AppSnackBar.show(
         context,
@@ -1556,6 +1746,25 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       );
     }
     return true;
+  }
+
+  /// R5 — Applique la bascule ([next], ou « sans son » si `null`) PUIS
+  /// re-prépare EN PLACE : après une erreur, ExoPlayer est à l'arrêt, et un
+  /// changement de sélection seul ne relance rien. Si la reprise en place est
+  /// refusée (plus rien à re-préparer), la réouverture complète reste le
+  /// filet — la nouvelle sélection, elle, est déjà posée.
+  Future<void> _applyAudioRecovery(AetherTrack? next) async {
+    if (next != null) {
+      await _ctrl.setAudioTrack(next);
+    } else {
+      await _ctrl.disableAudio();
+    }
+    if (!mounted) return;
+    final bool ok = await _ctrl.recoverInPlace();
+    if (!ok && mounted) {
+      debugPrint('⚠️ §audioFallback — reprise en place refusée, réouverture');
+      _retry();
+    }
   }
 
   /// Retourne l'URL avec l'extension alternative (.m3u8 ↔ .ts), ou null si non applicable.
@@ -1593,7 +1802,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // Mesuré sur device : sur un fichier 4K, mpv rendait déjà la vidéo
     // (`VideoOutput.Resize 3832x1604`) quand la piste TrueHD l'a fait échouer.
     // Ces fichiers embarquent presque toujours une piste de secours (AC3/EAC3).
-    if (isAudioDecodeError(error) && _recoverFromAudioError()) return;
+    // R5 — Le verdict vient du MOTEUR (code et message bruts de Media3), pas
+    // du texte reçu ici, qui est traduit et ne dit plus rien.
+    if (_ctrl.lastErrorWasAudio && _recoverFromAudioError()) return;
 
     // §liveRecover — REPRENDRE avant de RECHARGER.
     //
@@ -1867,6 +2078,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _pendingRetryTimer?.cancel();
     _seekAccumTimer?.cancel();
     _seekOverlayTimer?.cancel();
+    _castAutoOpenTimer?.cancel(); // lot 6b / §castLocal
     // §pipPhone — désarme l'auto-PiP AVANT de fermer : sans ça, un geste
     // Accueil juste après la fermeture pourrait réarmer une fenêtre PiP sur
     // une page qui n'existe plus.
@@ -2090,6 +2302,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               onNextEpisode:
                   widget.onRequestNext == null ? null : _requestNextEpisode,
               onShowTracks: _showTrackSelector,
+              // R17 — La barre dit sa hauteur, l'encart des stats se pose
+              // dessous. Ne repeindre que si l'encart est là pour en profiter.
+              onTopBarHeight: (h) {
+                if (!mounted || (_topBarHeight - h).abs() < 0.5) return;
+                _topBarHeight = h;
+                if (_statsEnabled) setState(() {});
+              },
               // §playerOptionsTouch — Sur TV, les boutons inline ne sont pas
               // focusables : le panneau s'ouvre déjà par ↑ / appui long, un
               // icône de plus n'y serait qu'un ornement inatteignable.
@@ -2228,10 +2447,22 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                 player: _ctrl,
                 // §castSend — les stats du lecteur LOCAL (en pause) n'ont
                 // rien à dire sur ce que le téléviseur décode : masquées.
-                hidden: _isLocked || _cast != null,
+                // §videoStatsTags — et, sauf « toujours à l'écran », l'encart
+                // suit les contrôles : révélé au toucher ou à la télécommande.
+                hidden: _isLocked ||
+                    _cast != null ||
+                    (!VideoStatsRowsPreference.permanent && !_controlsVisible),
                 // §qualityTruth — la qualité que la LISTE annonce, à confronter
                 // à ce qui est réellement décodé.
                 announcedQuality: _media.qualityTag,
+                // R17 — Sous la barre haute RÉELLE, telle qu'elle vient d'être
+                // MESURÉE (`onTopBarHeight`) : elle grandit avec la série, les
+                // badges et le synopsis, et avec la taille du texte. L'encart
+                // recouvrait le synopsis. Contrôles cachés = rien à éviter.
+                topInset: _controlsVisible
+                    ? _topBarHeight
+                    : MediaQuery.of(context).padding.top + 12,
+                visibleRows: VideoStatsRowsPreference.rows,
               ),
 
             // §seekAccum — Badge central du saut cumulé (ex: « ⏩ +30s »).

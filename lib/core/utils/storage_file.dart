@@ -4,20 +4,40 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
+/// R14 (D1B-22) — La permission « vidéos » conditionne-t-elle l'ÉCRITURE de
+/// nos propres fichiers dans `Movies/AetherStream/` ?
+///
+/// **Non, à partir d'Android 10 (API 29).** Le stockage cloisonné donne à
+/// chaque application le droit de créer et d'écrire SES fichiers dans les
+/// dossiers média partagés, sans aucune permission ; `READ_MEDIA_VIDEO` ne
+/// sert qu'à LIRE ceux des autres — chez nous, à retrouver les fichiers d'une
+/// installation précédente (`DeviceLibraryService`, §dlOrphans).
+///
+/// **Le défaut payé** : `getAppMoviesPath` demandait la permission d'entrée de
+/// jeu et rendait `null` au moindre refus. Un refus — que Google Play refusera
+/// lui-même d'accorder pour un usage comme le nôtre — ANNULAIT donc le
+/// téléchargement, alors que tout le chemin d'écriture était disponible.
+///
+/// ⚠️ Avant Android 10, écrire hors du bac à sable exige bien
+/// `WRITE_EXTERNAL_STORAGE` : là, un refus est un vrai mur.
+bool storagePermissionNeededToWrite(int sdkInt) => sdkInt < 29;
+
 /// Service dédié à la gestion des chemins de stockage et des permissions.
 class StorageService {
   static const String _appName = "AetherStream";
 
   /// Obtient le chemin complet vers le dossier de l'application dans le répertoire "Movies".
-  /// Crée le dossier s'il n'existe pas et gère les permissions nécessaires.
+  /// Crée le dossier s'il n'existe pas.
   ///
-  /// Retourne le chemin du dossier en cas de succès, ou `null` si les permissions
-  /// sont refusées ou si une erreur survient.
+  /// R14 — Rend `null` seulement si le chemin lui-même est introuvable, ou si
+  /// l'appareil est antérieur à Android 10 ET refuse le stockage. Un dossier
+  /// qu'on n'a pas pu créer n'arrête plus rien : §dlDirectWrite sonde de toute
+  /// façon l'écriture (`DirectWriteProbe`) et retombe sur le cache privé +
+  /// MediaStore, qui n'exige aucune permission.
   Future<String?> getAppMoviesPath() async {
-    // 1. Demander les permissions
-    final bool permissionGranted = await _requestStoragePermission();
-    if (!permissionGranted) {
-      debugPrint("❌ Permission de stockage refusée par l'utilisateur.");
+    // 1. Permission — seulement là où elle décide vraiment de quelque chose.
+    if (!await _ensureWritePermission()) {
+      debugPrint("❌ Permission de stockage refusée (Android 9 ou antérieur).");
       return null;
     }
 
@@ -63,28 +83,31 @@ class StorageService {
         await appPath.create(recursive: true);
         debugPrint("Dossier créé : ${appPath.path}");
       }
-      return appPath.path;
     } catch (e) {
-      debugPrint("❌ Erreur lors de la création du dossier '$_appName'. Erreur: $e");
-      return null;
+      // R14 — ⚠️ On rend le chemin QUAND MÊME : MediaStore sait créer ce
+      // dossier à la finalisation, et la sonde d'écriture directe décidera
+      // seule du trajet du fichier partiel. Rendre `null` ici, c'était
+      // abandonner un téléchargement parfaitement réalisable.
+      debugPrint("⚠️ Dossier '$_appName' non créé ($e) — repli MediaStore");
     }
+    return appPath.path;
   }
 
-  /// Gère la demande de permission en fonction de la version d'Android.
-  Future<bool> _requestStoragePermission() async {
+  /// R14 — Ne demande la permission que là où elle décide de l'écriture.
+  /// Android 10+ : rien à demander, on écrit nos propres fichiers.
+  Future<bool> _ensureWritePermission() async {
     if (!Platform.isAndroid) return true; // Pas besoin sur les autres plateformes
 
-    final deviceInfo = await DeviceInfoPlugin().androidInfo;
-    PermissionStatus status;
-
-    if (deviceInfo.version.sdkInt >= 33) {
-      // Android 13+ : on demande l'accès spécifique aux vidéos.
-      status = await Permission.videos.request();
-    } else {
-      // Versions antérieures : on demande l'accès général au stockage.
-      status = await Permission.storage.request();
+    final int sdkInt;
+    try {
+      sdkInt = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+    } catch (e) {
+      // Version inconnue : on ne bloque pas un téléchargement sur un doute.
+      debugPrint("⚠️ Version d'Android inconnue ($e) — écriture tentée");
+      return true;
     }
-
-    return status.isGranted;
+    if (!storagePermissionNeededToWrite(sdkInt)) return true;
+    final PermissionStatus status = await Permission.storage.request();
+    return status.isGranted || status.isLimited;
   }
 }

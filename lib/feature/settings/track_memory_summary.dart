@@ -20,3 +20,18 @@ String trackMemorySummary(AppLocalizations l10n) {
   }
   return parts.isEmpty ? l10n.settingsTracksAuto : parts.join(' · ');
 }
+
+/// R43 (2026-09-16) — Ce que la tuile des Réglages affiche, ou `null` quand il
+/// n'y a **rien à oublier** : la tuile est alors MASQUÉE.
+///
+/// ⚠️ Le défaut corrigé : la tuile portait un chevron `>` — la promesse d'une
+/// sous-page — et, dans l'état par défaut (aucune mémoire), un tap n'ouvrait
+/// rien et n'oubliait rien. Elle ne se montre donc plus que lorsqu'elle SERT,
+/// et son sous-titre dit alors le geste, pas seulement l'état.
+///
+/// Rendre `null` plutôt que de laisser la page interroger le service met la
+/// règle d'affichage dans une fonction pure, testable sans écran.
+String? trackMemoryTileSubtitle(AppLocalizations l10n) =>
+    TrackPreferencesService.hasMemory
+        ? l10n.settingsTracksResetTile(trackMemorySummary(l10n))
+        : null;

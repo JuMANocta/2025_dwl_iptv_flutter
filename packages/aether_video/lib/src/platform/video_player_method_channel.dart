@@ -254,6 +254,24 @@ class VideoPlayerMethodChannel {
     }
   }
 
+  /// §engineVendor patch 26 (§bgAudio) — Active ou coupe la piste VIDÉO du
+  /// lecteur (`setTrackTypeDisabled(VIDEO)`), le son continuant. Écran
+  /// éteint, le rendu vidéo décodait sur une surface de substitution pour
+  /// personne : autant de batterie perdue pour du son seul. Renvoie `false`
+  /// si le natif n'a pas pu appliquer le réglage.
+  Future<bool> setVideoTrackEnabled(bool enabled) async {
+    try {
+      final ok = await _methodChannel.invokeMethod<bool>(
+        'setVideoTrackEnabled',
+        <String, Object>{'viewId': primaryPlatformViewId, 'enabled': enabled},
+      );
+      return ok ?? false;
+    } catch (e) {
+      debugPrint('Error calling setVideoTrackEnabled: $e');
+      return false;
+    }
+  }
+
   /// §engineVendor patch 7 — Coupe la lecture immédiatement (sortie du lecteur).
   Future<void> stopNow() async {
     try {

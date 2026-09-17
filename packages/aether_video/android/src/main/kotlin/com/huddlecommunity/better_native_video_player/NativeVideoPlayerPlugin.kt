@@ -282,48 +282,10 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
             }
         }
 
-        // Register asset resolution channel
-        val assetChannel = MethodChannel(binding.binaryMessenger, "native_video_player/assets")
-        assetChannel.setMethodCallHandler { call, result ->
-            when (call.method) {
-                "resolveAssetPath" -> {
-                    val assetKey = (call.arguments as? Map<*, *>)?.get("assetKey") as? String
-                    if (assetKey != null) {
-                        try {
-                            // Flutter assets are bundled in the APK and need to be extracted to a file
-                            // Get the asset file path using Flutter's asset lookup
-                            val assetPath = binding.flutterAssets.getAssetFilePathByName(assetKey)
-
-                            // Extract the asset to cache directory so ExoPlayer can read it as a file
-                            val cacheDir = binding.applicationContext.cacheDir
-                            val fileName = assetKey.substringAfterLast('/')
-                            val outputFile = java.io.File(cacheDir, fileName)
-
-                            // Only extract if the file doesn't already exist or is outdated
-                            if (!outputFile.exists()) {
-                                NpLog.d(TAG, "Extracting asset '$assetPath' to '${outputFile.absolutePath}'")
-                                binding.applicationContext.assets.open(assetPath).use { inputStream ->
-                                    outputFile.outputStream().use { outputStream ->
-                                        inputStream.copyTo(outputStream)
-                                    }
-                                }
-                            } else {
-                                NpLog.d(TAG, "Asset already extracted at '${outputFile.absolutePath}'")
-                            }
-
-                            NpLog.d(TAG, "Resolved asset '$assetKey' to '${outputFile.absolutePath}'")
-                            result.success(outputFile.absolutePath)
-                        } catch (e: Exception) {
-                            NpLog.e(TAG, "Failed to resolve asset: ${e.message}", e)
-                            result.error("ASSET_ERROR", "Failed to resolve asset: ${e.message}", null)
-                        }
-                    } else {
-                        result.error("INVALID_ARGUMENT", "Asset key is required", null)
-                    }
-                }
-                else -> result.notImplemented()
-            }
-        }
+        // §engineVendor patch 24 (R6, D2B-09 e) — le canal amont
+        // `native_video_player/assets` (`resolveAssetPath`, extraction d'un
+        // asset Flutter vers le cache) n'avait aucun appelant Dart : retire.
+        // Recuperable par `git revert` si une video embarquee revenait.
 
         NpLog.d(TAG, "NativeVideoPlayerPlugin registered with id: $VIEW_TYPE")
     }

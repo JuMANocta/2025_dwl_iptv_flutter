@@ -858,10 +858,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get perfParallelDownloadsTitle => 'Transferts en même temps';
 
   @override
-  String get perfParallelDownloadsSub =>
-      'Un seul transfert à la fois par abonnement : les fournisseurs n\'acceptent qu\'une connexion, et le lecteur en garde une. Ce nombre ne joue qu\'entre abonnements différents ; les autres attendent leur tour.';
-
-  @override
   String get taskStatusQueuedWhy =>
       'En attente : un transfert à la fois par abonnement';
 
@@ -1285,26 +1281,6 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String acctExpiryInDays(int days) {
     return 'Dans $days jours';
-  }
-
-  @override
-  String unitBytes(String value) {
-    return '$value o';
-  }
-
-  @override
-  String unitKilobytes(String value) {
-    return '$value ko';
-  }
-
-  @override
-  String unitMegabytes(String value) {
-    return '$value Mo';
-  }
-
-  @override
-  String unitGigabytes(String value) {
-    return '$value Go';
   }
 
   @override
@@ -2489,7 +2465,8 @@ class AppLocalizationsFr extends AppLocalizations {
       'Mémoire libérée ; la liste revient dès qu\'on en a besoin.';
 
   @override
-  String get failExplainDeferred => 'Mise à jour reportée après le démarrage.';
+  String get failExplainDeferred =>
+      'Mise à jour reportée : cette liste sera reprise.';
 
   @override
   String get failExplainPanelBusy =>
@@ -3175,26 +3152,7 @@ class AppLocalizationsFr extends AppLocalizations {
       'La conversion n\'a rien produit de lisible.';
 
   @override
-  String get healthNoStall => 'aucun blocage';
-
-  @override
   String get reloadLessThanMinute => 'moins d\'une minute';
-
-  @override
-  String get plNoActiveAccount =>
-      'Aucun compte actif sélectionné. Veuillez en choisir un dans les paramètres.';
-
-  @override
-  String get plNoActiveAccountShort => 'Aucun compte actif sélectionné.';
-
-  @override
-  String plInvalidUrl(String label) {
-    return 'L\'URL de la playlist pour le compte « $label » est invalide. Vérifie sa configuration.';
-  }
-
-  @override
-  String get plEmptyFile =>
-      'Le serveur a renvoyé un fichier vide. Vérifie l\'URL de la playlist.';
 
   @override
   String get bkFileTooShort => 'Fichier de sauvegarde trop court ou corrompu.';
@@ -3607,8 +3565,14 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
-  String sizeBytes(String n) {
-    return '$n octets';
+  String sizeBytes(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n octets',
+      one: '$n octet',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -3936,4 +3900,314 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get themePresetMinimaliste => 'Minimaliste';
+
+  @override
+  String settingsTracksResetTile(String memory) {
+    return '$memory — revenir à l\'automatique';
+  }
+
+  @override
+  String dlNoticeSizeOf(String received, String total) {
+    return '$received sur $total';
+  }
+
+  @override
+  String get dlNotifChannelDone => 'Téléchargements terminés';
+
+  @override
+  String get dlActionCast => 'Diffuser';
+
+  @override
+  String perfParallelDownloadsPerHostSub(int count) {
+    return 'Un transfert à la fois par abonnement ; jusqu\'à $count abonnements peuvent travailler ensemble.';
+  }
+
+  @override
+  String get playOffline => 'Lire hors ligne';
+
+  @override
+  String get dlBadgeDownloaded => 'Téléchargé';
+
+  @override
+  String get dlErrFileMissing => 'Ce fichier n\'est plus sur l\'appareil.';
+
+  @override
+  String get playBusyTitle => 'Cet abonnement est occupé';
+
+  @override
+  String get playBusyElsewhere =>
+      'Un autre écran regarde déjà sur cet abonnement. La lecture risque d\'être refusée.';
+
+  @override
+  String get playBusyOwnTransfer =>
+      'Vos téléchargements occupent toutes les connexions de cet abonnement. En mettre un en pause libère la lecture.';
+
+  @override
+  String get playBusyContinue => 'Lire quand même';
+
+  @override
+  String bkPartSavedThemes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count thèmes enregistrés',
+      one: '1 thème enregistré',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get themeSectionMyThemes => 'Mes thèmes';
+
+  @override
+  String get themeMyThemesEmpty =>
+      'Aucun thème enregistré. Réglez vos couleurs, puis « Enregistrer sous… ».';
+
+  @override
+  String get themeSaveAs => 'Enregistrer sous…';
+
+  @override
+  String get themeSaveAsTitle => 'Enregistrer ce thème';
+
+  @override
+  String get themeNameHint => 'Nom du thème';
+
+  @override
+  String themeSavedDone(String name) {
+    return 'Thème « $name » enregistré';
+  }
+
+  @override
+  String themeSaveFull(int count) {
+    return 'Vous pouvez garder $count thèmes au maximum. Supprimez-en un pour en enregistrer un autre.';
+  }
+
+  @override
+  String get themeNameTaken => 'Un thème porte déjà ce nom.';
+
+  @override
+  String themeAppliedDone(String name) {
+    return 'Thème « $name » appliqué';
+  }
+
+  @override
+  String get themeRename => 'Renommer';
+
+  @override
+  String get themeRenameTitle => 'Renommer ce thème';
+
+  @override
+  String themeDeleteTitle(String name) {
+    return 'Supprimer « $name » ?';
+  }
+
+  @override
+  String get themeDeleteQuestion =>
+      'Il disparaît de la liste. Les couleurs affichées ne changent pas.';
+
+  @override
+  String get themeDeleteDone => 'Thème supprimé';
+
+  @override
+  String get themeKeepBeforeResetTitle => 'Garder ces couleurs ?';
+
+  @override
+  String get themeKeepBeforeResetBody =>
+      'Elles ne correspondent à aucun préréglage ni thème enregistré : réinitialiser les perd.';
+
+  @override
+  String get themeKeepBeforeResetSave => 'Enregistrer d\'abord';
+
+  @override
+  String get themeKeepBeforeResetSkip => 'Réinitialiser quand même';
+
+  @override
+  String get themeColorFree => 'Autre couleur';
+
+  @override
+  String get themeColorFreeTitle => 'Choisir une couleur';
+
+  @override
+  String get themeHex => 'Code hexadécimal';
+
+  @override
+  String get themeHexInvalid =>
+      'Six caractères après le #, par exemple #00FF41';
+
+  @override
+  String get themeHue => 'Teinte';
+
+  @override
+  String get themeSaturation => 'Saturation';
+
+  @override
+  String get themeLightness => 'Luminosité';
+
+  @override
+  String get themePreviewFavorite => 'Favori';
+
+  @override
+  String get themePreviewAlert => 'Reprendre';
+
+  @override
+  String get themePreviewError => 'Flux indisponible';
+
+  @override
+  String get themePreviewSuccess => 'Téléchargé';
+
+  @override
+  String themeEditColor(String label) {
+    return 'Changer $label';
+  }
+
+  @override
+  String get themeSavedApply => 'Appliquer';
+
+  @override
+  String get acctReadingPlaylist => 'Lecture de la liste…';
+
+  @override
+  String get optQualityTitle => 'Qualité';
+
+  @override
+  String get optQualityAuto => 'Automatique';
+
+  @override
+  String get optQualityAutoSub => 'Suit votre connexion';
+
+  @override
+  String get optQualityFailed => 'Cette qualité n\'a pas pu être appliquée';
+
+  @override
+  String get optStatsShow => 'Afficher l\'encart';
+
+  @override
+  String get optStatsShowSub => 'Ce que votre appareil décode vraiment';
+
+  @override
+  String get optStatsPermanent => 'Le garder à l’écran';
+
+  @override
+  String get optStatsPermanentSub => 'Reste visible pendant que vous regardez';
+
+  @override
+  String get optStatsRows => 'Lignes affichées';
+
+  @override
+  String get detMoreBelow => 'Suite de la fiche plus bas';
+
+  @override
+  String get detSeeMoreCast => 'Voir plus';
+
+  @override
+  String get settingsSubtitles => 'Sous-titres en ligne';
+
+  @override
+  String get settingsSubtitlesSub =>
+      'Trouver des sous-titres pour un film qui n’en a pas';
+
+  @override
+  String get subProviderTitle => 'Sous-titres en ligne';
+
+  @override
+  String get subProviderActive => 'Prêt';
+
+  @override
+  String get subProviderActiveSub =>
+      'Vous pouvez maintenant chercher des sous-titres pendant un film';
+
+  @override
+  String get subProviderInactive => 'Aucune clé enregistrée';
+
+  @override
+  String get subProviderInactiveSub =>
+      'Une clé permet à l’application de chercher des sous-titres pour vous';
+
+  @override
+  String get subProviderIntro =>
+      'Certains films et épisodes arrivent sans sous-titres. L’application peut aller en chercher, mais le service de sous-titres a besoin de savoir qui les demande. Obtenir votre accès est gratuit et prend une minute.';
+
+  @override
+  String get subProviderStep1 =>
+      'Ouvrez le service de sous-titres et confirmez votre adresse e-mail.';
+
+  @override
+  String get subProviderStep2 => 'Copiez la clé qu’il vous donne.';
+
+  @override
+  String get subProviderStep3 => 'Collez-la ci-dessous, puis enregistrez.';
+
+  @override
+  String get subProviderGetKey => 'Obtenir une clé gratuite';
+
+  @override
+  String get subProviderSection => 'VOTRE CLÉ';
+
+  @override
+  String get subProviderHint => 'Collez votre clé ici';
+
+  @override
+  String get subProviderShow => 'Afficher';
+
+  @override
+  String get subProviderHide => 'Masquer';
+
+  @override
+  String get subProviderSave => 'Enregistrer';
+
+  @override
+  String get subProviderRemove => 'Retirer cette clé';
+
+  @override
+  String get subProviderSaved => 'Clé enregistrée';
+
+  @override
+  String get subProviderRemoved => 'Clé retirée';
+
+  @override
+  String get tracksSearchOnline => 'Chercher des sous-titres en ligne';
+
+  @override
+  String get tracksSearchOnlineSub => 'Pour ce film ou cet épisode';
+
+  @override
+  String get tracksOnlineSearching => 'Recherche…';
+
+  @override
+  String get tracksOnlineTitle => 'Sous-titres trouvés';
+
+  @override
+  String get tracksOnlineHearing => 'Pour sourds et malentendants';
+
+  @override
+  String get tracksOnlineAdded => 'Sous-titres ajoutés';
+
+  @override
+  String get tracksOnlineAddFailed =>
+      'Ces sous-titres n’ont pas pu être ajoutés';
+
+  @override
+  String get tracksOnlineNone => 'Aucun sous-titre trouvé pour celui-ci';
+
+  @override
+  String get tracksOnlineNoTitle => 'Ce titre n’a pas pu être reconnu';
+
+  @override
+  String get tracksOnlineNoKey =>
+      'Configurez d’abord les sous-titres en ligne dans les Réglages';
+
+  @override
+  String get tracksOnlineBadKey =>
+      'Votre clé a été refusée — vérifiez-la dans les Réglages';
+
+  @override
+  String get tracksOnlineQuota => 'Vous avez utilisé vos recherches du jour';
+
+  @override
+  String get tracksOnlineFailed => 'La recherche n’a pas pu aboutir';
+
+  @override
+  String themeDefaultName(int n) {
+    return 'Mon thème $n';
+  }
 }

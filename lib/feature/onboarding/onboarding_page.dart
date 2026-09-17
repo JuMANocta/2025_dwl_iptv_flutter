@@ -261,16 +261,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   child: FocusableCard(
                     autofocus: true,
                     scaleOnFocus: false,
-                    borderRadius: BorderRadius.circular(12),
                     onTap: _next,
                     child: FilledButton(
                       onPressed: _next,
                       style: FilledButton.styleFrom(
                         backgroundColor: kAccentPrimary,
                         foregroundColor: onColorFor(kAccentPrimary), // D4B-08
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
                         textStyle: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.bold),
                       ),

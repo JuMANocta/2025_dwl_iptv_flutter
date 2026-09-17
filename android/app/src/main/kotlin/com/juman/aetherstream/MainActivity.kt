@@ -73,9 +73,16 @@ class MainActivity : FlutterActivity() {
     private val cancelDownloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val taskId = intent?.getStringExtra(AetherDownloadService.EXTRA_TASK_ID) ?: return
+            // §notifAudit P6 — Deux boutons, un seul recepteur : c'est
+            // l'action de l'Intent qui dit lequel a ete presse. « Relancer »
+            // n'apparait que sur une notification d'ECHEC.
+            val action = when (intent?.action) {
+                AetherDownloadService.ACTION_RESTART -> "restart"
+                else -> "cancel"
+            }
             transferChannel?.invokeMethod(
                 "onDownloadAction",
-                mapOf("action" to "cancel", "taskId" to taskId)
+                mapOf("action" to action, "taskId" to taskId)
             )
         }
     }
@@ -321,7 +328,19 @@ class MainActivity : FlutterActivity() {
                         ?: getString(R.string.notif_download_title)
                     val success = call.argument<Boolean>("success") ?: false
                     val text = call.argument<String>("text")
-                    AetherDownloadService.postFinished(this, id, title, success, text)
+                    // §notifAudit P5/P6 — Le canal « terminés » porte un nom
+                    // traduit par Dart (il suit la langue de l'appareil), et un
+                    // echec propose « Relancer » sur la tache designee.
+                    AetherDownloadService.postFinished(
+                        this,
+                        id,
+                        title,
+                        success,
+                        text,
+                        call.argument<String>("restartTaskId"),
+                        call.argument<String>("restartLabel"),
+                        call.argument<String>("doneChannelName")
+                    )
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -580,7 +599,11 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         // D2B-16 — Journal natif muet sur un APK non débogable (AetherLog.kt).
         AetherLog.init(this)
-        val filter = IntentFilter(AetherDownloadService.ACTION_CANCEL)
+        val filter = IntentFilter(AetherDownloadService.ACTION_CANCEL).apply {
+            // §notifAudit P6 — Sans cette action, le bouton « Relancer » de la
+            // notification d'echec ne serait jamais recu : il ne ferait RIEN.
+            addAction(AetherDownloadService.ACTION_RESTART)
+        }
         // §castSend — Meme cycle de vie que le recepteur d'annulation, pour la
         // meme raison : les boutons servent quand l'app est en arriere-plan.
         val castFilter = IntentFilter().apply {
