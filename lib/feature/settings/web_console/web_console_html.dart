@@ -403,8 +403,17 @@ String buildLogs(AppThemeConfig t, String token, String content, bool keyTrace,
     }
     async function clearLogs(){
       const r = await api('/api/logs/clear', {});
-      toast(r.ok ? 'Journal vidé' : 'Échec', r.ok);
-      refresh();
+      // F1 — Dire le RÉSULTAT : le serveur sait si un fichier a résisté, et un
+      // « Journal vidé » affiché à tort laisse croire qu'un secret est parti.
+      toast(r.ok ? 'Journal vidé' : (r.data.error || 'Échec'), r.ok);
+      // F6 — L'onglet « Session précédente » est rendu par le serveur : sans
+      // ça il garde son compteur et reste cliquable après un vidage. Le clic ne
+      // rendrait que du vide (pas de fuite), mais le compteur mentirait.
+      const tp = document.getElementById('tabPrev');
+      tp.textContent = '📼 Session précédente';
+      tp.disabled = true;
+      // On ne laisse personne sur un onglet qu'on vient de désactiver.
+      if (session === 'previous') { showSession('current'); } else { refresh(); }
     }
     setInterval(() => { if (auto) refresh(); }, 2000);
     window.addEventListener('load', () => { const e = logEl(); e.scrollTop = e.scrollHeight; });

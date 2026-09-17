@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'colors.dart';
 import 'light_palette.dart';
 import 'app_theme_config.dart';
@@ -51,16 +52,91 @@ WidgetStateProperty<BorderSide?> _focusSide(Color c) =>
 /// (blanc en sombre, noir en clair) — contrastée contre le fond ET le bouton.
 /// ⚠️ `FilledButton.styleFrom(foregroundColor:)` écrase l'`overlayColor` du
 /// thème (il le dérive du texte), donc l'anneau est le SEUL signal fiable ici.
-FilledButtonThemeData _filledFocusTheme(Color ring, Color contrast) =>
+/// §btnShape (2026-09-17) — La FORME des boutons est celle du thème, la même
+/// que l'anneau de focus TV (`FocusableCard` lit `AetherThemeExtension
+/// .borderRadius`). Sans elle, Material 3 dessine des « pilules » et l'anneau,
+/// lui, un rectangle arrondi : deux formes qui ne coïncident jamais (constaté
+/// par l'utilisateur sur TV). ⛔ Ne pas redonner un `StadiumBorder` ni un rayon
+/// en dur à un bouton : il sortirait de l'anneau. `WidgetStatePropertyAll`,
+/// jamais `null` (§themeReboot).
+WidgetStateProperty<OutlinedBorder> _buttonShape(double radius) =>
+    WidgetStatePropertyAll(
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+    );
+
+FilledButtonThemeData _filledFocusTheme(
+        Color ring, Color contrast, double radius) =>
     FilledButtonThemeData(
       style: ButtonStyle(
         overlayColor: _focusOverlay(ring),
         side: _focusSide(contrast),
+        shape: _buttonShape(radius),
       ),
     );
 
 IconButtonThemeData _iconFocusTheme(Color ring) => IconButtonThemeData(
       style: ButtonStyle(overlayColor: _focusOverlay(ring), side: _focusSide(ring)),
+    );
+
+/// R16 — Ce que les barres du SYSTÈME doivent afficher sur un fond de
+/// luminosité [brightness] : l'heure, la batterie et les boutons de navigation
+/// d'Android sont dessinés par le système, pas par nous, et rien dans l'app ne
+/// lui disait de quelle couleur.
+///
+/// **Le défaut corrigé (recette du thème clair)** : sur un appareil dont la
+/// dernière application avait demandé des icônes CLAIRES, l'heure et la
+/// batterie restaient blanches sur le fond blanc du thème clair — invisibles.
+/// Ce n'était pas un écran en particulier : `SystemUiOverlayStyle`
+/// n'apparaissait **nulle part** dans `lib/`, donc l'app héritait de l'état
+/// laissé par le lanceur.
+///
+/// ⚠️ `statusBarIconBrightness` (Android) dit la couleur des ICÔNES,
+/// `statusBarBrightness` (iOS) celle du FOND : elles sont volontairement
+/// opposées ici, ce n'est pas une faute de frappe.
+///
+/// ⚠️ Ça ne dit rien de la VISIBILITÉ des barres : le mode immersif du lecteur
+/// reste gouverné par `SystemChrome.setEnabledSystemUIMode` (§barsRestore).
+SystemUiOverlayStyle aetherOverlayStyle(Brightness brightness) {
+  final bool light = brightness == Brightness.light;
+  return SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: light ? Brightness.dark : Brightness.light,
+    statusBarBrightness: light ? Brightness.light : Brightness.dark,
+    systemNavigationBarColor: light ? kWhite : kDeepDarkGrey,
+    systemNavigationBarIconBrightness:
+        light ? Brightness.dark : Brightness.light,
+  );
+}
+
+/// Le bouton plein de l'app : un aplat de [background], le texte que ce fond
+/// exige ([onColorFor]), la même hauteur et le même gras partout.
+///
+/// **Le défaut corrigé (2026-09-16)** : les trois boutons de la page
+/// Optimisation étaient des `FilledButton.tonalIcon` sans couleur — ils
+/// prenaient le remplissage « tonal » de Material (un `secondaryContainer`
+/// terne), en police normale. C'étaient les seuls boutons de l'app à ignorer
+/// l'accent du thème, et ça se voyait.
+///
+/// ⛔ **Pourquoi ce n'est pas un défaut de `filledButtonTheme`** : y poser un
+/// fond, un padding et un gras par défaut aurait restylé d'un coup les huit
+/// `FilledButton` qui ne passent aucun style — dialogues, superposition Cast,
+/// lecteur, état vide — jamais audités dans ce sens, et dont certains sont des
+/// boutons de dialogue qu'un padding vertical de 14 ferait grossir. Le thème
+/// garde donc ce qu'il portait déjà (l'anneau de focus, [_filledFocusTheme]),
+/// et le style commun devient une fonction qu'on APPELLE : le rendu ne change
+/// que là où on l'a demandé.
+///
+/// [minimumSize] : `Size.fromHeight(h)` rend le bouton pleine largeur (c'est
+/// ainsi que la page Optimisation étirait déjà les siens).
+ButtonStyle aetherFilledStyle(Color background, {Size? minimumSize}) =>
+    FilledButton.styleFrom(
+      backgroundColor: background,
+      // §lightTheme — le texte suit le fond : noir sur un accent clair, blanc
+      // sur un accent sombre. Jamais un blanc en dur (D4B-08).
+      foregroundColor: onColorFor(background),
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      minimumSize: minimumSize,
+      textStyle: const TextStyle(fontWeight: FontWeight.bold),
     );
 
 // §dpadChildFocus — Halo de focus pour les surfaces qui n'en avaient AUCUN :
@@ -74,9 +150,13 @@ IconButtonThemeData _iconFocusTheme(Color ring) => IconButtonThemeData(
 // est celui de son `InkWell`, qui se replie sur `ThemeData.focusColor` (gris à
 // 12 % par défaut — invisible sur un fond sombre). C'est donc `focusColor` de
 // `ThemeData` qui porte le halo des tuiles, cf. [_listTileFocusColor].
-OutlinedButtonThemeData _outlinedFocusTheme(Color ring) =>
+OutlinedButtonThemeData _outlinedFocusTheme(Color ring, double radius) =>
     OutlinedButtonThemeData(
-      style: ButtonStyle(overlayColor: _focusOverlay(ring), side: _focusSide(ring)),
+      style: ButtonStyle(
+        overlayColor: _focusOverlay(ring),
+        side: _focusSide(ring),
+        shape: _buttonShape(radius),
+      ),
     );
 
 /// Voile de focus des `ListTile` (et de tout `InkWell` sans `focusColor`
@@ -154,12 +234,17 @@ ThemeData lightTheme(AppThemeConfig config) {
       bodyLarge:      TextStyle(color: kDarkGrey),
       bodyMedium:     TextStyle(color: kLightTextSecondary),
     ),
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: kWhite,
+      // ⚠️ Porte AUSSI le titre de la barre REPLIÉE d'une fiche : un
+      // `SliverAppBar` sans `foregroundColor` propre lit celui-ci.
       foregroundColor: kDarkGrey,
       elevation: 0,
-      titleTextStyle: TextStyle(color: kDarkGrey, fontSize: 20, fontWeight: FontWeight.bold),
-      iconTheme: IconThemeData(color: kDarkGrey),
+      titleTextStyle: const TextStyle(
+          color: kDarkGrey, fontSize: 20, fontWeight: FontWeight.bold),
+      iconTheme: const IconThemeData(color: kDarkGrey),
+      // R16 — des icônes système SOMBRES sur la barre blanche.
+      systemOverlayStyle: aetherOverlayStyle(Brightness.light),
     ),
     buttonTheme: ButtonThemeData(
       buttonColor: config.primaryColor,
@@ -174,7 +259,8 @@ ThemeData lightTheme(AppThemeConfig config) {
       style: ElevatedButton.styleFrom(
         foregroundColor: onPrimary,
         backgroundColor: config.primaryColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(config.borderRadius)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontWeight: FontWeight.bold),
       ).copyWith(
@@ -183,16 +269,17 @@ ThemeData lightTheme(AppThemeConfig config) {
       ),
     ),
     // §focusVisibility — boutons pleins + boutons-icônes des sous-pages.
-    filledButtonTheme: _filledFocusTheme(config.primaryColor, onPrimary),
+    filledButtonTheme: _filledFocusTheme(config.primaryColor, onPrimary, config.borderRadius),
     iconButtonTheme: _iconFocusTheme(primary),
     // §dpadChildFocus — ListTile / Chip / OutlinedButton : halo au D-pad.
-    outlinedButtonTheme: _outlinedFocusTheme(primary),
+    outlinedButtonTheme: _outlinedFocusTheme(primary, config.borderRadius),
     focusColor: _listTileFocusColor(primary),
     chipTheme: _chipFocusTheme(primary),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: primary).copyWith(
         overlayColor: _focusOverlay(primary),
         side: _focusSide(primary),
+        shape: _buttonShape(config.borderRadius),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -261,12 +348,15 @@ ThemeData darkTheme(AppThemeConfig config) {
       bodyLarge:      TextStyle(color: kTextDarkPrimary),
       bodyMedium:     TextStyle(color: kTextDarkSecondary),
     ),
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: kDeepDarkGrey,
       foregroundColor: kTextDarkPrimary,
       elevation: 0,
-      titleTextStyle: TextStyle(color: kTextDarkPrimary, fontSize: 20, fontWeight: FontWeight.bold),
-      iconTheme: IconThemeData(color: kTextDarkPrimary),
+      titleTextStyle: const TextStyle(
+          color: kTextDarkPrimary, fontSize: 20, fontWeight: FontWeight.bold),
+      iconTheme: const IconThemeData(color: kTextDarkPrimary),
+      // R16 — des icônes système CLAIRES sur la barre sombre.
+      systemOverlayStyle: aetherOverlayStyle(Brightness.dark),
     ),
     buttonTheme: ButtonThemeData(
       buttonColor: config.primaryColor,
@@ -284,7 +374,8 @@ ThemeData darkTheme(AppThemeConfig config) {
       style: ElevatedButton.styleFrom(
         foregroundColor: onColorFor(config.primaryColor),
         backgroundColor: config.primaryColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(config.borderRadius)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         textStyle: const TextStyle(fontWeight: FontWeight.bold),
       ).copyWith(
@@ -294,16 +385,17 @@ ThemeData darkTheme(AppThemeConfig config) {
       ),
     ),
     // §focusVisibility — boutons pleins + boutons-icônes des sous-pages.
-    filledButtonTheme: _filledFocusTheme(config.primaryColor, Colors.white),
+    filledButtonTheme: _filledFocusTheme(config.primaryColor, Colors.white, config.borderRadius),
     iconButtonTheme: _iconFocusTheme(config.primaryColor),
     // §dpadChildFocus — ListTile / Chip / OutlinedButton : halo au D-pad.
-    outlinedButtonTheme: _outlinedFocusTheme(config.primaryColor),
+    outlinedButtonTheme: _outlinedFocusTheme(config.primaryColor, config.borderRadius),
     focusColor: _listTileFocusColor(config.primaryColor),
     chipTheme: _chipFocusTheme(config.primaryColor),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: config.accentColor).copyWith(
         overlayColor: _focusOverlay(config.accentColor),
         side: _focusSide(config.accentColor),
+        shape: _buttonShape(config.borderRadius),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(

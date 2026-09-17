@@ -92,10 +92,17 @@ Future<String> _freeFileName({
   return downloadNameCandidate(fileName, 99);
 }
 
+/// [seriesKey] — R39 / §heroSeriesResume : l'URL stub de la SÉRIE de ce
+/// contenu, quand l'appelant la connaît (la fiche a ses stubs d'API sous la
+/// main). `null` partout ailleurs — film, chaîne, ou appelant qui ne peut pas
+/// la savoir. ⚠️ Elle n'est PAS dérivable de [url] : sans elle, l'épisode
+/// téléchargé n'entre jamais au hero de l'accueil quand on le lit ou le diffuse
+/// depuis sa tuile (voir `DownloadTask.seriesKey`).
 Future<void> verifierEtTelecharger({
   required String url,
   required String nom,
   String? releaseYear, // NOUVEAU PARAMÈTRE
+  String? seriesKey,
   required BuildContext context
 }) async {
   if (!context.mounted) return;
@@ -181,7 +188,12 @@ Future<void> verifierEtTelecharger({
 
   // Si on arrive ici, c'est qu'aucune tâche n'existait pour cette URL.
   debugPrint("🚀 Lancement d'un nouveau téléchargement pour : $nom");
-  await _telechargerFichierVideo(url: url, nom: nom, releaseYear: releaseYear, context: context);
+  await _telechargerFichierVideo(
+      url: url,
+      nom: nom,
+      releaseYear: releaseYear,
+      seriesKey: seriesKey,
+      context: context);
 }
 
 Future<int?> probeContentLength(Dio dio, String url) async {
@@ -232,7 +244,12 @@ Future<int?> probeContentLength(Dio dio, String url) async {
 }
 
 /// --- FONCTION DE TÉLÉCHARGEMENT (REVUE POUR DÉLÉGUER) ---
-Future<void> _telechargerFichierVideo({required String url, required String nom, String? releaseYear, required BuildContext context}) async {
+Future<void> _telechargerFichierVideo(
+    {required String url,
+    required String nom,
+    String? releaseYear,
+    String? seriesKey,
+    required BuildContext context}) async {
   final l10n = AppLocalizations.of(context)!;
   final downloadManager = DownloadManagerService();
 
@@ -372,6 +389,9 @@ Future<void> _telechargerFichierVideo({required String url, required String nom,
     status: DownloadStatus.queued,
     createdAt: DateTime.now(),
     releaseYear: releaseYear,
+    // R39 — posée UNE fois, ici : plus tard, plus personne ne saura la
+    // retrouver à partir de l'URL de l'épisode.
+    seriesKey: seriesKey,
   );
 
   // 7. AJOUT AU MANAGER ET DÉMARRAGE EN ARRIÈRE-PLAN

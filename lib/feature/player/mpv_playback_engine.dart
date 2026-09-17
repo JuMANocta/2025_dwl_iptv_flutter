@@ -5,6 +5,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import 'playback_engine.dart';
 import 'video_stats.dart';
+import '../../data/services/track_preferences_service.dart';
 
 /// §dualEngine — Implémentation **media_kit / libmpv** de [AetherPlaybackEngine]
 /// pour Windows Desktop.
@@ -22,6 +23,9 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
   final _completed = StreamController<bool>.broadcast();
   final _error = StreamController<String>.broadcast();
   final _videoParams = StreamController<AetherVideoSize>.broadcast();
+  final _qualitiesCtrl = StreamController<List<AetherQuality>>.broadcast();
+  AetherQuality? _currentQuality;
+  bool _lastErrorAudio = false;
   final _subs = <StreamSubscription<dynamic>>[];
 
   DateTime? _openTime;
@@ -87,7 +91,10 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
     }));
 
     _subs.add(player.stream.completed.listen(_completed.add));
-    _subs.add(player.stream.error.listen(_error.add));
+    _subs.add(player.stream.error.listen((err) {
+      _lastErrorAudio = err.toLowerCase().contains('audio');
+      _error.add(err);
+    }));
     _subs.add(player.stream.videoParams.listen((p) {
       _videoParams.add(AetherVideoSize(p.w, p.h));
     }));
@@ -139,27 +146,118 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
   @override
   Future<void> setRate(double rate) => player.setRate(rate);
 
+  // ── Qualité HLS (§engineFeatures) ──────────────────────────────────────────
+
+  @override
+  List<AetherQuality> get qualities => const [];
+
+  @override
+  AetherQuality? get currentQuality => _currentQuality;
+
+  @override
+  Stream<List<AetherQuality>> get qualitiesStream => _qualitiesCtrl.stream;
+
+  @override
+  Future<bool> setQuality(AetherQuality quality) async {
+    _currentQuality = quality;
+    _qualitiesCtrl.add(qualities);
+    return true;
+  }
+
+  // ── Sous-titres externes (lot 11) ─────────────────────────────────────────
+
+  @override
+  Future<bool> loadExternalSubtitle({
+    required String filePath,
+    required String language,
+    required String label,
+  }) async {
+    try {
+      final uri = Uri.file(filePath).toString();
+      await player.setSubtitleTrack(
+        SubtitleTrack.uri(uri, title: label, language: language),
+      );
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ MpvPlaybackEngine: loadExternalSubtitle échoué: $e');
+      return false;
+    }
+  }
+
   @override
   Future<void> setVolume(double volume) => player.setVolume(volume);
 
   @override
-  Future<void> setAudioTrack(AetherTrack track) async {
+  Future<bool> setAudioTrack(AetherTrack track) async {
     final match = player.state.tracks.audio.where((t) => t.id == track.id);
-    if (match.isEmpty) return;
-    if (player.state.track.audio.id == track.id) return;
+    if (match.isEmpty) return false;
+    if (player.state.track.audio.id == track.id) return true;
     await player.setAudioTrack(match.first);
+    return true;
   }
 
   @override
-  Future<void> setSubtitleTrack(AetherTrack track) async {
+  Future<bool> setSubtitleTrack(AetherTrack track) async {
     final match = player.state.tracks.subtitle.where((t) => t.id == track.id);
-    if (match.isEmpty) return;
-    if (player.state.track.subtitle.id == track.id) return;
+    if (match.isEmpty) return false;
+    if (player.state.track.subtitle.id == track.id) return true;
     await player.setSubtitleTrack(match.first);
+    return true;
+  }
+
+  @override
+  Future<bool> resetSubtitlesToAuto() async {
+    try {
+      await player.setSubtitleTrack(SubtitleTrack.auto());
+      await TrackPreferencesService.setSubtitle(null);
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ MpvPlaybackEngine: resetSubtitlesToAuto échoué: $e');
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> resetAudioToAuto() async {
+    try {
+      await player.setAudioTrack(AudioTrack.auto());
+      await TrackPreferencesService.setAudio(null);
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ MpvPlaybackEngine: resetAudioToAuto échoué: $e');
+      return false;
+    }
   }
 
   @override
   Future<void> disableAudio() => player.setAudioTrack(AudioTrack.no());
+
+  @override
+  Future<bool> disableSubtitles() async {
+    try {
+      await player.setSubtitleTrack(SubtitleTrack.no());
+      await TrackPreferencesService.setSubtitle(
+          TrackPreferencesService.kSubtitlesOff);
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ MpvPlaybackEngine: disableSubtitles échoué: $e');
+      return false;
+    }
+  }
+
+  @override
+  bool get lastErrorWasAudio => _lastErrorAudio;
+
+  @override
+  Future<bool> setVideoEnabled(bool enabled) async {
+    try {
+      await player.setVideoTrack(enabled ? VideoTrack.auto() : VideoTrack.no());
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ MpvPlaybackEngine: setVideoEnabled échoué: $e');
+      return false;
+    }
+  }
 
   // ── Ouverture ──────────────────────────────────────────────────────────────
 
@@ -397,6 +495,7 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
     _completed.close();
     _error.close();
     _videoParams.close();
+    _qualitiesCtrl.close();
     player.dispose();
   }
 }

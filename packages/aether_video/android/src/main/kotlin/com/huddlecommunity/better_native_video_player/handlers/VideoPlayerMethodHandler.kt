@@ -651,6 +651,25 @@ class VideoPlayerMethodHandler(
                     result.success(false)
                 }
             }
+            // §engineVendor patch 26 (§bgAudio) — coupe ou rallume la piste
+            // VIDEO seule. Ecran eteint, `clearVideoSurface` laisse le rendu
+            // decoder sur une surface de substitution : de la batterie pour
+            // du son seul. Le type reste desactive jusqu'au rappel avec
+            // enabled=true (retour au premier plan).
+            "setVideoTrackEnabled" -> {
+                try {
+                    val enabled = call.argument<Boolean>("enabled") ?: true
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !enabled)
+                        .build()
+                    NpLog.d(TAG, "setVideoTrackEnabled($enabled)")
+                    result.success(true)
+                } catch (e: Exception) {
+                    NpLog.w(TAG, "setVideoTrackEnabled: $e")
+                    result.success(false)
+                }
+            }
             // §engineVendor patch 6 — bascule precision/rapidite du seek.
             "setFastSeek" -> {
                 fastSeek = call.argument<Boolean>("enabled") ?: true
@@ -1083,6 +1102,56 @@ class VideoPlayerMethodHandler(
                 return
             }
 
+            // §engineVendor patch 22 — Index -1 = « automatique » : on retire
+            // la piste imposee ET la langue preferee (patch 8), le selecteur
+            // d'ExoPlayer reprend la main (piste par defaut du flux). Avant, -1
+            // tombait en INVALID_INDEX : une langue audio posee une fois ne
+            // pouvait etre defaite qu'en imposant une autre piste.
+            // /!\ Peut re-demuxer (~3 s) : c'est un geste explicite, assume.
+            // §engineVendor patch 25 (R5, §audioFallback) — Index -2 = « sans
+            // son » : la piste AUDIO est coupee (`setTrackTypeDisabled`), la
+            // video continue. Dernier recours quand aucune piste audio ne se
+            // decode ; -1 et tout index >= 0 rallument le type.
+            if (requestedIndex == -2) {
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    .build()
+                NpLog.d(TAG, "🔇 Audio track disabled (playing without sound)")
+                eventHandler.sendEvent(
+                    "audioTrackChange",
+                    mapOf(
+                        "index" to -2,
+                        "language" to "off",
+                        "displayName" to "Off",
+                        "isSelected" to false
+                    )
+                )
+                result.success(null)
+                return
+            }
+            if (requestedIndex == -1) {
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                    .setPreferredAudioLanguage(null)
+                    .build()
+                NpLog.d(TAG, "🔊 Audio track back to automatic")
+                eventHandler.sendEvent(
+                    "audioTrackChange",
+                    mapOf(
+                        "index" to -1,
+                        "language" to "auto",
+                        "displayName" to "Auto",
+                        "isSelected" to false
+                    )
+                )
+                result.success(null)
+                return
+            }
+
             var flatIndex = 0
             for (group in player.currentTracks.groups) {
                 if (group.type != C.TRACK_TYPE_AUDIO) continue
@@ -1090,6 +1159,9 @@ class VideoPlayerMethodHandler(
                     if (flatIndex == requestedIndex) {
                         player.trackSelectionParameters = player.trackSelectionParameters
                             .buildUpon()
+                            // patch 25 — une piste choisie rallume le type,
+                            // au cas ou « sans son » (-2) l'avait coupe.
+                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                             .setOverrideForType(
                                 TrackSelectionOverride(group.mediaTrackGroup, trackIndex)
                             )
@@ -1562,6 +1634,30 @@ class VideoPlayerMethodHandler(
 
             if (index == null) {
                 result.error("INVALID_TRACK", "Invalid subtitle track data", null)
+                return
+            }
+
+            // §engineVendor patch 22 — Index -2 = « automatique » : le type
+            // texte est REACTIVE, sans piste imposee ni langue preferee. C'est
+            // l'inverse exact de la coupure (-1) : le selecteur d'ExoPlayer
+            // reprend la main (FORCED/DEFAULT du flux, ou rien). Avant ce
+            // patch, l'activation exigeait un index >= 0 : apres une coupure,
+            // le seul retour etait d'imposer une piste, donc une langue.
+            if (index == -2) {
+                NpLog.d(TAG, "📝 Subtitles back to automatic")
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setPreferredTextLanguage(null)
+                    .build()
+                eventHandler.sendEvent("subtitleChange", mapOf(
+                    "index" to -2,
+                    "language" to "auto",
+                    "displayName" to "Auto",
+                    "isSelected" to false
+                ))
+                result.success(null)
                 return
             }
 

@@ -214,9 +214,13 @@ abstract final class DeviceLibraryService {
     return ok;
   }
 
-  /// Même logique que `StorageFile._requestStoragePermission` : vidéos sur
-  /// Android 13+, stockage avant. Sans elle MediaStore ne rend que nos
-  /// propres fichiers — précisément ceux qui ne sont PAS orphelins.
+  /// Vidéos sur Android 13+, stockage avant. Sans elle MediaStore ne rend que
+  /// nos propres fichiers — précisément ceux qui ne sont PAS orphelins.
+  ///
+  /// R14 — ⚠️ C'est le SEUL endroit qui a besoin de « vidéos » : relire les
+  /// fichiers d'une installation précédente. Le téléchargement, lui, écrit ses
+  /// propres fichiers et n'en dépend plus (`storagePermissionNeededToWrite`).
+  /// Ne pas la redemander ailleurs : un refus ici ne coûte qu'un balayage.
   static Future<bool> _ensurePermission() async {
     if (!Platform.isAndroid) return true;
     try {

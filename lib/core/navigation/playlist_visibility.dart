@@ -29,12 +29,50 @@ class PlaylistVisibility {
   /// Exposé en `ValueNotifier` pour rester observable (tests, diagnostic).
   static final ValueNotifier<int> holders = ValueNotifier<int>(0);
 
+  /// R3 (D4A-01) — Jetons d'ONGLET : ceux des pages qui vivent dans
+  /// l'`IndexedStack` de `MainNavigation`.
+  ///
+  /// **Le défaut payé** : ces pages ne sont jamais démontées. L'accueil garde
+  /// donc son jeton pendant qu'on est sur l'onglet Téléchargements ou
+  /// Recherche — or son jeton veut dire « quelqu'un REGARDE les listes », pas
+  /// « la page existe encore ». Résultat : `unloadIdleSecondaries` (§lazyUnload,
+  /// profil Léger) ne se déclenchait JAMAIS, et une box à 1 Go gardait
+  /// plusieurs dizaines de milliers d'entrées en mémoire pour rien.
+  ///
+  /// Un jeton d'onglet ne compte donc que tant que son onglet est AFFICHÉ.
+  /// Les jetons ordinaires ([hold]), eux, appartiennent à des pages poussées
+  /// (Comptes, Optimisation) qui, elles, sont bien à l'écran : ils comptent
+  /// toujours, quel que soit l'onglet dessous.
+  static final ValueNotifier<bool> tabVisible = ValueNotifier<bool>(true);
+
+  /// Nombre de jetons d'onglet en cours.
+  static final ValueNotifier<int> tabHolders = ValueNotifier<int>(0);
+
   /// Vrai dès qu'au moins une page affiche des listes ou leurs compteurs.
-  static bool get hasHolders => holders.value > 0;
+  static bool get hasHolders =>
+      holders.value > 0 || (tabHolders.value > 0 && tabVisible.value);
 
   /// Prend un jeton (à appeler dans `initState`).
   static void hold() {
     holders.value = holders.value + 1;
+  }
+
+  /// R3 — Prend un jeton d'ONGLET (page de l'`IndexedStack`).
+  static void holdTab() {
+    tabHolders.value = tabHolders.value + 1;
+  }
+
+  /// R3 — Rend un jeton d'onglet. Borné à zéro, pour la même raison que
+  /// [release].
+  static void releaseTab() {
+    final int next = tabHolders.value - 1;
+    tabHolders.value = next < 0 ? 0 : next;
+  }
+
+  /// R3 — Dit si l'onglet porteur des listes est celui qu'on regarde.
+  /// Appelé au changement d'onglet par `MainNavigation`.
+  static void setTabVisible(bool visible) {
+    if (tabVisible.value != visible) tabVisible.value = visible;
   }
 
   /// Rend un jeton (à appeler dans `dispose`).
@@ -49,5 +87,9 @@ class PlaylistVisibility {
 
   /// Remise à zéro — tests uniquement.
   @visibleForTesting
-  static void reset() => holders.value = 0;
+  static void reset() {
+    holders.value = 0;
+    tabHolders.value = 0;
+    tabVisible.value = true;
+  }
 }

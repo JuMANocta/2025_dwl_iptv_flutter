@@ -143,10 +143,13 @@ void main() {
       expect(DiagnosticLog.tail(999), hasLength(10));
     });
 
-    test('clear() vide le tampon et notifie', () {
+    test('clearAll() vide le tampon et notifie', () async {
       DiagnosticLog.add('a');
       final before = DiagnosticLog.revision.value;
-      DiagnosticLog.clear();
+      // R41/F5 — La variante synchrone `clear()` n'avait aucun appelant de
+      // production : il ne reste que ce chemin, attendu de bout en bout. Sans
+      // persistance amorcée, il ne touche à aucun fichier.
+      await DiagnosticLog.clearAll();
       expect(DiagnosticLog.lineCount, 0);
       expect(DiagnosticLog.revision.value, greaterThan(before));
     });

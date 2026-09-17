@@ -34,11 +34,23 @@ class VideoStatsOverlay extends StatefulWidget {
   /// confrontation, l'utilisateur n'a aucun moyen de le savoir.
   final String? announcedQuality;
 
+  /// R17 — Distance ABSOLUE entre le haut de l'écran et l'encart, encoche
+  /// comprise. L'encart se posait 56 px sous l'encoche : une barre haute
+  /// enrichie (série, badges, synopsis sur deux lignes) passait dessous et
+  /// devenait illisible. L'appelant mesure la barre et donne le résultat ici ;
+  /// ⚠️ ne pas y rajouter `MediaQuery.padding.top`, la mesure le contient déjà.
+  final double topInset;
+
+  /// §videoStatsTags — Les lignes à montrer ; `null` = toutes.
+  final Set<VideoStatKey>? visibleRows;
+
   const VideoStatsOverlay({
     super.key,
     required this.player,
     this.hidden = false,
     this.announcedQuality,
+    this.topInset = 72,
+    this.visibleRows,
   });
 
   @override
@@ -135,11 +147,20 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
   Widget build(BuildContext context) {
     final stats = _stats;
     if (widget.hidden || stats == null) return const SizedBox.shrink();
+    // §videoStatsTags — Le filtre de l'utilisateur ; tout décoché = rien.
+    final Set<VideoStatKey>? shown = widget.visibleRows;
+    final List<Widget> rows = _rows(stats)
+        .where((w) => w is! _StatRow || shown == null || shown.contains(w.statKey))
+        .toList();
+    if (rows.isEmpty) return const SizedBox.shrink();
 
-    return Positioned(
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
       // Sous la barre haute des contrôles (retour + titre) pour ne pas la
-      // recouvrir quand ils sont visibles.
-      top: MediaQuery.of(context).padding.top + 56,
+      // recouvrir quand ils sont visibles (R17 : sa hauteur RÉELLE vient de
+      // l'appelant, qui la mesure — encoche comprise).
+      top: widget.topInset,
       left: 12,
       child: RepaintBoundary(
         child: IgnorePointer(
@@ -153,7 +174,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: _rows(stats),
+              children: rows,
             ),
           ),
         ),
@@ -174,6 +195,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     // alerte systématique, sur la ligne même dont dépend tout le diagnostic.
     final hw = s.hardwareDecoding;
     rows.add(_StatRow(
+      statKey: VideoStatKey.decoding,
       label: context.l10n.statsDecoding,
       value: !s.hwdecKnown
           ? context.l10n.statsDecodingPending
@@ -189,12 +211,13 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     // partout). Sous Media3 elle nomme `SurfaceView`, c'est-à-dire précisément
     // le chemin qui rend le HDR possible — l'information vaut d'être montrée.
     if (s.vo != null) {
-      rows.add(_StatRow(label: context.l10n.statsOutput, value: s.vo!));
+      rows.add(_StatRow(statKey: VideoStatKey.output, label: context.l10n.statsOutput, value: s.vo!));
     }
 
     if (s.codec != null) {
       final decoder = s.decoder;
       rows.add(_StatRow(
+        statKey: VideoStatKey.codec,
         label: context.l10n.statsCodec,
         value: decoder == null || decoder == s.codec
             ? s.codec!
@@ -207,6 +230,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     if (resolution != null) {
       final def = s.definitionLabel;
       rows.add(_StatRow(
+        statKey: VideoStatKey.resolution,
         label: context.l10n.statsResolution,
         value: def == null ? resolution : '$resolution  ($def)',
       ));
@@ -220,12 +244,14 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       switch (verdict) {
         case QualityVerdict.conforme:
           rows.add(_StatRow(
+            statKey: VideoStatKey.announced,
             label: context.l10n.statsAnnouncedLabel,
             value: context.l10n.statsAnnouncedOk(announced),
             valueColor: kSuccess,
           ));
         case QualityVerdict.survendu:
           rows.add(_StatRow(
+            statKey: VideoStatKey.announced,
             label: context.l10n.statsAnnouncedLabel,
             value: context.l10n.statsAnnouncedOversold(announced),
             valueColor: kError,
@@ -233,6 +259,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
           ));
         case QualityVerdict.sousEstime:
           rows.add(_StatRow(
+            statKey: VideoStatKey.announced,
             label: context.l10n.statsAnnouncedLabel,
             value: context.l10n.statsAnnouncedBetter(announced),
             valueColor: kAccentSecondary,
@@ -247,6 +274,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     // `signalPeak: 2.0` posée en dur ne laissait à cette ligne qu'une seule
     // réponse possible — elle affichait TOUJOURS « oui ».
     rows.add(_StatRow(
+      statKey: VideoStatKey.hdr,
       label: context.l10n.statsHdr,
       value: s.hdr == null
           ? '—'
@@ -260,10 +288,11 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     // mesure comme une mesure.
     final target = s.containerFps;
     if (target != null) {
-      rows.add(_StatRow(label: context.l10n.statsFps, value: target.toStringAsFixed(1)));
+      rows.add(_StatRow(statKey: VideoStatKey.fps, label: context.l10n.statsFps, value: target.toStringAsFixed(1)));
     }
     if (s.hasDroppedFrames) {
       rows.add(_StatRow(
+        statKey: VideoStatKey.lost,
         label: context.l10n.statsLost,
         value: '${s.droppedFrames ?? 0}',
         valueColor: kWarning,
@@ -280,6 +309,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       final annonce = s.containerFps;
       final manque = annonce != null && annonce > 0 && rendered < annonce * 0.9;
       rows.add(_StatRow(
+        statKey: VideoStatKey.rendered,
         label: context.l10n.statsRendered,
         value: manque
             ? context.l10n.statsRenderedVsAnnounced(
@@ -290,18 +320,18 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       ));
     }
     if ((s.skippedFrames ?? 0) > 0) {
-      rows.add(_StatRow(label: context.l10n.statsDropped, value: '${s.skippedFrames}'));
+      rows.add(_StatRow(statKey: VideoStatKey.dropped, label: context.l10n.statsDropped, value: '${s.skippedFrames}'));
     }
 
     final bitrate = s.bitrateLabel;
     if (bitrate != null) {
-      rows.add(_StatRow(label: context.l10n.statsBitrate, value: bitrate));
+      rows.add(_StatRow(statKey: VideoStatKey.bitrate, label: context.l10n.statsBitrate, value: bitrate));
     }
 
     // §videoStatsPlus — Le débit RÉELLEMENT servi, et le tampon qu'il remplit.
     final net = s.networkBitrateLabel;
     if (net != null) {
-      rows.add(_StatRow(label: context.l10n.statsNetwork, value: net));
+      rows.add(_StatRow(statKey: VideoStatKey.network, label: context.l10n.statsNetwork, value: net));
     }
     final buf = s.bufferAhead;
     if (buf != null) {
@@ -309,6 +339,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       // précède un blocage, pas une valeur anodine.
       final court = buf.inMilliseconds < 2000;
       rows.add(_StatRow(
+        statKey: VideoStatKey.buffer,
         label: context.l10n.statsBuffer,
         value: context.l10n.statsSecondsValue(
             (buf.inMilliseconds / 1000).toStringAsFixed(1)),
@@ -318,11 +349,11 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     }
     final transferred = s.transferredLabel;
     if (transferred != null) {
-      rows.add(_StatRow(label: context.l10n.statsTransferred, value: transferred));
+      rows.add(_StatRow(statKey: VideoStatKey.transferred, label: context.l10n.statsTransferred, value: transferred));
     }
     final audio = s.audioLabel;
     if (audio != null) {
-      rows.add(_StatRow(label: context.l10n.statsAudio, value: audio));
+      rows.add(_StatRow(statKey: VideoStatKey.audio, label: context.l10n.statsAudio, value: audio));
     }
 
     // §stallCount — La ligne qui accuse la SOURCE et non l'appareil.
@@ -336,6 +367,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     if (stall != null) {
       final bad = (s.stalls ?? 0) > 0;
       rows.add(_StatRow(
+        statKey: VideoStatKey.stalls,
         label: context.l10n.statsStalls,
         value: stall,
         valueColor: bad ? kWarning : null,
@@ -345,6 +377,7 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
     final start = s.startupMs;
     if (start != null && start > 0) {
       rows.add(_StatRow(
+        statKey: VideoStatKey.startup,
         label: context.l10n.statsStartup,
         value: context.l10n.statsSecondsValue((start / 1000).toStringAsFixed(1)),
       ));
@@ -364,7 +397,11 @@ class _StatRow extends StatelessWidget {
   /// couleur seule ne suffit pas à faire ressortir une anomalie.
   final bool alert;
 
+  /// §videoStatsTags — La clé de la ligne, pour le filtre de l'utilisateur.
+  final VideoStatKey statKey;
+
   const _StatRow({
+    required this.statKey,
     required this.label,
     required this.value,
     this.valueColor,

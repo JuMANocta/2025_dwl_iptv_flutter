@@ -45,4 +45,51 @@ void main() {
     PlaylistVisibility.hold();
     expect(PlaylistVisibility.hasHolders, isTrue);
   });
+
+  group('R3 (D4A-01) — jetons d\'ONGLET', () {
+    test('🔴 un onglet caché ne retient plus les listes', () {
+      // Le défaut payé : les pages de l'`IndexedStack` ne sont JAMAIS
+      // démontées. L'accueil gardait donc son jeton pendant qu'on était sur
+      // l'onglet Téléchargements — or son jeton veut dire « quelqu'un
+      // REGARDE les listes », pas « la page existe encore ». Le déchargement
+      // §lazyUnload du profil Léger ne se déclenchait donc jamais.
+      PlaylistVisibility.holdTab();
+      expect(PlaylistVisibility.hasHolders, isTrue);
+      PlaylistVisibility.setTabVisible(false);
+      expect(PlaylistVisibility.hasHolders, isFalse,
+          reason: 'sur un autre onglet, plus personne ne regarde les listes : '
+              'une box à 1 Go doit pouvoir récupérer sa mémoire.');
+      PlaylistVisibility.setTabVisible(true);
+      expect(PlaylistVisibility.hasHolders, isTrue);
+    });
+
+    test('un jeton ORDINAIRE, lui, compte quel que soit l\'onglet dessous', () {
+      // Comptes et Optimisation sont des routes POUSSÉES : elles sont bien à
+      // l'écran, et §unloadGuard a été payé par des listes qui se vidaient
+      // sous les yeux de l'utilisateur sur la page qui les affiche.
+      PlaylistVisibility.hold();
+      PlaylistVisibility.setTabVisible(false);
+      expect(PlaylistVisibility.hasHolders, isTrue,
+          reason: 'éclipser TOUS les jetons au changement d\'onglet '
+              'remettrait exactement le bug de §unloadGuard.');
+    });
+
+    test('releaseTab() est borné à zéro, comme release()', () {
+      PlaylistVisibility.releaseTab();
+      PlaylistVisibility.releaseTab();
+      expect(PlaylistVisibility.tabHolders.value, 0);
+      PlaylistVisibility.holdTab();
+      expect(PlaylistVisibility.hasHolders, isTrue);
+    });
+
+    test('deux jetons d\'onglet : le premier rendu ne lève pas la protection',
+        () {
+      PlaylistVisibility.holdTab();
+      PlaylistVisibility.holdTab();
+      PlaylistVisibility.releaseTab();
+      expect(PlaylistVisibility.hasHolders, isTrue);
+      PlaylistVisibility.releaseTab();
+      expect(PlaylistVisibility.hasHolders, isFalse);
+    });
+  });
 }

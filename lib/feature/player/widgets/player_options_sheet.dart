@@ -4,7 +4,9 @@ import '../../../core/themes/colors.dart';
 import '../../../core/utils/platform_tv.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
+import '../playback_engine.dart';
 import '../video_fit.dart';
+import '../video_stats.dart';
 import '../../../l10n/l10n_ext.dart';
 
 /// §tourFix — LA liste des vitesses de lecture, unique pour toute l'app.
@@ -29,9 +31,16 @@ Future<void> showPlayerOptions(
   required VoidCallback onTracks,
   required VoidCallback onSpeed,
   required VoidCallback onFit,
-  required VoidCallback onToggleStats,
+  required VoidCallback onStats,
   VoidCallback? onNext,
+  // §engineFeatures — variantes HLS du flux en cours ; la ligne n'existe
+  // que s'il y a un choix à faire (au moins deux variantes hors « auto »).
+  List<AetherQuality> qualities = const [],
+  AetherQuality? currentQuality,
+  VoidCallback? onQuality,
 }) {
+  final bool hasQualities =
+      onQuality != null && qualities.where((q) => !q.isAuto).length >= 2;
   return showAdaptiveActionSheet<void>(
     context: context,
     scrollable: false,
@@ -74,6 +83,18 @@ Future<void> showPlayerOptions(
           subtitle: '${fitMode.label} · ${fitMode.description}',
           onTap: onFit,
         ),
+        // §engineFeatures — Qualité HLS : le sous-titre dit la variante
+        // ACTIVE (« Automatique » ou « 720p »), pas l'action.
+        if (hasQualities)
+          OptionSheetRow(
+            icon: Icons.high_quality_rounded,
+            accent: kAccentPrimary,
+            title: context.l10n.optQualityTitle,
+            subtitle: currentQuality == null || currentQuality.isAuto
+                ? context.l10n.optQualityAuto
+                : currentQuality.label,
+            onTap: onQuality,
+          ),
         // §videoStats — Interrupteur de l'encart de diagnostic. EN DERNIER :
         // c'est un outil de mise au point, pas une action de lecture, il ne
         // doit pas passer devant « Épisode suivant » au focus D-pad.
@@ -85,7 +106,7 @@ Future<void> showPlayerOptions(
               ? context.l10n.optVideoInfoOn
               : context.l10n.optVideoInfoSub,
           selected: statsEnabled,
-          onTap: onToggleStats,
+          onTap: onStats,
         ),
         // §tvOptionsBack — La SORTIE du panneau, signalée le 2026-09-08 :
         // « il faut un bouton pour annuler et revenir sur la vidéo car sinon
@@ -163,6 +184,149 @@ Future<void> showSpeedMenu(
         // §tvOptionsBack — voir le sous-menu Format d'image.
         BackToVideoRow(onTap: () => Navigator.of(sheetCtx).pop()),
       ],
+    ),
+  );
+}
+
+/// §engineFeatures — Sous-menu Qualité HLS (« Automatique » + chaque
+/// variante, de la plus haute à la plus basse), focusable D-pad.
+Future<void> showQualityMenu(
+  BuildContext context, {
+  required List<AetherQuality> qualities,
+  required AetherQuality? current,
+  required ValueChanged<AetherQuality> onSelect,
+}) {
+  return showAdaptiveActionSheet<void>(
+    context: context,
+    scrollable: false,
+    builder: (sheetCtx) => OptionsSheetBody(
+      title: context.l10n.optQualityTitle,
+      icon: Icons.high_quality_rounded,
+      children: [
+        for (final q in qualities)
+          OptionSheetRow(
+            icon: q == current
+                ? Icons.check_circle_rounded
+                : (q.isAuto ? Icons.auto_awesome_rounded : Icons.hd_rounded),
+            accent: kAccentPrimary,
+            title: q.isAuto ? context.l10n.optQualityAuto : q.label,
+            // Le débit passe par LA règle partagée (`formatBitrate`) : un
+            // point décimal en dur affichait « 4.5 Mb/s » ici et « 4,5 Mb/s »
+            // dans l'encart de stats, sur le même appareil français.
+            subtitle: q.isAuto
+                ? context.l10n.optQualityAutoSub
+                : formatBitrate(q.bitrate),
+            selected: q == current,
+            onTap: () => onSelect(q),
+          ),
+        // §tvOptionsBack — voir le sous-menu Format d'image.
+        BackToVideoRow(onTap: () => Navigator.of(sheetCtx).pop()),
+      ],
+    ),
+  );
+}
+
+/// §videoStatsTags — Le nom d'une ligne de l'encart, celui qu'elle porte à
+/// l'écran.
+String videoStatLabel(BuildContext context, VideoStatKey k) {
+  final l = context.l10n;
+  return switch (k) {
+    VideoStatKey.decoding => l.statsDecoding,
+    VideoStatKey.output => l.statsOutput,
+    VideoStatKey.codec => l.statsCodec,
+    VideoStatKey.resolution => l.statsResolution,
+    VideoStatKey.announced => l.statsAnnouncedLabel,
+    VideoStatKey.hdr => l.statsHdr,
+    VideoStatKey.fps => l.statsFps,
+    VideoStatKey.lost => l.statsLost,
+    VideoStatKey.rendered => l.statsRendered,
+    VideoStatKey.dropped => l.statsDropped,
+    VideoStatKey.bitrate => l.statsBitrate,
+    VideoStatKey.network => l.statsNetwork,
+    VideoStatKey.buffer => l.statsBuffer,
+    VideoStatKey.transferred => l.statsTransferred,
+    VideoStatKey.audio => l.statsAudio,
+    VideoStatKey.stalls => l.statsStalls,
+    VideoStatKey.startup => l.statsStartup,
+  };
+}
+
+/// §videoStatsTags — Sous-menu « Infos vidéo » : l'encart oui / non, toujours
+/// à l'écran ou seulement avec les contrôles, et la liste des lignes à
+/// montrer. Chaque ligne se coche et se décoche sur place (la feuille reste
+/// ouverte : à la télécommande, refaire le chemin pour chaque ligne serait
+/// une punition), focusable D-pad, sortie en dernier (§tvOptionsBack).
+Future<void> showVideoStatsMenu(
+  BuildContext context, {
+  required bool enabled,
+  required bool permanent,
+  required Set<VideoStatKey> rows,
+  required ValueChanged<bool> onEnabled,
+  required ValueChanged<bool> onPermanent,
+  required void Function(VideoStatKey key, bool shown) onRow,
+}) {
+  bool en = enabled;
+  bool perm = permanent;
+  final Set<VideoStatKey> shown = Set.of(rows);
+  return showAdaptiveActionSheet<void>(
+    context: context,
+    builder: (sheetCtx) => StatefulBuilder(
+      builder: (ctx, setLocal) => OptionsSheetBody(
+        title: context.l10n.optVideoInfo,
+        icon: Icons.query_stats_rounded,
+        children: [
+          OptionSheetRow(
+            icon: en ? Icons.check_circle_rounded : Icons.visibility_off_rounded,
+            accent: kAccentTertiary,
+            title: context.l10n.optStatsShow,
+            subtitle: context.l10n.optStatsShowSub,
+            selected: en,
+            onTap: () {
+              setLocal(() => en = !en);
+              onEnabled(en);
+            },
+          ),
+          OptionSheetRow(
+            icon: perm ? Icons.check_circle_rounded : Icons.touch_app_rounded,
+            accent: kAccentTertiary,
+            title: context.l10n.optStatsPermanent,
+            subtitle: context.l10n.optStatsPermanentSub,
+            selected: perm,
+            onTap: () {
+              setLocal(() => perm = !perm);
+              onPermanent(perm);
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              context.l10n.optStatsRows,
+              style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
+                    color: kAccentTertiary,
+                    letterSpacing: 1.2,
+                  ),
+            ),
+          ),
+          for (final k in VideoStatKey.values)
+            OptionSheetRow(
+              icon: shown.contains(k)
+                  ? Icons.check_box_rounded
+                  : Icons.check_box_outline_blank_rounded,
+              accent: kAccentTertiary,
+              title: videoStatLabel(ctx, k),
+              subtitle: null,
+              selected: shown.contains(k),
+              onTap: () {
+                setLocal(() {
+                  if (!shown.remove(k)) shown.add(k);
+                });
+                onRow(k, shown.contains(k));
+              },
+            ),
+          // §tvOptionsBack — voir le sous-menu Format d'image.
+          BackToVideoRow(onTap: () => Navigator.of(sheetCtx).pop()),
+        ],
+      ),
     ),
   );
 }

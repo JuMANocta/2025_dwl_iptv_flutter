@@ -17,16 +17,16 @@ class AndroidStorage implements PlatformStorage {
 
   @override
   Future<bool> ensurePermission() async {
-    final deviceInfo = await DeviceInfoPlugin().androidInfo;
-    PermissionStatus status;
-
-    if (deviceInfo.version.sdkInt >= 33) {
-      status = await Permission.videos.request();
-    } else {
-      status = await Permission.storage.request();
+    final int sdkInt;
+    try {
+      sdkInt = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+    } catch (e) {
+      debugPrint("⚠️ Version d'Android inconnue ($e) — écriture tentée");
+      return true;
     }
-
-    return status.isGranted;
+    if (sdkInt >= 29) return true;
+    final PermissionStatus status = await Permission.storage.request();
+    return status.isGranted || status.isLimited;
   }
 
   @override

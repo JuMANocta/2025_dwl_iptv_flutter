@@ -172,6 +172,25 @@ class AppThemeConfig {
     (name: 'Classic',      config: classic),
   ];
 
+  /// §themeStudio — Deux thèmes qui SE RESSEMBLENT, c'est-à-dire qui peignent
+  /// l'app pareil : les sept couleurs, l'intensité du halo et l'arrondi.
+  ///
+  /// ⚠️ [themeMode] en est volontairement EXCLU : clair, sombre ou système est
+  /// une préférence d'appareil (et d'heure de la journée), pas l'identité d'un
+  /// thème — sans quoi passer en mode clair ferait « sortir » du préréglage
+  /// affiché comme actif. C'est déjà la règle du surlignage des préréglages,
+  /// elle est simplement nommée ici, et partagée avec « Mes thèmes ».
+  bool sameLook(AppThemeConfig o) =>
+      primaryColor == o.primaryColor &&
+      accentColor == o.accentColor &&
+      tertiaryColor == o.tertiaryColor &&
+      favoriteColor == o.favoriteColor &&
+      warningColor == o.warningColor &&
+      errorColor == o.errorColor &&
+      successColor == o.successColor &&
+      glowIntensity == o.glowIntensity &&
+      borderRadius == o.borderRadius;
+
   // ── copyWith ─────────────────────────────────────────────────────────────────
 
   AppThemeConfig copyWith({

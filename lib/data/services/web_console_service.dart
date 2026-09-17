@@ -603,9 +603,29 @@ class WebConsoleService {
           DiagnosticLog.keyTrace = payload['on'] == true;
           _json(req, 200, {'ok': true});
           break;
+        // R41 — `clearAll` et non `clear` : le vidage doit emporter les DEUX
+        // fichiers de session (§tvLogsPersist), et être ATTENDU avant de
+        // répondre `ok`. La vue Journal relit `?session=previous` d'elle-même :
+        // sans l'attente, elle pourrait réafficher ce qu'elle vient de faire
+        // détruire.
+        // F1 — On dit le RÉSULTAT. Afficher « Journal vidé » alors qu'un
+        // fichier a résisté serait le pire résultat sur un ticket de sécurité :
+        // plus rien n'est servi tout de suite, mais au prochain lancement la
+        // rotation relit le survivant et la console le ressert. §clientText :
+        // ce que la personne doit savoir, jamais la mécanique — §userError :
+        // aucun `$e` à l'écran (le détail part au journal, pas au navigateur).
         case '/api/logs/clear':
-          DiagnosticLog.clear();
-          _json(req, 200, {'ok': true});
+          final bool disquePropre = await DiagnosticLog.clearAll();
+          _json(
+              req,
+              200,
+              disquePropre
+                  ? {'ok': true}
+                  : {
+                      'ok': false,
+                      'error': 'Journal vidé, mais un fichier n\'a pas pu être '
+                          'supprimé. Réessayez.',
+                    });
           break;
         case '/api/tmdb/save':
           await _saveTmdb((payload['token'] as String?) ?? '');

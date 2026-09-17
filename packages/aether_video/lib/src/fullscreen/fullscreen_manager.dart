@@ -68,11 +68,17 @@ class FullscreenManager {
   /// - Restores original orientation preferences that were saved before entering fullscreen
   static Future<void> exitFullscreen() async {
     _isFullscreen = false;
-    // Restore system UI
+    // Restore system UI.
+    // §engineVendor patch 23 (R20, §barsRestore) — `edgeToEdge` seul ne fait
+    // que `setDecorFitsSystemWindows` : il n'efface JAMAIS les drapeaux de
+    // masquage posés par `immersiveSticky`, les deux barres restaient donc
+    // cachées pour le reste de la session. `manual` + toutes les surcouches
+    // réécrit la visibilité sans drapeau, PUIS on repasse bord à bord.
     await SystemChrome.setEnabledSystemUIMode(
-      SystemUiMode.edgeToEdge,
+      SystemUiMode.manual,
       overlays: SystemUiOverlay.values,
     );
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
     // Restore orientation preferences to what they were before fullscreen
     if (PlatformUtils.isAndroid || PlatformUtils.isIOS) {

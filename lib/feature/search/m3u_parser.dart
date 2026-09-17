@@ -85,6 +85,15 @@ class M3uParser {
     filmsList.addAll(films);
     seriesList.addAll(series);
     tvList.addAll(tv);
+    // R18 — Le décompte n'était publié qu'aux rendements au thread UI (toutes
+    // les 8 ms) : une petite liste n'en déclenche AUCUN, et l'écran restait sur
+    // « 0 entrée » à 100 %. Pire, un repli Latin-1 vide les listes et repart de
+    // zéro, donc le dernier chiffre publié pouvait être celui d'une lecture
+    // abandonnée. On publie le total VRAI quand il est vrai, c'est-à-dire ici.
+    if (onDetail != null) {
+      final int n = films.length + series.length + tv.length;
+      onDetail(L10n.current.bootDetailEntries(n, formatCountFor(n, L10n.current)));
+    }
     onProgress?.call(1.0);
   }
 

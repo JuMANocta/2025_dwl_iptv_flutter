@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:dpad/dpad.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/themes/theme_service.dart';
 import '../../core/themes/colors.dart';
 import '../../core/themes/light_palette.dart';
 import '../../core/utils/platform_tv.dart';
@@ -22,7 +23,11 @@ import '../../widgets/confirm_or_undo.dart';
 import '../../data/models/media_model.dart';
 import '../player/player_page.dart';
 import '../player/player_media.dart';
+import '../player/launch_playback.dart';
 import '../downloads/logic/download_initiator.dart';
+import '../../data/services/download_manager_service.dart'
+    show DownloadManagerService;
+import '../../data/models/download_task.dart' show DownloadTask;
 import '../../data/models/m3u_entry.dart';
 import '../../l10n/app_localizations.dart';
 import '../../widgets/tv/focusable_chip.dart';
@@ -35,6 +40,7 @@ import 'm3u_filter.dart';
 import 'details_facts.dart';
 import 'details_header_image.dart';
 import 'details_versions.dart';
+import 'series_stub.dart';
 import '../../widgets/playback_gate.dart';
 import '../../widgets/media_chips.dart' show buildDownloadName;
 import 'version_dedup.dart';
@@ -54,6 +60,74 @@ Color _qualityColor(String? quality) {
     _     => kQualityUnknown, // blanc cassé — plus de gris terne
   };
 }
+
+/// §heroSeriesResume — L'URL stub `/series/{user}/{pass}/{id}` sous laquelle la
+/// SÉRIE de [episode] est rangée au catalogue, ou `null` quand la question n'a
+/// pas de sens (film, chaîne, épisode sans stub API).
+///
+/// **Pourquoi une clé de plus.** La progression d'un épisode s'écrit sous l'URL
+/// de l'ÉPISODE, alors que le catalogue Xtream ne contient qu'UNE entrée par
+/// série : son stub (`xtream_catalog_parser`). L'accueil ne résout une reprise
+/// qu'en retrouvant son URL dans l'index des entrées (`resumeGroupsFor` : « une
+/// URL inconnue est ignorée ») — une série en cours n'y était donc JAMAIS
+/// trouvée, ni dans le hero ni dans la barre de sa vignette. Les films
+/// marchaient parce que l'URL jouée EST celle de leur entrée.
+///
+/// **Quel stub.** Celui du compte d'où vient l'épisode joué : c'est le seul
+/// dont on sait qu'il est en mémoire tant que cette liste-là est chargée.
+/// Repli sur le premier stub connu du titre — l'accueil indexe les stubs de
+/// TOUS les comptes vers le MÊME groupe, donc n'importe lequel retrouve la
+/// bonne carte.
+///
+/// ⚠️ Rend `null` plutôt qu'un à-peu-près : sans stub (série d'une liste M3U
+/// qui porte directement ses épisodes SxxExx), écrire l'URL d'un épisode
+/// n'ajouterait qu'une clé que l'accueil ignore de toute façon.
+String? seriesResumeKeyFor({
+  required List<M3uEntry> stubs,
+  required M3uEntry episode,
+}) {
+  // Hors série la question ne se pose pas : un film EST déjà son entrée de
+  // catalogue, une chaîne n'a pas de reprise.
+  if (episode.type != M3uContentType.series) return null;
+  // Sans numérotation, ce n'est pas un épisode mais le stub lui-même (fiche
+  // ouverte sans sélection) : ne rien écrire plutôt qu'une reprise fantôme.
+  if (episode.title.seasonNumber == null ||
+      episode.title.episodeNumber == null) {
+    return null;
+  }
+  for (final M3uEntry stub in stubs) {
+    if (stub.accountId == episode.accountId) return stub.url;
+  }
+  return stubs.isEmpty ? null : stubs.first.url;
+}
+
+/// §heroSeriesResume — La clé de série à effacer quand on oublie la reprise de
+/// l'épisode courant, ou `null` s'il n'y a rien à effacer.
+///
+/// **Pourquoi ce n'est pas inconditionnel.** « Oublier la reprise » agit sur
+/// l'épisode SÉLECTIONNÉ. Si une autre saison est encore en cours, la série est
+/// légitimement « en cours » : lui retirer sa clé la ferait disparaître du hero
+/// alors qu'il reste quelque chose à reprendre. On n'efface donc la clé de
+/// série que lorsque plus AUCUN épisode n'a de reprise.
+///
+/// ⚠️ [anyEpisodeStillInProgress] se mesure APRÈS l'effacement des clés
+/// d'épisode : avant, l'épisode qu'on est en train d'oublier compterait
+/// lui-même comme « encore en cours » et la clé de série ne partirait jamais.
+String? seriesKeyToForget({
+  required String? seriesKey,
+  required bool anyEpisodeStillInProgress,
+}) =>
+    (seriesKey == null || anyEpisodeStillInProgress) ? null : seriesKey;
+
+/// §detailsMore (b) — L'indice « suite plus bas » est visible tant qu'il reste
+/// quelque chose dessous ET que la personne n'a pas bougé de plus de 24 points
+/// depuis l'ouverture ([baseline], qui n'est PAS zéro sur téléviseur).
+bool scrollHintVisibleFor({
+  required double pixels,
+  required double baseline,
+  required double extentAfter,
+}) =>
+    extentAfter > 24 && (pixels - baseline).abs() < 24;
 
 class DetailsPage extends StatefulWidget {
   final M3uEntry entry;
@@ -160,6 +234,71 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
 
   final ScrollController _episodeScrollController = ScrollController();
 
+  /// Lot 9 (§tmdbPlus) — `true` quand la personne a demandé tout le casting.
+  ///
+  /// ⚠️ Retombe à `false` à chaque changement d'épisode : la rangée change de
+  /// contenu, la demande ne vaut plus pour elle.
+  bool _castExpanded = false;
+
+  /// Le nombre d'acteurs montrés avant « Voir plus ». Douze est ce que la
+  /// fiche affichait quand c'était aussi tout ce qu'elle CONNAISSAIT.
+  static const int _kCastPreview = 12;
+
+  List<CastMember> get _visibleCast {
+    final List<CastMember> all =
+        _tmdbData?.castMembers ?? const <CastMember>[];
+    if (_castExpanded || all.length <= _kCastPreview) return all;
+    return all.take(_kCastPreview).toList();
+  }
+
+  bool get _castHasMore =>
+      !_castExpanded &&
+      (_tmdbData?.castMembers.length ?? 0) > _kCastPreview;
+
+  /// §detailsMore (b) — Le défilement de la fiche entière, écouté pour l'indice
+  /// « il y a une suite » (cf. `_buildScrollHint`).
+  final ScrollController _pageScroll = ScrollController();
+
+  /// §detailsMore (b) — `true` tant que la personne n'a pas bougé et qu'il
+  /// reste quelque chose à voir. ⚠️ Un `ValueNotifier` et pas un `setState` :
+  /// la fiche est une page lourde, et l'indice change à chaque frame de
+  /// défilement — la repeindre entière pour une pastille serait §jankNext en
+  /// pire.
+  final ValueNotifier<bool> _scrollHintVisible = ValueNotifier<bool>(false);
+
+  /// Position de défilement à l'OUVERTURE (après le focus d'entrée).
+  double? _scrollHintBaseline;
+
+  /// Instant d'ouverture de la fiche (cf. `_updateScrollHint`).
+  final DateTime _openedAt = DateTime.now();
+
+  /// Vrai seulement si la page DÉBORDE : sur une fiche courte (aucune clé TMDB,
+  /// aucun casting), promettre une suite qui n'existe pas serait pire que de se
+  /// taire.
+  void _updateScrollHint() {
+    if (!_pageScroll.hasClients) return;
+    final pos = _pageScroll.position;
+    // Recette AVD TV du 2026-09-17 — ⚠️ « pixels < 24 » n'était JAMAIS vrai sur
+    // téléviseur : le focus d'entrée sur « Lire » fait défiler la page (~90
+    // points mesurés) avant tout geste. La référence est donc la position
+    // d'OUVERTURE, relevée la première fois que la page déborde.
+    if (pos.maxScrollExtent <= 24) {
+      _scrollHintVisible.value = false;
+      return;
+    }
+    // ⚠️ Le focus d'entrée défile APRÈS la première image : tant que la fiche
+    // vient de s'ouvrir, la référence suit la position (sinon elle resterait à
+    // zéro et l'indice serait masqué par ce défilement que personne n'a fait).
+    final bool settling =
+        DateTime.now().difference(_openedAt) < const Duration(milliseconds: 1200);
+    if (_scrollHintBaseline == null || settling) _scrollHintBaseline = pos.pixels;
+    _scrollHintVisible.value = scrollHintVisibleFor(
+      pixels: pos.pixels,
+      baseline: _scrollHintBaseline!,
+      extentAfter: pos.extentAfter,
+    );
+  }
+
   /// §tmdbOnlyDetails — Aucune source jouable : la fiche vit sur TMDB seul.
   ///
   /// On teste l'entrée RÉELLEMENT sélectionnée plutôt que `widget.entry` : elle
@@ -241,6 +380,12 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     // (§logPersist), le seul canal de diagnostic d'un téléviseur. Debug et
     // profile gardent la mesure, comme §exitCost la décrit.
     if (!kReleaseMode) WidgetsBinding.instance.addObserver(this);
+    // §detailsMore (b) — L'indice n'apparaît qu'une fois la page mesurée : à
+    // `initState` le scrollable n'a pas encore d'étendue, et on annoncerait une
+    // suite sans savoir s'il y en a une.
+    _pageScroll.addListener(_updateScrollHint);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _updateScrollHint());
     _buildSeasonEpisodes(memory: fromMemory);
 
     if (widget.entry.type == M3uContentType.series) {
@@ -296,6 +441,10 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     ParsedPlaylistService.version.removeListener(_onPlaylistChanged);
     _episodeScrollController.dispose();
+    // §detailsMore (b) — D2A-01 : une libération ne se saute jamais.
+    _pageScroll.removeListener(_updateScrollHint);
+    _pageScroll.dispose();
+    _scrollHintVisible.dispose();
     super.dispose();
   }
 
@@ -628,24 +777,13 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     );
   }
 
-  /// Extrait le `series_id` d'une URL stub `/series/{user}/{pass}/{id}`
-  /// (sans extension). Retourne `null` si :
-  /// - URL pas de format `series`
-  /// - dernier segment a une extension (= URL d'épisode, pas un stub)
-  /// - dernier segment pas un entier
-  static int? _extractSeriesIdFromUrl(String url) {
-    try {
-      final segments = Uri.parse(url).pathSegments;
-      if (segments.length < 4 || segments[0].toLowerCase() != 'series') {
-        return null;
-      }
-      final last = segments.last;
-      if (last.contains('.')) return null; // c'est une URL d'épisode
-      return int.tryParse(last);
-    } catch (_) {
-      return null;
-    }
-  }
+  /// Extrait le `series_id` d'une URL stub `/series/{user}/{pass}/{id}`.
+  ///
+  /// ✅ **R44 — la règle vit désormais dans `series_stub.dart`**, partagée avec
+  /// l'accueil (`isSeriesStubEntry`) : elle était écrite ici ET là-bas, à la
+  /// ligne près, c'est-à-dire §tourFix en attente de se produire. Ce qui reste
+  /// ici n'est qu'un raccourci de nom pour les deux appels de la fiche.
+  static int? _extractSeriesIdFromUrl(String url) => seriesIdFromUrl(url);
 
   /// [memory] : la collecte `_entriesFromMemory()` que l'appelant vient de
   /// faire dans le MÊME tour synchrone (D4A-10) — identique à celle d'ici,
@@ -708,6 +846,9 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
       _selectedEntry   = versions.isNotEmpty ? versions.first : group.best;
       _isLoading       = true;
       _episodeData     = null;
+      // Lot 9 (§tmdbPlus) — La rangée casting va changer de contenu : la
+      // demande « montre-moi tout le monde » portait sur l'épisode précédent.
+      _castExpanded    = false;
     });
     _loadData();
     // Auto-scroll vers l'épisode sélectionné
@@ -891,7 +1032,9 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
 
   Widget _badge(String text, Color color,
       {bool filled = false, IconData? icon}) {
-    final fg = filled ? Colors.black : color;
+    // §lightTheme — Même idiome que la chip des comptes : le contraste se
+    // dérive du fond de la pastille, jamais un noir en dur.
+    final fg = filled ? onColorFor(color) : color;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
@@ -1293,8 +1436,11 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
       // par `SectionBeaconScope.maybeOf` (null-safe) — sans portée, il rend
       // simplement son enfant et n'inscrit rien. Remettre le repère = remettre
       // cette enveloppe, rien d'autre.
-      body: CustomScrollView(
-        slivers: [
+      body: Stack(
+        children: [
+          CustomScrollView(
+            controller: _pageScroll,
+            slivers: [
           // ── HEADER ────────────────────────────────────────────────────────
           SliverAppBar(
             expandedHeight: headerHeight,
@@ -1580,11 +1726,24 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                           // trouve toujours la card suivante dans l'arbre de focus.
                           // ignore: deprecated_member_use
                           cacheExtent: 600,
-                          itemCount: _tmdbData!.castMembers.length,
+                          // Lot 9 (§tmdbPlus) — 12 visibles, puis une tuile
+                          // « Voir plus » qui déplie le reste DANS la même
+                          // rangée. ⚠️ Pas de nouvelle route : sur TV, une
+                          // page de plus est une sortie de plus à gérer
+                          // (§tvOptionsBack), pour une liste qui tient dans
+                          // un carrousel qu'on sait déjà parcourir.
+                          itemCount: _visibleCast.length +
+                              (_castHasMore ? 1 : 0),
                           separatorBuilder: (_, __) => const SizedBox(width: 12),
-                          itemBuilder: (_, i) => _CastCard(
-                              member: _tmdbData!.castMembers[i],
-                              isEntry: i == 0),
+                          itemBuilder: (_, i) {
+                            if (i == _visibleCast.length) {
+                              return _MoreCastCard(
+                                  onTap: () => setState(
+                                      () => _castExpanded = true));
+                            }
+                            return _CastCard(
+                                member: _visibleCast[i], isEntry: i == 0);
+                          },
                         ),
                       ),
                     ),
@@ -1634,19 +1793,31 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                   // approximation, c'était du bruit.
                   //
                   // Il affiche maintenant `networks` (TMDB) : le ou les
-                  // diffuseurs réels. ⚠️ Pour un FILM, TMDB ne rend pas de
-                  // `networks` — le bloc disparaît, ce qui est honnête. Le vrai
-                  // « disponible en streaming » d'un film demanderait
-                  // `watch/providers` (à ajouter dans `append_to_response`,
-                  // toujours sans requête de plus).
+                  // diffuseurs réels.
+                  //
+                  // ✅ **Lot 9 (§tmdbPlus)** — Et, pour un FILM, les vraies
+                  // plateformes de `watch/providers` : TMDB ne rend jamais de
+                  // `networks` pour un film, et le bloc disparaissait alors
+                  // complètement alors que la donnée existait. Elle vient dans
+                  // la MÊME réponse (`append_to_response`), donc toujours sans
+                  // requête de plus.
                   Builder(builder: (context) {
                     // ⚠️ **Plafonné à 4.** TMDB liste TOUTES les stations
                     // affiliées : « Jujutsu Kaisen » en rend **31** (MBS, TBS,
                     // CBC, Tulip Television, tys…), soit trois rangées de
                     // pastilles illisibles — mesuré sur l'émulateur TV le
                     // 2026-09-06. Les premières sont les diffuseurs principaux.
-                    final platforms =
-                        (_tmdbData?.networks ?? const <String>[]).take(4).toList();
+                    //
+                    // ⚠️ `networks` D'ABORD quand il existe : pour une série,
+                    // le diffuseur d'origine dit mieux « d'où ça vient » que
+                    // le catalogue où elle est rangée aujourd'hui. Les
+                    // plateformes ne prennent la place que là où `networks`
+                    // est vide — c'est-à-dire sur les films.
+                    final List<String> source =
+                        (_tmdbData?.networks ?? const <String>[]).isNotEmpty
+                            ? _tmdbData!.networks
+                            : (_tmdbData?.watchProviders ?? const <String>[]);
+                    final platforms = source.take(4).toList();
                     if (platforms.isEmpty) return const SizedBox.shrink();
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1721,7 +1892,85 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
             ),
             ),
           ),
+            ],
+          ),
+          // §detailsMore (b) — L'indice de défilement, TV seulement.
+          if (isTvPlatform) _buildScrollHint(context),
         ],
+      ),
+    );
+  }
+
+  /// §detailsMore (b) — « les fiches TV ont une partie manquante des détails ».
+  ///
+  /// **Rien ne manque : tout est plus bas, et rien ne le dit.** Vérifié dans le
+  /// code — sur téléviseur l'en-tête occupe `_kTvBackdropFraction` de la
+  /// hauteur d'écran, soit **72 %** (`headerHeight = screenH * 0.72`, borné
+  /// 260-520). Casting, saga, similaires et bloc Infos commencent donc sous les
+  /// 28 % restants, et l'affiche pleine largeur ne laisse rien dépasser qui
+  /// suggère une suite. Au doigt on descend par réflexe ; à la télécommande on
+  /// ne descend que si on sait qu'il y a quelque chose.
+  ///
+  /// ⛔ **Ne PAS re-cadrer l'affiche pour régler ça** : la fraction a été
+  /// choisie avec l'utilisateur le 2026-09-06 (§detailsHero), l'image « ne
+  /// partage plus l'écran avec le bloc titre, elle le PORTE ». Et ⛔ §posterFlash
+  /// interdit de toucher à la composition de l'en-tête. On ajoute donc un
+  /// indice PAR-DESSUS, qui s'efface au premier mouvement.
+  ///
+  /// ⚠️ Non focusable : il ne doit être ni une étape de la traversée D-pad
+  /// (§dpadChildFocus), ni une cible ; il n'existe que pour être vu.
+  Widget _buildScrollHint(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // Recette AVD TV du 2026-09-17 — l'indice n'apparaissait JAMAIS : il
+    // n'était calculé qu'à la première image, quand la fiche est encore courte
+    // (le contenu TMDB n'est pas arrivé), puis seulement sur un défilement. Or
+    // c'est l'arrivée du casting qui fait déborder la page, sans qu'aucun
+    // défilement n'ait lieu. On recalcule donc après CHAQUE reconstruction.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateScrollHint();
+    });
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 12,
+      child: IgnorePointer(
+        child: ValueListenableBuilder<bool>(
+          valueListenable: _scrollHintVisible,
+          builder: (context, visible, child) => AnimatedOpacity(
+            opacity: visible ? 1 : 0,
+            duration: const Duration(milliseconds: 220),
+            child: child,
+          ),
+          child: Center(
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: cs.surface.withAlpha(220),
+                // §btnShape — le rayon du thème, pas une pilule.
+                borderRadius: BorderRadius.circular(
+                    ThemeService.config.value.borderRadius),
+                border: Border.all(color: cs.outlineVariant),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.keyboard_arrow_down,
+                      size: 18, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Text(
+                    context.l10n.detMoreBelow,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1974,12 +2223,26 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
             child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             controller: _episodeScrollController,
-            child: Row(
+            // §dlPlayLocal — La rangée d'épisodes écoute les téléchargements :
+            // un épisode qui finit pendant qu'on regarde la fiche doit se
+            // marquer tout de suite.
+            child: ValueListenableBuilder<List<DownloadTask>>(
+              valueListenable: DownloadManagerService().tasksNotifier,
+              builder: (context, tasks, _) => Row(
               children: _seasonEpisodes[_selectedSeason]!
                   .asMap()
                   .entries
                   .map((e) {
                 final group = e.value;
+                // §dlPlayLocal — CET épisode est-il sur l'appareil ? On
+                // interroge TOUTES ses versions (le groupe d'un épisode, pas
+                // celui de la série) : téléchargé en HD ou en 4K, il est
+                // téléchargé.
+                final bool isLocal = hasLocalFileFor(
+                  networkPath: group.best.url,
+                  groupUrls: [for (final v in group.versions) v.url],
+                  tasks: tasks,
+                );
                 final isCurrent = _episodeSelected &&
                     group.episodeNumber ==
                         _currentEpisode.title.episodeNumber &&
@@ -2014,23 +2277,48 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       alignment: Alignment.center,
-                      child: Text(
-                        'E${group.episodeNumber.toString().padLeft(2, '0')}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isCurrent
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                          color: isCurrent
-                              ? cs.primary
-                              : cs.onSurfaceVariant,
-                        ),
+                      // §dlPlayLocal — La puce fait 52x40 : « Téléchargé » n'y
+                      // tient pas. L'information passe par une marque, et le
+                      // MOT est porté par `Semantics` pour que TalkBack le
+                      // lise (§l10nAll : la clé existe, elle est simplement
+                      // dite au lieu d'être écrite).
+                      //
+                      // ⚠️ Rien de focalisable ici : la puce EST déjà l'arrêt
+                      // D-pad (§dpadChildFocus).
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          Text(
+                            'E${group.episodeNumber.toString().padLeft(2, '0')}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isCurrent
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: isCurrent
+                                  ? cs.primary
+                                  : cs.onSurfaceVariant,
+                            ),
+                          ),
+                          if (isLocal)
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: Semantics(
+                                label: L10n.current.dlBadgeDownloaded,
+                                child: Icon(Icons.download_done_rounded,
+                                    size: 11, color: kSuccess),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
                   ),
                 );
               }).toList(),
+            ),
             ),
             ),
           ),
@@ -2139,11 +2427,17 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     // n'apparaîtrait qu'à la réouverture de la fiche.
     return ValueListenableBuilder<int>(
       valueListenable: MeasuredQualityService.version,
-      builder: (_, __, ___) => _buildQualityChipsInner(cs),
+      // §dlPlayLocal — La pastille « Téléchargé » doit apparaître dès que le
+      // fichier est là, sans refermer la fiche : un téléchargement peut finir
+      // pendant qu'on la regarde.
+      builder: (_, __, ___) => ValueListenableBuilder<List<DownloadTask>>(
+        valueListenable: DownloadManagerService().tasksNotifier,
+        builder: (_, tasks, __) => _buildQualityChipsInner(cs, tasks),
+      ),
     );
   }
 
-  Widget _buildQualityChipsInner(ColorScheme cs) {
+  Widget _buildQualityChipsInner(ColorScheme cs, List<DownloadTask> tasks) {
     return Wrap(
       spacing: 8,
       runSpacing: 6,
@@ -2152,6 +2446,18 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         final label    = _qualityLabel(v, e.key);
         final color    = _qualityColor(v.title.quality);
         final selected = _selectedEntry == v;
+        // §lightTheme (2026-09-16) — ⚠️ La version NON choisie s'écrivait à
+        // coups d'opacité (16 / 60 / 90) sur une couleur de qualité qui n'est
+        // pas dérivée : sur le fond blanc du thème clair, la pastille
+        // « FHD VOD » n'était tout simplement plus à l'écran (mesuré sur la
+        // planche, captures `light_57` et `light_62`). L'atténuation est
+        // maintenant DÉRIVÉE, avec un plancher de contraste : 3:1 pour la
+        // bordure et la pastille, 4,5:1 pour le texte qu'il faut lire.
+        // ⛔ Le code couleur des qualités, lui, ne bouge pas : la version
+        // CHOISIE porte toujours la teinte brute.
+        final Color faded     = mutedOn(color, cs.surface);
+        final Color fadedText =
+            mutedOn(color, cs.surface, minRatio: kMinTextContrast);
         // §3c Phase 1 — FocusableChip : la version FHD/HD devient sélectionnable
         // au D-pad (avant : GestureDetector tap-only).
         return FocusableChip(
@@ -2174,9 +2480,9 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
             // deux informations différentes : la première garde l'anneau, la
             // seconde prend un marqueur EXPLICITE et non chromatique.
             decoration: BoxDecoration(
-              color: selected ? color.withAlpha(70) : color.withAlpha(16),
+              color: selected ? color.withAlpha(70) : faded.withAlpha(20),
               border: Border.all(
-                color: selected ? color : color.withAlpha(60),
+                color: selected ? color : faded,
                 width: selected ? 2 : 1,
               ),
               borderRadius: BorderRadius.circular(8),
@@ -2195,7 +2501,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                           ? Icons.check_circle_rounded
                           : Icons.radio_button_unchecked,
                       size: 13,
-                      color: selected ? color : color.withAlpha(90),
+                      color: selected ? color : faded,
                     ),
                     const SizedBox(width: 5),
                     Text(
@@ -2204,7 +2510,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                        color: color,
+                        color: selected ? color : fadedText,
                         height: 1.3,
                       ),
                     ),
@@ -2214,6 +2520,42 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                 // dernière fois qu'on l'a lu. Rien tant qu'il n'a pas été
                 // mesuré : mieux vaut ne rien dire qu'affirmer sans preuve.
                 ..._measuredSuffix(v),
+                // §dlPlayLocal — CETTE version-là est sur l'appareil. La
+                // question se pose PAR VERSION : un titre peut être
+                // téléchargé en HD et pas en 4K, et la feuille de l'accueil
+                // ne répond que pour le groupe.
+                //
+                // ⚠️ `groupUrls` vide À DESSEIN : `hasLocalFileFor` accepte
+                // n'importe quelle URL du groupe, ce qui rendrait `true` pour
+                // TOUTES les pastilles dès qu'UNE version est sur le disque —
+                // exactement le contraire de ce qu'on veut dire ici.
+                //
+                // ⚠️ Non focalisable : c'est une information, pas une cible.
+                // La puce qui la porte est déjà un arrêt D-pad
+                // (§dpadChildFocus : jamais un second arrêt à l'intérieur).
+                if (hasLocalFileFor(
+                  networkPath: v.url,
+                  groupUrls: const <String>[],
+                  tasks: tasks,
+                )) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.download_done_rounded,
+                          size: 11, color: kSuccess),
+                      const SizedBox(width: 3),
+                      Text(
+                        L10n.current.dlBadgeDownloaded,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: kSuccess,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -2326,9 +2668,18 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     // §1i — Si on lance un épisode et qu'il existe un suivant, on passe le
     // callback au player pour exposer le bouton "épisode suivant" (▶▶).
     final hasNext = _isEpisode && _nextEpisode != null;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => PlayerPage(
-        path: _selectedEntry.url,
+    // §dlPlayLocal — un film ou un épisode DÉJÀ TÉLÉCHARGÉ se lit depuis le
+    // disque, sous la même clé de reprise que son flux. Le choix se fait ici,
+    // pour les quatre points de lancement à la fois.
+    await launchPlayback(
+      context,
+      networkPath: _selectedEntry.url,
+      groupUrls: _resumeUrls(),
+      // R23 — avertir quand l'abonnement n'a plus de connexion libre.
+      accountId: _selectedEntry.accountId,
+      build: (src) => PlayerPage(
+        path: src.path,
+        progressKey: src.progressKey,
         title: _playerTitle,
         // §stallCount — rattache les blocages au fournisseur.
         accountId: _selectedEntry.accountId,
@@ -2338,13 +2689,21 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         // §watchContext — nom série + synopsis (si dispo) dans l'overlay.
         seriesName: _playerSeriesName,
         synopsis: _playerSynopsis,
-        sourceType: VideoSourceType.network,
+        sourceType: src.sourceType,
         badgeType: _selectedEntry.type == M3uContentType.series
             ? PlayerBadgeType.series
             : PlayerBadgeType.movie,
         startPosition: from,
         // §endOfMovie — toutes les versions du titre s'effacent à la fin.
         siblingResumeKeys: _resumeUrls(),
+        // §heroSeriesResume — la clé au niveau SÉRIE, pour que l'accueil
+        // retrouve une série en cours (l'URL d'un épisode n'est pas au
+        // catalogue). ⛔ Jamais dans `_resumeUrls()` : ces clés-là s'effacent
+        // à la fin de l'épisode, ce qui effacerait la reprise de la série.
+        seriesResumeKey: seriesResumeKeyFor(
+          stubs: _apiSeriesStubs,
+          episode: _selectedEntry,
+        ),
         seasonNumber: _selectedEntry.title.seasonNumber,
         // §nowPlaying — affiche TMDB pour l'écran verrouillé, logo en repli.
         posterUrl: TmdbService.getPosterUrl(_tmdbData?.posterPath) ??
@@ -2353,7 +2712,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         // d'épisode : il demande le contenu suivant et bascule en place.
         onRequestNext: hasNext ? _prepareNextEpisode : null,
       ),
-    ));
+    );
   }
 
   /// §episodeMeta — Prépare l'épisode suivant **métadonnées comprises**.
@@ -2398,29 +2757,56 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     if (!mounted) return null;
 
     FavoritesService.addEntry(_selectedEntry);
-    return PlayerMedia(
-      path: _selectedEntry.url,
-      title: _playerTitle,
-      qualityTag: _selectedEntry.title.qualityOrDefault,
-      episodeTag: _selectedEntry.title.seasonEpisodeLabel,
-      seriesName: _playerSeriesName,
-      synopsis: _playerSynopsis,
-      sourceType: VideoSourceType.network,
-      badgeType: PlayerBadgeType.series,
-      seasonNumber: season,
-      siblingResumeKeys: _resumeUrls(), // §endOfMovie
-      // §nowPlaying — l'épisode suivant garde une image dans la notification.
-      posterUrl: TmdbService.getPosterUrl(_tmdbData?.posterPath) ??
-          _selectedEntry.logoUrl,
+    // §dlPlayLocal — l'épisode suivant se lit lui aussi depuis le disque
+    // quand il y est : l'enchaînement automatique ne doit pas repasser au flux
+    // pour un épisode déjà téléchargé.
+    return resolvePlayableMedia(
+      networkPath: _selectedEntry.url,
+      groupUrls: _resumeUrls(),
+      build: (source) => PlayerMedia(
+        path: source.path,
+        progressKey: source.progressKey,
+        title: _playerTitle,
+        qualityTag: _selectedEntry.title.qualityOrDefault,
+        episodeTag: _selectedEntry.title.seasonEpisodeLabel,
+        seriesName: _playerSeriesName,
+        synopsis: _playerSynopsis,
+        sourceType: source.sourceType,
+        badgeType: PlayerBadgeType.series,
+        seasonNumber: season,
+        siblingResumeKeys: _resumeUrls(), // §endOfMovie
+        // §heroSeriesResume — la clé au niveau SÉRIE, pour que l'accueil retrouve
+        // une série en cours (l'URL d'un épisode n'est pas au catalogue).
+        // ⛔ Jamais dans `_resumeUrls()` : ces clés-là s'effacent à la fin de
+        // l'épisode, ce qui effacerait la reprise de TOUTE la série.
+        seriesResumeKey: seriesResumeKeyFor(
+          stubs: _apiSeriesStubs,
+          episode: _selectedEntry,
+        ),
+        // §nowPlaying — l'épisode suivant garde une image dans la notification.
+        posterUrl: TmdbService.getPosterUrl(_tmdbData?.posterPath) ??
+            _selectedEntry.logoUrl,
+      ),
     );
   }
 
   Widget _buildActionButtons(AppLocalizations l10n) {
     return ListenableBuilder(
-      listenable: Listenable.merge(
-          [FavoritesService.version, WatchProgressService.version]),
+      listenable: Listenable.merge([
+        FavoritesService.version,
+        WatchProgressService.version,
+        // §dlPlayLocal — le bouton change de mot quand le téléchargement se
+        // termine ou que le fichier est supprimé, sans rouvrir la fiche.
+        localFilesListenable,
+      ]),
       builder: (ctx, _) {
         final isFav = FavoritesService.isEntryFavorite(_selectedEntry);
+        // §dlPlayLocal — « Lire hors ligne » dit le RÉSULTAT (§clientText) :
+        // ce titre se lit sans réseau parce qu'il est sur l'appareil.
+        final bool hasLocal = hasLocalFileFor(
+          networkPath: _selectedEntry.url,
+          groupUrls: _resumeUrls(),
+        );
         // §resumeUnify — La reprise est partagée entre TOUTES les versions
         // (qualités ET listes) du contenu courant : on lit la plus récente
         // parmi toutes les URLs, pas seulement la qualité sélectionnée.
@@ -2461,7 +2847,9 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                       hasResume
                           ? l10n.detResumeAt(
                               _formatResumeShort(progress.position))
-                          : l10n.actionSheetPlay.toUpperCase(),
+                          : (hasLocal
+                              ? l10n.playOffline.toUpperCase()
+                              : l10n.actionSheetPlay.toUpperCase()),
                     ),
                   ),
                 ),
@@ -2504,6 +2892,14 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                         releaseYear: _selectedEntry.type == M3uContentType.movie
                             ? _selectedEntry.title.year
                             : null,
+                        // R39 — La fiche est le SEUL endroit qui connaisse le
+                        // stub de la série : la clé se pose ici, avec le
+                        // fichier. Plus tard, personne ne saura la retrouver
+                        // depuis l'URL de l'épisode (§heroSeriesResume).
+                        seriesKey: seriesResumeKeyFor(
+                          stubs: _apiSeriesStubs,
+                          episode: _selectedEntry,
+                        ),
                         context: context),
                     child: _btnContent(
                         Icons.download_rounded, l10n.download.toUpperCase()),
@@ -2590,6 +2986,24 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// D-pad. Dans les deux cas, la restauration passe par `saveProgress` du
   /// snapshot capturé par l'appelant.
   Future<void> _forgetResume(WatchProgress snapshot) async {
+    // §heroSeriesResume — Une série en cours vit sous DEUX clés : celle de
+    // l'épisode (la position exacte) et celle de la série (sa présence au
+    // hero de l'accueil). N'effacer que la première laissait la série dans
+    // « Reprendre » alors que l'utilisateur venait de demander le contraire.
+    // ⛔ Le stub ne rejoint pas `_resumeUrls()` pour autant : cette liste part
+    // aussi en `siblingResumeKeys`, où la FIN d'un épisode l'effacerait.
+    final String? seriesKey = seriesResumeKeyFor(
+      stubs: _apiSeriesStubs,
+      episode: _selectedEntry,
+    );
+    // La clé de série réellement effacée, donc à rendre en cas d'annulation.
+    String? forgottenSeriesKey;
+    // 🔴 R46 — Capturé AVANT, et pour TOUTES les versions : `action` efface
+    // `_resumeUrls()` en entier (qualités + listes, §resumeUnify) alors que
+    // l'annulation ne rendait que `snapshot.url`. Sur un titre présent sur
+    // plusieurs comptes, les autres reprises disparaissaient sans retour.
+    final List<WatchProgress> avant =
+        WatchProgressService.snapshotFor(_resumeUrls());
     await confirmOrUndo(
       context,
       title: context.l10n.cardForgetResumeTitle,
@@ -2600,14 +3014,25 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         for (final u in _resumeUrls()) {
           await WatchProgressService.clearProgress(u);
         }
-      },
-      onUndo: () {
-        WatchProgressService.saveProgress(
-          snapshot.url,
-          snapshot.position,
-          snapshot.duration,
+        // Mesuré APRÈS l'effacement : sinon l'épisode qu'on oublie compterait
+        // lui-même comme « encore en cours ».
+        final String? toForget = seriesKeyToForget(
+          seriesKey: seriesKey,
+          anyEpisodeStillInProgress: _mostAdvancedInProgress() != null,
         );
+        if (toForget != null) {
+          await WatchProgressService.clearProgress(toForget);
+          forgottenSeriesKey = toForget;
+        }
       },
+      // §heroSeriesResume — rendre AUSSI la série au hero quand on l'en a
+      // retirée : une annulation qui n'en rend que la moitié ment. La clé de
+      // série ne part qu'à la PREMIÈRE écriture (une seule réécriture du stub).
+      // 🔴 R46 — et rendre TOUTES les versions, pas seulement `snapshot`.
+      onUndo: () => WatchProgressService.restoreAll(
+        avant.isEmpty ? <WatchProgress>[snapshot] : avant,
+        seriesKey: forgottenSeriesKey,
+      ),
     );
   }
 
@@ -2915,6 +3340,13 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
         ),
+        // R17 — La colonne de libellés est à largeur FIXE : un libellé court
+        // (« Sortie salle ») laissait du blanc, mais un libellé long
+        // (« Theatrical release » sur un écran anglais) la remplissait
+        // exactement et sa valeur commençait au pixel suivant, collée. La
+        // gouttière appartient à la mise en page, pas au libellé : elle vaut
+        // pour TOUTES les lignes de l'encadré, dans toutes les langues.
+        const SizedBox(width: 10),
         Expanded(
           child: Text(
             value,
@@ -3053,6 +3485,66 @@ class _ActionButtonState extends State<_ActionButton> {
           ),
           onPressed: widget.onPressed,
           child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Lot 9 (§tmdbPlus) — La tuile de fin de rangée qui déplie le reste du
+/// casting.
+///
+/// ⚠️ Elle vit DANS la rangée, en dernier : c'est une carte comme les autres
+/// pour la traversée D-pad (→ l'atteint en continuant), et elle n'ouvre aucune
+/// route — donc aucune sortie de plus à prévoir sur téléviseur
+/// (§tvOptionsBack). ⛔ Jamais en TÊTE : le point d'entrée de la rangée doit
+/// rester un acteur, pas un bouton.
+class _MoreCastCard extends StatelessWidget {
+  final VoidCallback onTap;
+  const _MoreCastCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Align(
+      alignment: Alignment.topLeft,
+      child: FocusableCard(
+        scaleOnFocus: false,
+        anchorRowStart: true,
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: SizedBox(
+          width: 92,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 92,
+                height: 138,
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: cs.outlineVariant),
+                ),
+                child: Icon(Icons.more_horiz,
+                    color: cs.onSurfaceVariant, size: 32),
+              ),
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+                child: Text(
+                  context.l10n.detSeeMoreCast,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

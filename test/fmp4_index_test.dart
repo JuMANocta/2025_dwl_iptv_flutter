@@ -252,4 +252,43 @@ void main() {
       expect(m3u8, contains('\ns0.m4s\n'));
     });
   });
+  group('R30 — départ de chaque piste (la mesure « son décalé »)', () {
+    test('les deux pistes partent de zéro sur le fichier type', () async {
+      final fx = _Fixture();
+      final idx = Fmp4Index();
+      await idx.update(fx.all.length, fx.readerFor(fx.all.length));
+      expect(idx.firstDecodeTimes(), {1: Duration.zero, 2: Duration.zero});
+    });
+
+    test("un son qui part à 1 s après la vidéo se lit dans l'écart", () async {
+      // Même squelette que le fichier type, mais le premier `traf` du son
+      // (id 2, 48 kHz) porte un tfdt de 48 000 = 1 s ; la vidéo part à 0.
+      final ftyp = _box('ftyp', [_ascii('isom'), _u32(0)]);
+      final moov =
+          _box('moov', [_trak(2, 48000, 'soun'), _trak(1, 90000, 'vide')]);
+      final frag0 = _cat([
+        _box('moof', [_traf(2, 48000), _traf(1, 0)]),
+        _mdat(50),
+      ]);
+      final frag1 = _cat([
+        _box('moof', [_traf(2, 144000), _traf(1, 180000)]),
+        _mdat(50),
+      ]);
+      final all = _cat([ftyp, moov, frag0, frag1]);
+      final idx = Fmp4Index();
+      await idx.update(all.length, (int o, int l) async {
+        final int end = (o + l).clamp(0, all.length);
+        return o >= end ? Uint8List(0) : Uint8List.sublistView(all, o, end);
+      });
+      final starts = idx.firstDecodeTimes();
+      expect(starts[1], Duration.zero);
+      expect(starts[2], const Duration(seconds: 1));
+      // Sincérité : le PREMIER tfdt compte, pas le dernier vu (144 000 = 3 s).
+      expect(starts[2], isNot(const Duration(seconds: 3)));
+    });
+
+    test("rien tant qu'aucun fragment n'est lu", () {
+      expect(Fmp4Index().firstDecodeTimes(), isEmpty);
+    });
+  });
 }

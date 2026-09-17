@@ -45,6 +45,7 @@ import 'core/diagnostics/jank_meter.dart';
 import 'feature/settings/web_console/web_console_page.dart';
 import 'data/services/playlist_service.dart';
 import 'data/services/remote_control_service.dart';
+import 'core/themes/saved_themes_service.dart';
 import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
 import 'core/themes/theme_service.dart';
@@ -245,6 +246,12 @@ Future<void> _initServices() async {
     TmdbPosterCache.init(), // §tmdbUrlPersist
     VisualLanguageService.init(), // §posterLang
     DeviceCapsService.init(), // §deviceCaps — derniere mesure persistee
+    // §themeStudio — « Mes thèmes ». ⚠️ Ici et pas à l'ouverture de la page :
+    // une sauvegarde `.aether` exportée sans être passé par Personnalisation
+    // écrirait une liste VIDE, qui EFFACERAIT les thèmes enregistrés à la
+    // restauration. Une lecture de préférences de plus, en parallèle des
+    // autres (§startupParallel) — rien de lourd avant `runApp` (§bootFast).
+    SavedThemesService.load(),
   ]);
   // §dlNotif — APRÈS `DownloadManagerService().init()` : le pont seed sa
   // ligne de base sur `tasksNotifier.value`, qui doit déjà porter la
@@ -436,7 +443,25 @@ class MyApp extends StatelessWidget {
             child: wrapped,
           );
         }
-        return wrapped;
+
+        // R16 — L'heure et la batterie du système, de la bonne couleur.
+        //
+        // ⚠️ Sans ça, l'app n'en disait RIEN : elle héritait de l'état laissé
+        // par l'application précédente, et le thème clair pouvait s'ouvrir sur
+        // des icônes blanches posées sur son fond blanc.
+        //
+        // Ici, à la RACINE : les pages sans `AppBar` (l'accueil) sont
+        // justement celles que rien ne couvrait. Un `AppBar` porte sa propre
+        // annotation, plus profonde, donc elle gagne — d'où le même style posé
+        // aussi dans `appBarTheme` : les deux doivent dire la même chose.
+        //
+        // ⚠️ `Theme.of(context).brightness` et non `ThemeService.isLight` : ce
+        // contexte est SOUS le `MaterialApp`, il porte donc la luminosité
+        // réellement appliquée, mode « système » résolu compris.
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: aetherOverlayStyle(Theme.of(context).brightness),
+          child: wrapped,
+        );
       },
       home: const _LaunchDecider(),
     );

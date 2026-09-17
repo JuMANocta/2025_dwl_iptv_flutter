@@ -9,6 +9,7 @@ import 'package:aetherStream/feature/settings/backup_page.dart';
 import 'package:aetherStream/feature/settings/optimization_settings_page.dart';
 import 'package:aetherStream/feature/settings/theme_settings_page.dart';
 import 'package:aetherStream/feature/settings/tmdb_key_page.dart';
+import 'package:aetherStream/feature/settings/subtitle_provider_page.dart';
 import 'package:aetherStream/feature/settings/xmltv_page.dart';
 import 'package:aetherStream/feature/settings/region_filter_page.dart';
 import 'package:aetherStream/feature/settings/web_console/web_console_page.dart';
@@ -17,6 +18,10 @@ import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/data/services/search_history_service.dart';
 import 'package:aetherStream/data/services/last_watched_channel_service.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/data/services/track_preferences_service.dart';
+import 'package:aetherStream/core/utils/app_snackbar.dart';
+import 'package:aetherStream/feature/settings/track_memory_summary.dart';
+import 'package:aetherStream/widgets/confirm_or_undo.dart';
 import 'package:aetherStream/widgets/reload_all_flow.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -42,6 +47,39 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
+  /// R43 — « Revenir à l'automatique » pour les pistes.
+  ///
+  /// Avant, une coupure de sous-titres (ou une langue audio) valait pour tous
+  /// les titres suivants sans que rien ne le dise, et aucun réglage ne
+  /// permettait de l'annuler : le seul retour était de choisir une piste dans
+  /// un titre qui en avait, ce qui épinglait une langue à la place.
+  ///
+  /// Au doigt : on agit, puis « Annuler » 5 s ; à la télécommande : on demande
+  /// avant (§undoTv). L'instantané est pris AVANT l'appel, jamais dedans.
+  Future<void> _resetTrackMemory() async {
+    if (!TrackPreferencesService.hasMemory) {
+      AppSnackBar.show(context, context.l10n.settingsTracksNothing);
+      return;
+    }
+    final String? oldAudio = TrackPreferencesService.audio;
+    final String? oldSub = TrackPreferencesService.subtitle;
+    await confirmOrUndo(
+      context,
+      title: context.l10n.settingsTracksResetTitle,
+      question: context.l10n.settingsTracksResetQuestion,
+      confirmLabel: context.l10n.settingsTracksResetConfirm,
+      doneMessage: context.l10n.settingsTracksResetDone,
+      // Rien n'est perdu qu'on ne puisse rechoisir au prochain titre : pas la
+      // couleur du danger.
+      destructive: false,
+      action: TrackPreferencesService.resetToAuto,
+      onUndo: () async {
+        await TrackPreferencesService.setAudio(oldAudio);
+        await TrackPreferencesService.setSubtitle(oldSub);
+      },
+    );
+  }
+
   /// §tvReloadReach — « Tout recharger » depuis le hub, pour la TÉLÉCOMMANDE.
   /// Même chemin que le ↻ de l'accueil et que la page Comptes : `showReloadAllFlow`.
   Future<void> _reloadAllLists() async {
@@ -159,8 +197,10 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
             child: Text(context.l10n.commonCancel),
           ),
           FilledButton(
+            // §lightTheme / D4B-08 — le texte suit le fond : un blanc en dur
+            // sur une erreur déjà éclaircie par le thème clair ne se lit plus.
             style: FilledButton.styleFrom(
-                backgroundColor: kError, foregroundColor: Colors.white),
+                backgroundColor: kError, foregroundColor: onColorFor(kError)),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(context.l10n.settingsResetConfirm),
           ),
@@ -290,6 +330,43 @@ class _SettingsPageState extends State<SettingsPage> with TvInitialFocus {
               subtitle: context.l10n.settingsRegionsSub,
               onTap: _openRegionFilter,
             ),
+            // R43 — La mémoire des pistes se VOIT ici et se DÉFAIT ici. Le
+            // sous-titre dit ce qui s'appliquera au prochain titre ; il suit
+            // le service par son notifieur, pas par un rebuild de hasard.
+            //
+            // 2026-09-16 — La tuile n'existe que lorsqu'elle SERT : sans
+            // mémoire, rien à voir ni à oublier (elle promettait une sous-page
+            // par son chevron, et un tap n'y faisait rien). Avec une mémoire :
+            // pas de chevron mais l'icône du geste, et un sous-titre qui dit
+            // ce geste.
+            ValueListenableBuilder<int>(
+              valueListenable: TrackPreferencesService.version,
+              builder: (ctx, _, child) {
+                final String? memory = trackMemoryTileSubtitle(ctx.l10n);
+                if (memory == null) return const SizedBox.shrink();
+                return _SettingsTile(
+                  icon: Icons.subtitles_outlined,
+                  accentColor: kAccentSecondary,
+                  title: ctx.l10n.settingsTracks,
+                  subtitle: memory,
+                  trailingIcon: Icons.restart_alt,
+                  onTap: _resetTrackMemory,
+                );
+              },
+            ),
+            // Lot 11 — La clé du fournisseur de sous-titres en ligne. Juste
+            // après « Langues des pistes » : les deux réglages parlent de ce
+            // qu'on lit à l'écran pendant un film.
+            _SettingsTile(
+              icon: Icons.travel_explore_outlined,
+              accentColor: kAccentSecondary,
+              title: context.l10n.settingsSubtitles,
+              subtitle: context.l10n.settingsSubtitlesSub,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => const SubtitleProviderPage()),
+              ),
+            ),
             _SettingsTile(
               icon: Icons.palette_outlined,
               accentColor: kAccentSecondary,
@@ -390,12 +467,17 @@ class _SettingsTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
 
+  /// Ce que la tuile promet à droite. Le chevron dit « ça ouvre une page » ;
+  /// une tuile qui AGIT porte l'icône de son geste (`Icons.restart_alt`).
+  final IconData trailingIcon;
+
   const _SettingsTile({
     required this.icon,
     required this.accentColor,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.trailingIcon = Icons.chevron_right,
   });
 
   @override
@@ -471,7 +553,7 @@ class _SettingsTile extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right, color: cs.onSurfaceVariant.withAlpha(160)),
+                    Icon(trailingIcon, color: cs.onSurfaceVariant.withAlpha(160)),
                   ],
                 ),
               ),

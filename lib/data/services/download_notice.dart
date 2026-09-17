@@ -1,4 +1,5 @@
 import '../models/download_task.dart';
+import '../../core/utils/formatters.dart';
 import '../../l10n/l10n_ext.dart';
 
 /// §dlNotif — Décisions PURES pour la notification de téléchargement. Rien
@@ -37,14 +38,21 @@ bool hasActiveDownloads(List<DownloadTask> tasks) =>
 
 /// ⚠️ **TV exclue** : personne ne met une box en arrière-plan, et la
 /// notification n'y a pas de tiroir utile (même règle que §nowPlaying,
-/// §pipPhone). ⚠️ **Permission refusée = `null`, jamais une erreur** : le
-/// téléchargement continue sans notification, silencieusement.
+/// §pipPhone).
+///
+/// ⚠️ §notifAudit P3 — **La permission de notification n'entre PAS ici.**
+/// Elle gouvernait le résultat : refusée, cette fonction rendait `null`, le
+/// pont appelait `stopOngoing` et le SERVICE de premier plan s'arrêtait. Or
+/// c'est lui qui garde le processus — donc le transfert — en vie ; sans lui,
+/// Android tue l'app au premier besoin de mémoire. Refuser la notification
+/// doit coûter la notification, pas le téléchargement. Android 13+ laisse
+/// tourner un service de premier plan dont la notification n'est pas
+/// affichée : le contenu calculé ici part au vide, et c'est tout.
 DownloadNotice? downloadNotice(
   List<DownloadTask> tasks, {
   required bool isTv,
-  required bool granted,
 }) {
-  if (isTv || !granted) return null;
+  if (isTv) return null;
 
   final active = tasks.where((t) => _activeStatuses.contains(t.status)).toList();
   if (active.isEmpty) return null;
@@ -53,7 +61,7 @@ DownloadNotice? downloadNotice(
     final t = active.first;
     final ({String text, double? progress}) info = switch (t.status) {
       DownloadStatus.downloading => (
-          text: '${(t.progress.clamp(0.0, 1.0) * 100).round()} %',
+          text: _downloadedOf(t),
           progress: t.progress.clamp(0.0, 1.0),
         ),
       DownloadStatus.queued => (text: L10n.current.dlQueued, progress: null),
@@ -85,11 +93,64 @@ DownloadNotice? downloadNotice(
   );
 }
 
+/// §notifAudit P7 — « 1,2 Go sur 3,4 Go » plutôt que « 42 % ».
+///
+/// Le pourcentage seul ne dit ni ce qui reste, ni si le transfert vaut la
+/// peine d'être laissé sur des données mobiles ; la taille, oui. La barre de
+/// progression, elle, porte déjà le pourcentage.
+///
+/// ⛔ Pas de débit ni d'ETA instantanés (§clientText) : ils sautent d'une
+/// seconde à l'autre et ne disent rien de vrai. Taille inconnue (le serveur
+/// n'a pas donné de `content-length`) → on retombe sur le pourcentage, seule
+/// chose qu'on sache alors.
+String _downloadedOf(DownloadTask t) {
+  final double p = t.progress.clamp(0.0, 1.0);
+  if (t.totalSize <= 0) return '${(p * 100).round()} %';
+  return L10n.current.dlNoticeSizeOf(
+    formatFileSize((p * t.totalSize).round()),
+    formatFileSize(t.totalSize),
+  );
+}
+
 /// Une tâche qui vient de basculer, ENTRE [previous] et [current], vers un
 /// statut final — pour la notification ponctuelle de fin de transfert.
 typedef DownloadFinishNotice = ({DownloadTask task, bool success});
 
 const _finishedStatuses = {DownloadStatus.completed, DownloadStatus.failed};
+
+/// §notifAudit P6 — Ce que la notification de FIN annonce, et si elle propose
+/// de relancer.
+typedef DownloadFinishCard = ({
+  String title,
+  String text,
+  /// Non-null sur un ÉCHEC seulement : la tâche que le bouton « Relancer »
+  /// doit reprendre. Un succès n'a rien à relancer — et §dlErgo interdit de
+  /// proposer de refaire plusieurs Go sur un fichier déjà là.
+  String? restartTaskId,
+});
+
+/// §notifAudit P6 — **Le défaut payé** : un échec n'annonçait que
+/// « Téléchargement échoué », sans dire POURQUOI ni offrir de reprendre.
+/// L'utilisateur devait rouvrir l'app, retrouver l'onglet et la tuile.
+///
+/// La raison est déjà écrite sur la tâche par `_failOrRequeue`, passée par
+/// `describeError` (§userError) : elle est donc lisible et traduite. Aucun
+/// code d'erreur brut n'atteint l'écran.
+DownloadFinishCard downloadFinishCard(DownloadFinishNotice f) {
+  if (f.success) {
+    return (
+      title: f.task.displayName,
+      text: L10n.current.dlNotifFinished,
+      restartTaskId: null,
+    );
+  }
+  final String why = (f.task.errorMessage ?? '').trim();
+  return (
+    title: f.task.displayName,
+    text: why.isEmpty ? L10n.current.dlNotifFailed : why,
+    restartTaskId: f.task.id,
+  );
+}
 
 /// ⚠️ Une annulation (`canceled`) n'apparaît JAMAIS ici : l'utilisateur vient
 /// de le faire lui-même, une notification pour le lui confirmer serait du

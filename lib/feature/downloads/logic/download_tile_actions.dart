@@ -5,6 +5,11 @@ enum DownloadAction {
   /// Lire le fichier téléchargé.
   play,
 
+  /// Lot 6b §castLocal — Diffuser le fichier téléchargé sur un Chromecast, par
+  /// le serveur local à jeton (§castLan). Jamais destructive ; l'absence
+  /// d'appareil se dit dans la feuille, elle ne se devine pas ici.
+  cast,
+
   /// Ouvrir le moniteur (logs + progression). Purement consultatif.
   monitor,
 
@@ -102,7 +107,7 @@ DownloadTileActions downloadTileActions(DownloadStatus status) {
       // refaire un fichier : le supprimer, puis relancer depuis sa fiche.
       return (
         primary: DownloadAction.play,
-        menu: const [DownloadAction.delete],
+        menu: const [DownloadAction.cast, DownloadAction.delete],
       );
 
     case DownloadStatus.failed:

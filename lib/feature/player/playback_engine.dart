@@ -71,7 +71,63 @@ class AetherPlaybackHealth {
   bool get isMeaningful => watched.inSeconds >= 10;
 }
 
+/// §engineFeatures — Une variante de qualité d'un flux HLS multi-débit, telle
+/// que le moteur l'annonce. [isAuto] = laisser le moteur choisir selon le
+/// débit mesuré (le défaut). [height] sert d'étiquette (« 1080p ») quand le
+/// flux la donne ; sinon [label] brut.
+@immutable
+class AetherQuality {
+  const AetherQuality({
+    required this.id,
+    required this.label,
+    this.height,
+    this.bitrate,
+    this.isAuto = false,
+  });
+
+  final String id;
+  final String label;
+  final int? height;
+  final int? bitrate;
+  final bool isAuto;
+
+  @override
+  bool operator ==(Object other) => other is AetherQuality && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+}
+
 abstract class AetherPlaybackEngine {
+  // ── Qualité HLS (§engineFeatures) ──────────────────────────────────────────
+
+  /// Les variantes annoncées par le flux en cours (vide hors HLS multi-débit,
+  /// ou tant que le manifeste n'est pas lu). Contient l'entrée « auto » en
+  /// tête dès qu'il y a au moins UNE variante.
+  List<AetherQuality> get qualities;
+
+  /// La variante imposée, ou l'entrée « auto » ; `null` si rien n'est annoncé.
+  AetherQuality? get currentQuality;
+
+  /// Republié à chaque changement de liste (nouveau flux, manifeste lu).
+  Stream<List<AetherQuality>> get qualitiesStream;
+
+  /// Impose une variante (ou rend la main avec l'entrée « auto »). `false` si
+  /// le moteur a refusé.
+  Future<bool> setQuality(AetherQuality quality);
+
+  // ── Sous-titres externes (lot 11) ─────────────────────────────────────────
+
+  /// Charge un fichier de sous-titres (`.srt` / `.vtt`) posé sur le disque et
+  /// le SÉLECTIONNE. `false` si le moteur n'a pas pu. La liste
+  /// [subtitleTracks] est rafraîchie : la piste externe y figure ensuite
+  /// comme une piste ordinaire.
+  Future<bool> loadExternalSubtitle({
+    required String filePath,
+    required String language,
+    required String label,
+  });
+
   // ── Commandes ──────────────────────────────────────────────────────────────
 
   Future<void> play();
@@ -86,8 +142,36 @@ abstract class AetherPlaybackEngine {
   /// faible niveau, l'app démarre à 125 % sur TV (§audio).
   Future<void> setVolume(double volume);
 
-  Future<void> setAudioTrack(AetherTrack track);
-  Future<void> setSubtitleTrack(AetherTrack track);
+  /// Impose une piste audio pour CE titre. La langue mémorisée pour les
+  /// suivants reste à la charge de l'appelant (un geste utilisateur = une
+  /// préférence, une sélection programmée n'en est pas une).
+  ///
+  /// R43 — Renvoie `false` si la piste n'a PAS été posée (aucun lecteur natif
+  /// prêt, piste introuvable, refus du natif). ⚠️ Un `false` doit se voir :
+  /// avant, le canal vendoré avalait l'échec et l'app mémorisait une langue
+  /// qu'aucune piste ne portait.
+  Future<bool> setAudioTrack(AetherTrack track);
+
+  /// Impose une piste de sous-titres pour CE titre seulement — et LÈVE une
+  /// coupure mémorisée (cf. [disableSubtitles]). Même contrat de retour que
+  /// [setAudioTrack].
+  Future<bool> setSubtitleTrack(AetherTrack track);
+
+  /// R43 — Rend la main au moteur pour les sous-titres : type texte réactivé,
+  /// aucune piste imposée, aucune langue préférée (le flux choisit — FORCED,
+  /// DEFAULT, ou rien) — ET efface la coupure mémorisée pour les titres
+  /// suivants. C'est le seul retour possible après [disableSubtitles] qui
+  /// n'épingle pas une langue.
+  ///
+  /// Renvoie `false` si rien n'a pu être posé ; alors rien n'est effacé.
+  Future<bool> resetSubtitlesToAuto();
+
+  /// R43 — Rend la main au moteur pour l'audio : piste imposée et langue
+  /// préférée retirées, piste par défaut du flux — ET efface la langue
+  /// mémorisée. ⚠️ Peut re-demuxer (~3 s, §trackRebuffer) : geste explicite.
+  ///
+  /// Renvoie `false` si rien n'a pu être posé ; alors rien n'est effacé.
+  Future<bool> resetAudioToAuto();
 
   /// Coupe l'audio en sélectionnant « aucune piste ».
   ///
@@ -96,6 +180,48 @@ abstract class AetherPlaybackEngine {
   /// son** quand aucune piste n'est décodable — une image sans audio reste
   /// regardable, un écran d'erreur non.
   Future<void> disableAudio();
+
+  /// Coupe les sous-titres, quel que soit le moteur.
+  ///
+  /// ⚠️ R42 — Même raison d'être que [disableAudio], et l'oubli symétrique de
+  /// la migration : les sous-titres n'avaient PAS reçu ce traitement. La feuille
+  /// de pistes cherchait une piste d'identifiant `'no'` (vestige mpv) que
+  /// `Media3Engine` ne fabrique jamais, et [setSubtitleTrack] refusait cet
+  /// identifiant faute de savoir le parser. Résultat : sur un flux dont
+  /// ExoPlayer sélectionne seul la piste FORCED, rien ne permettait de la
+  /// couper.
+  ///
+  /// ⚠️ Une vraie coupure est un **type de piste désactivé** explicite, pas une
+  /// langue préférée nulle : le sélecteur d'ExoPlayer rallumerait aussitôt une
+  /// piste marquée FORCED ou DEFAULT.
+  ///
+  /// ⚠️ **Le moteur porte la coupure ENTIÈRE** : l'état de session ET la
+  /// préférence persistée. Elles étaient à deux demi-propriétaires (le moteur
+  /// posait l'une, la feuille l'autre) : tout appelant autre que la feuille
+  /// obtenait une coupure qui ne survivait pas à la session. L'appelant n'a donc
+  /// rien à mémoriser — seule la LANGUE choisie reste à sa charge.
+  ///
+  /// Renvoie `false` si la coupure n'a **pas** pu être posée. ⚠️ Un `false` doit
+  /// se voir : la feuille ne se ferme pas et le dit. Sans cette valeur, un échec
+  /// fermait la feuille en silence tout en mémorisant « coupés » pour tous les
+  /// titres suivants.
+  ///
+  /// ⚠️ R43 (point 4) — Une coupure LOCALE ne touche pas un téléviseur en
+  /// diffusion Cast : le récepteur choisit ses propres sous-titres, et
+  /// `CastService` ne transmet aucune piste. Comportement voulu, documenté ici
+  /// pour ne plus le chercher.
+  Future<bool> disableSubtitles();
+
+  /// R5 / §audioFallback — La dernière erreur émise sur `errorStream`
+  /// concernait-elle UNIQUEMENT le son (décodeur ou sortie audio) ? C'est ce
+  /// verdict, et non le texte de l'erreur (traduit, donc inexploitable), qui
+  /// autorise la bascule de piste plutôt qu'un rechargement.
+  bool get lastErrorWasAudio;
+
+  /// §bgAudio (patch 26) — Coupe (`false`) ou rallume (`true`) la piste
+  /// VIDÉO, le son continuant. Écran éteint, un rendu vidéo qui décode pour
+  /// personne coûte de la batterie. `false` si le moteur n'a pas pu.
+  Future<bool> setVideoEnabled(bool enabled);
 
   // ── Ouverture ──────────────────────────────────────────────────────────────
 

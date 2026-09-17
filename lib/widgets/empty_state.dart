@@ -71,7 +71,14 @@ class EmptyState extends StatelessWidget {
                     Colors.transparent,
                   ],
                 ),
-                border: Border.all(color: accent.withAlpha(160), width: 1.5),
+                // §lightTheme (2026-09-16) — ⚠️ C'était `accent.withAlpha(160)` :
+                // un accent DÉJÀ éclairci par le thème clair, encore atténué de
+                // 37 %, sur du blanc. Le cercle n'était plus là et l'icône
+                // flottait toute seule (planche `light_42`, « Aucun
+                // téléchargement »). Le trait se dérive maintenant, avec un
+                // plancher de contraste.
+                border: Border.all(
+                    color: mutedOn(accent, cs.surface), width: 1.5),
                 boxShadow: glow > 0
                     ? [
                         BoxShadow(

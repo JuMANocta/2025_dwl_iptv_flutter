@@ -65,8 +65,13 @@ abstract final class TransferNotificationBridge {
   }
 
   static Future<void> _onTasksChanged(List<DownloadTask> current) async {
-    for (final f in finishedTransitions(_previous, current)) {
-      unawaited(_postFinished(f));
+    // §notifAudit P4 — Pas de notification de fin sur un téléviseur : personne
+    // n'y déroule un tiroir, et le tiroir d'Android TV ne la montre même pas
+    // (même porte que §nowPlaying et §pipPhone).
+    if (!PlatformTv.isTv) {
+      for (final f in finishedTransitions(_previous, current)) {
+        unawaited(_postFinished(f));
+      }
     }
     _previous = current;
     final int seq = ++_seq;
@@ -75,15 +80,20 @@ abstract final class TransferNotificationBridge {
     // appel à `ensureNotificationPermission()` avant même de savoir si une
     // notification est utile ferait apparaître la boîte système au premier
     // téléchargement même minuscule ET au premier lancement (liste vide).
-    final bool granted = hasActiveDownloads(current)
-        ? await ensureNotificationPermission()
-        : false;
+    //
+    // §notifAudit P3 — ⚠️ On DEMANDE, on n'ATTEND PLUS la réponse : un refus
+    // ne doit plus rien décider. Il arrêtait le service de premier plan (via
+    // `downloadNotice`, qui rendait `null`), donc le transfert perdait ce qui
+    // le gardait en vie. La boîte système reste proposée une fois ; qu'on dise
+    // oui ou non, le service tourne.
+    if (hasActiveDownloads(current)) {
+      unawaited(ensureNotificationPermission());
+    }
     // D3A-08 — Un appel plus récent est passé pendant l'attente : c'est lui
     // qui a le dernier mot.
     if (seq != _seq) return;
 
-    final notice =
-        downloadNotice(current, isTv: PlatformTv.isTv, granted: granted);
+    final notice = downloadNotice(current, isTv: PlatformTv.isTv);
 
     // ⚠️ **Les TRANSITIONS ne sont JAMAIS throttlées.** Bug constaté sur
     // appareil : annuler un téléchargement juste après une mise à jour de
@@ -127,18 +137,25 @@ abstract final class TransferNotificationBridge {
   }
 
   static Future<void> _postFinished(DownloadFinishNotice f) async {
+    // §notifAudit P6 — Titre, raison de l'échec et bouton « Relancer » sont
+    // décidés par une fonction PURE, testée (`downloadFinishCard`).
+    final DownloadFinishCard card = downloadFinishCard(f);
     try {
       await _channel.invokeMethod('postFinished', {
         // Un hash de chaîne, jamais l'id fixe de l'agrégat (côté natif,
         // `AetherDownloadService`) : un chevauchement resterait sans
         // conséquence — au pire une notification de fin en écrase une autre.
         'id': f.task.id.hashCode,
-        'title': f.task.displayName,
+        'title': card.title,
         'success': f.success,
         // D3L-02 — texte de la notification de fin, traduit ici.
-        'text': f.success
-            ? L10n.current.dlNotifFinished
-            : L10n.current.dlNotifFailed,
+        'text': card.text,
+        'restartTaskId': card.restartTaskId,
+        'restartLabel': L10n.current.dlActionRestart,
+        // §notifAudit P5 — Nom du canal « terminés » : traduit ici, comme le
+        // reste. Android met à jour le nom d'un canal existant, il suit donc
+        // la langue de l'appareil (D2B-17).
+        'doneChannelName': L10n.current.dlNotifChannelDone,
       });
     } catch (e) {
       debugPrint('⚠️ TransferNotificationBridge.postFinished : $e');
@@ -148,9 +165,26 @@ abstract final class TransferNotificationBridge {
   static Future<void> _onNativeCall(MethodCall call) async {
     if (call.method != 'onDownloadAction') return;
     final args = (call.arguments as Map?) ?? const {};
-    if (args['action'] == 'cancel') {
-      final id = args['taskId'] as String?;
-      if (id != null) await DownloadManagerService().cancelTask(id);
+    final String? id = args['taskId'] as String?;
+    if (id == null) return;
+    switch (args['action']) {
+      case 'cancel':
+        await DownloadManagerService().cancelTask(id);
+      case 'restart':
+        // §notifAudit P6 — « Relancer » depuis la notification d'échec :
+        // par la FILE (§dlQueue), jamais en direct — sinon on ouvrirait une
+        // seconde connexion sur l'abonnement.
+        final DownloadTask? t = DownloadManagerService()
+            .tasksNotifier
+            .value
+            .where((x) => x.id == id)
+            .firstOrNull;
+        if (t == null) {
+          debugPrint('⚠️ §notifAudit — relance demandée pour une tâche inconnue : $id');
+          return;
+        }
+        debugPrint('🔁 §notifAudit — relance demandée depuis la notification : $id');
+        await DownloadManagerService().enqueue(t);
     }
   }
 

@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/utils/formatters.dart';
 import '../../feature/downloads/logic/partial_sweep.dart';
-import '../../l10n/l10n_ext.dart';
 
 /// §acctPurge — Le ménage du stockage : ce qui n'appartient plus à personne.
 ///
@@ -381,18 +381,12 @@ class StorageJanitor {
     return bytes;
   }
 
-  /// Taille lisible. Passe en Ko sous le mégaoctet : « 0.0 Mo » pour un cache
-  /// de 300 Ko donnerait l'impression qu'il n'y a rien à perdre.
-  static String humanBytes(int bytes) {
-    if (bytes >= 1024 * 1024) {
-      return L10n.current
-          .sizeMegabytes((bytes / (1024 * 1024)).toStringAsFixed(1));
-    }
-    if (bytes >= 1024) {
-      return L10n.current.sizeKilobytes('${(bytes / 1024).round()}');
-    }
-    return L10n.current.sizeBytes('$bytes');
-  }
+  /// Taille lisible. R8 (2026-09-16) — ⚠️ Faisait sa propre arithmétique avec
+  /// `toStringAsFixed`, dont le séparateur décimal est **toujours** le point :
+  /// « 12.3 Mo » ici pendant que la tuile d'un téléchargement disait
+  /// « 1,50 Go ». Un seul formateur désormais ([formatFileSize]), qui garde la
+  /// règle de précision d'origine — dont « 300 ko » plutôt que « 0,0 Mo ».
+  static String humanBytes(int bytes) => formatFileSize(bytes);
 
   static String _mo(int bytes) => humanBytes(bytes);
 }
@@ -415,7 +409,6 @@ class StorageSweepResult {
 
   bool get isEmpty => fileCount == 0;
 
-  String get label => bytes >= 1024 * 1024
-      ? L10n.current.sizeMegabytes((bytes / (1024 * 1024)).toStringAsFixed(1))
-      : L10n.current.sizeKilobytes((bytes / 1024).toStringAsFixed(0));
+  /// R8 — Même formateur que partout ailleurs (séparateur de la langue).
+  String get label => formatFileSize(bytes);
 }

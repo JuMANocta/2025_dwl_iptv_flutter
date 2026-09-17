@@ -37,6 +37,84 @@ String relayFailureText(
   return l.relayFormatFailed;
 }
 
+/// R33 — La ligne de journal qui pèse une conversion finie. Pure, testée.
+///
+/// Elle répond à la seule question restée ouverte le 2026-09-12 : pourquoi
+/// 2 591 Mo de sortie pour 1 509 Mo de source ? Le rapport ne se déduit
+/// d'aucune de nos constantes, il se relève — et il fallait le refaire sur un
+/// second fichier avant d'en faire un ticket. [sourceBytes] `null` = source
+/// distante (rien à peser) : la ligne donne alors la sortie seule, jamais un
+/// rapport inventé.
+/// ⚠️ Le texte RENDU est un diagnostic, volontairement sans accent : ce
+/// fichier doit rester à zéro ligne accentuée hors commentaire (cliquet
+/// §l10nAll, cf. la note de `conversion démarrée`).
+String relaySizeRatioLine({
+  required int? sourceBytes,
+  required int outputBytes,
+  Duration? converted,
+}) {
+  String mo(int bytes) => '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
+  final parts = <String>['sortie ${mo(outputBytes)}'];
+  if (sourceBytes != null && sourceBytes > 0) {
+    parts.add('source ${mo(sourceBytes)}');
+    parts.add('rapport x${(outputBytes / sourceBytes).toStringAsFixed(2)}');
+  } else {
+    parts.add('source distante, non pesee');
+  }
+  if (converted != null && converted > Duration.zero) {
+    final double mbPerMin =
+        outputBytes / (1024 * 1024) / (converted.inMilliseconds / 60000);
+    parts.add('converti ${converted.inSeconds} s '
+        '(${mbPerMin.toStringAsFixed(1)} Mo/min)');
+  }
+  return parts.join(' - ');
+}
+
+/// R30 — De combien la conversion est-elle PLUS LONGUE que ce qu'on a demandé ?
+///
+/// **Ce que ce chiffre surveille.** La piste audio est réencodée : elle part
+/// exactement à [startAt]. La piste vidéo, elle, est RECOPIÉE (cf. l'en-tête de
+/// `AetherCastRelay.kt`) : un flux recopié ne peut commencer que sur une image
+/// clé, donc au plus quelques secondes AVANT [startAt]. Tant que la coupe était
+/// demandée à l'image près (`startsAtKeyFrame` valant `false` par défaut), la
+/// sortie durait `durée - startAt + écart` et le son était EN AVANCE du même
+/// écart — ce qu'on entendait comme « son décalé » (R30, recette D).
+///
+/// ⚠️ **Ce que cet écart n'est PAS.** Depuis le 2026-09-17,
+/// `AetherCastRelay` pose `setStartsAtKeyFrame(true)` pour que les deux pistes
+/// partent du même instant — mais elles reculent ENSEMBLE jusqu'à l'image clé,
+/// donc cet écart reste non nul. Il ne valide donc rien : il mesure la
+/// distance à l'image clé, ce qui est utile pour deux autres raisons.
+///   1. Il dit de combien `CastRelayState.offset` (= la position demandée)
+///      surestime le vrai début du contenu servi : la position de film rendue,
+///      et la reprise avec, sont en avance d'autant. Borné à quelques
+///      secondes, connu, non corrigé.
+///   2. Un écart qui EXPLOSERAIT (dizaines de secondes) dirait que la coupe ne
+///      fait plus ce qu'on croit.
+/// L'alignement piste à piste, lui, n'est pas lisible ici : le muxeur rebase
+/// chaque `tfdt` à zéro (d'où les 0,000000 s des deux côtés le 09-12). Seule
+/// l'oreille tranche.
+/// ⚠️ Ne vaut QUE pour une conversion allée à son terme, et la durée du
+/// lecteur est elle-même une annonce du conteneur : un écart sous la seconde
+/// ne prouve rien. Pure, testée. Rendu SANS accent (cliquet §l10nAll).
+String? relayDurationDriftLine({
+  required Duration? sourceDuration,
+  required Duration startAt,
+  required Duration? outputDuration,
+}) {
+  if (sourceDuration == null || outputDuration == null) return null;
+  if (sourceDuration <= Duration.zero || outputDuration <= Duration.zero) {
+    return null;
+  }
+  final Duration expected = sourceDuration - startAt;
+  if (expected <= Duration.zero) return null;
+  final int driftMs = outputDuration.inMilliseconds - expected.inMilliseconds;
+  return 'attendu ${expected.inSeconds} s '
+      '- obtenu ${outputDuration.inSeconds} s '
+      '- ecart $driftMs ms '
+      '(depart demande a ${startAt.inMilliseconds} ms)';
+}
+
 /// §castRelay — Le téléphone au milieu : il convertit le son du film en AAC
 /// (côté natif, `AetherCastRelay.kt`) et **sert le résultat au téléviseur**
 /// par un petit serveur HTTP local, pendant que la conversion continue.
@@ -142,6 +220,10 @@ abstract final class CastRelayService {
 
   /// Le média source de la conversion en cours, `null` sans relais.
   static String? get sourcePath => _sourcePath;
+
+  /// R30 — Durée du film annoncée par le lecteur au lancement, pour le seul
+  /// relevé de fin de conversion. `null` = inconnue, on ne relève rien.
+  static Duration? _sourceDuration;
   static RandomAccessFile? _raf;
   static Fmp4Index? _index;
   static Future<void>? _refreshing;
@@ -184,10 +266,18 @@ abstract final class CastRelayService {
   /// convertir (`-1` : laisser Media3 choisir).
   ///
   /// [startAt] — §castResume : où commencer la conversion dans le film.
+  ///
+  /// [sourceDuration] — R30 : la durée du film telle que le LECTEUR la
+  /// connaît, uniquement pour le relevé de fin de conversion (aucun effet sur
+  /// la conversion). Sans elle, on ne peut pas dire de combien la sortie est
+  /// plus longue que ce qu'on a demandé — et c'est ce chiffre-là qui départage
+  /// « le contenu était déjà décalé » de « la coupe a reculé jusqu'à l'image
+  /// clé ». `null` quand le lecteur ne connaît pas encore la durée.
   static Future<String> start(
     String sourceUrl, {
     int audioIndex = -1,
     Duration startAt = Duration.zero,
+    Duration? sourceDuration,
   }) async {
     await stop();
     _ensureWired();
@@ -222,6 +312,7 @@ abstract final class CastRelayService {
     }
     _filePath = path;
     _sourcePath = sourceUrl;
+    _sourceDuration = sourceDuration;
     _token = _newToken();
     _converting = true;
     _maxPosition = Duration.zero;
@@ -256,8 +347,17 @@ abstract final class CastRelayService {
     // continu (`/relay.mp4`), pas une liste de segments. Les endpoints HLS
     // restent servis, en repli/diagnostic.
     final String url = 'http://$ip:${_server!.port}/$_token/relay.mp4';
-    // ⚠️ L'URL porte le jeton : on ne journalise que le port.
-    debugPrint('🎞️ §castRelay — conversion démarrée, relais progressif '
+    // ⚠️ L'URL porte le jeton : on ne journalise que le port. La position de
+    // départ, elle, DOIT y être : sans elle, la vérification §castResume
+    // (« conversion démarrée à N s ») n'a rien à lire. En secondes ET en
+    // millisecondes : la relance journalise `at.inSeconds` de son côté, et
+    // deux troncatures indépendantes font croire à une dérive d'une seconde
+    // qui n'existe pas.
+    // ⚠️ §l10nAll — les accents restent sur la ligne qui porte `debugPrint(` :
+    // une suite accentuée serait comptée comme un texte d'écran (ce fichier
+    // est absent de `test/l10n_allowlist.txt`, son compte doit rester à 0).
+    debugPrint('🎞️ §castRelay — conversion démarrée à ${begin.inSeconds} s '
+        '(${begin.inMilliseconds} ms), relais progressif '
         '(port ${_server!.port})');
     state.value =
         CastRelayState(url: url, percent: 0, done: false, offset: begin);
@@ -318,6 +418,20 @@ abstract final class CastRelayService {
           (ready >= startupSegments || (!_converting && ready > 0))) {
         debugPrint('🎞️ §castRelay — $ready segments prêts '
             '(${idx.readyDuration(done: !_converting).inSeconds} s)');
+        // R30 — Départ de chaque piste dans le fichier produit : c'est LA
+        // mesure qui manquait à la recette (« son décalé » ?). Sur une ligne,
+        // avec l'écart entre la première et la dernière piste.
+        final Map<int, Duration> starts = idx.firstDecodeTimes();
+        if (starts.length >= 2) {
+          final List<int> ms =
+              starts.values.map((d) => d.inMilliseconds).toList()..sort();
+          // ⚠️ §l10nAll — tout ce qui porte un accent reste sur la ligne du
+          // `debugPrint(` : une ligne de continuation accentuée serait
+          // comptée comme un texte d'écran (ce fichier doit rester à 0).
+          debugPrint('🎚️ §castRelay — départ par piste, écart de '
+              '${ms.last - ms.first} ms : '
+              '${starts.entries.map((e) => '${e.key} → ${e.value.inMilliseconds} ms').join(', ')}');
+        }
         return;
       }
       if (!_converting && state.value != null) {
@@ -388,6 +502,7 @@ abstract final class CastRelayService {
     }
     _filePath = null;
     _sourcePath = null;
+    _sourceDuration = null;
     _token = null;
     _index = null;
     _converting = false;
@@ -427,6 +542,44 @@ abstract final class CastRelayService {
       });
     } catch (e) {
       debugPrint('⚠️ §castRelay — index : $e');
+    }
+  }
+
+  /// R33 — Ce que la conversion a COÛTÉ en octets, une fois qu'elle est finie.
+  ///
+  /// La recette du 2026-09-12 avait relevé 2 591 Mo de sortie pour 1 509 Mo de
+  /// source, sans explication : fragmentation fMP4, débit AAC plus gros que
+  /// l'AC3 d'origine, ou autre. Le rapport ne se déduit d'aucune de nos
+  /// constantes, il se MESURE — et il fallait le refaire sur un second fichier
+  /// avant d'en faire un ticket. Rien à l'écran : c'est une ligne de journal.
+  /// Silencieux quand la source est un flux réseau (rien à peser).
+  static Future<void> _logSizeRatio() async {
+    final String? out = _filePath;
+    final String? src = _sourcePath;
+    if (out == null) return;
+    try {
+      final outFile = File(out);
+      if (!await outFile.exists()) return;
+      final int outBytes = await outFile.length();
+      int? srcBytes;
+      if (src != null && !src.startsWith('http')) {
+        final srcFile = File(src);
+        if (await srcFile.exists()) srcBytes = await srcFile.length();
+      }
+      final Duration? converted = _index?.readyDuration(done: true);
+      debugPrint('📏 §castRelay R33 — ${relaySizeRatioLine(
+        sourceBytes: srcBytes,
+        outputBytes: outBytes,
+        converted: converted,
+      )}');
+      final String? drift = relayDurationDriftLine(
+        sourceDuration: _sourceDuration,
+        startAt: _offset,
+        outputDuration: converted,
+      );
+      if (drift != null) debugPrint('⏱️ §castRelay R30 — $drift');
+    } catch (e) {
+      debugPrint('⚠️ §castRelay — taille : $e');
     }
   }
 
@@ -684,6 +837,9 @@ abstract final class CastRelayService {
             done: true,
             ready: _index?.readyDuration(done: true),
           );
+          // R30 / R33 — Le relevé vient APRÈS la publication de l'état : il
+          // pèse deux fichiers, et l'écran n'a pas à attendre une mesure.
+          unawaited(_logSizeRatio());
         case 'onRelayFailed':
           _converting = false;
           final String msg = (args['message'] as String?) ?? '';
@@ -711,6 +867,7 @@ abstract final class CastRelayService {
     _offset = Duration.zero;
     _filePath = null;
     _sourcePath = null;
+    _sourceDuration = null;
     _token = null;
     _index = null;
     _converting = false;

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aetherStream/core/themes/colors.dart';
-import 'package:aetherStream/core/themes/light_palette.dart';
+import 'package:aetherStream/core/themes/themes.dart';
 import 'package:aetherStream/data/services/update_service.dart';
 import 'package:aetherStream/feature/update/update_dialog.dart';
 import 'package:aetherStream/widgets/memory_stats_card.dart';
@@ -161,11 +161,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                       icon: const Icon(Icons.receipt_long),
                       label: Text(context.l10n.aboutDiagnosticLog,
                           style: TextStyle(fontWeight: FontWeight.bold)),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: kAccentTertiary,
-                        foregroundColor: onColorFor(kAccentTertiary), // D4B-08
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
+                      style: aetherFilledStyle(kAccentTertiary),
                     ),
                     const SizedBox(height: 20),
                     FilledButton.icon(
@@ -186,11 +182,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                             : context.l10n.aboutCheckUpdates,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: kAccentPrimary,
-                        foregroundColor: onColorFor(kAccentPrimary), // D4B-08
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
+                      style: aetherFilledStyle(kAccentPrimary),
                     ),
                     const SizedBox(height: 12),
                     // §detailsActions — boutons pleins (cohérence : plus de
@@ -200,11 +192,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                       icon: const Icon(Icons.code),
                       label: Text(context.l10n.aboutSourceOnGithub,
                           style: TextStyle(fontWeight: FontWeight.bold)),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: kAccentSecondary,
-                        foregroundColor: onColorFor(kAccentSecondary), // D4B-08
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
+                      style: aetherFilledStyle(kAccentSecondary),
                     ),
                     const SizedBox(height: 8),
                     FilledButton.icon(
@@ -212,11 +200,7 @@ class _AboutPageState extends State<AboutPage> with TvInitialFocus {
                       icon: const Icon(Icons.archive_outlined),
                       label: Text(context.l10n.aboutAllReleases,
                           style: TextStyle(fontWeight: FontWeight.bold)),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: kAccentTertiary,
-                        foregroundColor: onColorFor(kAccentTertiary), // D4B-08
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
+                      style: aetherFilledStyle(kAccentTertiary),
                     ),
                     const SizedBox(height: 32),
                     _CreditFooter(),

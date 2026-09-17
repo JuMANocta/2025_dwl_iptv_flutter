@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/themes.dart';
 import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/widgets/confirm_or_undo.dart';
@@ -335,11 +336,10 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> with TvInitialFocus {
                   label: Text(l10n.tmdbKeyRemove),
                   // §detailsActions — bouton plein (cohérence : plus de mélange
                   // plein/contour). Rouge = destructif.
-                  style: FilledButton.styleFrom(
-                    backgroundColor: kError,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
+                  // §lightTheme / D4B-08 — le texte suit le fond : un blanc
+                  // en dur sur une erreur éclaircie par le thème clair ne se
+                  // lit plus (et même en sombre, le noir contraste mieux).
+                  style: aetherFilledStyle(kError),
                 ),
               )
             else
@@ -358,11 +358,7 @@ class _TmdbKeyPageState extends State<TmdbKeyPage> with TvInitialFocus {
                         )
                       : const Icon(Icons.save),
                   label: Text(_saving ? l10n.tmdbKeyChecking : l10n.tmdbKeySave),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: kAccentPrimary,
-                    foregroundColor: onColorFor(kAccentPrimary), // D4B-08
-                  ),
+                  style: aetherFilledStyle(kAccentPrimary),
                 ),
               ),
           ],
@@ -979,7 +975,6 @@ class _MaintenanceTile extends StatelessWidget {
               decorateOnly: true,
               scaleOnFocus: false,
               onTap: onAction!,
-              borderRadius: BorderRadius.circular(8),
               child: TextButton(
                 onPressed: onAction,
                 style: TextButton.styleFrom(

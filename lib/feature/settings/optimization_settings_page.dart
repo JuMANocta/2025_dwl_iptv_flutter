@@ -3,12 +3,15 @@ import 'package:aetherStream/core/navigation/playlist_visibility.dart';
 import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/light_palette.dart';
+import 'package:aetherStream/core/themes/themes.dart';
 import 'package:aetherStream/core/utils/image_cache_config.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/data/services/download_manager_service.dart';
 import 'package:aetherStream/data/services/storage_janitor.dart';
 import 'package:aetherStream/data/services/stream_account_service.dart';
+import 'package:aetherStream/feature/downloads/logic/download_scheduler.dart';
 import 'package:aetherStream/widgets/confirm_or_undo.dart';
 import 'package:aetherStream/widgets/memory_stats_card.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
@@ -45,6 +48,11 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
   StorageSweepResult? _reclaimable;
   bool _purging = false;
 
+  /// §dlQueueFix — Combien d'abonnements existent. `null` tant qu'on ne sait
+  /// pas : on ne montre rien plutôt qu'un réglage qui pourrait être un
+  /// mensonge.
+  int? _accountCount;
+
   @override
   void initState() {
     super.initState();
@@ -56,6 +64,9 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
     PlaylistVisibility.hold();
     _config = PerformanceSettingsService.config.value;
     _scanStorage();
+    StreamAccountService.listAccounts().then((a) {
+      if (mounted) setState(() => _accountCount = a.length);
+    });
   }
 
   @override
@@ -317,22 +328,30 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               // la limite par abonnement (un seul) n'est pas réglable, elle
               // vient des panels eux-mêmes (§hostGate).
               SectionMark(context.l10n.perfDownloadsSection),
-              _buildStepper(
-                label: context.l10n.perfParallelDownloadsTitle,
-                value: _config.maxParallelDownloads,
-                min: PerfConfig.minParallelDownloads,
-                max: PerfConfig.maxParallelDownloadsLimit,
-                step: 1,
-                onChanged: (v) =>
-                    _apply(_config.copyWith(maxParallelDownloads: v)),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                child: Text(
-                  context.l10n.perfParallelDownloadsSub,
-                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+              // §dlQueueFix — Avec un seul abonnement, la file n'autorise
+              // qu'UN transfert (§dlQueue / §hostGate) : le curseur ne
+              // changerait rien, et un réglage qui ne fait rien ment à qui le
+              // tourne. Il n'apparaît donc qu'à partir de deux abonnements, et
+              // son sous-titre dit alors ce que le nombre veut dire.
+              if (showParallelDownloadsSetting(_accountCount ?? 0)) ...[
+                _buildStepper(
+                  label: context.l10n.perfParallelDownloadsTitle,
+                  value: _config.maxParallelDownloads,
+                  min: PerfConfig.minParallelDownloads,
+                  max: PerfConfig.maxParallelDownloadsLimit,
+                  step: 1,
+                  onChanged: (v) =>
+                      _apply(_config.copyWith(maxParallelDownloads: v)),
                 ),
-              ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: Text(
+                    context.l10n.perfParallelDownloadsPerHostSub(
+                        _config.maxParallelDownloads),
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                  ),
+                ),
+              ],
               // §dlWifi — « Wi-Fi seulement » = pas sur un réseau facturé.
               _switchTile(
                 icon: Icons.wifi_rounded,
@@ -440,14 +459,15 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   // ExcludeFocus le retire de la traversée ; le tap tactile
                   // n'est pas touché (ExcludeFocus n'agit que sur le focus).
                   child: ExcludeFocus(
-                    child: FilledButton.tonalIcon(
+                    // Style commun des boutons pleins (`aetherFilledStyle`) :
+                    // ces trois-là étaient les seuls `tonalIcon` de l'app.
+                    child: FilledButton.icon(
                       onPressed: _freeMemory,
                       icon:
                           const Icon(Icons.cleaning_services_outlined, size: 18),
                       label: Text(context.l10n.perfFreeMemoryButton),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(44),
-                      ),
+                      style: aetherFilledStyle(kAccentPrimary,
+                          minimumSize: const Size.fromHeight(44)),
                     ),
                   ),
                 ),
@@ -463,14 +483,13 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   // §tourFix — cf. le bouton ci-dessus : ExcludeFocus supprime
                   // le second arrêt D-pad apporté par le FilledButton.
                   child: ExcludeFocus(
-                    child: FilledButton.tonalIcon(
+                    child: FilledButton.icon(
                       onPressed: _clearImageCache,
                       icon: const Icon(Icons.image_not_supported_outlined,
                           size: 18),
                       label: Text(context.l10n.perfClearImageCacheButton),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(44),
-                      ),
+                      style: aetherFilledStyle(kAccentSecondary,
+                          minimumSize: const Size.fromHeight(44)),
                     ),
                   ),
                 ),
@@ -511,15 +530,16 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   // §tourFix — cf. les deux boutons ci-dessus : ExcludeFocus
                   // supprime le second arrêt D-pad apporté par le FilledButton.
                   child: ExcludeFocus(
-                    child: FilledButton.tonalIcon(
+                    // Ce bouton EFFACE des fichiers : il porte la couleur
+                    // d'alerte, comme la ligne « récupérable » juste au-dessus.
+                    child: FilledButton.icon(
                       onPressed: _purging ? null : _purgeOrphans,
                       icon: const Icon(Icons.folder_delete_outlined, size: 18),
                       label: Text(_purging
                           ? context.l10n.perfPurging
                           : context.l10n.perfPurgeButton),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(44),
-                      ),
+                      style: aetherFilledStyle(kWarning,
+                          minimumSize: const Size.fromHeight(44)),
                     ),
                   ),
                 ),
@@ -576,7 +596,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
         padding: const EdgeInsets.symmetric(horizontal: 16),
         scrollDirection: Axis.horizontal,
         itemCount: PerfConfig.presets.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (_, i) {
           final preset = PerfConfig.presets[i];
           final active = _config == preset.config;
@@ -676,17 +696,33 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
         decorateOnly: true,
         borderRadius: BorderRadius.circular(12),
         onTap: enabled ? () => onChanged(!value) : null,
-        child: Opacity(
-          opacity: enabled ? 1.0 : 0.45,
+        // §lightTheme — ⚠️ Ce n'était PAS une opacité, c'en était deux :
+        // `Opacity(0.45)` par-dessus les 38 % que Material applique déjà à une
+        // tuile désactivée. Sur le fond blanc du thème clair, le titre, le
+        // sous-titre et l'icône d'un réglage grisé disparaissaient (mesuré sur
+        // la planche, réglage « Rotation automatique »). L'atténuation est
+        // désormais DÉRIVÉE, avec un plancher de contraste (`mutedOn`).
+        child: Builder(builder: (context) {
+          final ColorScheme cs = Theme.of(context).colorScheme;
+          final Color fg =
+              enabled ? cs.onSurface : mutedOn(cs.onSurface, cs.surface);
+          final Color sub = enabled
+              ? cs.onSurfaceVariant
+              : mutedOn(cs.onSurfaceVariant, cs.surface);
+          final Color ic = enabled
+              ? kAccentSecondary
+              : mutedOn(kAccentSecondary, cs.surface);
           // §tourFix — même patron que SettingsPage : l'InkWell interne du
           // SwitchListTile est focusable par défaut → 2e arrêt D-pad par tuile,
           // sans halo. ExcludeFocus le retire de la traversée ; seul le Focus
           // du FocusableCard reste (le tap tactile, lui, n'est pas affecté).
-          child: ExcludeFocus(
+          return ExcludeFocus(
             child: SwitchListTile(
-              secondary: Icon(icon, color: kAccentSecondary),
-              title: Text(title, style: const TextStyle(fontSize: 14)),
-              subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
+              secondary: Icon(icon, color: ic),
+              title: Text(title,
+                  style: TextStyle(fontSize: 14, color: fg)),
+              subtitle: Text(subtitle,
+                  style: TextStyle(fontSize: 11, color: sub)),
               value: value,
               activeTrackColor: kAccentSecondary,
               onChanged: enabled ? onChanged : null,
@@ -694,8 +730,8 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-          ),
-        ),
+          );
+        }),
       ),
     );
   }
@@ -717,16 +753,26 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
     String Function(int value)? valueLabel,
   }) {
     final ratio = ((value - min) / (max - min)).clamp(0.0, 1.0);
-    final color = enabled ? kAccentSecondary : kAccentSecondary.withAlpha(90);
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    // §lightTheme — Même défaut que les tuiles à interrupteur : une opacité de
+    // 45 % posée sur une couleur déjà atténuée de 65 % ne laissait rien à
+    // l'écran en thème clair (les − / + du réglage « Cartes »). Deux niveaux
+    // seulement, tous deux dérivés avec un plancher de contraste : PLEIN pour
+    // ce qui répond, ATTÉNUÉ pour ce qui ne répond pas (désactivé, ou borne
+    // atteinte).
+    final Color color =
+        enabled ? kAccentSecondary : mutedOn(kAccentSecondary, cs.surface);
+    final Color spent = mutedOn(color, cs.surface);
+    final Color label0 =
+        enabled ? cs.onSurface : mutedOn(cs.onSurface, cs.surface);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
-      child: Opacity(
-        opacity: enabled ? 1.0 : 0.45,
-        child: Row(
+      child: Row(
           children: [
             SizedBox(
               width: 72,
-              child: Text(label, style: const TextStyle(fontSize: 13)),
+              child: Text(label,
+                  style: TextStyle(fontSize: 13, color: label0)),
             ),
             // §boundFocus — `onPressed: null` retire le bouton de la
             // traversee ALORS QU'IL A LE FOCUS : arrive a la borne, le bouton
@@ -738,14 +784,14 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               onPressed: enabled
                   ? () => onChanged((value - step).clamp(min, max))
                   : null,
-              color: value > min ? color : color.withAlpha(70),
+              color: value > min ? color : spent,
               tooltip: context.l10n.commonDecrease,
             ),
             Expanded(
               child: Container(
                 height: 4,
                 decoration: BoxDecoration(
-                  color: color.withAlpha(40),
+                  color: spent.withAlpha(60),
                   borderRadius: BorderRadius.circular(2),
                 ),
                 child: Align(
@@ -767,7 +813,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               onPressed: enabled
                   ? () => onChanged((value + step).clamp(min, max))
                   : null,
-              color: value < max ? color : color.withAlpha(70),
+              color: value < max ? color : spent,
               tooltip: context.l10n.commonIncrease,
             ),
             SizedBox(
@@ -783,7 +829,6 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               ),
             ),
           ],
-        ),
       ),
     );
   }

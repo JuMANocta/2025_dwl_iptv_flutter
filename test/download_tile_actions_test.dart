@@ -133,5 +133,32 @@ void main() {
     expect(DownloadAction.play.isDestructive, isFalse);
     expect(DownloadAction.monitor.isDestructive, isFalse);
     expect(DownloadAction.restart.isDestructive, isFalse);
+    expect(DownloadAction.cast.isDestructive, isFalse);
+  });
+
+  group('lot 6b §castLocal — diffuser un fichier téléchargé', () {
+    test('« Diffuser » n\'est proposé que sur un téléchargement TERMINÉ', () {
+      for (final s in DownloadStatus.values) {
+        final a = downloadTileActions(s);
+        final bool proposee =
+            a.primary == DownloadAction.cast || a.menu.contains(DownloadAction.cast);
+        expect(proposee, s == DownloadStatus.completed,
+            reason: '$s : il n\'y a de fichier à diffuser QUE lorsque le '
+                'partiel est devenu le fichier final ; ailleurs, le serveur '
+                'local servirait un fichier incomplet.');
+      }
+    });
+
+    test('elle vient APRÈS « Lire » et AVANT « Supprimer »', () {
+      // L'ordre du menu est l'ordre de lecture : l'action la plus courante
+      // d'abord, la destructive en dernier (§dlErgo).
+      final menu = downloadTileActions(DownloadStatus.completed).menu;
+      expect(menu.indexOf(DownloadAction.cast),
+          lessThan(menu.indexOf(DownloadAction.delete)));
+      expect(downloadTileActions(DownloadStatus.completed).primary,
+          DownloadAction.play,
+          reason: 'le tap reste la LECTURE : diffuser demande un appareil, '
+              'qui peut ne pas être là.');
+    });
   });
 }

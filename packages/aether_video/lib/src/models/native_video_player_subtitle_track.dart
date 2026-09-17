@@ -38,6 +38,19 @@ class NativeVideoPlayerSubtitleTrack {
         isSelected: false,
       );
 
+  /// §engineVendor patch 22 — « Automatique » : le lecteur choisit lui-même
+  /// (piste FORCED/DEFAULT du flux, ou aucune). C'est le contraire de [off] :
+  /// le type texte est RÉACTIVÉ, sans aucune piste imposée ni langue préférée.
+  /// Le natif ne savait que couper (-1) ou imposer un index ≥ 0 : après une
+  /// coupure, aucun chemin ne rendait la main au lecteur.
+  factory NativeVideoPlayerSubtitleTrack.auto() =>
+      const NativeVideoPlayerSubtitleTrack(
+        index: -2,
+        language: 'auto',
+        displayName: 'Auto',
+        isSelected: false,
+      );
+
   /// The index of the subtitle track (platform-specific identifier)
   final int index;
 
@@ -56,6 +69,9 @@ class NativeVideoPlayerSubtitleTrack {
 
   /// Whether this is the "Off" option
   bool get isOff => index == -1 && source == SubtitleTrackSource.embedded;
+
+  /// §engineVendor patch 22 — Whether this is the "Auto" option.
+  bool get isAuto => index == -2 && source == SubtitleTrackSource.embedded;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     'index': index,

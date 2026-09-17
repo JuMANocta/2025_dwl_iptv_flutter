@@ -54,8 +54,15 @@ void main() {
     // Les réglages en mémoire repartent des valeurs par défaut, comme au
     // lancement du processus : sans ça le test précédent les aurait déjà
     // chargés et le second passerait sans rien prouver.
-    PerformanceSettingsService.config.value = PerfConfig.defaults;
+    // ⚠️ La liste se vide AVANT les réglages : `init()` a posé un écouteur sur
+    // `PerformanceSettingsService.config` (§dlWifi), donc l'affectation
+    // ci-dessous déclenche un `pump()`. Fait dans l'autre ordre, ce pump
+    // partait sur la liste du test PRÉCÉDENT et son échec venait marquer, plus
+    // tard, la tâche fraîchement relue — un faux négatif qui ne dépendait que
+    // du nombre de microtâches d'`init()`.
+    DownloadManagerService().resetQueueForTest();
     DownloadManagerService().tasksNotifier.value = [];
+    PerformanceSettingsService.config.value = PerfConfig.defaults;
     seen.clear();
     DownloadManagerService().tasksNotifier.addListener(record);
   });

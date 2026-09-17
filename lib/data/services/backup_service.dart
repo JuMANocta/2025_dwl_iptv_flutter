@@ -15,6 +15,7 @@ import 'visual_language_service.dart';
 import '../../core/utils/user_error.dart' show UserFacingException;
 import '../../core/settings/performance_settings_service.dart';
 import '../../core/themes/app_theme_config.dart';
+import '../../core/themes/saved_themes_service.dart';
 import '../../core/themes/theme_service.dart';
 import '../models/stream_account.dart';
 import 'favorites_service.dart';
@@ -60,6 +61,13 @@ class BackupContent {
   final String? tmdbKey;
   final Map<String, dynamic>? theme;
 
+  /// §themeStudio — Les thèmes ENREGISTRÉS (« Mes thèmes »), chacun
+  /// `{n: nom, c: {…}}`. ⚠️ Même règle que [hiddenRegions] : `null` (clé
+  /// absente d'une sauvegarde antérieure) ne veut pas dire « aucun » — on ne
+  /// touche alors PAS à la liste locale de la cible. Une liste VIDE, elle, est
+  /// un choix explicite.
+  final List<Map<String, dynamic>>? savedThemes;
+
   /// §perfSettings — réglages d'optimisation (null sur les vieux backups).
   final Map<String, dynamic>? perf;
 
@@ -84,6 +92,7 @@ class BackupContent {
     required this.activeAccountId,
     required this.tmdbKey,
     required this.theme,
+    this.savedThemes,
     this.perf,
     this.hiddenRegions,
     this.visualLanguage,
@@ -98,6 +107,7 @@ class BackupContent {
         'activeAccountId': activeAccountId,
         'tmdbKey': tmdbKey,
         'theme': theme,
+        'savedThemes': savedThemes,
         'perf': perf,
         'hiddenRegions': hiddenRegions,
         'visualLanguage': visualLanguage,
@@ -123,6 +133,16 @@ class BackupContent {
         activeAccountId: j['activeAccountId'] as String?,
         tmdbKey: j['tmdbKey'] as String?,
         theme: j['theme'] as Map<String, dynamic>?,
+        // §themeStudio — ⚠️ Jamais `as List?` : il LÈVE sur une chaîne, et une
+        // sauvegarde bricolée à la main ferait échouer toute la restauration
+        // pour un accessoire (même piège que `hiddenRegions`). Le tri des
+        // entrées illisibles est fait plus loin, par `SavedThemesService`.
+        savedThemes: j['savedThemes'] is List
+            ? [
+                for (final Object? e in j['savedThemes'] as List)
+                  if (e is Map) e.cast<String, dynamic>()
+              ]
+            : null,
         perf: j['perf'] as Map<String, dynamic>?,
         // ⚠️ Tolérant pour de vrai : un `as List?` LÈVE sur une chaîne. On
         // teste le type au lieu de le supposer — champ absent, nul ou
@@ -144,6 +164,8 @@ class BackupContent {
     }
     if ((tmdbKey ?? '').isNotEmpty) parts.add(L10n.current.bkPartTmdbKey);
     if (theme != null) parts.add(L10n.current.bkPartTheme);
+    final int saved = savedThemes?.length ?? 0;
+    if (saved > 0) parts.add(L10n.current.bkPartSavedThemes(saved));
     if (perf != null) parts.add(L10n.current.bkPartOptimization);
     final int regions = hiddenRegions?.length ?? 0;
     if (regions > 0) {
@@ -339,6 +361,18 @@ class BackupService {
         debugPrint('⚠️ Thème ignoré (parse fail) — $e');
       }
     }
+    // 3a. §themeStudio — « Mes thèmes ». ⚠️ Dans le MÊME `try` d'esprit que
+    // le thème : un fichier bricolé ne doit pas faire échouer la restauration.
+    // ⚠️ `null` (clé absente) ≠ liste vide : on ne touche à la liste locale
+    // que si la sauvegarde en portait une.
+    if (content.savedThemes != null) {
+      try {
+        await SavedThemesService.replaceAll(
+            SavedThemesService.fromList(content.savedThemes));
+      } catch (e) {
+        debugPrint('⚠️ Thèmes enregistrés ignorés (parse fail) — $e');
+      }
+    }
 
     // 3b. §perfSettings — Réglages d'optimisation (absents des vieux backups).
     if (content.perf != null) {
@@ -404,6 +438,11 @@ class BackupService {
     final currentAccount = await StreamAccountService.getCurrentAccount();
     final tmdbKey = await TmdbApiService.getApiKey();
     final theme = ThemeService.config.value;
+    // §themeStudio — ⚠️ Sans ça, exporter sans avoir ouvert la page des thèmes
+    // depuis le démarrage écrirait une liste VIDE dans le `.aether`, ce qui
+    // EFFACERAIT les thèmes enregistrés à la restauration. Le chargement est
+    // idempotent (un drapeau), il ne coûte rien aux exports suivants.
+    await SavedThemesService.load();
     final favorites = FavoritesService.all.toList();
     final wp = WatchProgressService.all;
     final wpMap = <String, Map<String, dynamic>>{
@@ -419,6 +458,7 @@ class BackupService {
       activeAccountId: currentAccount?.id,
       tmdbKey: tmdbKey,
       theme: theme.toJson(),
+      savedThemes: SavedThemesService.toJsonList(SavedThemesService.themes.value),
       perf: PerformanceSettingsService.config.value.toJson(),
       hiddenRegions: HiddenRegionsService.hidden.toList(growable: false),
       visualLanguage: VisualLanguageService.value.name,

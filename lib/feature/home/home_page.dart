@@ -30,8 +30,13 @@ import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/accounts/accounts_page.dart';
 import 'package:aetherStream/feature/downloads/logic/download_initiator.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
+// §dlPlayLocal — `home_card.dart` en est une `part` : son import vit ici.
+import 'package:aetherStream/feature/player/launch_playback.dart';
 import 'package:aetherStream/feature/search/actor_details_page.dart';
 import 'package:aetherStream/feature/search/details_page.dart';
+// R44 — `home_card.dart` en est une `part` : le noyau partagé du stub de série
+// s'importe ici.
+import 'package:aetherStream/feature/search/series_stub.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/widgets/aether_image.dart';
@@ -314,9 +319,16 @@ class _HomePageState extends State<HomePage> with RouteAware {
     // ⚠️ `didChangeDependencies` peut être rappelé (changement de thème, de
     // taille…) : sans ce drapeau, le compteur monterait sans jamais redescendre
     // et le déchargement ne se ferait plus JAMAIS.
+    // R3 (D4A-01) — Jeton d'ONGLET, pas jeton de page : l'accueil vit dans
+    // l'`IndexedStack` de `MainNavigation`, il n'est donc JAMAIS démonté et
+    // gardait son jeton même quand on regardait l'onglet Téléchargements.
+    // `unloadIdleSecondaries` (§lazyUnload) ne se déclenchait alors jamais.
+    // ⚠️ Les jetons ORDINAIRES restent pour les pages POUSSÉES (Comptes,
+    // Optimisation) : §unloadGuard, la page qui rapporte l'état des listes ne
+    // doit pas être celle qui les détruit.
     if (!_holdsVisibility) {
       _holdsVisibility = true;
-      PlaylistVisibility.hold();
+      PlaylistVisibility.holdTab();
     }
   }
 
@@ -329,7 +341,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
   void _releaseVisibility() {
     if (!_holdsVisibility) return;
     _holdsVisibility = false;
-    PlaylistVisibility.release();
+    PlaylistVisibility.releaseTab();
   }
 
   @override
@@ -350,7 +362,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
     HomePage.isForeground = true;
     if (!_holdsVisibility) {
       _holdsVisibility = true;
-      PlaylistVisibility.hold();
+      PlaylistVisibility.holdTab(); // R3 (D4A-01), cf. didChangeDependencies
     }
     // §lazyUnload — Si des comptes secondaires ont été déchargés pendant qu'on
     // était sur le player, on les re-précharge depuis le cache disque JSON.gz

@@ -908,7 +908,6 @@
   },
   "perfDownloadsSection": "Téléchargements",
   "perfParallelDownloadsTitle": "Transferts en même temps",
-  "perfParallelDownloadsSub": "Un seul transfert à la fois par abonnement : les fournisseurs n'acceptent qu'une connexion, et le lecteur en garde une. Ce nombre ne joue qu'entre abonnements différents ; les autres attendent leur tour.",
   "taskStatusQueuedWhy": "En attente : un transfert à la fois par abonnement",
   "perfWifiOnlyTitle": "Télécharger en Wi-Fi seulement",
   "perfWifiOnlySub": "Sur les données mobiles (ou un partage de connexion facturé), les transferts attendent et repartent seuls dès qu'un Wi-Fi ou une connexion filaire revient.",
@@ -1222,38 +1221,6 @@
       }
     }
   },
-  "unitBytes": "{value} o",
-  "@unitBytes": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
-  "unitKilobytes": "{value} ko",
-  "@unitKilobytes": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
-  "unitMegabytes": "{value} Mo",
-  "@unitMegabytes": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
-  "unitGigabytes": "{value} Go",
-  "@unitGigabytes": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
   "acctAgeHoursMinutes": "{hours}h{minutes}",
   "@acctAgeHoursMinutes": {
     "placeholders": {
@@ -1342,8 +1309,11 @@
   "cardForgetResume": "Oublier la reprise",
   "cardForgetResumeTitle": "Oublier la reprise ?",
   "cardForgetResumeQuestion": "La position de lecture de ce titre sera oubliée.",
+  "cardForgetResumeSeriesQuestion": "Cette série sortira de « Reprendre ». L'épisode en cours, lui, garde sa position dans sa fiche.",
   "cardForgetConfirm": "Oublier",
   "cardResumeForgotten": "Reprise oubliée",
+  "cardResumeForgottenSeries": "Série retirée de « Reprendre »",
+  "cardChooseEpisode": "Choisir un épisode",
   "cardDetails": "Voir les détails",
   "castChannelsStereo": "stéréo",
   "castChannelsMono": "mono",
@@ -1450,6 +1420,7 @@
   "perrMalformed": "Flux illisible (données corrompues ou inattendues).",
   "perrUnsupportedFormat": "Format de flux non pris en charge.",
   "perrDecoderInit": "Impossible d'initialiser le décodeur vidéo.",
+  "perrDecoderReclaimed": "Le système a repris le décodeur vidéo. Ferme les autres applications, puis relance la lecture.",
   "perrDecodingFailed": "Échec du décodage : le flux est peut-être abîmé.",
   "perrExceedsCapabilities": "Ce flux dépasse les capacités de l'appareil (définition ou débit).",
   "perrCodecUnsupported": "Codec non pris en charge par cet appareil.",
@@ -1616,8 +1587,22 @@
   "castSheetSearchAgain": "Rechercher à nouveau",
   "tracksNoAudio": "Aucune piste audio détectée",
   "tracksNoSubtitles": "Aucun sous-titre détecté",
-  "tracksNone": "Aucune",
   "tracksDisabled": "Désactivés",
+  "tracksDisableFailed": "Impossible de couper les sous-titres.",
+  "tracksTrackFailed": "Cette piste n'a pas pu être activée.",
+  "tracksResetFailed": "Le retour à l'automatique n'a pas abouti.",
+  "tracksMemorySubOff": "Coupés pour les prochains titres aussi",
+  "tracksMemoryAudio": "{lang} pour les prochains titres aussi",
+  "tracksMemoryForget": "Revenir à l'automatique",
+  "settingsTracks": "Langues des pistes",
+  "settingsTracksAuto": "Automatique : chaque titre choisit son audio et ses sous-titres",
+  "settingsTracksAudioLang": "Audio : {lang}",
+  "settingsTracksSubsOff": "Sous-titres : coupés",
+  "settingsTracksResetTitle": "Revenir à l'automatique ?",
+  "settingsTracksResetQuestion": "Les prochains titres choisiront eux-mêmes leur langue audio et leurs sous-titres.",
+  "settingsTracksResetConfirm": "Revenir à l'automatique",
+  "settingsTracksResetDone": "Pistes automatiques rétablies",
+  "settingsTracksNothing": "Déjà automatique : rien à oublier.",
   "langFrench": "Français",
   "langEnglish": "Anglais",
   "langSpanish": "Espagnol",
@@ -1737,7 +1722,7 @@
   "optBackToVideoSub": "Ferme ce panneau, la lecture continue",
   "optNextEpisode": "Épisode suivant",
   "optTracksTitle": "Pistes audio & sous-titres",
-  "optSpeedTitle": "Vitesse de lecture",
+  "optSpeedTitle": "Vitesse",
   "optFitTitle": "Format d'image",
   "optSpeedNormal": "1.0×  ·  Normal",
   "castSheetDeviceFallback": "le téléviseur",
@@ -1928,7 +1913,7 @@
   "failNoData": "AUCUNE DONNÉE",
   "failExplainNever": "Cette liste n'a pas encore été chargée.",
   "failExplainUnloaded": "Mémoire libérée ; la liste revient dès qu'on en a besoin.",
-  "failExplainDeferred": "Mise à jour reportée après le démarrage.",
+  "failExplainDeferred": "Mise à jour reportée : cette liste sera reprise.",
   "failExplainPanelBusy": "Le fournisseur a refusé : trop de connexions simultanées.",
   "failExplainIncomplete": "Le catalogue est arrivé incomplet ; l'ancien a été conservé.",
   "failExplainParse": "La liste n'a pas pu être analysée.",
@@ -2399,19 +2384,7 @@
   "errUnexpected": "Une erreur inattendue est survenue.",
   "errUnknown": "Une erreur inconnue est survenue.",
   "relayNothingReadable": "La conversion n'a rien produit de lisible.",
-  "healthNoStall": "aucun blocage",
   "reloadLessThanMinute": "moins d'une minute",
-  "plNoActiveAccount": "Aucun compte actif sélectionné. Veuillez en choisir un dans les paramètres.",
-  "plNoActiveAccountShort": "Aucun compte actif sélectionné.",
-  "plInvalidUrl": "L'URL de la playlist pour le compte « {label} » est invalide. Vérifie sa configuration.",
-  "@plInvalidUrl": {
-    "placeholders": {
-      "label": {
-        "type": "String"
-      }
-    }
-  },
-  "plEmptyFile": "Le serveur a renvoyé un fichier vide. Vérifie l'URL de la playlist.",
   "bkFileTooShort": "Fichier de sauvegarde trop court ou corrompu.",
   "bkNotAnAetherFile": "Ce n'est pas un fichier .aether valide.",
   "acctDefaultLabel": "Compte par défaut",
@@ -2545,7 +2518,6 @@
   "personRoleProduction": "Production",
   "personRoleMusic": "Musique",
   "personRoleCamera": "Image",
-  "optSpeedTitle": "Vitesse",
   "optSpeedCurrentNormal": "Normale (1.0×)",
   "tracksTitle": "Pistes",
   "tracksSubtitle": "audio & sous-titres",
@@ -2620,11 +2592,11 @@
       }
     }
   },
-  "sizeBytes": "{n} octets",
+  "sizeBytes": "{n, plural, one{{n} octet} other{{n} octets}}",
   "@sizeBytes": {
     "placeholders": {
       "n": {
-        "type": "String"
+        "type": "int"
       }
     }
   },
@@ -2730,5 +2702,95 @@
   "actorJobDirecting": "Équipe de réalisation",
   "themePresetPhosphore": "Phosphore",
   "themePresetNordique": "Nordique",
-  "themePresetMinimaliste": "Minimaliste"
+  "themePresetMinimaliste": "Minimaliste",
+  "settingsTracksResetTile": "{memory} — revenir à l'automatique",
+  "dlNoticeSizeOf": "{received} sur {total}",
+  "dlNotifChannelDone": "Téléchargements terminés",
+  "dlActionCast": "Diffuser",
+  "perfParallelDownloadsPerHostSub": "Un transfert à la fois par abonnement ; jusqu'à {count} abonnements peuvent travailler ensemble.",
+  "playOffline": "Lire hors ligne",
+  "dlBadgeDownloaded": "Téléchargé",
+  "dlErrFileMissing": "Ce fichier n'est plus sur l'appareil.",
+  "playBusyTitle": "Cet abonnement est occupé",
+  "playBusyElsewhere": "Un autre écran regarde déjà sur cet abonnement. La lecture risque d'être refusée.",
+  "playBusyOwnTransfer": "Vos téléchargements occupent toutes les connexions de cet abonnement. En mettre un en pause libère la lecture.",
+  "playBusyContinue": "Lire quand même",
+  "bkPartSavedThemes": "{count, plural, =1{1 thème enregistré} other{{count} thèmes enregistrés}}",
+  "themeSectionMyThemes": "Mes thèmes",
+  "themeMyThemesEmpty": "Aucun thème enregistré. Réglez vos couleurs, puis « Enregistrer sous… ».",
+  "themeSaveAs": "Enregistrer sous…",
+  "themeSaveAsTitle": "Enregistrer ce thème",
+  "themeNameHint": "Nom du thème",
+  "themeSavedDone": "Thème « {name} » enregistré",
+  "themeSaveFull": "Vous pouvez garder {count} thèmes au maximum. Supprimez-en un pour en enregistrer un autre.",
+  "themeNameTaken": "Un thème porte déjà ce nom.",
+  "themeAppliedDone": "Thème « {name} » appliqué",
+  "themeRename": "Renommer",
+  "themeRenameTitle": "Renommer ce thème",
+  "themeDeleteTitle": "Supprimer « {name} » ?",
+  "themeDeleteQuestion": "Il disparaît de la liste. Les couleurs affichées ne changent pas.",
+  "themeDeleteDone": "Thème supprimé",
+  "themeKeepBeforeResetTitle": "Garder ces couleurs ?",
+  "themeKeepBeforeResetBody": "Elles ne correspondent à aucun préréglage ni thème enregistré : réinitialiser les perd.",
+  "themeKeepBeforeResetSave": "Enregistrer d'abord",
+  "themeKeepBeforeResetSkip": "Réinitialiser quand même",
+  "themeColorFree": "Autre couleur",
+  "themeColorFreeTitle": "Choisir une couleur",
+  "themeHex": "Code hexadécimal",
+  "themeHexInvalid": "Six caractères après le #, par exemple #00FF41",
+  "themeHue": "Teinte",
+  "themeSaturation": "Saturation",
+  "themeLightness": "Luminosité",
+  "themePreviewFavorite": "Favori",
+  "themePreviewAlert": "Reprendre",
+  "themePreviewError": "Flux indisponible",
+  "themePreviewSuccess": "Téléchargé",
+  "themeEditColor": "Changer {label}",
+  "themeSavedApply": "Appliquer",
+  "acctReadingPlaylist": "Lecture de la liste…",
+  "optQualityTitle": "Qualité",
+  "optQualityAuto": "Automatique",
+  "optQualityAutoSub": "Suit votre connexion",
+  "optQualityFailed": "Cette qualité n'a pas pu être appliquée",
+  "optStatsShow": "Afficher l'encart",
+  "optStatsShowSub": "Ce que votre appareil décode vraiment",
+  "optStatsPermanent": "Le garder à l’écran",
+  "optStatsPermanentSub": "Reste visible pendant que vous regardez",
+  "optStatsRows": "Lignes affichées",
+  "detMoreBelow": "Suite de la fiche plus bas",
+  "detSeeMoreCast": "Voir plus",
+  "settingsSubtitles": "Sous-titres en ligne",
+  "settingsSubtitlesSub": "Trouver des sous-titres pour un film qui n’en a pas",
+  "subProviderTitle": "Sous-titres en ligne",
+  "subProviderActive": "Prêt",
+  "subProviderActiveSub": "Vous pouvez maintenant chercher des sous-titres pendant un film",
+  "subProviderInactive": "Aucune clé enregistrée",
+  "subProviderInactiveSub": "Une clé permet à l’application de chercher des sous-titres pour vous",
+  "subProviderIntro": "Certains films et épisodes arrivent sans sous-titres. L’application peut aller en chercher, mais le service de sous-titres a besoin de savoir qui les demande. Obtenir votre accès est gratuit et prend une minute.",
+  "subProviderStep1": "Ouvrez le service de sous-titres et confirmez votre adresse e-mail.",
+  "subProviderStep2": "Copiez la clé qu’il vous donne.",
+  "subProviderStep3": "Collez-la ci-dessous, puis enregistrez.",
+  "subProviderGetKey": "Obtenir une clé gratuite",
+  "subProviderSection": "VOTRE CLÉ",
+  "subProviderHint": "Collez votre clé ici",
+  "subProviderShow": "Afficher",
+  "subProviderHide": "Masquer",
+  "subProviderSave": "Enregistrer",
+  "subProviderRemove": "Retirer cette clé",
+  "subProviderSaved": "Clé enregistrée",
+  "subProviderRemoved": "Clé retirée",
+  "tracksSearchOnline": "Chercher des sous-titres en ligne",
+  "tracksSearchOnlineSub": "Pour ce film ou cet épisode",
+  "tracksOnlineSearching": "Recherche…",
+  "tracksOnlineTitle": "Sous-titres trouvés",
+  "tracksOnlineHearing": "Pour sourds et malentendants",
+  "tracksOnlineAdded": "Sous-titres ajoutés",
+  "tracksOnlineAddFailed": "Ces sous-titres n’ont pas pu être ajoutés",
+  "tracksOnlineNone": "Aucun sous-titre trouvé pour celui-ci",
+  "tracksOnlineNoTitle": "Ce titre n’a pas pu être reconnu",
+  "tracksOnlineNoKey": "Configurez d’abord les sous-titres en ligne dans les Réglages",
+  "tracksOnlineBadKey": "Votre clé a été refusée — vérifiez-la dans les Réglages",
+  "tracksOnlineQuota": "Vous avez utilisé vos recherches du jour",
+  "tracksOnlineFailed": "La recherche n’a pas pu aboutir",
+  "themeDefaultName": "Mon thème {n}"
 }

@@ -911,7 +911,6 @@
   },
   "perfDownloadsSection": "Downloads",
   "perfParallelDownloadsTitle": "Downloads at once",
-  "perfParallelDownloadsSub": "One transfer at a time per subscription: providers accept a single connection, and the player keeps one. This number only applies across different subscriptions; the others wait their turn.",
   "taskStatusQueuedWhy": "Waiting: one transfer at a time per subscription",
   "perfWifiOnlyTitle": "Download on Wi-Fi only",
   "perfWifiOnlySub": "On mobile data (or a metered hotspot), transfers wait and resume on their own as soon as Wi-Fi or a wired connection is back.",
@@ -1225,38 +1224,6 @@
       }
     }
   },
-  "unitBytes": "{value} B",
-  "@unitBytes": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
-  "unitKilobytes": "{value} kB",
-  "@unitKilobytes": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
-  "unitMegabytes": "{value} MB",
-  "@unitMegabytes": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
-  "unitGigabytes": "{value} GB",
-  "@unitGigabytes": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
   "acctAgeHoursMinutes": "{hours}h{minutes}",
   "@acctAgeHoursMinutes": {
     "placeholders": {
@@ -1345,8 +1312,11 @@
   "cardForgetResume": "Forget the resume point",
   "cardForgetResumeTitle": "Forget the resume point?",
   "cardForgetResumeQuestion": "The playback position for this title will be forgotten.",
+  "cardForgetResumeSeriesQuestion": "This series will leave “Resume”. The episode you were watching keeps its position on its own page.",
   "cardForgetConfirm": "Forget",
   "cardResumeForgotten": "Resume point forgotten",
+  "cardResumeForgottenSeries": "Series removed from “Resume”",
+  "cardChooseEpisode": "Choose an episode",
   "cardDetails": "See details",
   "castChannelsStereo": "stereo",
   "castChannelsMono": "mono",
@@ -1453,6 +1423,7 @@
   "perrMalformed": "Unreadable stream (corrupted or unexpected data).",
   "perrUnsupportedFormat": "Stream format not supported.",
   "perrDecoderInit": "Cannot initialize the video decoder.",
+  "perrDecoderReclaimed": "The system reclaimed the video decoder. Close other apps, then start playback again.",
   "perrDecodingFailed": "Decoding failed: the stream may be damaged.",
   "perrExceedsCapabilities": "This stream exceeds the device capabilities (resolution or bitrate).",
   "perrCodecUnsupported": "Codec not supported by this device.",
@@ -1619,8 +1590,36 @@
   "castSheetSearchAgain": "Search again",
   "tracksNoAudio": "No audio track detected",
   "tracksNoSubtitles": "No subtitle detected",
-  "tracksNone": "None",
   "tracksDisabled": "Disabled",
+  "tracksDisableFailed": "Subtitles could not be turned off.",
+  "tracksTrackFailed": "This track could not be enabled.",
+  "tracksResetFailed": "Could not go back to automatic.",
+  "tracksMemorySubOff": "Off for the next titles too",
+  "tracksMemoryAudio": "{lang} for the next titles too",
+  "@tracksMemoryAudio": {
+    "placeholders": {
+      "lang": {
+        "type": "String"
+      }
+    }
+  },
+  "tracksMemoryForget": "Back to automatic",
+  "settingsTracks": "Track languages",
+  "settingsTracksAuto": "Automatic: each title picks its audio and subtitles",
+  "settingsTracksAudioLang": "Audio: {lang}",
+  "@settingsTracksAudioLang": {
+    "placeholders": {
+      "lang": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsTracksSubsOff": "Subtitles: off",
+  "settingsTracksResetTitle": "Back to automatic?",
+  "settingsTracksResetQuestion": "The next titles will pick their own audio language and subtitles.",
+  "settingsTracksResetConfirm": "Back to automatic",
+  "settingsTracksResetDone": "Automatic tracks restored",
+  "settingsTracksNothing": "Already automatic: nothing to forget.",
   "langFrench": "French",
   "langEnglish": "English",
   "langSpanish": "Spanish",
@@ -1740,7 +1739,7 @@
   "optBackToVideoSub": "Closes this panel, playback continues",
   "optNextEpisode": "Next episode",
   "optTracksTitle": "Audio & subtitle tracks",
-  "optSpeedTitle": "Playback speed",
+  "optSpeedTitle": "Speed",
   "optFitTitle": "Picture format",
   "optSpeedNormal": "1.0×  ·  Normal",
   "castSheetDeviceFallback": "the TV",
@@ -1931,7 +1930,7 @@
   "failNoData": "NO DATA",
   "failExplainNever": "This playlist has not been loaded yet.",
   "failExplainUnloaded": "Memory freed; the playlist comes back as soon as it is needed.",
-  "failExplainDeferred": "Update postponed until after start-up.",
+  "failExplainDeferred": "Update postponed: this list will be picked up.",
   "failExplainPanelBusy": "The provider refused: too many simultaneous connections.",
   "failExplainIncomplete": "The catalog arrived incomplete; the previous one was kept.",
   "failExplainParse": "The playlist could not be parsed.",
@@ -2409,19 +2408,7 @@
   "errUnexpected": "An unexpected error occurred.",
   "errUnknown": "An unknown error occurred.",
   "relayNothingReadable": "The conversion produced nothing playable.",
-  "healthNoStall": "no stall",
   "reloadLessThanMinute": "less than a minute",
-  "plNoActiveAccount": "No active account selected. Please choose one in the settings.",
-  "plNoActiveAccountShort": "No active account selected.",
-  "plInvalidUrl": "The playlist URL for the account “{label}” is invalid. Check its configuration.",
-  "@plInvalidUrl": {
-    "placeholders": {
-      "label": {
-        "type": "String"
-      }
-    }
-  },
-  "plEmptyFile": "The server returned an empty file. Check the playlist URL.",
   "bkFileTooShort": "Backup file too short or corrupted.",
   "bkNotAnAetherFile": "This is not a valid .aether file.",
   "acctDefaultLabel": "Default account",
@@ -2555,7 +2542,6 @@
   "personRoleProduction": "Production",
   "personRoleMusic": "Music",
   "personRoleCamera": "Cinematography",
-  "optSpeedTitle": "Speed",
   "optSpeedCurrentNormal": "Normal (1.0×)",
   "tracksTitle": "Tracks",
   "tracksSubtitle": "audio & subtitles",
@@ -2630,11 +2616,11 @@
       }
     }
   },
-  "sizeBytes": "{n} B",
+  "sizeBytes": "{n, plural, one{{n} B} other{{n} B}}",
   "@sizeBytes": {
     "placeholders": {
       "n": {
-        "type": "String"
+        "type": "int"
       }
     }
   },
@@ -2931,5 +2917,162 @@
   "actorJobDirecting": "Directing team",
   "themePresetPhosphore": "Phosphor",
   "themePresetNordique": "Nordic",
-  "themePresetMinimaliste": "Minimalist"
+  "themePresetMinimaliste": "Minimalist",
+  "settingsTracksResetTile": "{memory} — back to automatic",
+  "@settingsTracksResetTile": {
+    "placeholders": {
+      "memory": {
+        "type": "String"
+      }
+    }
+  },
+  "dlNoticeSizeOf": "{received} of {total}",
+  "@dlNoticeSizeOf": {
+    "placeholders": {
+      "received": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "dlNotifChannelDone": "Finished downloads",
+  "dlActionCast": "Cast",
+  "perfParallelDownloadsPerHostSub": "One transfer at a time per subscription; up to {count} subscriptions can work together.",
+  "@perfParallelDownloadsPerHostSub": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "playOffline": "Play offline",
+  "dlBadgeDownloaded": "Downloaded",
+  "dlErrFileMissing": "This file is no longer on the device.",
+  "playBusyTitle": "This subscription is busy",
+  "playBusyElsewhere": "Another screen is already watching this subscription. Playback may be refused.",
+  "playBusyOwnTransfer": "Your downloads are using every connection of this subscription. Pausing one frees it up for playback.",
+  "playBusyContinue": "Play anyway",
+  "bkPartSavedThemes": "{count, plural, =1{1 saved theme} other{{count} saved themes}}",
+  "@bkPartSavedThemes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "themeSectionMyThemes": "My themes",
+  "themeMyThemesEmpty": "No saved theme. Set your colours, then use Save as…",
+  "themeSaveAs": "Save as…",
+  "themeSaveAsTitle": "Save this theme",
+  "themeNameHint": "Theme name",
+  "themeSavedDone": "Theme “{name}” saved",
+  "@themeSavedDone": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "themeSaveFull": "You can keep {count} themes at most. Delete one to save another.",
+  "@themeSaveFull": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "themeNameTaken": "A theme already goes by that name.",
+  "themeAppliedDone": "Theme “{name}” applied",
+  "@themeAppliedDone": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "themeRename": "Rename",
+  "themeRenameTitle": "Rename this theme",
+  "themeDeleteTitle": "Delete “{name}”?",
+  "@themeDeleteTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "themeDeleteQuestion": "It disappears from the list. The colours on screen do not change.",
+  "themeDeleteDone": "Theme deleted",
+  "themeKeepBeforeResetTitle": "Keep these colours?",
+  "themeKeepBeforeResetBody": "They match no preset and no saved theme: resetting loses them.",
+  "themeKeepBeforeResetSave": "Save first",
+  "themeKeepBeforeResetSkip": "Reset anyway",
+  "themeColorFree": "Any colour",
+  "themeColorFreeTitle": "Pick a colour",
+  "themeHex": "Hex code",
+  "themeHexInvalid": "Six characters after #, for example #00FF41",
+  "themeHue": "Hue",
+  "themeSaturation": "Saturation",
+  "themeLightness": "Lightness",
+  "themePreviewFavorite": "Favourite",
+  "themePreviewAlert": "Resume",
+  "themePreviewError": "Stream unavailable",
+  "themePreviewSuccess": "Downloaded",
+  "themeEditColor": "Change {label}",
+  "@themeEditColor": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "themeSavedApply": "Apply",
+  "acctReadingPlaylist": "Reading the playlist…",
+  "optQualityTitle": "Quality",
+  "optQualityAuto": "Automatic",
+  "optQualityAutoSub": "Follows your connection",
+  "optQualityFailed": "This quality could not be applied",
+  "optStatsShow": "Show the panel",
+  "optStatsShowSub": "What your device really decodes",
+  "optStatsPermanent": "Keep it on screen",
+  "optStatsPermanentSub": "Stays visible while you watch",
+  "optStatsRows": "Lines shown",
+  "detMoreBelow": "More below",
+  "detSeeMoreCast": "See more",
+  "settingsSubtitles": "Online subtitles",
+  "settingsSubtitlesSub": "Find subtitles for a film that has none",
+  "subProviderTitle": "Online subtitles",
+  "subProviderActive": "Ready",
+  "subProviderActiveSub": "You can now look for subtitles while watching",
+  "subProviderInactive": "No key saved",
+  "subProviderInactiveSub": "A key lets the app look for subtitles for you",
+  "subProviderIntro": "Some films and episodes come without subtitles. The app can go and look for some, but the subtitle service needs to know who is asking. Getting your own access is free and takes a minute.",
+  "subProviderStep1": "Open the subtitle service and confirm your e-mail address.",
+  "subProviderStep2": "Copy the key it gives you.",
+  "subProviderStep3": "Paste it below, then save.",
+  "subProviderGetKey": "Get a free key",
+  "subProviderSection": "YOUR KEY",
+  "subProviderHint": "Paste your key here",
+  "subProviderShow": "Show",
+  "subProviderHide": "Hide",
+  "subProviderSave": "Save",
+  "subProviderRemove": "Remove this key",
+  "subProviderSaved": "Key saved",
+  "subProviderRemoved": "Key removed",
+  "tracksSearchOnline": "Look for subtitles online",
+  "tracksSearchOnlineSub": "For this film or episode",
+  "tracksOnlineSearching": "Looking…",
+  "tracksOnlineTitle": "Subtitles found",
+  "tracksOnlineHearing": "For deaf and hard of hearing",
+  "tracksOnlineAdded": "Subtitles added",
+  "tracksOnlineAddFailed": "These subtitles could not be added",
+  "tracksOnlineNone": "No subtitles found for this one",
+  "tracksOnlineNoTitle": "This title could not be recognised",
+  "tracksOnlineNoKey": "Set up online subtitles in Settings first",
+  "tracksOnlineBadKey": "Your key was refused — check it in Settings",
+  "tracksOnlineQuota": "You have used today's searches",
+  "tracksOnlineFailed": "The search could not be completed",
+  "themeDefaultName": "My theme {n}",
+  "@themeDefaultName": {"placeholders": {"n": {"type": "int"}}}
 }

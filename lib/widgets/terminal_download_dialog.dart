@@ -3,6 +3,10 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/widgets/matrix_rain.dart';
+import 'package:aetherStream/widgets/matrix_decode_text.dart';
+import 'package:aetherStream/core/themes/aether_theme_extension.dart';
+import 'package:aetherStream/core/settings/perf_config.dart';
+import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../data/models/download_task.dart';
 import '../data/services/download_manager_service.dart';
@@ -439,11 +443,31 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
       });
     }
 
+    // §matrixFx — L'intensité de la pluie suit le halo du preset (le
+    // « Minimaliste » reste sobre, §themePlus), et tout l'effet s'éteint sur
+    // le profil Léger (§perfSettings) : un `CustomPainter` animé plus du texte
+    // animé, sur le SoC d'un téléviseur, ça se paie.
+    //
+    // ⚠️ Le test de profil passe par `==`, et c'est VOULU : §perfNotify a
+    // exclu les réglages de CONFORT de `PerfConfig.==`, qui ne compare donc
+    // que les leviers de performance. « Encore sur Léger » veut bien dire
+    // « aucun levier de perf touché depuis », et changer un réglage de confort
+    // n'allume pas l'effet par accident.
+    //
+    // ⚠️ Il n'y a PAS d'interrupteur dédié : l'effet se coupe par le profil
+    // Léger ou par un preset sans halo. En ajouter un demanderait un levier de
+    // plus dans `PerfConfig` (§perfProfileKeep : `==` ET `withProfileOf`).
+    final double glow =
+        Theme.of(context).extension<AetherThemeExtension>()?.glowIntensity ??
+            0.6;
+    final bool fx = glow > 0 &&
+        PerformanceSettingsService.config.value != PerfConfig.performance;
+    final int rainAlpha = (40 + 110 * glow).round();
+
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(16),
       child: Container(
-        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           // §dlTheme — Fond sombre volontaire (identité « terminal »), mais tiré
           // de la palette du projet plutôt que d'un `Colors.black` brut ; la
@@ -458,191 +482,225 @@ class _TerminalDownloadDialogState extends State<TerminalDownloadDialog> {
                 spreadRadius: 2)
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            Text(
-              l10n.terminalTitle,
-              style: GoogleFonts.vt323(color: kSuccess, fontSize: 22),
-            ),
-            Divider(color: kSuccess),
-            Flexible(
-              child: SizedBox(
-                width: double.maxFinite,
-                height: 300,
-                child: Stack(
-                  children: [
-                    AnimatedOpacity(
-                      opacity: _lastTaskState?.status == DownloadStatus.downloading ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 600),
-                      child: RepaintBoundary(
-                        child: MatrixRain(
-                          active: _lastTaskState?.status == DownloadStatus.downloading,
-                        ),
-                      ),
-                    ),
-                    ListView.builder(
-                      controller: _scrollController,
-                      itemCount: _logs.length,
-                      itemBuilder: (context, index) {
-                        final log = _logs[index];
-                        final type = log['type'] as String;
-
-                        // Accordéon pour les erreurs passées (retry)
-                        if (type == 'error_accordion') {
-                          final messages = log['messages'] as List<String>;
-                          final isExpanded = _expandedAccordions.contains(index);
-                          return GestureDetector(
-                            onTap: () => setState(() {
-                              if (isExpanded) {
-                                _expandedAccordions.remove(index);
-                              } else {
-                                _expandedAccordions.add(index);
-                              }
-                            }),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '> [!] ${context.l10n.termPreviousErrors(messages.length)}'
-                                  '  ${isExpanded ? context.l10n.termHide : context.l10n.termShow}',
-                                  style: GoogleFonts.sourceCodePro(
-                                    color: kWarning.withAlpha(200),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                if (isExpanded)
-                                  ...messages.map(
-                                    (msg) => Padding(
-                                      padding: const EdgeInsets.only(left: 12),
-                                      child: Text(
-                                        msg,
-                                        style: GoogleFonts.sourceCodePro(
-                                          color: kError.withAlpha(140),
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        // §dlTheme — Ces couleurs étaient des hex CODÉS EN DUR
-                        // (verts Matrix, rouge fixe) : le moniteur restait vert
-                        // même en preset Tron, Synthwave ou Blade Runner. Elles
-                        // suivent désormais la palette sémantique.
-                        final Color color;
-                        switch (type) {
-                          case 'stats':  color = kAccentPrimary; break;
-                          case 'error':  color = kError; break;
-                          case 'matrix': color = kAccentSecondary; break;
-                          case 'boot':   color = kAccentPrimary.withAlpha(150); break;
-                          case 'retry':  color = kWarning; break;
-                          default:       color = kSuccess; break;
-                        }
-                        return Text(
-                          log['message'],
-                          style: GoogleFonts.sourceCodePro(color: color, fontSize: 12),
-                        );
-                      },
-                    ),
-                  ],
+            // §matrixFx — La pluie sur la carte ENTIÈRE (titre, séparateur et
+            // boutons compris), permanente, à intensité réduite : le remède
+            // que §updateBanner avait déjà appliqué à l'autre carte. Elle
+            // vivait dans le seul cadre des logs, à pleine intensité, et
+            // masquée hors téléchargement — donc presque jamais visible, et
+            // trop violente quand elle l'était.
+            if (fx)
+              Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: IgnorePointer(
+                    child: RepaintBoundary(child: MatrixRain(alpha: rainAlpha)),
+                  ),
                 ),
               ),
-            ),
-            if (!_isDownloadComplete &&
-                !_hasFatalError &&
-                _lastTaskState?.status == DownloadStatus.downloading)
-              Row(
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('>', style: TextStyle(color: kAccentPrimary)),
-                  const BlinkingCursor(),
+                  MatrixDecodeText(
+                    l10n.terminalTitle,
+                    style: GoogleFonts.vt323(color: kSuccess, fontSize: 22),
+                    enabled: fx,
+                    duration: const Duration(milliseconds: 700),
+                  ),
+                  Divider(color: kSuccess),
+                  Flexible(
+                    child: SizedBox(
+                      width: double.maxFinite,
+                      height: 300,
+                      // §matrixFx — Voile sombre LOCAL derrière les lignes : monter
+                      // la pluie sans lui rendait le texte illisible (le commentaire
+                      // d'origine le disait).
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: kDeepDarkGrey.withAlpha(150),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: ListView.builder(
+                            controller: _scrollController,
+                            itemCount: _logs.length,
+                            itemBuilder: (context, index) {
+                              final log = _logs[index];
+                              final type = log['type'] as String;
+
+                              // Accordéon pour les erreurs passées (retry)
+                              if (type == 'error_accordion') {
+                                final messages = log['messages'] as List<String>;
+                                final isExpanded = _expandedAccordions.contains(index);
+                                return GestureDetector(
+                                  onTap: () => setState(() {
+                                    if (isExpanded) {
+                                      _expandedAccordions.remove(index);
+                                    } else {
+                                      _expandedAccordions.add(index);
+                                    }
+                                  }),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '> [!] ${context.l10n.termPreviousErrors(messages.length)}'
+                                        '  ${isExpanded ? context.l10n.termHide : context.l10n.termShow}',
+                                        style: GoogleFonts.sourceCodePro(
+                                          color: kWarning.withAlpha(200),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      if (isExpanded)
+                                        ...messages.map(
+                                          (msg) => Padding(
+                                            padding: const EdgeInsets.only(left: 12),
+                                            child: Text(
+                                              msg,
+                                              style: GoogleFonts.sourceCodePro(
+                                                color: kError.withAlpha(140),
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              }
+
+                              // §dlTheme — Ces couleurs étaient des hex CODÉS EN DUR
+                              // (verts Matrix, rouge fixe) : le moniteur restait vert
+                              // même en preset Tron, Synthwave ou Blade Runner. Elles
+                              // suivent désormais la palette sémantique.
+                              final Color color;
+                              switch (type) {
+                                case 'stats':  color = kAccentPrimary; break;
+                                case 'error':  color = kError; break;
+                                case 'matrix': color = kAccentSecondary; break;
+                                case 'boot':   color = kAccentPrimary.withAlpha(150); break;
+                                case 'retry':  color = kWarning; break;
+                                default:       color = kSuccess; break;
+                              }
+                              final String message = log['message'] as String;
+                              final style =
+                                  GoogleFonts.sourceCodePro(color: color, fontSize: 12);
+                              // §matrixFx — Décodage sur les lignes COURTES d'état
+                              // seulement (un paragraphe ne se lit pas brouillé), en
+                              // cascade : chaque ligne part après la précédente, et
+                              // le texte final arrive vite.
+                              final bool decode = fx &&
+                                  message.length <= 64 &&
+                                  (type == 'log' || type == 'matrix' || type == 'boot');
+                              if (!decode) return Text(message, style: style);
+                              return MatrixDecodeText(
+                                message,
+                                key: ValueKey('log-$index-${message.hashCode}'),
+                                style: style,
+                                delay: Duration(milliseconds: 80 * (index % 6)),
+                                duration: const Duration(milliseconds: 600),
+                              );
+                            },
+                          ),
+                      ),
+                    ),
+                  ),
+                  if (!_isDownloadComplete &&
+                      !_hasFatalError &&
+                      _lastTaskState?.status == DownloadStatus.downloading)
+                    Row(
+                      children: [
+                        Text('>', style: TextStyle(color: kAccentPrimary)),
+                        const BlinkingCursor(),
+                      ],
+                    ),
+                  Divider(color: kSuccess),
+                  // §dlErgo — Pendant le téléchargement, le SEUL bouton était
+                  // « ABORT » : pour laisser tourner en fond il fallait deviner
+                  // qu'on pouvait fermer en tapant hors du dialogue — impraticable à
+                  // la télécommande. On sépare donc les deux intentions, « Fermer »
+                  // (le cas courant) restant à droite, sous le pouce.
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Builder(builder: (context) {
+                      final finished =
+                          _isDownloadComplete || _hasFatalError || _isAborting;
+                      final closeButton = _terminalButton(
+                        label: l10n.terminalCloseButton,
+                        color: kTextDarkPrimary,
+                        onPressed: () => Navigator.of(context).pop(),
+                      );
+                      if (finished) {
+                        // Annulation en cours : le dialogue va se fermer tout seul.
+                        if (_isAborting) {
+                          return Text(
+                            l10n.terminalAbortingButton,
+                            style: GoogleFonts.vt323(
+                                color: kTextDarkPrimary, fontSize: 18),
+                          );
+                        }
+                        // ⚠️ Téléchargement TERMINÉ : pas de relance. Le fichier
+                        // partiel a été renommé en fichier final, il n'y a plus rien
+                        // à reprendre — un « relancer » referait plusieurs Go depuis
+                        // zéro. Pour refaire un fichier : le supprimer, puis relancer
+                        // depuis sa fiche.
+                        if (_isDownloadComplete) return closeButton;
+                        // En ERREUR, en revanche, le `.part` est toujours là : la
+                        // relance reprend au même octet (`Range`).
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.end,
+                          children: [
+                            _terminalButton(
+                              label: context.l10n.dlRestartUpper,
+                              color: kAccentSecondary,
+                              onPressed: () {
+                                final t = _lastTaskState;
+                                if (t == null) return;
+                                _downloadManager.restartTask(t);
+                              },
+                            ),
+                            closeButton,
+                          ],
+                        );
+                      }
+                      // D3A-07 — Pas d'ABORT pendant la finalisation : le transfert
+                      // est fini, l'interrompre ne ferait que corrompre la copie.
+                      if (_lastTaskState?.status == DownloadStatus.finalizing) {
+                        return closeButton;
+                      }
+                      return Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.end,
+                        children: [
+                          // §dlWatchdog — Plus de bouton RELANCER pendant le
+                          // transfert : le service surveille lui-même le débit et
+                          // reconnecte quand il décroche (`_maybeAutoRestart`).
+                          // Le bouton demandait à l'utilisateur de surveiller un
+                          // chiffre et d'appuyer au bon moment — c'est exactement ce
+                          // qu'une machine fait mieux. Il reste sur le cas ERREUR,
+                          // où plus aucun octet ne circule : là, rien ne repartirait
+                          // tout seul.
+                          _terminalButton(
+                            label: l10n.terminalAbortButton,
+                            color: kWarning,
+                            onPressed: () {
+                              setState(() => _isAborting = true);
+                              _downloadManager.cancelTask(widget.taskId);
+                            },
+                          ),
+                          closeButton,
+                        ],
+                      );
+                    }),
+                  ),
                 ],
               ),
-            Divider(color: kSuccess),
-            // §dlErgo — Pendant le téléchargement, le SEUL bouton était
-            // « ABORT » : pour laisser tourner en fond il fallait deviner
-            // qu'on pouvait fermer en tapant hors du dialogue — impraticable à
-            // la télécommande. On sépare donc les deux intentions, « Fermer »
-            // (le cas courant) restant à droite, sous le pouce.
-            Align(
-              alignment: Alignment.centerRight,
-              child: Builder(builder: (context) {
-                final finished =
-                    _isDownloadComplete || _hasFatalError || _isAborting;
-                final closeButton = _terminalButton(
-                  label: l10n.terminalCloseButton,
-                  color: kTextDarkPrimary,
-                  onPressed: () => Navigator.of(context).pop(),
-                );
-                if (finished) {
-                  // Annulation en cours : le dialogue va se fermer tout seul.
-                  if (_isAborting) {
-                    return Text(
-                      l10n.terminalAbortingButton,
-                      style: GoogleFonts.vt323(
-                          color: kTextDarkPrimary, fontSize: 18),
-                    );
-                  }
-                  // ⚠️ Téléchargement TERMINÉ : pas de relance. Le fichier
-                  // partiel a été renommé en fichier final, il n'y a plus rien
-                  // à reprendre — un « relancer » referait plusieurs Go depuis
-                  // zéro. Pour refaire un fichier : le supprimer, puis relancer
-                  // depuis sa fiche.
-                  if (_isDownloadComplete) return closeButton;
-                  // En ERREUR, en revanche, le `.part` est toujours là : la
-                  // relance reprend au même octet (`Range`).
-                  return Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.end,
-                    children: [
-                      _terminalButton(
-                        label: context.l10n.dlRestartUpper,
-                        color: kAccentSecondary,
-                        onPressed: () {
-                          final t = _lastTaskState;
-                          if (t == null) return;
-                          _downloadManager.restartTask(t);
-                        },
-                      ),
-                      closeButton,
-                    ],
-                  );
-                }
-                // D3A-07 — Pas d'ABORT pendant la finalisation : le transfert
-                // est fini, l'interrompre ne ferait que corrompre la copie.
-                if (_lastTaskState?.status == DownloadStatus.finalizing) {
-                  return closeButton;
-                }
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.end,
-                  children: [
-                    // §dlWatchdog — Plus de bouton RELANCER pendant le
-                    // transfert : le service surveille lui-même le débit et
-                    // reconnecte quand il décroche (`_maybeAutoRestart`).
-                    // Le bouton demandait à l'utilisateur de surveiller un
-                    // chiffre et d'appuyer au bon moment — c'est exactement ce
-                    // qu'une machine fait mieux. Il reste sur le cas ERREUR,
-                    // où plus aucun octet ne circule : là, rien ne repartirait
-                    // tout seul.
-                    _terminalButton(
-                      label: l10n.terminalAbortButton,
-                      color: kWarning,
-                      onPressed: () {
-                        setState(() => _isAborting = true);
-                        _downloadManager.cancelTask(widget.taskId);
-                      },
-                    ),
-                    closeButton,
-                  ],
-                );
-              }),
             ),
           ],
         ),

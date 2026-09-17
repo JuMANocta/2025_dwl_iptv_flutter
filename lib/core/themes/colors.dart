@@ -89,7 +89,12 @@ const Color kQualitySD  = kMatrixGreenDim;   // Vert Matrix dim
 /// sans tag). Blanc cassé fixe (décision user 2026-06-11) — remplace l'ancien
 /// gris terne, distinct des 4 couleurs qualité ci-dessus et lisible sur fond
 /// sombre sans crier.
-const Color kQualityUnknown = Color(0xFFF0EAD6);
+/// §lightTheme (2026-09-16) — ⚠️ DÉRIVÉE, contrairement aux quatre couleurs de
+/// qualité ci-dessus. Un blanc cassé sur le fond blanc du thème clair vaut
+/// 1,1:1 : la pastille d'une version sans tag de qualité n'était tout
+/// simplement plus là. Elle n'appartient pas au code couleur protégé — elle
+/// dit justement qu'il n'y a pas de code.
+Color get kQualityUnknown => themedOnSurface(const Color(0xFFF0EAD6));
 /// §camQuality — Rip de salle (HDTS/HDCAM/CAMRIP…). C'est bien une qualité,
 /// mais la PIRE : orange d'alerte, pour qu'on ne lance pas un cam par erreur
 /// en croyant prendre un flux normal.
@@ -117,20 +122,27 @@ Color platformBrandColor(String platform) {
 }
 
 // ── Langues ─────────────────────────────────────────────────────────────────
+// §lightTheme (2026-09-16) — Ces trois-là sont du TEXTE posé sur la surface de
+// l'app (pastilles « VF », « VOSTFR », « LEG. » de la fiche et des listes) :
+// elles passent donc par la dérivation, comme les accents. ⚠️ Mesuré sur la
+// planche du thème clair : le cyan valait 1,9:1 sur blanc, l'orange 2,3:1 —
+// lisibles seulement pour qui sait déjà ce qui est écrit. Leur valeur en thème
+// SOMBRE est inchangée (`themedOnSurface` rend la couleur brute).
 Color get kLangMulti     => kAccentPrimary;       // suit le thème
-const Color kLangVOSTFR  = Color(0xFFFF8C00);     // Orange
-const Color kLangVF      = kAetherSecondaryCyan;  // Cyan
+Color get kLangVOSTFR    => themedOnSurface(const Color(0xFFFF8C00)); // Orange
+Color get kLangVF        => themedOnSurface(kAetherSecondaryCyan);    // Cyan
 /// §legLang — Portugais sous-titré (`|LEG.|`). Volontairement proche du
 /// VOSTFR (même nature : version originale + sous-titres), en plus sourd pour
 /// rester distinguable d'un coup d'œil.
-const Color kLangLeg     = Color(0xFFB8860B);     // Or sombre
+Color get kLangLeg       => themedOnSurface(const Color(0xFFB8860B)); // Or sombre
 
 // ── Badges media type (player + fiches) ─────────────────────────────────────
 const Color kBadgeLive   = Color(0xFFE53935);       // Rouge direct
 const Color kBadgeReplay = Color(0xFFF9A825);       // Ambre replay
-const Color kBadgeMovie  = kAetherSecondaryCyan;    // Cyan film
+// §lightTheme — Mêmes pastilles de texte que les langues : dérivées.
+Color get kBadgeMovie      => themedOnSurface(kAetherSecondaryCyan); // Cyan film
 Color get kBadgeSeries     => kAccentPrimary;       // suit le thème
-const Color kBadgeFilmType = kAetherSecondaryCyan;  // Chip FILM dans filmographie
+Color get kBadgeFilmType   => themedOnSurface(kAetherSecondaryCyan); // Chip FILM
 Color get kBadgeSeriesType => kAccentPrimary;       // suit le thème
 
 // ── Statuts / alertes ────────────────────────────────────────────────────────

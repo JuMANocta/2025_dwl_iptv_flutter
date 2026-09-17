@@ -93,6 +93,14 @@ String playbackErrorMessage({
     case 'ERROR_CODE_DECODER_INIT_FAILED':
     case 'ERROR_CODE_DECODER_QUERY_FAILED':
       return L10n.current.perrDecoderInit;
+    // §tvDecoderReclaim (2026-09-12, sur la TV réelle) — le système a REPRIS le
+    // décodeur : une autre application l'a demandé, ou le pipeline vidéo n'en
+    // avait plus à donner. ⚠️ Sans ce `case`, le repli par préfixe
+    // `ERROR_CODE_DECOD` répondait « Échec du décodage vidéo » : on accusait le
+    // flux alors qu'il est intact (Media3 joint `format_supported=YES`), et le
+    // seul geste utile — fermer les autres applications — n'était pas dit.
+    case 'ERROR_CODE_DECODING_RESOURCES_RECLAIMED':
+      return L10n.current.perrDecoderReclaimed;
     case 'ERROR_CODE_DECODING_FAILED':
       return L10n.current.perrDecodingFailed;
     case 'ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES':

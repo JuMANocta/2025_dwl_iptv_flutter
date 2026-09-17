@@ -254,6 +254,24 @@ class VideoPlayerMethodChannel {
     }
   }
 
+  /// §engineVendor patch 26 (§bgAudio) — Active ou coupe la piste VIDÉO du
+  /// lecteur (`setTrackTypeDisabled(VIDEO)`), le son continuant. Écran
+  /// éteint, le rendu vidéo décodait sur une surface de substitution pour
+  /// personne : autant de batterie perdue pour du son seul. Renvoie `false`
+  /// si le natif n'a pas pu appliquer le réglage.
+  Future<bool> setVideoTrackEnabled(bool enabled) async {
+    try {
+      final ok = await _methodChannel.invokeMethod<bool>(
+        'setVideoTrackEnabled',
+        <String, Object>{'viewId': primaryPlatformViewId, 'enabled': enabled},
+      );
+      return ok ?? false;
+    } catch (e) {
+      debugPrint('Error calling setVideoTrackEnabled: $e');
+      return false;
+    }
+  }
+
   /// §engineVendor patch 7 — Coupe la lecture immédiatement (sortie du lecteur).
   Future<void> stopNow() async {
     try {
@@ -403,16 +421,17 @@ class VideoPlayerMethodChannel {
 
   /// Sets the subtitle track
   /// Pass a track with index -1 or use NativeVideoPlayerSubtitleTrack.off() to disable subtitles
+  ///
+  /// §engineVendor patch 22 — L'échec REMONTE (`PlatformException`). La
+  /// version amont l'avalait dans un `debugPrint` : l'appelant ne pouvait pas
+  /// distinguer une piste posée d'une écriture perdue, et mémorisait une
+  /// coupure imaginaire pour tous les titres suivants (R42/R43, point 6).
   Future<void> setSubtitleTrack(NativeVideoPlayerSubtitleTrack track) async {
-    try {
-      final Map<String, Object> params = <String, Object>{
-        'viewId': primaryPlatformViewId,
-        'track': track.toMap(),
-      };
-      await _methodChannel.invokeMethod<void>('setSubtitleTrack', params);
-    } catch (e) {
-      debugPrint('Error calling setSubtitleTrack: $e');
-    }
+    final Map<String, Object> params = <String, Object>{
+      'viewId': primaryPlatformViewId,
+      'track': track.toMap(),
+    };
+    await _methodChannel.invokeMethod<void>('setSubtitleTrack', params);
   }
 
   /// Gets the alternate audio tracks of the current media
@@ -439,15 +458,13 @@ class VideoPlayerMethodChannel {
   }
 
   /// Selects an alternate audio track
+  ///
+  /// §engineVendor patch 22 — L'échec REMONTE, comme pour [setSubtitleTrack].
   Future<void> setAudioTrack(NativeVideoPlayerAudioTrack track) async {
-    try {
-      await _methodChannel.invokeMethod<void>('setAudioTrack', <String, Object>{
-        'viewId': primaryPlatformViewId,
-        'track': track.toMap(),
-      });
-    } catch (e) {
-      debugPrint('Error calling setAudioTrack: $e');
-    }
+    await _methodChannel.invokeMethod<void>('setAudioTrack', <String, Object>{
+      'viewId': primaryPlatformViewId,
+      'track': track.toMap(),
+    });
   }
 
   /// Checks if Picture-in-Picture is available

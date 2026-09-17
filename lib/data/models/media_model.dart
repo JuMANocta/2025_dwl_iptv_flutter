@@ -146,6 +146,20 @@ class Media {
   /// `group-title` du fournisseur.
   final List<String> networks;
 
+  /// **Lot 9 (§tmdbPlus)** — Les plateformes où le titre se regarde VRAIMENT,
+  /// dans le pays de la langue d'affichage (`watch/providers`).
+  ///
+  /// ⚠️ C'est ce qui manquait aux FILMS : `networks` n'existe que pour les
+  /// séries, et le bloc « Disponible sur » disparaissait donc sur tout un
+  /// film — TMDB avait pourtant la donnée. Elle arrive par
+  /// `append_to_response`, **sans une requête de plus**.
+  ///
+  /// ⛔ Seuls les abonnements et le gratuit sont retenus (`flatrate`, `free`,
+  /// `ads`) : `rent` et `buy` ne répondent pas à « où puis-je le regarder »,
+  /// ils répondent à « où puis-je l'acheter », et les mélanger ferait
+  /// réapparaître le bruit que §tmdbInfo a retiré.
+  final List<String> watchProviders;
+
   /// Films : budget et recettes, en dollars. ⚠️ TMDB met **0** quand il ne sait
   /// pas — jamais `null` : ne rien afficher en dessous de 1.
   final int? budget;
@@ -198,13 +212,17 @@ class Media {
     this.numberOfEpisodes,
     this.nextEpisode,
     this.networks = const [],
+    this.watchProviders = const [],
     this.budget,
     this.revenue,
     this.theatricalDate,
     this.digitalDate,
   });
 
-  factory Media.fromJson(Map<String, dynamic> json) {
+  /// [watchRegion] — pays ISO 3166-1 (« FR », « US ») dont on veut les
+  /// plateformes. `null` : on n'en retient aucune (une plateforme d'un autre
+  /// pays serait un mensonge, cf. `watchProvidersFor`).
+  factory Media.fromJson(Map<String, dynamic> json, {String? watchRegion}) {
     final isMovie = json.containsKey('title');
 
     // 1. Extraction des acteurs du champ 'credits'
@@ -214,9 +232,18 @@ class Media {
         .take(5)
         .map((a) => a['name'] as String)
         .toList();
-    // Casting enrichi (id + rôle + photo) — 12 premiers pour le carrousel acteurs.
+    // Casting enrichi (id + rôle + photo) pour le carrousel acteurs.
+    //
+    // **Lot 9 (§tmdbPlus)** — Le plafond était de **12**, et il coupait au
+    // milieu des distributions : un film à gros casting perdait tout le monde
+    // après le douzième nom, sans que rien ne le dise. Il passe à 30, et c'est
+    // la fiche qui décide quoi MONTRER (12, puis « Voir plus »).
+    //
+    // ⚠️ Un plafond reste indispensable : `credits.cast` peut dépasser la
+    // centaine de noms, soit autant de cartes focalisables et de photos à
+    // charger dans une rangée de télécommande.
     final castMembersList = rawCast
-        .take(12)
+        .take(30)
         .where((a) => a['id'] != null && a['name'] != null)
         .map((a) => CastMember(
               id: a['id'] as int,
@@ -455,6 +482,7 @@ class Media {
       numberOfEpisodes: (json['number_of_episodes'] as num?)?.toInt(),
       nextEpisode: next,
       networks: networkNames,
+      watchProviders: watchProvidersFor(json, watchRegion),
       budget: (json['budget'] as num?)?.toInt(),
       revenue: (json['revenue'] as num?)?.toInt(),
       theatricalDate: theatrical,
@@ -463,4 +491,67 @@ class Media {
           (isMovie ? json['release_date'] : json['first_air_date']) as String?,
     );
   }
+}
+
+/// **Lot 9 (§tmdbPlus)** — Le pays dont il faut demander les plateformes, tiré
+/// de l'étiquette de langue TMDB (« fr-FR » → « FR », « en-US » → « US »).
+///
+/// ⚠️ `watch/providers` est rangé PAR PAYS : une étiquette sans pays
+/// (« fr », « ") ne désigne aucun catalogue, et prendre le premier venu
+/// annoncerait Hulu à quelqu'un en France. On rend alors `null`, et le bloc
+/// disparaît — ne rien dire vaut mieux que dire faux.
+String? watchRegionForLanguageTag(String? tag) {
+  if (tag == null) return null;
+  final List<String> parts = tag.split(RegExp(r'[-_]'));
+  if (parts.length < 2) return null;
+  final String region = parts[1].trim().toUpperCase();
+  return region.length == 2 ? region : null;
+}
+
+/// **Lot 9 (§tmdbPlus)** — Les plateformes d'abonnement / gratuites de
+/// [region] dans une réponse `append_to_response=watch/providers`.
+///
+/// La réponse a la forme `{"watch/providers": {"results": {"FR": {"flatrate":
+/// [{"provider_name": "Netflix", "display_priority": 3}, …]}}}}`.
+/// TMDB donne un ordre d'affichage par pays : on le respecte, c'est lui qui
+/// met les plateformes majeures devant.
+///
+/// ⚠️ Un même service peut apparaître dans DEUX familles (`flatrate` et `ads`
+/// pour un catalogue partiellement gratuit) : on déduplique en gardant la
+/// première occurrence, sinon la fiche afficherait deux fois « Pluto TV ».
+///
+/// Fonction pure : c'est elle qu'on teste.
+List<String> watchProvidersFor(Map<String, dynamic> json, String? region) {
+  if (region == null) return const <String>[];
+  final Object? block = json['watch/providers'];
+  if (block is! Map) return const <String>[];
+  final Object? results = block['results'];
+  if (results is! Map) return const <String>[];
+  final Object? country = results[region];
+  if (country is! Map) return const <String>[];
+
+  final List<Map<String, Object?>> rows = <Map<String, Object?>>[];
+  // ⛔ Ni `rent` ni `buy` : voir `Media.watchProviders`.
+  for (final String family in const <String>['flatrate', 'free', 'ads']) {
+    final Object? list = country[family];
+    if (list is! List) continue;
+    for (final Object? row in list) {
+      if (row is Map) rows.add(row.cast<String, Object?>());
+    }
+  }
+  rows.sort((a, b) {
+    final int pa = (a['display_priority'] as num?)?.toInt() ?? 1 << 30;
+    final int pb = (b['display_priority'] as num?)?.toInt() ?? 1 << 30;
+    return pa.compareTo(pb);
+  });
+
+  final List<String> names = <String>[];
+  for (final Map<String, Object?> row in rows) {
+    final Object? name = row['provider_name'];
+    if (name is! String) continue;
+    final String trimmed = name.trim();
+    if (trimmed.isEmpty || names.contains(trimmed)) continue;
+    names.add(trimmed);
+  }
+  return names;
 }

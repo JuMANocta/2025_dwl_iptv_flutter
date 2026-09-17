@@ -3,24 +3,45 @@ import 'package:intl/intl.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_ext.dart';
 
-/// Taille d'un fichier, dans la langue de l'écran.
+/// Taille d'un fichier, dans la langue de l'écran. **Le seul formateur de
+/// tailles de l'app.**
 ///
 /// Revue 2026-09-11, D1B-19 — Écrivait « B / KB / MB / GB » en dur, avec un
 /// point décimal : en français, la tuile de téléchargement affichait
 /// « 1.50 GB » pendant que l'Optimisation disait « 12.3 Mo ». Les unités
-/// passent désormais par les MÊMES clés que `StorageJanitor.humanBytes`
-/// (`size*`), et le séparateur décimal suit la langue (« 1,50 Go »).
+/// passent désormais par les clés `size*`, et le séparateur décimal suit la
+/// langue (« 1,50 Go »).
+///
+/// R8 (2026-09-16) — ⚠️ Il en restait DEUX : `StorageJanitor.humanBytes`
+/// écrivait sa propre arithmétique avec `toStringAsFixed`, dont le séparateur
+/// est **toujours** le point, quelle que soit la langue — « 12.3 Mo » sur la
+/// page Optimisation contre « 1,50 Go » sur une tuile de téléchargement, dans
+/// la même application et parfois sur le même écran. `humanBytes` délègue
+/// désormais ici ; ⛔ ne pas recréer un second formateur « juste pour cet
+/// écran-là ».
+///
+/// La précision suit l'unité, comme le faisait `humanBytes` : un chiffre rond
+/// se lit, « 512,00 ko » et « 0,0 Mo » non.
+///   - sous le kilooctet : des octets entiers, au singulier quand il le faut
+///     (« 0 octet », et non « 0 octets ») ;
+///   - sous le mégaoctet : des kilooctets entiers (« 300 ko ») — ⚠️ un cache
+///     de 300 Ko affiché « 0,0 Mo » disait « il n'y a rien à récupérer » ;
+///   - sous le gigaoctet : une décimale (« 12,3 Mo ») ;
+///   - au-delà : deux (« 1,50 Go »).
 ///
 /// ⚠️ `L10n.current` : ne JAMAIS appeler cette fonction dans un isolate
 /// (§isolateLeak). [formatCount], lui, reste pur et utilisable partout.
 String formatFileSize(int bytes, [AppLocalizations? l10n]) {
   final AppLocalizations l = l10n ?? L10n.current;
-  if (bytes < 1024) return l.sizeBytes('${bytes < 0 ? 0 : bytes}');
-  final NumberFormat two = NumberFormat('0.00', l.localeName);
+  final int b = bytes < 0 ? 0 : bytes;
   const int k = 1024;
-  if (bytes < k * k) return l.sizeKilobytes(two.format(bytes / k));
-  if (bytes < k * k * k) return l.sizeMegabytes(two.format(bytes / (k * k)));
-  return l.sizeGigabytes(two.format(bytes / (k * k * k)));
+  if (b < k) return l.sizeBytes(b);
+  String fixed(double v, int digits) =>
+      NumberFormat(digits == 0 ? '0' : '0.${'0' * digits}', l.localeName)
+          .format(v);
+  if (b < k * k) return l.sizeKilobytes(fixed(b / k, 0));
+  if (b < k * k * k) return l.sizeMegabytes(fixed(b / (k * k), 1));
+  return l.sizeGigabytes(fixed(b / (k * k * k), 2));
 }
 
 /// §bootPercent — Séparateur de milliers : « 53 781 » se lit, « 53781 » non.

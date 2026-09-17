@@ -167,9 +167,51 @@ abstract final class DiagnosticLog {
     return _lines.toList().sublist(_lines.length - count);
   }
 
-  static void clear() {
+  /// Vide le journal — mémoire ET disque.
+  ///
+  /// R41 (2026-09-13) — ⚠️ **« Vider » n'effaçait que la moitié du journal.**
+  /// Le tampon mémoire partait et le fichier de la session COURANTE était
+  /// marqué à réécrire, mais `diagnostic_session_previous.log` restait intact
+  /// sur le disque — et la console continuait de le servir sur le réseau local
+  /// via `/logs.txt?session=previous`. Mesuré sur le S25 le 2026-09-13 : les
+  /// deux fichiers coexistaient après un « Vider », seul un `rm` faisait partir
+  /// le second. Depuis R35, on sait que ces journaux peuvent porter le jeton de
+  /// nos serveurs locaux : quelqu'un qui vide son journal en croyant l'effacer
+  /// gardait donc potentiellement un secret exposé sur son réseau.
+  ///
+  /// Rend `true` si le disque est propre au retour, `false` si un fichier a
+  /// résisté — et ce booléen va jusqu'à l'écran.
+  ///
+  /// **F1** — Sur un ticket de sécurité, un succès affiché à tort est le pire
+  /// résultat : la fuite réseau est bien fermée à l'instant même (plus rien
+  /// n'est servi, cf. [_clearMemory]), mais elle est seulement DIFFÉRÉE — au
+  /// prochain lancement, la rotation relit le fichier survivant et la console
+  /// le ressert, pendant que la personne croit avoir effacé.
+  ///
+  /// **F5** — Il n'existe qu'UN seul chemin de vidage, et il est attendu de
+  /// bout en bout. Une variante synchrone a existé le temps d'une relecture :
+  /// sans appelant de production, elle ne pouvait qu'avaler le verdict — et
+  /// toute ligne non gardée ajoutée un jour dans la purge serait remontée à
+  /// `PlatformDispatcher.onError`, qui écrit `💀 (async)` dans le journal qu'on
+  /// vient précisément de vider.
+  static Future<bool> clearAll() async {
+    _clearMemory();
+    return _purgePersistedSessions();
+  }
+
+  /// Vide le tampon — et avec lui TOUT ce que la console sait servir.
+  ///
+  /// **F4a** — La copie mémoire de la session précédente est annulée ICI, pas
+  /// dans la purge disque : les deux chemins de lecture de la console
+  /// ([dump] et [previousSessionDump] / [awaitPreviousSession]) passent par la
+  /// mémoire, donc c'est cette moitié-là qui ferme réellement la fuite sur le
+  /// réseau. La subordonner à la précondition de la moitié DISQUE en ferait un
+  /// invariant suspendu à un autre fichier, au lieu d'être local et évident.
+  static void _clearMemory() {
     _lines.clear();
     _chars = 0;
+    _previousSessionText = null;
+    _previousSessionLines = 0;
     revision.value++;
     // §tvLogsPersist — Le fichier de la session courante doit refléter le
     // tampon vidé lui aussi, sinon un « Vider » suivi d'un kill ferait
@@ -179,7 +221,9 @@ abstract final class DiagnosticLog {
 
   @visibleForTesting
   static void resetForTest() {
-    clear();
+    // R41 — La moitié MÉMOIRE seulement : un test ne doit pas déclencher un
+    // effacement disque qui courrait avec son `tearDown`.
+    _clearMemory();
     keyTrace = false;
     // §tvLogsPersist — Si un test a appelé [install] (donc amorcé la
     // persistance), on coupe le Timer : sans ça il continuerait de tourner
@@ -291,7 +335,12 @@ abstract final class DiagnosticLog {
     }
   }
 
-  static void _startFlushTimer() {
+  /// [flushNow] — R41/F3 : un flush immédiat n'a de sens qu'après la ROTATION
+  /// (avoir quelque chose sur disque même si le process meurt aussitôt). Après
+  /// une PURGE, il ne ferait que recréer sur-le-champ le fichier qu'on vient
+  /// d'effacer, et son `.tmp` avec — du vide, mais du vide qui tient un
+  /// descripteur ouvert pendant qu'on annonce un disque propre.
+  static void _startFlushTimer({bool flushNow = true}) {
     _flushTimer?.cancel();
     // Timer d'une seconde et demie, annulable — jamais de travail par frame
     // (§bootCursorTimer a déjà coûté deux tiers du CPU d'un boot pour cette
@@ -300,7 +349,7 @@ abstract final class DiagnosticLog {
     // Un premier flush immédiat : si le process meurt tout de suite après la
     // rotation, on ne dépend pas d'un premier tour d'horloge pour avoir
     // quelque chose sur disque.
-    _flushIfDirty();
+    if (flushNow) _flushIfDirty();
   }
 
   /// revue 2026-09-11, D3B-12 — Une écriture est en cours : le tour d'horloge
@@ -308,11 +357,17 @@ abstract final class DiagnosticLog {
   /// concurrentes du même `.tmp`). `_dirty` reste vrai, rien n'est perdu.
   static bool _writing = false;
 
+  /// R41 — L'écriture en vol, pour qu'un effacement puisse l'ATTENDRE : elle a
+  /// photographié le tampon avant le vidage, et son renommage final recréerait
+  /// le fichier qu'on vient d'effacer.
+  static Future<void>? _writeInFlight;
+
   static void _flushIfDirty() {
     if (!_dirty || _writing) return;
     final File? f = _currentFile;
     if (f == null) return;
-    unawaited(_writeSnapshot(f));
+    _writeInFlight = _writeSnapshot(f);
+    unawaited(_writeInFlight!);
   }
 
   /// Recopie l'état ENTIER du tampon (déjà plafonné à `maxLines`/`maxChars`)
@@ -336,6 +391,12 @@ abstract final class DiagnosticLog {
     final String content = dump();
     final File tmp = File('${f.path}$_tmpSuffix');
     try {
+      // R41 — Point d'arrêt de TEST, `null` en production (voir
+      // [pauseBeforeWriteForTest]). Il s'insère APRÈS la photo du tampon et
+      // AVANT toute écriture : c'est le seul endroit d'où l'on peut reproduire
+      // à coup sûr l'interleaving dangereux du vidage.
+      final Future<void> Function()? pause = pauseBeforeWriteForTest;
+      if (pause != null) await pause();
       await tmp.writeAsString(content);
       await tmp.rename(f.path);
     } catch (e) {
@@ -347,6 +408,117 @@ abstract final class DiagnosticLog {
 
   /// Suffixe du fichier temporaire d'un flush (cf. [_writeSnapshot]).
   static const String _tmpSuffix = '.tmp';
+
+  /// R41 — Retient une écriture juste avant qu'elle ne touche au disque, pour
+  /// qu'un test puisse tenir la course « écriture en vol ». `null` partout
+  /// ailleurs : en production, [_writeSnapshot] ne fait qu'un test de nullité.
+  ///
+  /// ⚠️ **Pourquoi une couture, alors qu'un test de timing suffirait en
+  /// apparence.** Il ne suffit pas : mesuré, un test qui lance simplement une
+  /// grosse écriture puis un vidage produit l'interleaving BÉNIN — la purge
+  /// efface le `.tmp`, le renommage échoue (`errno 2`) et rien n'est
+  /// ressuscité. Il restait donc vert même en retirant la garde qu'il
+  /// prétendait tenir. Le cas DANGEREUX est l'autre : les trois suppressions
+  /// passent AVANT l'écriture, qui recrée ensuite son `.tmp` et le renomme sur
+  /// `current` — le fichier renaît avec le contenu d'avant le vidage.
+  @visibleForTesting
+  static Future<void> Function()? pauseBeforeWriteForTest;
+
+  /// R41 — Efface les DEUX fichiers de session, plus un `.tmp` en vol. Rend
+  /// `true` si le disque est propre, `false` si un fichier a résisté.
+  ///
+  /// ⚠️ **L'ordre des ATTENTES.**
+  ///   - L'amorçage d'abord : si la rotation n'a pas encore tourné (console
+  ///     ouverte très tôt après le boot), elle renommerait le fichier courant
+  ///     en « précédent » APRÈS notre effacement — elle ressusciterait
+  ///     exactement ce qu'on vient de détruire.
+  ///   - L'écriture en vol ensuite : [_writeSnapshot] a photographié le tampon
+  ///     AVANT le vidage, et son renommage recréerait le fichier courant avec
+  ///     l'ancien contenu.
+  ///
+  /// ⚠️ **F2 — L'ordre des SUPPRESSIONS : `previous` en premier.** Chaque
+  /// suppression est un point de suspension, et le geste que §tvLogsPersist
+  /// documente est précisément celui d'une personne qui TUE l'application.
+  /// Mourir entre deux suppressions en ayant commencé par `current` laissait
+  /// intact le seul fichier qui motive ce ticket — et le privait du renommage
+  /// qui l'aurait écrasé au démarrage suivant : le fichier qu'on voulait
+  /// détruire devenait plus durable qu'avant le correctif.
+  ///
+  /// ⚠️ **F4b — Pourquoi le garde-fou `_persistInit == null` est sûr.** Pas
+  /// « parce que ce sont des tests » : parce que [install] amorce la
+  /// persistance inconditionnellement et qu'il est appelé une seule fois, très
+  /// tôt (`main.dart:103`, unique appel du dépôt). Sans cet amorçage, un vidage
+  /// serait un no-op, puis [awaitPreviousSession] appellerait
+  /// [_ensurePersistence] : la rotation ferait RENAÎTRE `previous` à partir de
+  /// `current`, et le vidage aurait ressuscité ce qu'il devait détruire.
+  /// Déplacer [install] plus tard dans le démarrage casserait ce raisonnement.
+  static Future<bool> _purgePersistedSessions() async {
+    if (_persistInit == null) return true; // rien sur disque : rien à effacer
+    try {
+      await _ensurePersistence();
+      await _writeInFlight;
+    } catch (_) {}
+
+    // ⚠️ **Le second effacement mémoire n'est PAS un doublon de [_clearMemory].**
+    // La rotation qu'on vient d'attendre LIT le fichier « précédent » et
+    // repeuple ces deux champs : sans cette seconde annulation, un vidage
+    // déclenché avant la fin de l'amorçage rendait la session précédente à la
+    // console juste après l'avoir effacée. Mesuré — c'est le test « un vidage
+    // lancé AVANT la fin de la rotation ». L'annulation de [_clearMemory] reste
+    // nécessaire, elle : elle ferme la lecture réseau tout de suite, sans
+    // dépendre de ce qui se passe ici.
+    _previousSessionText = null;
+    _previousSessionLines = 0;
+
+    final File? current = _currentFile;
+    if (current == null) return true; // persistance indisponible : rien d'écrit
+
+    // F3 — Le timer ne doit pas réécrire un fichier pendant qu'on l'efface, et
+    // son rétablissement va dans un `finally` : sans ça, une sortie anticipée
+    // laisserait la persistance morte pour toute la session.
+    //
+    // ⚠️ **Ce qu'on observe après un vidage** : `current` est ABSENT au retour,
+    // et réapparaît vide au tour d'horloge suivant (≤ 1,5 s) ou à la première
+    // ligne écrite. Il n'est pas recréé sur-le-champ — c'est le sens du
+    // `flushNow: false` du `finally` : recréer immédiatement le fichier qu'on
+    // vient d'effacer, avec son `.tmp` et un descripteur ouvert, pendant qu'on
+    // s'apprête à annoncer un disque propre, serait un mensonge.
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    try {
+      bool toutEfface = true;
+      for (final File f in <File>[
+        File('${current.parent.path}/$_previousFileName'),
+        current,
+        File('${current.path}$_tmpSuffix'),
+      ]) {
+        try {
+          // Suppression INCONDITIONNELLE : un `exists()` préalable n'ajouterait
+          // qu'une fenêtre entre le test et l'effacement. « Déjà absent » est
+          // le résultat voulu, pas un échec.
+          await f.delete();
+        } on PathNotFoundException {
+          // Le fichier n'était pas là : c'est exactement ce qu'on voulait.
+        } catch (e) {
+          // ⚠️ L'exception ne dit pas l'état FINAL. Mesuré sous Windows : deux
+          // « Vider » rapprochés se croisent, et la seconde suppression du même
+          // fichier rend « accès refusé » (errno 5) pendant que la première est
+          // encore en attente — alors que le fichier part bel et bien. Seul le
+          // résultat compte : reste-t-il quelque chose à ce chemin ?
+          if (await FileSystemEntity.type(f.path) !=
+              FileSystemEntityType.notFound) {
+            toutEfface = false;
+            debugPrint('⚠️ R41 : effacement de ${f.uri.pathSegments.last} refusé ($e).');
+          }
+        }
+      }
+      return toutEfface;
+    } finally {
+      // F3 — Sans `flushNow: false`, on recréerait immédiatement le fichier
+      // qu'on vient d'effacer (vide, mais avec un `.tmp` en vol).
+      _startFlushTimer(flushNow: false);
+    }
+  }
 
   /// Attend que la rotation ait tourné (best effort, ne lève jamais) puis
   /// renvoie [previousSessionDump]. À utiliser côté console web : elle peut
@@ -374,6 +546,8 @@ abstract final class DiagnosticLog {
     _previousSessionLines = 0;
     _dirty = false;
     _writing = false;
+    _writeInFlight = null;
+    pauseBeforeWriteForTest = null;
   }
 
   /// revue 2026-09-11, D3B-12 — Amorce la persistance (rotation comprise)
@@ -384,11 +558,16 @@ abstract final class DiagnosticLog {
 
   /// revue 2026-09-11, D3B-12 — Un flush immédiat et ATTENDU (le vrai est
   /// déclenché par le `Timer`, jamais attendu).
+  ///
+  /// ⚠️ **F7** — Cette couture de test alimente un état de PRODUCTION :
+  /// `_writeInFlight` est lu par [_purgePersistedSessions], qui l'attend avant
+  /// d'effacer. C'est voulu — c'est ce qui rend la course « écriture en vol »
+  /// testable — mais ça veut dire qu'un changement ici touche le vidage réel.
   @visibleForTesting
   static Future<void> flushNowForTest() {
     final File? f = _currentFile;
     if (f == null || _writing) return Future<void>.value();
-    return _writeSnapshot(f);
+    return _writeInFlight = _writeSnapshot(f);
   }
 
   // ── Traceur de touches ───────────────────────────────────────────────────
@@ -618,8 +797,16 @@ final RegExp _cookieHeader = RegExp(
 /// Trois filets successifs :
 ///   1. toute URL `http(s)://…` passe par [redactUrl] (formes Xtream en path
 ///      `/movie/USER/PASS/…` **et** en query `?username=…&password=…`) ;
-///   2. un `username=` / `password=` isolé (hors URL) est masqué par regex ;
+///   2. un `username=` / `password=` isolé (hors URL) est masqué par regex —
+///      et, depuis §subOnline, tout nom de secret connu : `key`, `api_key`,
+///      `token`, `secret`… Le nom survit, la valeur part ;
 ///   3. §cookieScope — un en-tête `Cookie:` / `Set-Cookie:`.
+///
+/// ⚠️ **Les filets 1 et 2 se recouvrent volontairement** sur une URL à clé
+/// (`…?key=abc`) : `redactUrl` la masque parce qu'elle est une URL, la regex
+/// la masquerait même tronquée ou recopiée à la main dans une phrase. §subOnline
+/// a montré que le recouvrement n'était pas acquis — ni l'un ni l'autre ne
+/// connaissait `key=` avant, et une clé d'API partait en clair sur le LAN.
 ///
 /// ⚠️ **Pourquoi les cookies MAINTENANT** : un panel Xtream authentifie souvent
 /// par session, et un cookie de session vaut exactement ce que vaut le couple
@@ -628,12 +815,30 @@ final RegExp _cookieHeader = RegExp(
 /// une fuite de la même gravité qu'une URL non masquée. Invariant §tourFix : ce
 /// qu'on sait extraire d'une trace réseau, on doit savoir le masquer.
 String sanitizeForLog(String line) {
+  // Recette AVD du 2026-09-17 — `HttpException: …, uri = http://IP/live/play/<jeton>` :
+  // l'adresse d'une exception HTTP est celle de la REDIRECTION du fournisseur,
+  // dont le chemin EST le jeton de lecture — une forme qu'aucun prédicat de
+  // `redactUrl` ne peut deviner. Derrière « uri = », on ne garde que l'hôte.
   String out = line.replaceAllMapped(
+    RegExp(r'(\buri\s*=\s*https?://[^/\s]+)/\S*', caseSensitive: false),
+    (Match m) => '${m.group(1)}/***',
+  );
+  out = out.replaceAllMapped(
     RegExp(r'https?://[^\s"' r"'" r'<>\\]+'),
     (Match m) => redactUrl(m.group(0)),
   );
+  // §subOnline — Les noms LONGS d'abord (`access_token` avant `token`,
+  // `api_key` avant `key`) : dans une alternation, la première branche qui
+  // colle gagne, et c'est elle que `$1` réécrit. Ici les deux ordres
+  // donneraient le même résultat — `_` étant un caractère de mot, il n'y a pas
+  // de `\b` entre `api_` et `key`, donc la branche courte ne peut pas mordre
+  // au milieu du nom long — mais compter là-dessus, c'est être juste par
+  // accident : le jour où un nom se sépare par un tiret (`api-key`), l'ordre
+  // est la seule chose qui tienne encore.
   out = out.replaceAllMapped(
-    RegExp(r'\b(username|password|pass|pwd|token)\s*[=:]\s*([^\s,;&)\]}"]+)',
+    RegExp(
+        r'\b(username|password|pass|pwd|access_token|auth_token|token'
+        r'|api_key|apikey|key|secret)\s*[=:]\s*([^\s,;&)\]}"]+)',
         caseSensitive: false),
     (Match m) => '${m.group(1)}=***',
   );

@@ -72,6 +72,16 @@ class PlayerControls extends StatefulWidget {
   /// d'appeler `setRate` lui-même : une seule voie, un seul état.
   final ValueChanged<double> onSpeedChanged;
 
+  /// R17 — La hauteur RÉELLE de la barre du haut, mesurée à chaque mise en
+  /// page, pour que l'encart des stats vidéo se pose dessous au lieu de la
+  /// recouvrir.
+  ///
+  /// ⚠️ Mesurée, jamais devinée : cette barre grandit avec ce qu'elle porte
+  /// (nom de série, badges, synopsis sur deux lignes) ET avec la taille du
+  /// texte — le plancher `TvSmallTextScaler` du téléviseur (§tvSmallText)
+  /// suffit à faire mentir n'importe quelle constante.
+  final ValueChanged<double>? onTopBarHeight;
+
   const PlayerControls({
     super.key,
     required this.player,
@@ -95,6 +105,7 @@ class PlayerControls extends StatefulWidget {
     this.onEnterPip,
     this.onCast,
     this.castActive = false,
+    this.onTopBarHeight,
   });
 
   @override
@@ -283,7 +294,9 @@ class _PlayerControlsState extends State<PlayerControls> {
           top: 0,
           left: 0,
           right: 0,
-          child: SafeArea(
+          child: _MeasureHeight(
+            onHeight: widget.onTopBarHeight,
+            child: SafeArea(
             child: Row(
               // §watchContext — bloc d'infos potentiellement multi-lignes
               // (série + titre + badges + synopsis) → on aligne en haut pour
@@ -416,6 +429,7 @@ class _PlayerControlsState extends State<PlayerControls> {
                   ),
               ],
             ),
+          ),
           ),
         ),
 
@@ -802,5 +816,49 @@ class _LockButton extends StatelessWidget {
       tooltip: locked ? context.l10n.ctrlUnlock : context.l10n.ctrlLock,
       onPressed: onTap,
     );
+  }
+}
+
+/// R17 — Mesure la hauteur de son enfant et la rend à l'appelant, une fois la
+/// mise en page faite.
+///
+/// ⚠️ Le rappel part d'un `addPostFrameCallback` : appelé pendant la phase de
+/// layout, un `setState` chez le parent relancerait une mise en page dans la
+/// même frame (assertion en debug, saccade en release). ⚠️ Et il ne part que
+/// si la hauteur a CHANGÉ : la barre se reconstruit à chaque tick de position
+/// pendant la lecture, un rappel inconditionnel y ferait un rebuild par tick.
+class _MeasureHeight extends StatefulWidget {
+  final Widget child;
+  final ValueChanged<double>? onHeight;
+
+  const _MeasureHeight({required this.child, this.onHeight});
+
+  @override
+  State<_MeasureHeight> createState() => _MeasureHeightState();
+}
+
+class _MeasureHeightState extends State<_MeasureHeight> {
+  final GlobalKey _key = GlobalKey();
+  double? _last;
+
+  void _report() {
+    final cb = widget.onHeight;
+    if (cb == null) return;
+    final ctx = _key.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final double h = box.size.height;
+    if (_last != null && (_last! - h).abs() < 0.5) return;
+    _last = h;
+    cb(h);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _report();
+    });
+    return KeyedSubtree(key: _key, child: widget.child);
   }
 }

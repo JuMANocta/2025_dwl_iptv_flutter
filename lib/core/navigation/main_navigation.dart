@@ -134,8 +134,10 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
     // ⚠️ Revue 2026-09-11, D4A-01 : l'accueil reprenait son jeton juste après
     // chaque route poussée (lecteur compris), si bien que ce timer sortait
     // TOUJOURS ici — corrigé dans `HomePage.didChangeDependencies`.
-    // ⚠️ Reste ouvert : sur l'onglet Téléchargements, l'accueil (vivant dans
-    // l'`IndexedStack`) garde son jeton — rien n'y est déchargé.
+    // R3 (2026-09-16) — Second trou refermé : l'accueil prend désormais un
+    // jeton d'ONGLET (`PlaylistVisibility.holdTab`), qui ne compte que tant
+    // que son onglet est affiché (`setTabVisible` dans `_onTap`). Sur
+    // Téléchargements ou Recherche, le déchargement reprend donc son office.
     _idleUnloadTimer = Timer.periodic(_idleCheckInterval, (_) {
       final activeId = StreamAccountService.currentAccountIdNotifier.value ??
           widget.initialData.accountId;
@@ -221,6 +223,13 @@ class _MainNavigationState extends State<MainNavigation> with WindowListener {
     _tabFocus[_navIndex] = FocusSnapshot.capture();
     setState(() => _navIndex = i);
     _tabFocus[i]?.restore();
+    // R3 (D4A-01) — L'accueil vit dans l'`IndexedStack` : il n'est JAMAIS
+    // démonté, donc il gardait son jeton de visibilité sur l'onglet
+    // Téléchargements ou Recherche. Or ce jeton veut dire « quelqu'un REGARDE
+    // les listes », pas « la page existe encore » : `unloadIdleSecondaries`
+    // (§lazyUnload, profil Léger) ne se déclenchait donc jamais, et une box à
+    // 1 Go gardait des dizaines de milliers d'entrées en mémoire pour rien.
+    PlaylistVisibility.setTabVisible(i == 0);
   }
 
   /// Ouvre le hub Settings natif. §18 — Depuis que la navigation D-pad du hub

@@ -109,16 +109,21 @@ class _ReplaySheetState extends State<ReplaySheet> {
               // §dpadAlign — Cette liste n'avait aucun focusable : à la
               // télécommande, on ne voyait pas quel programme était sélectionné.
               // Les entrées sans archive restent non focusables (rien à lancer).
+              // §lightTheme — Le gris d'un élément DÉSACTIVÉ vient du thème :
+              // `Colors.grey` restait le même en clair et en sombre, et se
+              // confondait avec le fond clair au lieu de s'en détacher.
+              final Color disabled =
+                  Theme.of(context).colorScheme.onSurfaceVariant;
               final tile = ListTile(
                 leading: Icon(
                   p.hasArchive ? Icons.replay_circle_filled : Icons.replay,
-                  color: p.hasArchive ? null : Colors.grey,
+                  color: p.hasArchive ? null : disabled,
                 ),
                 title: Text(
                   p.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: p.hasArchive ? null : Colors.grey),
+                  style: TextStyle(color: p.hasArchive ? null : disabled),
                 ),
                 subtitle: Text('${p.startLabel}  •  ${p.durationLabel}'
                     '${p.hasArchive ? '' : '  • ${context.l10n.replayNotAvailable}'}'),
