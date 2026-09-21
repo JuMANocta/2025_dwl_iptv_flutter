@@ -78,6 +78,16 @@ const List<String> kAllRegionKeys = [
   'Legendado (sous-titré PT)',
 ];
 
+/// §settingsTidy (2026-09-21) — Les SEULES clés dont l'affichage français
+/// diffère de la clé, par décision de l'utilisateur : « c'est du brésilien ».
+/// La clé reste (persistée : réglage, cache des catégories, `.aether`) ; la
+/// page des langues ET la console web passent toutes deux par
+/// `regionDisplayLabel`, donc l'écran montre partout le même texte. Toute autre
+/// divergence reste un OUBLI.
+const Map<String, String> kFrRenamed = {
+  'Legendado (sous-titré PT)': 'Brésil — VO sous-titrée',
+};
+
 /// Noms propres et sigles : ils n'ont PAS de clé, et c'est délibéré.
 const List<String> kProperNouns = [
   'Netflix', 'Disney+', 'Paramount+', 'Prime Video', 'HBO', 'Apple TV+',
@@ -99,7 +109,7 @@ void main() {
       // D5A-15 — Les rangées virtuelles de l'accueil (liste ci-dessus) ET tout
       // ce que la cascade de m3u_filter.dart produit réellement.
       for (final key in {...kAllCategoryKeys, ..._producedLabels()}) {
-        expect(categoryDisplayLabel(key, fr), key,
+        expect(categoryDisplayLabel(key, fr), kFrRenamed[key] ?? key,
             reason: 'La rangée « $key » ne doit pas changer de nom en '
                 'français : la clé et la traduction fr DOIVENT coïncider.');
       }
@@ -107,7 +117,7 @@ void main() {
 
     test('chaque clé de région s\'affiche à l\'identique', () {
       for (final key in kAllRegionKeys) {
-        expect(regionDisplayLabel(key, fr), key,
+        expect(regionDisplayLabel(key, fr), kFrRenamed[key] ?? key,
             reason: 'La région « $key » ne doit pas changer de nom en '
                 'français — la page « Langues / régions » écrit la CLÉ dans '
                 'le `.aether`, l\'écran doit montrer la même chose.');

@@ -2,7 +2,7 @@ name: aetherStream
 description: AetherStream (multi-comptes, playlist M3U, lecture, téléchargement)
 publish_to: "none"
 
-version: 1.20.0+156
+version: 1.20.1+157
 
 environment:
   # D5A-09 (revue 2026-09-11, lot 9) — Le VRAI minimum. `>=3.0.0` mentait : le

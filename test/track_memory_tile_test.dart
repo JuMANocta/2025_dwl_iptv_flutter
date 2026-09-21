@@ -1,18 +1,22 @@
-import 'package:flutter/widgets.dart';
+import 'package:aetherStream/core/themes/app_theme_config.dart';
+import 'package:aetherStream/core/themes/themes.dart';
+import 'package:aetherStream/data/services/track_preferences_service.dart';
+import 'package:aetherStream/feature/search/m3u_filter.dart';
+import 'package:aetherStream/feature/settings/region_filter_page.dart';
+import 'package:aetherStream/feature/settings/track_memory_summary.dart';
+import 'package:aetherStream/l10n/app_localizations.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:aetherStream/data/services/track_preferences_service.dart';
-import 'package:aetherStream/feature/settings/track_memory_summary.dart';
-import 'package:aetherStream/l10n/app_localizations.dart';
-
-/// R43 (2026-09-16) — La tuile « Langues des pistes » ne se montre que
-/// lorsqu'elle SERT.
+/// R43 → §settingsTidy (2026-09-21) — La mémoire des pistes vit dans la page
+/// « Langues et régions », en tête, et plus dans une tuile des Paramètres.
 ///
-/// ⚠️ Le défaut corrigé : elle portait un chevron `>` — la promesse d'une
-/// sous-page — alors qu'elle n'ouvrait rien ; et dans l'état par défaut (aucune
-/// mémoire), un tap ne faisait rien non plus. Une tuile inerte qui promet un
-/// écran est pire qu'une tuile absente.
+/// Ce qui est tenu ici : la section dit TOUJOURS ce qui s'appliquera au
+/// prochain titre (« Automatique… » quand rien n'est retenu), et le geste
+/// « Revenir à l'automatique » n'existe que lorsqu'il SERT — l'ancienne tuile
+/// promettait une sous-page par son chevron et ne faisait rien sans mémoire.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -24,40 +28,81 @@ void main() {
     await TrackPreferencesService.reloadForTest();
   });
 
-  test('aucune mémoire : pas de tuile du tout', () {
-    expect(TrackPreferencesService.hasMemory, isFalse);
-    expect(trackMemoryTileSubtitle(fr), isNull);
-    expect(trackMemoryTileSubtitle(en), isNull);
+  group('résumé pur', () {
+    test('aucune mémoire : « Automatique »', () {
+      expect(TrackPreferencesService.hasMemory, isFalse);
+      expect(trackMemorySummary(fr), fr.settingsTracksAuto);
+      expect(trackMemorySummary(en), en.settingsTracksAuto);
+    });
+
+    test('une langue audio mémorisée se lit en clair', () async {
+      await TrackPreferencesService.setAudio('en');
+      expect(trackMemorySummary(fr), fr.settingsTracksAudioLang('Anglais'));
+    });
+
+    test('des sous-titres coupés comptent aussi', () async {
+      await TrackPreferencesService.setSubtitle(
+          TrackPreferencesService.kSubtitlesOff);
+      expect(trackMemorySummary(en), contains('Subtitles: off'));
+    });
+
+    test('revenir à l\'automatique rend « Automatique »', () async {
+      await TrackPreferencesService.setAudio('en');
+      await TrackPreferencesService.resetToAuto();
+      expect(trackMemorySummary(fr), fr.settingsTracksAuto);
+    });
   });
 
-  test('une langue audio mémorisée : le sous-titre dit le GESTE', () async {
-    await TrackPreferencesService.setAudio('en');
-    final String? text = trackMemoryTileSubtitle(fr);
-    expect(text, isNotNull);
-    // Ce qui est retenu…
-    expect(text, contains('Anglais'));
-    // …et ce qu'un tap va faire.
-    expect(text, contains('automatique'));
+  group('page Langues et régions', () {
+    Future<void> pumpPage(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          ...GlobalMaterialLocalizations.delegates,
+        ],
+        supportedLocales: const [Locale('fr'), Locale('en')],
+        theme: darkTheme(AppThemeConfig.defaults),
+        home: const RegionFilterPage(),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('sans mémoire : la section dit « Automatique », sans bouton',
+        (tester) async {
+      await pumpPage(tester);
+      expect(find.text(fr.settingsTracks.toUpperCase()), findsOneWidget);
+      expect(find.text(fr.settingsTracksAuto), findsOneWidget);
+      expect(find.text(fr.settingsTracksResetConfirm), findsNothing);
+      // La liste des régions suit, sous son propre titre.
+      expect(find.text(fr.regionHideSection.toUpperCase()), findsOneWidget);
+    });
+
+    testWidgets('avec une mémoire : le résumé ET le geste, qui suivent le service',
+        (tester) async {
+      await TrackPreferencesService.setAudio('en');
+      await pumpPage(tester);
+      expect(find.text(fr.settingsTracksAudioLang('Anglais')), findsOneWidget);
+      expect(find.text(fr.settingsTracksResetConfirm), findsOneWidget);
+
+      // Oublié ailleurs (lecteur) : la page suit par le notifieur.
+      await TrackPreferencesService.resetToAuto();
+      await tester.pumpAndSettle();
+      expect(find.text(fr.settingsTracksAuto), findsOneWidget);
+      expect(find.text(fr.settingsTracksResetConfirm), findsNothing);
+    });
   });
 
-  test('des sous-titres coupés comptent aussi', () async {
-    await TrackPreferencesService.setSubtitle(
-        TrackPreferencesService.kSubtitlesOff);
-    expect(trackMemoryTileSubtitle(en), isNotNull);
-    expect(trackMemoryTileSubtitle(en), contains('Subtitles: off'));
-  });
-
-  test('revenir à l\'automatique fait disparaître la tuile', () async {
-    await TrackPreferencesService.setAudio('en');
-    expect(trackMemoryTileSubtitle(fr), isNotNull);
-    await TrackPreferencesService.resetToAuto();
-    expect(trackMemoryTileSubtitle(fr), isNull);
-  });
-
-  test('le résumé pur, lui, ne change pas : il sert aussi dans le lecteur',
-      () async {
-    expect(trackMemorySummary(fr), fr.settingsTracksAuto);
-    await TrackPreferencesService.setAudio('en');
-    expect(trackMemorySummary(fr), fr.settingsTracksAudioLang('Anglais'));
+  test('« Brésil — VO sous-titrée » : clé inchangée, rangée juste après Brésil',
+      () {
+    // ⛔ La clé est persistée (réglage, cache, `.aether`) : elle ne bouge pas.
+    expect(kLegRegionLabel, 'Legendado (sous-titré PT)');
+    final int br = kHideableRegionLabels.indexOf('Brésil');
+    expect(kHideableRegionLabels[br + 1], kLegRegionLabel);
+    expect(fr.regLegendado, contains('Brésil'));
+    expect(en.regLegendado, contains('Brazil'));
   });
 }

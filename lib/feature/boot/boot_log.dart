@@ -5,6 +5,23 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/boot/boot_status.dart';
 import '../../core/utils/platform_tv.dart';
 
+/// §bootFit (2026-09-21) — Combien d'étapes TERMINÉES l'écran montre au plus :
+/// les plus récentes, comme un terminal qui défile ; les anciennes sortent par
+/// le haut.
+///
+/// ⚠️ Le défaut corrigé, vu sur l'AVD TV : au premier démarrage le journal
+/// empile six étapes (« téléchargement de la liste » en plus), puis le message
+/// « le chargement prend plus de temps » et le bouton « Entrer sans attendre ».
+/// Sur un écran TV de 1080 px, le bloc dépassait : le logo sortait par le haut,
+/// déjà collé au bord avec cinq lignes. Rien ne se perd : toutes les durées
+/// partent au journal de diagnostic (`BootStatus`, §bootLog).
+int maxVisibleBootSteps({required bool isTv}) => isTv ? 4 : 6;
+
+/// Les étapes terminées à afficher : les [max] dernières, dans l'ordre.
+/// Fonction pure, testée sans écran.
+List<T> visibleBootHistory<T>(List<T> done, {required int max}) =>
+    done.length <= max ? done : done.sublist(done.length - max);
+
 /// §bootLog — Le journal de démarrage.
 ///
 /// **Avant** : une seule ligne, remplacée à chaque étape. On ne voyait jamais le
@@ -37,11 +54,14 @@ class BootLog extends StatelessWidget {
           valueListenable: BootStatus.history,
           builder: (_, done, __) {
             if (done.isEmpty) return const SizedBox.shrink();
+            // §bootFit — Hauteur BORNÉE : seules les dernières étapes restent.
+            final List<BootStepDone> shown = visibleBootHistory(done,
+                max: maxVisibleBootSteps(isTv: isTv));
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final BootStepDone d in done)
+                for (final BootStepDone d in shown)
                   _LogLine(
                     prefix: '✓',
                     label: d.label,

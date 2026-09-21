@@ -152,20 +152,30 @@ object SharedPlayerManager {
                 (bufferConfig["bufferForPlaybackMs"] as? Number)?.toInt() ?: 2500
             val bufferForPlaybackAfterRebufferMs =
                 (bufferConfig["bufferForPlaybackAfterRebufferMs"] as? Number)?.toInt() ?: 5000
-            builder.setLoadControl(
-                DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(
-                        minBufferMs,
-                        maxBufferMs,
-                        bufferForPlaybackMs,
-                        bufferForPlaybackAfterRebufferMs
-                    )
-                    .build()
-            )
+            // Patch 27 (AetherStream, §bufferBudget) — a byte cap chosen by the
+            // app from the device's Java heap (Media3's computed default,
+            // ~125 MiB for video, can exceed a 128 MiB heap on low-end boxes),
+            // and a back buffer so short rewinds replay from memory.
+            val targetBufferBytes =
+                (bufferConfig["targetBufferBytes"] as? Number)?.toInt() ?: -1
+            val backBufferMs = (bufferConfig["backBufferMs"] as? Number)?.toInt() ?: 0
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    minBufferMs,
+                    maxBufferMs,
+                    bufferForPlaybackMs,
+                    bufferForPlaybackAfterRebufferMs
+                )
+                // The byte cap WINS over durations: never risk the heap.
+                .setPrioritizeTimeOverSizeThresholds(false)
+            if (targetBufferBytes > 0) loadControl.setTargetBufferBytes(targetBufferBytes)
+            if (backBufferMs > 0) loadControl.setBackBuffer(backBufferMs, true)
+            builder.setLoadControl(loadControl.build())
             NpLog.d(
                 TAG,
                 "Built player with buffer config: min=$minBufferMs max=$maxBufferMs " +
-                    "forPlayback=$bufferForPlaybackMs afterRebuffer=$bufferForPlaybackAfterRebufferMs"
+                    "forPlayback=$bufferForPlaybackMs afterRebuffer=$bufferForPlaybackAfterRebufferMs " +
+                    "targetBytes=$targetBufferBytes backBuffer=$backBufferMs"
             )
         }
         return builder.build()

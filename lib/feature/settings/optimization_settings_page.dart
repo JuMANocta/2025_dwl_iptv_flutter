@@ -614,7 +614,12 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               onTap: applyPreset,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                width: 104,
+                // 2026-09-21 — Largeur MINIMALE, plus fixe : sur TV, le
+                // plancher de texte (§tvSmallText) agrandit le sous-titre et
+                // la tuile de 104 le coupait (« Static hero, short… »). La
+                // rangée défile déjà : la tuile s'élargit à son texte.
+                constraints: const BoxConstraints(minWidth: 104),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
                   color: kAccentSecondary.withAlpha(active ? 40 : 16),

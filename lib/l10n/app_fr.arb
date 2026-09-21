@@ -58,7 +58,8 @@
   "aboutTitle": "À propos",
   "backupTitle": "Sauvegarde",
   "optimizationTitle": "Optimisation",
-  "regionFilterTitle": "Langues / régions",
+  "regionFilterTitle": "Langues et régions",
+  "regionHideSection": "Contenu à masquer",
   "themeSettingsTitle": "Personnalisation",
   "tmdbKeyTitle": "Affiches et infos TMDB",
   "xmltvTitle": "Guide des chaînes",
@@ -75,7 +76,7 @@
   "@settingsWebConsole": {
     "description": "Settings tile title"
   },
-  "settingsWebConsoleSub": "Comptes, sauvegarde, thème, EPG, TMDB + télécommande (QR)",
+  "settingsWebConsoleSub": "Tout régler depuis ton téléphone, même la télécommande",
   "@settingsWebConsoleSub": {
     "description": "Settings tile subtitle"
   },
@@ -87,7 +88,7 @@
   "@settingsAccounts": {
     "description": "Settings tile title"
   },
-  "settingsAccountsSub": "Providers, stats playlist & recharger",
+  "settingsAccountsSub": "Tes abonnements, ce qu'ils contiennent, les recharger",
   "@settingsAccountsSub": {
     "description": "Settings tile subtitle"
   },
@@ -103,7 +104,7 @@
   "@settingsXmltv": {
     "description": "Settings tile title"
   },
-  "settingsXmltvSub": "EPG XMLTV — TNT France",
+  "settingsXmltvSub": "Programmes des chaînes de la TNT",
   "@settingsXmltvSub": {
     "description": "Settings tile subtitle"
   },
@@ -111,11 +112,11 @@
   "@settingsSectionDisplay": {
     "description": "Settings section header"
   },
-  "settingsRegions": "Langues / régions",
+  "settingsRegions": "Langues et régions",
   "@settingsRegions": {
     "description": "Settings tile title"
   },
-  "settingsRegionsSub": "Masquer le contenu étranger (réduit la mémoire)",
+  "settingsRegionsSub": "Pistes retenues, contenu étranger à masquer",
   "@settingsRegionsSub": {
     "description": "Settings tile subtitle"
   },
@@ -123,7 +124,7 @@
   "@settingsTheme": {
     "description": "Settings tile title"
   },
-  "settingsThemeSub": "Thème, couleurs, effets cyberpunk",
+  "settingsThemeSub": "Thème, couleurs, clair ou sombre",
   "@settingsThemeSub": {
     "description": "Settings tile subtitle"
   },
@@ -131,7 +132,7 @@
   "@settingsOptimization": {
     "description": "Settings tile title"
   },
-  "settingsOptimizationSub": "Profils performance, hero, vignettes, mémoire",
+  "settingsOptimizationSub": "La fluidité selon ton appareil",
   "@settingsOptimizationSub": {
     "description": "Settings tile subtitle"
   },
@@ -691,10 +692,6 @@
       }
     }
   },
-  "settingsReloadAllSub": "Retélécharger toutes tes listes depuis leurs serveurs",
-  "@settingsReloadAllSub": {
-    "description": "Sous-titre de la tuile Tout recharger (TV)"
-  },
   "perfProfileConfort": "Complet",
   "@perfProfileConfort": {
     "description": "§deviceCaps"
@@ -955,7 +952,7 @@
   "perfFreeMemoryNothing": "Rien à libérer (un seul compte chargé)",
   "perfImageCacheCleared": "🧹 Cache images vidé",
   "perfSectionProfiles": "Profils",
-  "perfSectionHero": "Hero banner",
+  "perfSectionHero": "Bandeau d'accueil",
   "perfHeroSub": "Empilement de cartes en tête de la home (coûteux sur box faible)",
   "perfAutoRotateTitle": "Rotation automatique",
   "perfAutoRotateSub": "Fait défiler le hero toutes les 6 s (swipe manuel toujours actif)",
@@ -983,7 +980,7 @@
   },
   "perfUnloadSub": "Minutes sans consulter une liste secondaire avant de la sortir de la mémoire. « Jamais » (0) équivaut à garder toutes les listes.",
   "perfSectionMemory": "Mémoire & usage",
-  "perfImageRamLabel": "Images (RAM)",
+  "perfImageRamLabel": "Mémoire des images",
   "perfImageRamSub": "Mémoire vive réservée aux images déjà affichées. À n'ajuster que si la mémoire manque vraiment.",
   "perfFreeMemoryButton": "Libérer la mémoire des comptes secondaires",
   "perfClearImageCacheButton": "Vider le cache images",
@@ -1602,7 +1599,6 @@
   "settingsTracksResetQuestion": "Les prochains titres choisiront eux-mêmes leur langue audio et leurs sous-titres.",
   "settingsTracksResetConfirm": "Revenir à l'automatique",
   "settingsTracksResetDone": "Pistes automatiques rétablies",
-  "settingsTracksNothing": "Déjà automatique : rien à oublier.",
   "langFrench": "Français",
   "langEnglish": "Anglais",
   "langSpanish": "Espagnol",
@@ -1823,7 +1819,7 @@
   "bkExportLocation": "Disponible dans :\n/storage/emulated/0/Download/AetherStream/\n\nCopie ce fichier sur Drive, ton PC, ou un autre appareil pour le restaurer plus tard. N'oublie pas le mot de passe — il n'est nulle part stocké.",
   "themeResetTitle": "Réinitialiser le thème ?",
   "themeResetQuestion": "Toutes les couleurs et tous les effets reviennent aux valeurs par défaut.",
-  "themeSectionPresets": "Presets",
+  "themeSectionPresets": "Thèmes prêts à l'emploi",
   "themeSectionColors": "Couleurs",
   "themeColorPrimary": "Principale",
   "themeColorAccent": "Accent",
@@ -1834,7 +1830,7 @@
   "themeColorError": "Erreur",
   "themeColorSuccess": "Succès",
   "themeSectionEffects": "Effets",
-  "themeGlow": "Glow",
+  "themeGlow": "Halo lumineux",
   "themeRadius": "Arrondis",
   "themeSectionMode": "Mode",
   "themeSectionPreview": "Aperçu",
@@ -2507,7 +2503,10 @@
   "regExYugoslavia": "Ex-Yougoslavie",
   "regDominicanRepublic": "Rép. Dominicaine",
   "regOriginalNonFrench": "VO (non-FR)",
-  "regLegendado": "Legendado (sous-titré PT)",
+  "regLegendado": "Brésil — VO sous-titrée",
+  "regBrazilGroup": "Brésil (doublé, VO sous-titrée, nouveautés)",
+  "regEnglishGroup": "Anglais (Royaume-Uni, États-Unis)",
+  "regExYugoslaviaGroup": "Ex-Yougoslavie (Bosnie, Croatie)",
   "acctChipMain": "PRINCIPAL",
   "bootEnterManually": "Saisir manuellement",
   "bootConfigureWebConsole": "Configurer via Console web",
@@ -2703,7 +2702,6 @@
   "themePresetPhosphore": "Phosphore",
   "themePresetNordique": "Nordique",
   "themePresetMinimaliste": "Minimaliste",
-  "settingsTracksResetTile": "{memory} — revenir à l'automatique",
   "dlNoticeSizeOf": "{received} sur {total}",
   "dlNotifChannelDone": "Téléchargements terminés",
   "dlActionCast": "Diffuser",

@@ -434,29 +434,10 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
           title: Text(l10n.accountsTitle),
           elevation: 0,
           scrolledUnderElevation: 0,
-          // §reloadAll — Action de PAGE, pas de carte. Avec quatre comptes, le
-          // rechargement un par un demandait quatre descentes, quatre
-          // confirmations et quatre attentes ; sur TV, chaque aller-retour au
-          // D-pad le doublait. L'AppBar était libre, et le FAB déjà pris par
-          // « Ajouter ».
-          actions: [
-            FutureBuilder<List<StreamAccount>>(
-              future: _accountsFuture,
-              builder: (ctx, snap) {
-                final accounts = snap.data;
-                if (accounts == null || accounts.length < 2) {
-                  // Un seul compte : le bouton de sa carte suffit, une action
-                  // de page ferait doublon.
-                  return const SizedBox.shrink();
-                }
-                return IconButton(
-                  tooltip: ctx.l10n.reloadAllConfirm,
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _reloadingAll ? null : () => _reloadAll(accounts),
-                );
-              },
-            ),
-          ],
+          // §reloadAll — L'action « Recharger toutes les listes » vivait ici,
+          // en ↻ nu : personne ne devinait ce que rechargeait une icône sans
+          // mot. Elle est devenue un bouton libellé en tête de la liste, cf.
+          // `_buildReloadAllButton`.
         ),
         floatingActionButton: FutureBuilder<List<StreamAccount>>(
           future: _accountsFuture,
@@ -517,6 +498,10 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
               // qui met la dernière carte hors de portée du bouton.
               const double fabInset = 88; // 56 (FAB) + 16 marge + 16 respiration
               final bool isTv = PlatformTv.isTv;
+              // §reloadAll — Un seul compte : le bouton de sa carte suffit, une
+              // action de page ferait doublon.
+              final bool showReloadAll = accounts.length >= 2;
+              final int headerCount = showReloadAll ? 2 : 1;
               return Padding(
                 padding: EdgeInsets.only(bottom: isTv ? fabInset : 0),
                 child: RefreshIndicator(
@@ -526,10 +511,15 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                     // sa case de position avec les autres de la même route.
                     key: const PageStorageKey<String>('accounts_list'),
                     padding: EdgeInsets.fromLTRB(12, 16, 12, isTv ? 12 : 100),
-                    itemCount: accounts.length + 1, // +1 pour le bandeau info
+                    // +1 pour le bandeau info, +1 pour « Recharger toutes les
+                    // listes » à partir de deux comptes.
+                    itemCount: accounts.length + headerCount,
                     itemBuilder: (_, i) {
                       if (i == 0) return _buildPriorityBanner(accounts, cs);
-                      final acc = accounts[i - 1];
+                      if (showReloadAll && i == 1) {
+                        return _buildReloadAllButton(accounts);
+                      }
+                      final acc = accounts[i - headerCount];
                       final isPriority = _priorityAccountId == acc.id;
                       return _AccountCard(
                         // R22 (D4B-10) — La carte s'identifie par son COMPTE,
@@ -549,6 +539,42 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
               );
             },
           ),
+        ),
+      ),
+    );
+  }
+
+  /// §reloadAll — Action de PAGE, pas de carte : avec quatre comptes, le
+  /// rechargement un par un demandait quatre descentes, quatre confirmations
+  /// et quatre attentes ; sur TV, chaque aller-retour au D-pad le doublait.
+  ///
+  /// §dpadChildFocus — Élément de la liste, FRÈRE des cartes : jamais dans une
+  /// `FocusableCard`, sinon il n'est candidat nulle part au D-pad. Le bandeau
+  /// au-dessus n'a rien de focusable : c'est la première étape du corps, la
+  /// croix bas y mène depuis l'AppBar et en repart vers la première carte.
+  ///
+  /// §boundFocus — Pendant un rechargement, le bouton reste ACTIF : passer à
+  /// `onPressed: null` le retirerait alors qu'il a le focus, et le focus
+  /// sauterait ailleurs. `_reloadAll` ignore déjà un second appui.
+  Widget _buildReloadAllButton(List<StreamAccount> accounts) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: () => _reloadAll(accounts),
+          icon: _reloadingAll
+              ? SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: onColorFor(kAccentPrimary),
+                  ),
+                )
+              : const Icon(Icons.refresh),
+          label: Text(context.l10n.reloadAllTooltip),
+          style: aetherFilledStyle(kAccentPrimary),
         ),
       ),
     );

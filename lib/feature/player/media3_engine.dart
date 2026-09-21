@@ -5,7 +5,9 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/diagnostics/log_buffer.dart' show sanitizeForLog;
 import '../../core/settings/performance_settings_service.dart';
+import '../../data/services/device_caps_service.dart';
 import '../../data/services/track_preferences_service.dart';
+import 'buffer_policy.dart';
 import 'playback_engine.dart';
 import 'playback_error_message.dart';
 import 'player_error.dart';
@@ -260,16 +262,22 @@ class Media3Engine implements AetherPlaybackEngine {
   ///     produit la série de micro-coupures, bien plus pénible qu'une attente.
   static void _applyBufferProfile() {
     final seconds = PerformanceSettingsService.config.value.bufferSeconds;
+    // §bufferBudget — le plafond en OCTETS suit la mémoire mesurée de
+    // l'appareil, et « −10 s » repart de la mémoire (cf. buffer_policy.dart).
+    final int budget = bufferBudgetBytes(
+        memoryClassMb: DeviceCapsService.caps.value?.memory?.memoryClassMb);
+    final int back = backBufferMsFor(seconds);
     NativeVideoPlayerConfig.global = NativeVideoPlayerConfig(
       androidBufferConfig: NativeVideoPlayerAndroidBufferConfig(
         minBufferMs: seconds * 1000,
         maxBufferMs: seconds * 2 * 1000,
         bufferForPlaybackMs: 1500,
         bufferForPlaybackAfterRebufferMs: 5000,
+        targetBufferBytes: budget,
+        backBufferMs: back,
       ),
     );
-    debugPrint('🎚️ §playerBuffer — tampon ${seconds}s '
-        '(min ${seconds}s / max ${seconds * 2}s, départ 1,5s, reprise 5s)');
+    debugPrint('🎚️ §playerBuffer — tampon ${seconds}s (min ${seconds}s / max ${seconds * 2}s, départ 1,5s, reprise 5s) · plafond ${budget ~/ (1024 * 1024)} Mo · arrière ${back ~/ 1000}s');
   }
 
   /// ⚠️ Les abonnements se posent **avant** `initialize()` : le paquet le

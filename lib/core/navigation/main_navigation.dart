@@ -181,7 +181,12 @@ class _MainNavigationState extends State<MainNavigation> {
   final Map<int, FocusSnapshot> _tabFocus = <int, FocusSnapshot>{};
 
   void _onTap(int i) {
-    if (i == _navIndex) return;
+    if (i == _navIndex) {
+      // §homeTop (2026-09-21) — « Accueil » alors qu'on y est déjà : l'onglet
+      // visible glisse jusqu'en haut, comme dans les apps de streaming.
+      if (i == 0) HomePage.scrollToTopRequests.value++;
+      return;
+    }
     _tabFocus[_navIndex] = FocusSnapshot.capture();
     setState(() => _navIndex = i);
     _tabFocus[i]?.restore();
