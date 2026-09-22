@@ -295,7 +295,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get settingsBackupSub =>
-      'Exporter/importer comptes, TMDB, thème, favoris (.aether chiffré)';
+      'Exporter/importer comptes, réglages, thèmes, favoris (.aether chiffré)';
 
   @override
   String get settingsAbout => 'À propos';
@@ -1984,12 +1984,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get ctrlPip => 'Réduire en fenêtre';
 
   @override
-  String get ctrlOptions => 'Options de lecture';
-
-  @override
-  String get ctrlTracks => 'Pistes audio et sous-titres';
-
-  @override
   String get ctrlNextEpisode => 'Épisode suivant';
 
   @override
@@ -2000,12 +1994,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get ctrlUnlock => 'Déverrouiller';
-
-  @override
-  String get optNextEpisodeSub => 'Passer à l\'épisode suivant';
-
-  @override
-  String get optTracksSub => 'Langue audio · activer les sous-titres';
 
   @override
   String get optVideoInfo => 'Infos vidéo';
@@ -2035,9 +2023,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get ctrlBadgeReplay => 'REPLAY';
 
   @override
-  String get optTitle => 'Options';
-
-  @override
   String get optBackToVideo => 'Revenir à la vidéo';
 
   @override
@@ -2065,19 +2050,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get optBackToVideoSub => 'Ferme ce panneau, la lecture continue';
 
   @override
-  String get optNextEpisode => 'Épisode suivant';
-
-  @override
-  String get optTracksTitle => 'Pistes audio & sous-titres';
-
-  @override
   String get optSpeedTitle => 'Vitesse';
 
   @override
   String get optFitTitle => 'Format d\'image';
-
-  @override
-  String get optSpeedNormal => '1.0×  ·  Normal';
 
   @override
   String get castSheetDeviceFallback => 'le téléviseur';
@@ -2188,7 +2164,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get bkCreateSub =>
-      'Chiffre tes comptes, clé TMDB, thème, favoris et progression dans un fichier .aether.';
+      'Chiffre tes comptes, clés, thèmes, réglages, favoris et progression dans un fichier .aether.';
 
   @override
   String get bkEncrypting => 'Chiffrement en cours…';
@@ -2211,7 +2187,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get bkHowBody =>
-      '• Fichier `.aether` chiffré AES-256-GCM + PBKDF2 (100k itérations).\n• Mot de passe choisi par toi — l\'app ne le stocke nulle part.\n• Stockage : Download/AetherStream/ (survit à un uninstall).\n• Contenu : comptes IPTV, clé TMDB, thème, favoris, progression.\n• Exclus : téléchargements (trop lourds), historique de recherche.\n• L\'import écrase entièrement la config actuelle (action irréversible).';
+      '• Fichier `.aether` chiffré AES-256-GCM + PBKDF2 (100k itérations).\n• Mot de passe choisi par toi — l\'app ne le stocke nulle part.\n• Stockage : Download/AetherStream/ (survit à un uninstall).\n• Contenu : comptes IPTV, clés TMDB et sous-titres, thèmes, réglages, favoris, progression.\n• Exclus : téléchargements (trop lourds), historique de recherche.\n• L\'import écrase entièrement la config actuelle (action irréversible).';
 
   @override
   String get bkRestorePasswordTitle => 'Mot de passe de la sauvegarde';
@@ -2495,6 +2471,15 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get bkPartTheme => 'thème';
+
+  @override
+  String get bkPartSubtitleKey => 'clé des sous-titres en ligne';
+
+  @override
+  String get bkPartPlayerSettings => 'réglages du lecteur';
+
+  @override
+  String get bkPartTrackMemory => 'langues des pistes';
 
   @override
   String bkPartHiddenRegions(int count) {
@@ -3457,15 +3442,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get personRoleCamera => 'Image';
 
   @override
-  String get optSpeedCurrentNormal => 'Normale (1.0×)';
-
-  @override
-  String get tracksTitle => 'Pistes';
-
-  @override
-  String get tracksSubtitle => 'audio & sous-titres';
-
-  @override
   String get tracksAudio => 'Audio';
 
   @override
@@ -4062,12 +4038,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get optQualityFailed => 'Cette qualité n\'a pas pu être appliquée';
 
   @override
-  String get optStatsShow => 'Afficher l\'encart';
-
-  @override
-  String get optStatsShowSub => 'Ce que votre appareil décode vraiment';
-
-  @override
   String get detMoreBelow => 'Suite de la fiche plus bas';
 
   @override
@@ -4146,9 +4116,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get tracksOnlineSearching => 'Recherche…';
-
-  @override
-  String get tracksOnlineTitle => 'Sous-titres trouvés';
 
   @override
   String get tracksOnlineHearing => 'Pour sourds et malentendants';

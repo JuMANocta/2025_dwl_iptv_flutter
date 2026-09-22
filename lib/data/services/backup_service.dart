@@ -17,13 +17,17 @@ import '../../core/settings/performance_settings_service.dart';
 import '../../core/themes/app_theme_config.dart';
 import '../../core/themes/saved_themes_service.dart';
 import '../../core/themes/theme_service.dart';
+import '../../feature/player/video_fit.dart';
+import '../../feature/player/video_stats.dart';
 import '../models/stream_account.dart';
 import 'favorites_service.dart';
 import 'parsed_playlist_service.dart';
 import 'stream_account_service.dart';
+import 'subtitle_api_service.dart';
 import 'tmdb_api_service.dart';
 import 'tmdb_poster_cache.dart';
 import 'tmdb_service.dart';
+import 'track_preferences_service.dart';
 import 'watch_progress_service.dart';
 import '../../l10n/l10n_ext.dart';
 
@@ -39,9 +43,21 @@ import '../../l10n/l10n_ext.dart';
 /// Le `mac` est validé au déchiffrement : un mot de passe incorrect ou un
 /// fichier altéré lève une `FormatException`.
 ///
-/// **Contenu sauvegardé** : comptes IPTV, clé TMDB, thème custom, favoris,
-/// progression de lecture. Exclus : search history, dernière chaîne TV
-/// (éphémères) et téléchargements (trop volumineux).
+/// **Contenu sauvegardé** : comptes IPTV, clé TMDB, clé du fournisseur de
+/// sous-titres en ligne, thème (+ thèmes enregistrés), réglages
+/// d'optimisation, langues/régions masquées, langue des visuels, mémoire des
+/// pistes audio/sous-titres, format d'image et affichage des infos vidéo du
+/// lecteur, favoris, progression de lecture.
+///
+/// **Exclus, propre à l'APPAREIL ou au FLUX** (jamais portable d'un appareil
+/// à l'autre) : capacités mesurées du décodeur, qualité mesurée, santé de
+/// lecture (blocages par abonnement), caches (affiches TMDB, playlists),
+/// jeton de la console web. **Exclus, ÉPHÉMÈRE** : dernière chaîne regardée.
+/// **Exclus, VOLUMINEUX** : téléchargements. **Décidé avec l'utilisateur**
+/// (audit §playerPanel, 2026-09-22) : historique de recherche — propre à
+/// l'appareil ; alertes d'expiration déjà acquittées — un avertissement
+/// réaffiché après restauration est légitime (le compte reste proche de
+/// l'échéance).
 ///
 /// **Stockage** : `/storage/emulated/0/Download/AetherStream/backup_*.aether`
 /// via `media_store_plus`. Survit à l'uninstall, visible dans le file manager.
@@ -82,6 +98,35 @@ class BackupContent {
   /// Même règle que [hiddenRegions] : `null` sur une sauvegarde antérieure à
   /// ce champ → on ne touche PAS au réglage local de la cible.
   final String? visualLanguage;
+
+  /// §playerPanel backup (audit du 2026-09-22) — Clé du fournisseur de
+  /// sous-titres en ligne (Wyzie), même mécanisme que [tmdbKey] : `''` =
+  /// choix explicite « pas de clé » (efface à la restauration), `null` = clé
+  /// ABSENTE du fichier (sauvegarde antérieure à ce champ, on ne touche à
+  /// rien). ⚠️ Contrairement à [tmdbKey], l'export normalise toujours en
+  /// chaîne (jamais `null`) : c'est ce qui rend les deux cas distinguables.
+  final String? subtitleApiKey;
+
+  /// §playerPanel backup — Mémoire des pistes (§trackMemory), `{'audio': …,
+  /// 'subtitle': …}`. Le champ EXTÉRIEUR suit la règle habituelle (`null` =
+  /// sauvegarde antérieure, on ne touche à rien) ; une fois présent, chacune
+  /// de ses deux clés s'applique SÉPARÉMENT — `null` explicite = « automatique »
+  /// (un vrai choix, à restaurer), une valeur non reconnue = ignorée (la
+  /// mémoire locale de cette piste n'est pas touchée). ⛔ Restaurées SANS
+  /// validation, elles pourraient réintroduire un numéro de piste ou une
+  /// langue en sous-titre (R43) : `applyBackup` repasse par
+  /// `TrackPreferencesService.languageKeyFor`/`isValidSubtitleMemory`.
+  final Map<String, dynamic>? trackPrefs;
+
+  /// §playerPanel backup — Format d'image du lecteur (`VideoFitMode.name`).
+  /// Même règle que [hiddenRegions] : `null` = absent d'une sauvegarde
+  /// antérieure ; un nom inconnu (sauvegarde d'une version plus récente) est
+  /// ignoré à la restauration plutôt que de faire échouer quoi que ce soit.
+  final String? videoFit;
+
+  /// §playerPanel backup — « Infos vidéo » affichées ou non pendant la
+  /// lecture. `null` = absent d'une sauvegarde antérieure à ce champ.
+  final bool? videoStatsEnabled;
   final List<String> favorites;
   final Map<String, Map<String, dynamic>> watchProgress;
 
@@ -96,6 +141,10 @@ class BackupContent {
     this.perf,
     this.hiddenRegions,
     this.visualLanguage,
+    this.subtitleApiKey,
+    this.trackPrefs,
+    this.videoFit,
+    this.videoStatsEnabled,
     required this.favorites,
     required this.watchProgress,
   });
@@ -111,6 +160,10 @@ class BackupContent {
         'perf': perf,
         'hiddenRegions': hiddenRegions,
         'visualLanguage': visualLanguage,
+        'subtitleApiKey': subtitleApiKey,
+        'trackPrefs': trackPrefs,
+        'videoFit': videoFit,
+        'videoStatsEnabled': videoStatsEnabled,
         'favorites': favorites,
         'watchProgress': watchProgress,
       };
@@ -150,6 +203,24 @@ class BackupContent {
         // restauration qui échoue pour un champ accessoire.
         hiddenRegions: _readStringList(j['hiddenRegions']),
         visualLanguage: j['visualLanguage'] as String?,
+        // §playerPanel backup — `as String?` suffit : l'export normalise
+        // toujours en chaîne (jamais `null`), donc `null` ici ne peut venir
+        // que d'une clé ABSENTE (sauvegarde antérieure à ce champ).
+        subtitleApiKey: j['subtitleApiKey'] is String
+            ? j['subtitleApiKey'] as String
+            : null,
+        // ⚠️ Jamais `as Map<String, dynamic>?` direct sur une valeur qui
+        // pourrait être une chaîne (même piège que `hiddenRegions`) : on
+        // teste le type au lieu de le supposer.
+        trackPrefs: j['trackPrefs'] is Map
+            ? (j['trackPrefs'] as Map).cast<String, dynamic>()
+            : null,
+        // Type testé, jamais supposé : un champ accessoire mal typé ne doit
+        // pas faire échouer toute la restauration (il vaut alors `null`).
+        videoFit: j['videoFit'] is String ? j['videoFit'] as String : null,
+        videoStatsEnabled: j['videoStatsEnabled'] is bool
+            ? j['videoStatsEnabled'] as bool
+            : null,
         favorites: (j['favorites'] as List?)?.cast<String>() ?? const [],
         watchProgress: ((j['watchProgress'] as Map?)
                 ?.cast<String, Map<String, dynamic>>()) ??
@@ -163,6 +234,9 @@ class BackupContent {
       parts.add(L10n.current.bkPartAccounts(accounts.length));
     }
     if ((tmdbKey ?? '').isNotEmpty) parts.add(L10n.current.bkPartTmdbKey);
+    if ((subtitleApiKey ?? '').isNotEmpty) {
+      parts.add(L10n.current.bkPartSubtitleKey);
+    }
     if (theme != null) parts.add(L10n.current.bkPartTheme);
     final int saved = savedThemes?.length ?? 0;
     if (saved > 0) parts.add(L10n.current.bkPartSavedThemes(saved));
@@ -171,6 +245,16 @@ class BackupContent {
     if (regions > 0) {
       parts.add(L10n.current.bkPartHiddenRegions(regions));
     }
+    // §playerPanel backup — Une seule ligne de résumé pour les deux réglages
+    // du lecteur : personne ne veut lire « Format d'image » ET « Infos
+    // vidéo » séparément dans un résumé qui reste une phrase.
+    if (videoFit != null || videoStatsEnabled != null) {
+      parts.add(L10n.current.bkPartPlayerSettings);
+    }
+    final hasTrackMemory =
+        trackPrefs != null &&
+        (trackPrefs!['audio'] != null || trackPrefs!['subtitle'] != null);
+    if (hasTrackMemory) parts.add(L10n.current.bkPartTrackMemory);
     if (favorites.isNotEmpty) {
       parts.add(L10n.current.bkPartFavorites(favorites.length));
     }
@@ -352,6 +436,23 @@ class BackupService {
     }
     TmdbService.resetInstance();
 
+    // 2b. §playerPanel backup — Clé du fournisseur de sous-titres en ligne,
+    // MÊME schéma que la clé TMDB ci-dessus : `null` = clé ABSENTE du fichier
+    // (sauvegarde antérieure à ce champ, on ne touche à rien) ; `''` ou une
+    // clé = un choix EXPLICITE (efface ou remplace). Accessoire : son échec
+    // ne doit jamais faire capoter le reste de la restauration.
+    if (content.subtitleApiKey != null) {
+      try {
+        if (content.subtitleApiKey!.isNotEmpty) {
+          await SubtitleApiService.saveApiKey(content.subtitleApiKey!);
+        } else {
+          await SubtitleApiService.deleteApiKey();
+        }
+      } catch (e) {
+        debugPrint('⚠️ Clé des sous-titres en ligne ignorée (restauration) — $e');
+      }
+    }
+
     // 3. Thème
     if (content.theme != null) {
       try {
@@ -409,6 +510,61 @@ class BackupService {
       }
     }
 
+    // 3e. §playerPanel backup — Mémoire des pistes (§trackMemory). Le champ
+    // EXTÉRIEUR absent = sauvegarde antérieure, on ne touche à rien. Présent,
+    // ses deux clés s'appliquent CHACUNE séparément, et il faut distinguer
+    // trois cas — même règle que `visualLanguage` (« un code inconnu → on ne
+    // touche pas au réglage local ») étendue à un champ à deux valeurs :
+    //   - `null` explicite (JSON) → « automatique », un choix réel → appliqué.
+    //   - une valeur VALIDE (`languageKeyFor`/`isValidSubtitleMemory`) → appliquée.
+    //   - une valeur qui ne passe NI l'un ni l'autre (fichier bricolé, ou une
+    //     forme future que cette version ne connaît pas) → ignorée, la
+    //     mémoire locale de CETTE piste n'est pas touchée (⛔ jamais une valeur
+    //     brute non validée, R43 : ni un numéro de piste, ni une langue en
+    //     sous-titre).
+    final Map<String, dynamic>? trackPrefs = content.trackPrefs;
+    if (trackPrefs != null) {
+      try {
+        final Object? rawAudio = trackPrefs['audio'];
+        if (rawAudio == null) {
+          await TrackPreferencesService.setAudio(null);
+        } else if (rawAudio is String) {
+          final String? key = TrackPreferencesService.languageKeyFor(rawAudio);
+          if (key != null) await TrackPreferencesService.setAudio(key);
+        }
+        final Object? rawSub = trackPrefs['subtitle'];
+        if (rawSub == null) {
+          await TrackPreferencesService.setSubtitle(null);
+        } else if (rawSub is String &&
+            TrackPreferencesService.isValidSubtitleMemory(rawSub)) {
+          await TrackPreferencesService.setSubtitle(rawSub);
+        }
+      } catch (e) {
+        debugPrint('⚠️ Mémoire des pistes ignorée (restauration) — $e');
+      }
+    }
+
+    // 3f. §playerPanel backup — Format d'image du lecteur. Nom inconnu (ou
+    // champ absent d'un vieux fichier) → `fromName` rend `null`, on ne touche
+    // à rien.
+    final VideoFitMode? fit = VideoFitPreference.fromName(content.videoFit);
+    if (fit != null) {
+      try {
+        VideoFitPreference.set(fit);
+      } catch (e) {
+        debugPrint('⚠️ Format d\'image ignoré (restauration) — $e');
+      }
+    }
+
+    // 3g. §playerPanel backup — « Infos vidéo » affichées ou non.
+    if (content.videoStatsEnabled != null) {
+      try {
+        VideoStatsPreference.set(content.videoStatsEnabled!);
+      } catch (e) {
+        debugPrint('⚠️ Réglage des infos vidéo ignoré (restauration) — $e');
+      }
+    }
+
     // 4. Favoris
     await FavoritesService.replaceAll(content.favorites);
 
@@ -437,6 +593,11 @@ class BackupService {
     final accounts = await StreamAccountService.listAccounts();
     final currentAccount = await StreamAccountService.getCurrentAccount();
     final tmdbKey = await TmdbApiService.getApiKey();
+    // §playerPanel backup — Toujours normalisée en chaîne (jamais `null`) :
+    // c'est ce qui permet à `fromJson` de distinguer « pas de clé » (``, un
+    // choix) de « champ absent » (`null`, une vieille sauvegarde) à la
+    // lecture d'un fichier plus ancien que ce champ.
+    final subtitleApiKey = (await SubtitleApiService.getApiKey()) ?? '';
     final theme = ThemeService.config.value;
     // §themeStudio — ⚠️ Sans ça, exporter sans avoir ouvert la page des thèmes
     // depuis le démarrage écrirait une liste VIDE dans le `.aether`, ce qui
@@ -462,6 +623,16 @@ class BackupService {
       perf: PerformanceSettingsService.config.value.toJson(),
       hiddenRegions: HiddenRegionsService.hidden.toList(growable: false),
       visualLanguage: VisualLanguageService.value.name,
+      subtitleApiKey: subtitleApiKey,
+      // §playerPanel backup — `TrackPreferencesService.init()` a déjà tourné
+      // au boot (`main.dart`) : lecture SYNCHRONE des deux champs statiques,
+      // comme le fait le lecteur lui-même.
+      trackPrefs: <String, dynamic>{
+        'audio': TrackPreferencesService.audio,
+        'subtitle': TrackPreferencesService.subtitle,
+      },
+      videoFit: VideoFitPreference.current.name,
+      videoStatsEnabled: VideoStatsPreference.enabled,
       favorites: favorites,
       watchProgress: wpMap,
     );

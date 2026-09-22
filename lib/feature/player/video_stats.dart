@@ -307,8 +307,12 @@ class VideoStatsSnapshot {
 /// chaque lecture obligerait à replonger dans les menus entre deux essais.
 ///
 /// ⚠️ Comme `VideoFitPreference`, délibérément **hors de `PerfConfig`** : ce
-/// n'est ni un réglage de performance ni une préférence de fond, et ça n'a
-/// rien à faire dans les presets ni dans les backups `.aether`.
+/// n'est ni un réglage de performance ni une préférence de fond, ça n'a rien
+/// à faire dans les presets. §playerPanel (audit sauvegarde, 2026-09-22) :
+/// contrairement à ce que disait cette note, c'est bien un choix de la
+/// personne (§clientText : « Infos vidéo » affichées ou non) — il entre donc
+/// dans `.aether` comme les autres réglages accessoires (champ nullable,
+/// absent d'une vieille sauvegarde = on ne touche à rien).
 abstract final class VideoStatsPreference {
   static const _key = 'player_video_stats_v1';
 

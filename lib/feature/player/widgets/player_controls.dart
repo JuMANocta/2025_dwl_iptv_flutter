@@ -1,15 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../playback_engine.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import '../../../l10n/l10n_ext.dart';
 
 /// Overlay de contrôles du player.
 ///
-/// - Barre du haut : bouton retour + titre + spinner buffering
-/// - Barre du bas  : seek bar + temps + options + pistes + épisode suivant + lock
-///   (TV : la rangée d'options §tvPlayerPanel au-dessus de la seek bar)
+/// - Barre du haut : bouton retour + titre + Diffuser + PiP + spinner buffering
+/// - Barre du bas  : rangée d'options (§playerPanel, TV et téléphone) + seek
+///   bar + temps à gauche + cadenas à droite
 /// - Mode lock     : masque tout sauf un bouton cadenas pour déverrouiller
 class PlayerControls extends StatefulWidget {
   final AetherPlaybackEngine player;
@@ -34,12 +36,11 @@ class PlayerControls extends StatefulWidget {
   /// Le parent ([PlayerPage]) propage l'état aux [PlayerGestures] pour
   /// désactiver les gestes en mode lock.
   final ValueChanged<bool>? onLockChanged;
-  /// §1i — Si non-null, affiche un bouton "épisode suivant" qui appelle ce
-  /// callback (utilisé pour les séries depuis [DetailsPage]).
-  final VoidCallback? onNextEpisode;
-  /// §5 — Si non-null, affiche un bouton CC qui ouvre le sélecteur de pistes
-  /// audio / sous-titres (géré par [PlayerPage] pour suspendre l'auto-hide).
-  final VoidCallback? onShowTracks;
+
+  // §playerPanel (2026-09-22) — Les boutons ⚙ Options, CC Pistes et ⏭
+  // Épisode suivant ont quitté la barre du bas, avec `onShowOptions`,
+  // `onShowTracks` et `onNextEpisode` : ce sont des boutons de la rangée
+  // d'options ([optionBar]), la même au téléphone et sur TV.
 
   /// §pipPhone — Si non-null, affiche un bouton « Réduire en fenêtre »
   /// (téléphone seulement — `PlayerPage` passe `null` sur TV, en verrou, en
@@ -52,21 +53,10 @@ class PlayerControls extends StatefulWidget {
   final VoidCallback? onCast;
   final bool castActive;
 
-  /// §playerOptionsTouch — Ouvre le panneau d'options du lecteur (format
-  /// d'image, infos vidéo, pistes, vitesse…).
-  ///
-  /// ⚠️ Ce panneau n'avait qu'une porte D-pad (↑ / appui long sur la vidéo) :
-  /// au tactile, il était **inatteignable**, et avec lui tout ce qui n'a pas
-  /// de bouton inline — dont « Infos vidéo » (§videoStats). D'où ce bouton,
-  /// posé côté mobile uniquement : sur TV les boutons inline sont des
-  /// `GestureDetector` non focusables, un icône de plus ne ferait qu'encombrer
-  /// une barre qu'on ne peut pas atteindre.
-  final VoidCallback? onShowOptions;
-
   // §tvPlayerPanel (2026-09-21, demande de l'utilisateur) — Le badge « 1.0x »
   // de la barre est retiré, TV et téléphone : la vitesse se règle dans la
-  // rangée d'options (TV) et dans la feuille d'options (téléphone). `speed` et
-  // `onSpeedChanged` n'avaient pas d'autre lecteur.
+  // rangée d'options. `speed` et `onSpeedChanged` n'avaient pas d'autre
+  // lecteur.
 
   /// R17 — La hauteur RÉELLE de la barre du haut, mesurée à chaque mise en
   /// page, pour que l'encart des stats vidéo se pose dessous au lieu de la
@@ -78,15 +68,32 @@ class PlayerControls extends StatefulWidget {
   /// suffit à faire mentir n'importe quelle constante.
   final ValueChanged<double>? onTopBarHeight;
 
-  /// §tvPlayerPanel — La rangée d'options TV (`TvOptionBar`), posée au-dessus
-  /// de la barre de lecture. `null` sur téléphone : ses boutons restent ceux
-  /// de la barre, inchangés.
-  final Widget? tvBar;
+  /// §playerPanel — La hauteur RÉELLE du bloc bas (rangée d'options, barre de
+  /// lecture, temps et cadenas, marge du bas comprise), mesurée comme
+  /// [onTopBarHeight] : l'encart des stats vidéo s'arrête au-dessus au lieu de
+  /// recouvrir la rangée. Même raison de mesurer plutôt que deviner : la
+  /// rangée n'existe pas toujours (verrou, diffusion, encart de fin), et sa
+  /// hauteur suit la taille du texte.
+  final ValueChanged<double>? onBottomBarHeight;
 
-  /// §tvSeekBar — Calque posé sur la barre de progression (le repère TV),
-  /// construit avec la position et la durée COURANTES à chaque image. `null`
-  /// sur téléphone.
-  final Widget Function(Duration position, Duration duration)? tvSeekOverlay;
+  /// §tvPlayerPanel + §playerPanel — La rangée d'options du lecteur
+  /// (`PlayerOptionBar`), centrée au-dessus de la barre de lecture, TV et
+  /// téléphone. `null` = pas de rangée.
+  final Widget? optionBar;
+
+  /// §playerPanel — La barre du replay (timeshift, `PlayerReplayBar`), posée
+  /// DANS le bloc bas, au-dessus de la rangée d'options. Elle était posée par
+  /// le lecteur à 90 dp du bas, en dur : avec la rangée, le bloc bas en fait
+  /// ~140, et elle l'aurait chevauchée. Ici, elle est comptée dans la mesure
+  /// du bloc bas ([onBottomBarHeight] — l'encart des stats s'arrête donc
+  /// aussi au-dessus d'elle), et visible exactement quand les contrôles le
+  /// sont. `null` = pas de replay.
+  final Widget? replayBar;
+
+  /// §tvSeekBar — Calque posé sur la barre de progression (le repère de la
+  /// rangée d'options, qui ne se dessine qu'aux touches), construit avec la
+  /// position et la durée COURANTES à chaque image. `null` = pas de calque.
+  final Widget Function(Duration position, Duration duration)? seekOverlay;
 
   const PlayerControls({
     super.key,
@@ -103,15 +110,14 @@ class PlayerControls extends StatefulWidget {
     required this.onInteraction,
     this.onToggleFullScreen,
     this.onLockChanged,
-    this.onNextEpisode,
-    this.onShowTracks,
-    this.onShowOptions,
     this.onEnterPip,
     this.onCast,
     this.castActive = false,
     this.onTopBarHeight,
-    this.tvBar,
-    this.tvSeekOverlay,
+    this.onBottomBarHeight,
+    this.optionBar,
+    this.replayBar,
+    this.seekOverlay,
   });
 
   @override
@@ -393,9 +399,9 @@ class _PlayerControlsState extends State<PlayerControls> {
                       ),
                     ),
                   ),
-                // §pipPhone — Réduire en fenêtre. Placé ICI (barre du haut,
-                // comme ⚙) plutôt que dans le panneau d'options : c'est un
-                // geste de sortie, on ne va pas le chercher à deux niveaux.
+                // §pipPhone — Réduire en fenêtre. Placé ICI (barre du haut)
+                // plutôt que dans la rangée d'options : c'est un geste de
+                // sortie, on ne va pas le chercher à deux niveaux.
                 if (widget.onEnterPip != null)
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
@@ -430,31 +436,47 @@ class _PlayerControlsState extends State<PlayerControls> {
           ),
         ),
 
-        // Barre basse : seek + boutons.
+        // Barre basse : rangée d'options + seek + temps + cadenas.
         Positioned(
           bottom: 0,
           left: 0,
           right: 0,
-          child: SafeArea(
+          // §playerPanel — mesurée, pour borner l'encart des stats au-dessus.
+          child: _MeasureHeight(
+            onHeight: widget.onBottomBarHeight,
+            child: SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // §tvPlayerPanel — Les réglages, sélectionnables à la
-                  // télécommande ; leur liste s'ouvre au-dessus, dans l'image.
-                  if (widget.tvBar != null)
+                  // §playerPanel — Le replay (horaires du timeshift), tout en
+                  // haut du bloc : au-dessus de la rangée, jamais dessous.
+                  if (widget.replayBar != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: widget.replayBar!,
+                    ),
+                  // §tvPlayerPanel + §playerPanel — Les réglages, au doigt
+                  // comme à la télécommande ; leur liste s'ouvre au-dessus,
+                  // dans l'image. Centrés, sur les deux plateformes.
+                  if (widget.optionBar != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: widget.tvBar!,
+                        alignment: Alignment.center,
+                        child: widget.optionBar!,
                       ),
                     ),
                   // Seek bar avec buffer visible.
                   Stack(
                     alignment: Alignment.centerLeft,
-                    // §tvSeekBar — l'heure visée s'affiche AU-DESSUS du repère.
+                    // §tvSeekBar + §playerPanel — l'heure visée s'affiche À
+                    // CÔTÉ du repère, dans la hauteur de la barre, du côté
+                    // opposé à la lecture (`PlayerSeekMarker`) : plus
+                    // au-dessus, où elle recouvrait la rangée d'options.
+                    // `Clip.none` laisse le repère (22 dp) déborder une barre
+                    // plus mince que lui.
                     clipBehavior: Clip.none,
                     children: [
                       // Barre buffer (fond).
@@ -500,16 +522,16 @@ class _PlayerControlsState extends State<PlayerControls> {
                           },
                         ),
                       ),
-                      if (widget.tvSeekOverlay != null)
+                      if (widget.seekOverlay != null)
                         Positioned.fill(
                           child: IgnorePointer(
-                            child: widget.tvSeekOverlay!(_position, _duration),
+                            child: widget.seekOverlay!(_position, _duration),
                           ),
                         ),
                     ],
                   ),
 
-                  // Boutons + temps.
+                  // Temps à gauche, cadenas à droite.
                   Row(
                     children: [
                       // Temps courant / total.
@@ -532,93 +554,51 @@ class _PlayerControlsState extends State<PlayerControls> {
                         ),
                       ),
                       const Spacer(),
-                      // §playerOptionsTouch — Accès tactile au panneau
-                      // d'options (format d'image, infos vidéo…).
-                      if (widget.onShowOptions != null) ...[
-                        _TapTarget(
-                          tooltip: context.l10n.ctrlOptions,
-                          onTap: () {
-                            widget.onShowOptions?.call();
-                            widget.onInteraction();
-                          },
-                          child: const Icon(
-                            Icons.tune_rounded,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      // §5 — Bouton CC : ouvre le sélecteur de pistes audio /
-                      // sous-titres (PlayerPage suspend l'auto-hide pendant).
-                      if (widget.onShowTracks != null) ...[
-                        _TapTarget(
-                          tooltip: context.l10n.ctrlTracks,
-                          onTap: () {
-                            widget.onShowTracks?.call();
-                            widget.onInteraction();
-                          },
-                          child: const Icon(
-                            Icons.closed_caption_rounded,
-                            color: Colors.white,
-                            size: 26,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                      ],
                       // §playerReach — ⚠️ Play/Pause N'EST PLUS ICI : il est
                       // au CENTRE de l'écran (voir `_CenterPlayButton`).
                       // Signalement du 2026-09-08 : « le bouton suivant est
                       // vraiment pas au bon endroit, un miss click et hop ça
                       // change d'épisode ». Les deux étaient voisins à 4 px —
                       // le geste le PLUS fréquent du lecteur collé au SEUL
-                      // geste destructif de la barre (changer d'épisode n'a ni
-                      // confirmation ni retour arrière). Les séparer d'un
-                      // écran entier vaut mieux que les espacer de 20 px.
-                      const SizedBox(width: 12),
-                      // §1i — Bouton épisode suivant (séries uniquement).
-                      if (widget.onNextEpisode != null) ...[
-                        _TapTarget(
-                          tooltip: context.l10n.ctrlNextEpisode,
+                      // geste destructif de la barre. §playerPanel : ⏭ est
+                      // désormais un bouton de la rangée d'options, loin du
+                      // centre ; ⚙ et CC l'y ont suivi.
+                      // Bouton lock — TÉLÉPHONE seulement : il protège des
+                      // touchers involontaires. Sur TV et Windows desktop il n'y a pas
+                      // d'écran tactile mobile.
+                      if (!PlatformTv.isTv && !Platform.isWindows) ...[
+                        _LockButton(
+                          locked: false,
                           onTap: () {
-                            widget.onNextEpisode?.call();
+                            setState(() => _locked = true);
+                            widget.onLockChanged?.call(true);
                             widget.onInteraction();
                           },
-                          child: const Icon(
-                            Icons.skip_next,
-                            color: Colors.white,
-                            size: 30,
-                          ),
                         ),
-                        const SizedBox(width: 4),
                       ],
-                      const SizedBox(width: 8),
                       // Bouton Fullscreen (Windows/Desktop).
-                      if (widget.onToggleFullScreen != null)
+                      if (widget.onToggleFullScreen != null) ...[
+                        const SizedBox(width: 8),
                         IconButton(
                           icon: Icon(
-                            widget.isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                            widget.isFullScreen
+                                ? Icons.fullscreen_exit
+                                : Icons.fullscreen,
                             color: Colors.white70,
                             size: 26,
                           ),
-                          tooltip: widget.isFullScreen ? 'Exit fullscreen' : 'Fullscreen',
+                          tooltip: widget.isFullScreen
+                              ? 'Exit fullscreen'
+                              : 'Fullscreen',
                           onPressed: widget.onToggleFullScreen,
                         ),
-                      const SizedBox(width: 8),
-                      // Bouton lock.
-                      _LockButton(
-                        locked: false,
-                        onTap: () {
-                          setState(() => _locked = true);
-                          widget.onLockChanged?.call(true);
-                          widget.onInteraction();
-                        },
-                      ),
+                      ],
                     ],
                   ),
                 ],
               ),
             ),
+          ),
           ),
         ),
       ],
