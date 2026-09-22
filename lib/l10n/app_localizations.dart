@@ -623,7 +623,7 @@ abstract class AppLocalizations {
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'Export/import accounts, TMDB, theme, favorites (encrypted .aether)'**
+  /// **'Export/import accounts, settings, themes, favorites (encrypted .aether)'**
   String get settingsBackupSub;
 
   /// Settings tile title
@@ -3392,18 +3392,6 @@ abstract class AppLocalizations {
   /// **'Shrink to a window'**
   String get ctrlPip;
 
-  /// No description provided for @ctrlOptions.
-  ///
-  /// In en, this message translates to:
-  /// **'Playback options'**
-  String get ctrlOptions;
-
-  /// No description provided for @ctrlTracks.
-  ///
-  /// In en, this message translates to:
-  /// **'Audio and subtitle tracks'**
-  String get ctrlTracks;
-
   /// No description provided for @ctrlNextEpisode.
   ///
   /// In en, this message translates to:
@@ -3427,18 +3415,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unlock'**
   String get ctrlUnlock;
-
-  /// No description provided for @optNextEpisodeSub.
-  ///
-  /// In en, this message translates to:
-  /// **'Skip to the next episode'**
-  String get optNextEpisodeSub;
-
-  /// No description provided for @optTracksSub.
-  ///
-  /// In en, this message translates to:
-  /// **'Audio language · turn subtitles on'**
-  String get optTracksSub;
 
   /// No description provided for @optVideoInfo.
   ///
@@ -3494,12 +3470,6 @@ abstract class AppLocalizations {
   /// **'REPLAY'**
   String get ctrlBadgeReplay;
 
-  /// No description provided for @optTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Options'**
-  String get optTitle;
-
   /// No description provided for @optBackToVideo.
   ///
   /// In en, this message translates to:
@@ -3548,18 +3518,6 @@ abstract class AppLocalizations {
   /// **'Closes this panel, playback continues'**
   String get optBackToVideoSub;
 
-  /// No description provided for @optNextEpisode.
-  ///
-  /// In en, this message translates to:
-  /// **'Next episode'**
-  String get optNextEpisode;
-
-  /// No description provided for @optTracksTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Audio & subtitle tracks'**
-  String get optTracksTitle;
-
   /// No description provided for @optSpeedTitle.
   ///
   /// In en, this message translates to:
@@ -3571,12 +3529,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Picture format'**
   String get optFitTitle;
-
-  /// No description provided for @optSpeedNormal.
-  ///
-  /// In en, this message translates to:
-  /// **'1.0×  ·  Normal'**
-  String get optSpeedNormal;
 
   /// No description provided for @castSheetDeviceFallback.
   ///
@@ -3773,7 +3725,7 @@ abstract class AppLocalizations {
   /// No description provided for @bkCreateSub.
   ///
   /// In en, this message translates to:
-  /// **'Encrypts your accounts, TMDB key, theme, favorites and progress into a .aether file.'**
+  /// **'Encrypts your accounts, keys, themes, settings, favorites and progress into a .aether file.'**
   String get bkCreateSub;
 
   /// No description provided for @bkEncrypting.
@@ -3815,7 +3767,7 @@ abstract class AppLocalizations {
   /// No description provided for @bkHowBody.
   ///
   /// In en, this message translates to:
-  /// **'• `.aether` file encrypted with AES-256-GCM + PBKDF2 (100k iterations).\n• Password chosen by you — the app stores it nowhere.\n• Location: Download/AetherStream/ (survives an uninstall).\n• Contents: IPTV accounts, TMDB key, theme, favorites, progress.\n• Excluded: downloads (too heavy), search history.\n• Importing overwrites the whole current configuration (irreversible).'**
+  /// **'• `.aether` file encrypted with AES-256-GCM + PBKDF2 (100k iterations).\n• Password chosen by you — the app stores it nowhere.\n• Location: Download/AetherStream/ (survives an uninstall).\n• Contents: IPTV accounts, TMDB and subtitle keys, themes, settings, favorites, progress.\n• Excluded: downloads (too heavy), search history.\n• Importing overwrites the whole current configuration (irreversible).'**
   String get bkHowBody;
 
   /// No description provided for @bkRestorePasswordTitle.
@@ -4309,6 +4261,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'theme'**
   String get bkPartTheme;
+
+  /// No description provided for @bkPartSubtitleKey.
+  ///
+  /// In en, this message translates to:
+  /// **'online subtitles key'**
+  String get bkPartSubtitleKey;
+
+  /// No description provided for @bkPartPlayerSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'player settings'**
+  String get bkPartPlayerSettings;
+
+  /// No description provided for @bkPartTrackMemory.
+  ///
+  /// In en, this message translates to:
+  /// **'track languages'**
+  String get bkPartTrackMemory;
 
   /// No description provided for @bkPartHiddenRegions.
   ///
@@ -5954,24 +5924,6 @@ abstract class AppLocalizations {
   /// **'Cinematography'**
   String get personRoleCamera;
 
-  /// No description provided for @optSpeedCurrentNormal.
-  ///
-  /// In en, this message translates to:
-  /// **'Normal (1.0×)'**
-  String get optSpeedCurrentNormal;
-
-  /// No description provided for @tracksTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Tracks'**
-  String get tracksTitle;
-
-  /// No description provided for @tracksSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'audio & subtitles'**
-  String get tracksSubtitle;
-
   /// No description provided for @tracksAudio.
   ///
   /// In en, this message translates to:
@@ -6907,18 +6859,6 @@ abstract class AppLocalizations {
   /// **'This quality could not be applied'**
   String get optQualityFailed;
 
-  /// No description provided for @optStatsShow.
-  ///
-  /// In en, this message translates to:
-  /// **'Show the panel'**
-  String get optStatsShow;
-
-  /// No description provided for @optStatsShowSub.
-  ///
-  /// In en, this message translates to:
-  /// **'What your device really decodes'**
-  String get optStatsShowSub;
-
   /// No description provided for @detMoreBelow.
   ///
   /// In en, this message translates to:
@@ -7068,12 +7008,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Looking…'**
   String get tracksOnlineSearching;
-
-  /// No description provided for @tracksOnlineTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Subtitles found'**
-  String get tracksOnlineTitle;
 
   /// No description provided for @tracksOnlineHearing.
   ///

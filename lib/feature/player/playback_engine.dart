@@ -9,7 +9,7 @@ import 'video_stats.dart';
 ///
 /// `AetherPlayerController` exposait son `player` **nu**, et six fichiers
 /// plongeaient dedans (`player_page`, `player_controls`, `player_gestures`,
-/// `player_replay_bar`, `track_selector_sheet`, `video_stats`). Changer de
+/// `player_replay_bar`, `track_choices`, `video_stats`). Changer de
 /// moteur imposait donc de réécrire ces six fichiers — et la fuite la plus
 /// profonde était `video_stats.dart`, qui atteignait `player.platform` pour
 /// lire des propriétés **mpv**.

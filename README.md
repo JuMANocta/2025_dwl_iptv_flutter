@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.20.2+158-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.20.3+159-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -160,7 +160,7 @@ flutter build apk --release --target-platform android-arm,android-arm64
 flutter build apk --release -Pabi-x86=true
 ```
 
-Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1852 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
+Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1930 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
 
 ---
 
@@ -192,7 +192,7 @@ Toutes les options sont regroupées dans **⚙️ Paramètres** (icône en haut 
 - **Personnalisation** : thèmes + 9 presets (Matrix, Blade Runner, Tron, Cyberpunk, Synthwave, Phosphore, Nordique, Minimaliste, Classic), mode clair lisible
 - **Optimisation** : profil Léger / Équilibré / Complet (choisi seul au premier lancement), « Ce que ton appareil sait faire », téléchargements, stockage récupérable
 - **Langues / régions** et **langue des visuels** TMDB
-- **Sauvegarde** : export / import `.aether` chiffré
+- **Sauvegarde** : export / import `.aether` chiffré (comptes, clés, thèmes, réglages, favoris, reprises)
 - **Console web** : configurer et piloter l'application depuis un navigateur du réseau local
 - **↻ (accueil)** : recharge **toutes** les listes, une par une, avec un bilan
 - **À propos** : version + check des mises à jour manuel
@@ -267,6 +267,8 @@ lib/
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Au téléphone aussi, les réglages de lecture se font dans l'image** (2026-09-22) — le vieux menu du bas disparaît : le téléphone a la même rangée de boutons que la télévision (Épisode suivant, Audio, Sous-titres, Vitesse, Format, Qualité, Infos vidéo) ; on touche un bouton, sa liste s'ouvre juste au-dessus, on touche un choix et c'est appliqué. Les boutons ont tous la même taille, des angles arrondis même avec un thème anguleux, et la rangée est centrée. Sur TV, le cadenas (inutile sans écran tactile) disparaît, l'heure visée s'affiche à côté du repère sans cacher les boutons, et un film sans sous-titres ne propose plus de « couper » des sous-titres qu'il n'a pas. Les infos vidéo ne recouvrent plus les boutons.
+- [x] **La sauvegarde garde vraiment tous tes choix** (2026-09-22) — la clé des sous-titres en ligne, les langues de pistes retenues, le format d'image et l'affichage des infos vidéo partent maintenant dans le fichier `.aether` et reviennent à la restauration ; une vieille sauvegarde qui ne les contient pas ne change rien.
 - [x] **Sur téléviseur, les réglages de lecture se font dans l'image** (2026-09-22) — plus de fenêtre qui cache le film : la barre du lecteur porte des boutons Audio, Sous-titres, Vitesse, Format, Qualité et Infos vidéo, atteignables à la télécommande, et chaque liste s'ouvre juste au-dessus de son bouton ; Retour revient d'un cran sans jamais quitter le film. La barre de progression se sélectionne aussi : on déplace un repère (de plus en plus vite en gardant la touche enfoncée) et OK saute à ce moment du film. « Infos vidéo » est maintenant affiché ou masqué, tout simplement. Une piste audio que l'appareil ne sait pas lire fait revenir à la piste précédente au lieu d'arrêter le film.
 - [x] **Des Paramètres plus simples, et la lecture qui ne s'arrête plus pour rien** (2026-09-21) — « Recharger toutes les listes » est maintenant un vrai bouton dans Comptes ; la mémoire des pistes audio et sous-titres se règle dans « Langues et régions », où les langues en double sont réunies (une seule case « Brésil » pour le doublé, la VO sous-titrée et les nouveautés ; une case « Anglais » ; une case « Ex-Yougoslavie ») ; les libellés anglais et techniques ont disparu. Sur les grands écrans, l'affiche d'accueil s'étale comme une main de cartes. Toucher « Accueil » quand on y est déjà remonte tout en haut. Relancer une vidéo juste après l'avoir quittée n'annonce plus « abonnement occupé » à tort. Le tampon de lecture ne prend plus que ce que la mémoire de l'appareil peut donner, et reculer de 10 secondes repart instantanément. Sur téléviseur, l'écran de démarrage ne déborde plus et les versions d'un film restent lisibles au focus.
 - [x] **Les pistes savent revenir à l'automatique** (2026-09-13) — couper les sous-titres valait pour tous les titres suivants sans le dire, et rien ne permettait de l'annuler ; la feuille de pistes annonce désormais ce qui est retenu (« … pour les prochains titres aussi ») et le défait d'un geste, et Réglages → « Langues des pistes » montre et efface la mémoire. Une piste sans langue n'écrase plus la langue choisie

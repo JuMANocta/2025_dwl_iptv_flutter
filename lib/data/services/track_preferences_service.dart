@@ -104,6 +104,15 @@ class TrackPreferencesService {
     return v;
   }
 
+  /// §playerPanel backup — La règle « pas de langue ici » pour [subtitle], en
+  /// UN seul endroit : une valeur restaurée depuis `.aether` ne doit jamais
+  /// écraser cette mémoire par une langue (R43). `null` (automatique) et
+  /// [kSubtitlesOff] sont les deux SEULES formes valides ; tout le reste est
+  /// ignoré (sauvegarde bricolée, ou future version qui ajouterait une forme
+  /// que celle-ci ne connaît pas).
+  static bool isValidSubtitleMemory(String? value) =>
+      value == null || value == kSubtitlesOff;
+
   static Future<void> _save(String key, String? value) async {
     // Les champs statiques sont déjà à jour : on prévient AVANT l'attente,
     // pour que l'écran suive le geste et non l'écriture disque.

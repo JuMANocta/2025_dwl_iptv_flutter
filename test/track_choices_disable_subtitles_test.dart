@@ -7,6 +7,16 @@
 // qu'aucun moteur Media3 ne fabrique — et son tap passait par
 // `setSubtitleTrack('no')`, que le moteur refuse faute de savoir le parser.
 //
+// §playerPanel (2026-09-22) — La feuille de pistes du téléphone est supprimée :
+// Audio et Sous-titres sont des listes de la rangée d'options, construites par
+// `audioOptionItems` / `subtitleOptionItems` (`track_choices.dart`). Ces tests,
+// portés de la feuille, tiennent les MÊMES règles sur ces listes, sans monter
+// le lecteur : « la feuille se referme » y devient « la ligne rend `true` »
+// (la liste se referme), « la feuille reste ouverte » devient « la ligne rend
+// `false` », et « plus haut dans la feuille » devient « plus tôt dans la
+// liste » — à la télécommande comme au doigt, l'ordre des lignes EST le
+// chemin.
+//
 // ⚠️ CE QUE CES TESTS NE COUVRENT PAS, ET POURQUOI. La moitié « succès » du
 // moteur est hors de portée d'un test unitaire : `initialize()` attend un
 // completer que seule la création d'une VUE de plateforme déclenche
@@ -18,14 +28,12 @@
 // moteur : le refus quand aucun lecteur n'est prêt, et le fait qu'un refus
 // n'écrit RIEN. Le reste se recette sur appareil.
 
-import 'dart:async';
-
 import 'package:aetherStream/data/services/track_preferences_service.dart';
 import 'package:aetherStream/feature/player/media3_engine.dart';
 import 'package:aetherStream/feature/player/playback_engine.dart';
-import 'package:aetherStream/feature/player/widgets/track_selector_sheet.dart';
+import 'package:aetherStream/feature/player/widgets/player_option_bar.dart';
+import 'package:aetherStream/feature/player/widgets/track_choices.dart';
 import 'package:aetherStream/l10n/app_localizations.dart';
-import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,7 +51,7 @@ const AetherTrack kAnglais =
 
 /// R43 — Deux pistes AUDIO : une avec langue, une SANS (le natif renvoie
 /// « unknown » quand le conteneur n'en déclare pas). ⚠️ Allemand, pas anglais :
-/// les sous-titres portent déjà une piste `en`, le finder serait ambigu.
+/// les sous-titres portent déjà une piste `en`, le libellé serait ambigu.
 const AetherTrack kAudioAllemand =
     AetherTrack(id: '0', title: 'Deutsch', language: 'de');
 const AetherTrack kAudioSansLangue =
@@ -52,7 +60,7 @@ const AetherTrack kAudioSansLangue =
 /// Moteur fictif tenu au MÊME contrat que `Media3Engine` : il porte la coupure
 /// entière (session + mémoire), efface la mémoire quand il rend la main
 /// (R43), et rend `false` quand une écriture échoue. Un faux qui mentirait sur
-/// ce contrat rendrait les tests de la feuille décoratifs.
+/// ce contrat rendrait les tests des listes décoratifs.
 class _FauxMoteur implements AetherPlaybackEngine {
   _FauxMoteur({
     this.subtitleTracks = const [],
@@ -92,8 +100,8 @@ class _FauxMoteur implements AetherPlaybackEngine {
   final List<AetherTrack> pistesChoisies = <AetherTrack>[];
   final List<AetherTrack> pistesAudioChoisies = <AetherTrack>[];
 
-  /// L'ordre réel des écritures, pour distinguer « la feuille délègue » de
-  /// « la feuille refait le travail dans son coin ».
+  /// L'ordre réel des écritures, pour distinguer « la liste délègue » de
+  /// « la liste refait le travail dans son coin ».
   final List<String> journal = <String>[];
 
   @override
@@ -138,7 +146,7 @@ class _FauxMoteur implements AetherPlaybackEngine {
     }
     pistesAudioChoisies.add(track);
     currentAudioTrack = track;
-    // Comme le vrai moteur : la LANGUE mémorisée appartient à la feuille (un
+    // Comme le vrai moteur : la LANGUE mémorisée appartient à la liste (un
     // geste de l'utilisateur = une préférence), pas au moteur.
     journal.add('audio:${track.id}');
     return true;
@@ -175,51 +183,70 @@ class _FauxMoteur implements AetherPlaybackEngine {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// Ouvre la feuille de pistes et laisse l'animation se terminer.
-Future<void> _ouvrirLaFeuille(
-    WidgetTester tester, AetherPlaybackEngine moteur) async {
-  late BuildContext ctx;
-  await tester.pumpWidget(
-    MaterialApp(
-      locale: const Locale('fr'),
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Builder(
-        builder: (c) {
-          ctx = c;
-          return const Scaffold(body: SizedBox.expand());
-        },
-      ),
-    ),
-  );
-
-  unawaited(showTrackSelector(ctx, moteur));
-  await tester.pump(); // route de la feuille poussée
-  await tester.pump(const Duration(milliseconds: 400)); // animation d'ouverture
-}
-
-/// La carte focalisable qui porte ce libellé — c'est elle qui reçoit le tap.
-Finder _carteDe(String titre) => find.ancestor(
-      of: find.text(titre),
-      matching: find.byType(FocusableCard),
-    );
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   final AppLocalizations fr = lookupAppLocalizations(const Locale('fr'));
 
+  /// Nombre de changements réussis signalés au lecteur (qui relit alors les
+  /// pistes) : un échec n'en signale aucun.
+  int appliques = 0;
+
+  List<PlayerOptionItem> sousTitres(AetherPlaybackEngine moteur,
+          {ScaffoldMessengerState? messenger}) =>
+      subtitleOptionItems(
+        player: moteur,
+        l10n: fr,
+        messenger: messenger,
+        onApplied: () => appliques++,
+      );
+
+  List<PlayerOptionItem> audio(AetherPlaybackEngine moteur,
+          {ScaffoldMessengerState? messenger}) =>
+      audioOptionItems(
+        player: moteur,
+        l10n: fr,
+        messenger: messenger,
+        onApplied: () => appliques++,
+      );
+
+  List<String> libelles(List<PlayerOptionItem> liste) =>
+      [for (final l in liste) l.label];
+
+  PlayerOptionItem ligne(List<PlayerOptionItem> liste, String libelle) =>
+      liste.singleWhere((l) => l.label == libelle);
+
+  /// Un écran avec un `ScaffoldMessenger` : c'est là que l'échec se DIT.
+  Future<ScaffoldMessengerState> messager(WidgetTester tester) async {
+    late BuildContext ctx;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fr'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (c) {
+            ctx = c;
+            return const Scaffold(body: SizedBox.expand());
+          },
+        ),
+      ),
+    );
+    return ScaffoldMessenger.of(ctx);
+  }
+
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     TrackPreferencesService.subtitle = null;
     TrackPreferencesService.audio = null;
+    appliques = 0;
   });
 
-  // ── La feuille ────────────────────────────────────────────────────────────
+  // ── La liste Sous-titres ─────────────────────────────────────────────────
 
-  testWidgets(
-      'R42 — la ligne de coupure s\'affiche alors qu\'AUCUNE piste ne porte l\'identifiant « no »',
-      (tester) async {
+  test(
+      'R42 — la ligne de coupure existe alors qu\'AUCUNE piste ne porte l\'identifiant « no »',
+      () {
     final moteur = _FauxMoteur(
       subtitleTracks: const [kForcee, kFrancais, kAnglais],
       // Le moteur a choisi seul la piste FORCED : c'est le cas de l'utilisateur.
@@ -230,14 +257,11 @@ void main() {
     expect(moteur.subtitleTracks.where((t) => t.id == 'no'), isEmpty,
         reason: 'la ligne ne doit plus dépendre d\'un identifiant de piste');
 
-    await _ouvrirLaFeuille(tester, moteur);
-
-    expect(find.text(fr.tracksDisabled), findsOneWidget,
+    expect(libelles(sousTitres(moteur)), contains(fr.tracksDisabled),
         reason: 'R42 — sans elle, une piste FORCED reste incoupable');
   });
 
-  testWidgets('R42 — la coupure est EN TÊTE de la section, avant les pistes',
-      (tester) async {
+  test('R42 — la coupure est EN TÊTE de la liste, avant les pistes', () {
     // ⚠️ Décision documentée à conséquence TV : à la télécommande, l'ordre des
     // lignes EST le chemin. La coupure doit être la première atteinte.
     final moteur = _FauxMoteur(
@@ -245,79 +269,68 @@ void main() {
       currentSubtitleTrack: kForcee,
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
-
-    final yCoupure = tester.getTopLeft(_carteDe(fr.tracksDisabled)).dy;
-    final yPremierePiste = tester.getTopLeft(_carteDe(fr.langEnglish)).dy;
-    expect(yCoupure, lessThan(yPremierePiste),
+    final List<String> l = libelles(sousTitres(moteur));
+    expect(l.first, fr.tracksDisabled,
         reason: 'la coupure doit précéder toutes les pistes');
+    expect(l.indexOf(fr.tracksDisabled), lessThan(l.indexOf(fr.langEnglish)));
   });
 
-  testWidgets(
-      'R42 — la coupure est cochée quand le moteur ne lit aucune piste',
-      (tester) async {
+  test('R42 — la coupure est cochée quand le moteur ne lit aucune piste', () {
     final moteur = _FauxMoteur(
       subtitleTracks: const [kForcee, kFrancais, kAnglais],
       currentSubtitleTrack: null, // sous-titres déjà coupés
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
-
+    final liste = sousTitres(moteur);
     // L'état « sélectionné » se lit sur le MOTEUR, pas sur une entrée fantôme.
-    expect(
-      find.descendant(
-        of: _carteDe(fr.tracksDisabled),
-        matching: find.byIcon(Icons.check_circle_rounded),
-      ),
-      findsOneWidget,
-    );
-    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget,
-        reason: 'une seule ligne cochée dans toute la feuille');
+    expect(ligne(liste, fr.tracksDisabled).selected, isTrue);
+    expect(liste.where((l) => l.selected), hasLength(1),
+        reason: 'une seule ligne cochée dans toute la liste');
   });
 
-  testWidgets(
-      'R42 — coupure réussie : la feuille se ferme, et c\'est le MOTEUR qui mémorise',
-      (tester) async {
+  test(
+      'R42 — coupure réussie : la liste se referme, et c\'est le MOTEUR qui mémorise',
+      () async {
     final moteur = _FauxMoteur(
       subtitleTracks: const [kForcee, kFrancais, kAnglais],
       currentSubtitleTrack: kForcee,
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
-    await tester.tap(_carteDe(fr.tracksDisabled));
-    await tester.pumpAndSettle();
+    final bool fait = await ligne(sousTitres(moteur), fr.tracksDisabled).onSelect();
 
     expect(moteur.coupures, 1, reason: 'disableSubtitles() doit être appelé');
     expect(moteur.pistesChoisies, isEmpty,
         reason: 'une coupure n\'est JAMAIS un identifiant de piste');
-    expect(find.text(fr.tracksDisabled), findsNothing,
-        reason: 'la feuille se referme sur un succès');
-    // ⚠️ La feuille n'écrit plus la préférence elle-même : le `'no'` visible ici
+    expect(fait, isTrue, reason: 'la liste se referme sur un succès');
+    expect(appliques, 1, reason: 'le lecteur relit les pistes après un succès');
+    // ⚠️ La liste n'écrit pas la préférence elle-même : le `'no'` visible ici
     // vient du MOTEUR (le faux respecte le même contrat). Deux
     // demi-propriétaires donnaient une coupure sans lendemain à tout autre
-    // appelant que cette feuille.
+    // appelant que cette liste.
     expect(moteur.journal, ['coupure']);
     expect(TrackPreferencesService.subtitle, 'no');
   });
 
   testWidgets(
-      'R42 — coupure REFUSÉE : la feuille reste ouverte, le dit, et ne mémorise rien',
+      'R42 — coupure REFUSÉE : la liste reste ouverte, le dit, et ne mémorise rien',
       (tester) async {
+    final messenger = await messager(tester);
     final moteur = _FauxMoteur(
       subtitleTracks: const [kForcee, kFrancais, kAnglais],
       currentSubtitleTrack: kForcee,
       coupureReussit: false,
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
-    await tester.tap(_carteDe(fr.tracksDisabled));
-    await tester.pump(); // le tap et son attente
-    await tester.pump(const Duration(milliseconds: 400)); // toast
+    final bool fait = await ligne(
+            sousTitres(moteur, messenger: messenger), fr.tracksDisabled)
+        .onSelect();
+    await tester.pump(); // le toast
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text(fr.tracksDisableFailed), findsOneWidget,
         reason: 'un échec muet se lisait comme un succès');
-    expect(find.text(fr.tracksDisabled), findsOneWidget,
-        reason: 'la feuille NE se referme PAS sur un échec');
+    expect(fait, isFalse, reason: 'la liste NE se referme PAS sur un échec');
+    expect(appliques, 0);
     expect(TrackPreferencesService.subtitle, isNull,
         reason: 'une coupure ratée ne doit rien mémoriser');
 
@@ -326,9 +339,9 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
-  testWidgets(
+  test(
       'R42 — choisir une vraie piste lève le « no » : on peut les rallumer (retour)',
-      (tester) async {
+      () async {
     // On part de l'état « coupés ».
     TrackPreferencesService.subtitle = 'no';
     final moteur = _FauxMoteur(
@@ -336,14 +349,11 @@ void main() {
       currentSubtitleTrack: null,
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
     // ⚠️ L'anglaise, et pas une française : les deux pistes `fr` portent le
-    // MÊME libellé de langue, le finder serait ambigu.
-    await tester.ensureVisible(_carteDe(fr.langEnglish));
-    await tester.pumpAndSettle();
-    await tester.tap(_carteDe(fr.langEnglish));
-    await tester.pumpAndSettle();
+    // MÊME libellé de langue, la ligne serait ambiguë.
+    final bool fait = await ligne(sousTitres(moteur), fr.langEnglish).onSelect();
 
+    expect(fait, isTrue);
     expect(moteur.coupures, 0);
     expect(moteur.pistesChoisies.single.id, kAnglais.id);
     expect(moteur.journal, ['piste:2']);
@@ -357,32 +367,46 @@ void main() {
             'n\'a demandée');
   });
 
+  test(
+      '§trackRebuffer — la piste de sous-titres DÉJÀ active n\'est pas ré-appliquée',
+      () async {
+    final moteur = _FauxMoteur(
+      subtitleTracks: const [kForcee, kFrancais, kAnglais],
+      currentSubtitleTrack: kAnglais,
+    );
+
+    final bool fait = await ligne(sousTitres(moteur), fr.langEnglish).onSelect();
+
+    expect(fait, isTrue, reason: 'rien à faire : la liste se referme');
+    expect(moteur.journal, isEmpty, reason: 'ré-appliquer re-démuxe (~3 s)');
+  });
+
   // ── R43 : la mémoire se voit et se défait ────────────────────────────────
 
-  testWidgets(
-      'R43 — coupure mémorisée : la feuille le DIT, et la ligne rend la main au moteur',
-      (tester) async {
+  test(
+      'R43 — coupure mémorisée : la liste le DIT, et la ligne rend la main au moteur',
+      () async {
     TrackPreferencesService.subtitle = TrackPreferencesService.kSubtitlesOff;
     final moteur = _FauxMoteur(
       subtitleTracks: const [kForcee, kFrancais, kAnglais],
       currentSubtitleTrack: null,
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
-
+    final liste = sousTitres(moteur);
+    final List<String> l = libelles(liste);
     // Avant R43 : rien ne disait que la coupure valait pour les titres
     // suivants, et rien ne permettait de la lever sans choisir une piste.
-    expect(find.text(fr.tracksMemorySubOff), findsOneWidget);
+    expect(l, contains(fr.tracksMemorySubOff));
     // « Désactivés » reste EN TÊTE (décision R42, conséquence TV) : la ligne
     // de mémoire ferme la section, elle ne la précède pas.
-    final yCoupure = tester.getTopLeft(_carteDe(fr.tracksDisabled)).dy;
-    final yMemoire = tester.getTopLeft(_carteDe(fr.tracksMemorySubOff)).dy;
-    expect(yMemoire, greaterThan(yCoupure));
+    expect(l.indexOf(fr.tracksMemorySubOff),
+        greaterThan(l.indexOf(fr.tracksDisabled)));
+    expect(l.last, fr.tracksMemorySubOff,
+        reason: 'sans recherche en ligne, elle ferme la liste');
+    expect(ligne(liste, fr.tracksMemorySubOff).selected, isFalse,
+        reason: 'ce n\'est pas une piste, c\'est un retour en arrière');
 
-    await tester.ensureVisible(_carteDe(fr.tracksMemorySubOff));
-    await tester.pumpAndSettle();
-    await tester.tap(_carteDe(fr.tracksMemorySubOff));
-    await tester.pumpAndSettle();
+    final bool fait = await ligne(liste, fr.tracksMemorySubOff).onSelect();
 
     expect(moteur.retoursSousTitres, 1, reason: 'resetSubtitlesToAuto() attendu');
     expect(moteur.pistesChoisies, isEmpty,
@@ -390,28 +414,28 @@ void main() {
     expect(moteur.journal, ['auto-sub']);
     expect(TrackPreferencesService.subtitle, isNull,
         reason: 'la mémoire est effacée par le moteur, après l\'écriture native');
-    expect(find.text(fr.tracksMemorySubOff), findsNothing,
-        reason: 'la feuille se referme sur un succès');
+    expect(fait, isTrue, reason: 'la liste se referme sur un succès');
+    expect(libelles(sousTitres(moteur)), isNot(contains(fr.tracksMemorySubOff)),
+        reason: 'la mémoire défaite, sa ligne disparaît');
   });
 
-  testWidgets(
-      'R43 — la coupure mémorisée se lève MÊME sur un titre sans aucune piste',
-      (tester) async {
+  test('R43 — la coupure mémorisée se lève MÊME sur un titre sans aucune piste',
+      () {
     // C'est exactement le cas où l'on était coincé : sans piste, pas de ligne
     // à choisir, donc aucun retour possible (et « Désactivés » ne s'affiche pas
     // non plus, à raison — il n'y a rien à couper).
     TrackPreferencesService.subtitle = TrackPreferencesService.kSubtitlesOff;
     final moteur = _FauxMoteur(subtitleTracks: const []);
 
-    await _ouvrirLaFeuille(tester, moteur);
-
-    expect(find.text(fr.tracksNoSubtitles), findsOneWidget);
-    expect(find.text(fr.tracksDisabled), findsNothing);
-    expect(find.text(fr.tracksMemorySubOff), findsOneWidget);
+    final List<String> l = libelles(sousTitres(moteur));
+    expect(l, contains(fr.tracksNoSubtitles));
+    expect(l, isNot(contains(fr.tracksDisabled)));
+    expect(l, contains(fr.tracksMemorySubOff));
+    // L'information en tête, la mémoire ferme la liste (R43).
+    expect(l, [fr.tracksNoSubtitles, fr.tracksMemorySubOff]);
   });
 
-  testWidgets('R43 — sans mémoire, aucune ligne de retour n\'encombre la feuille',
-      (tester) async {
+  test('R43 — sans mémoire, aucune ligne de retour n\'encombre les listes', () {
     final moteur = _FauxMoteur(
       subtitleTracks: const [kForcee, kFrancais, kAnglais],
       currentSubtitleTrack: kForcee,
@@ -419,32 +443,32 @@ void main() {
       currentAudioTrack: kAudioAllemand,
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
-
-    expect(find.text(fr.tracksMemorySubOff), findsNothing);
-    expect(find.text(fr.tracksMemoryForget), findsNothing);
-    expect(find.textContaining(fr.tracksMemoryAudio('')), findsNothing);
+    final lignes = [...sousTitres(moteur), ...audio(moteur)];
+    expect(libelles(lignes), isNot(contains(fr.tracksMemorySubOff)));
+    expect(lignes.where((l) => l.detail == fr.tracksMemoryForget), isEmpty);
+    expect(
+        lignes.where((l) => l.label.contains(fr.tracksMemoryAudio(''))),
+        isEmpty);
   });
 
   testWidgets(
-      'R43 — retour à l\'automatique REFUSÉ : la feuille reste ouverte, le dit, et garde la mémoire',
+      'R43 — retour à l\'automatique REFUSÉ : la liste reste ouverte, le dit, et garde la mémoire',
       (tester) async {
+    final messenger = await messager(tester);
     TrackPreferencesService.subtitle = TrackPreferencesService.kSubtitlesOff;
     final moteur = _FauxMoteur(
       subtitleTracks: const [kForcee, kFrancais, kAnglais],
       retourReussit: false,
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
-    await tester.ensureVisible(_carteDe(fr.tracksMemorySubOff));
-    await tester.pumpAndSettle();
-    await tester.tap(_carteDe(fr.tracksMemorySubOff));
+    final bool fait = await ligne(
+            sousTitres(moteur, messenger: messenger), fr.tracksMemorySubOff)
+        .onSelect();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text(fr.tracksResetFailed), findsOneWidget);
-    expect(find.text(fr.tracksMemorySubOff), findsOneWidget,
-        reason: 'la feuille NE se referme PAS sur un échec');
+    expect(fait, isFalse, reason: 'la liste NE se referme PAS sur un échec');
     // ⚠️ Une mémoire effacée sans que le natif ait suivi ferait revenir la
     // coupure au titre suivant tout en affichant « automatique ».
     expect(TrackPreferencesService.subtitle,
@@ -453,27 +477,28 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
-  testWidgets(
+  // ── La liste Audio ───────────────────────────────────────────────────────
+
+  test(
       'R43 — choisir une piste AUDIO mémorise sa LANGUE pour les prochains titres',
-      (tester) async {
+      () async {
     TrackPreferencesService.audio = 'fr';
     final moteur = _FauxMoteur(
       audioTracks: const [kAudioAllemand, kAudioSansLangue],
       currentAudioTrack: kAudioSansLangue,
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
-    await tester.tap(_carteDe(fr.langGerman));
-    await tester.pumpAndSettle();
+    final bool fait = await ligne(audio(moteur), fr.langGerman).onSelect();
 
     expect(moteur.pistesAudioChoisies.single.id, kAudioAllemand.id);
     expect(TrackPreferencesService.audio, 'de');
-    expect(find.text(fr.langGerman), findsNothing, reason: 'feuille refermée');
+    expect(fait, isTrue, reason: 'liste refermée');
+    expect(appliques, 1);
   });
 
-  testWidgets(
+  test(
       'R43 — une piste audio SANS langue ne touche pas à la mémoire (ni numéro, ni « unknown »)',
-      (tester) async {
+      () async {
     // Avant : `_trackKey` écrivait son NUMÉRO (« 1 »), qui écrasait la vraie
     // préférence et était rejoué à chaque ouverture comme une langue.
     TrackPreferencesService.audio = 'fr';
@@ -482,21 +507,37 @@ void main() {
       currentAudioTrack: kAudioAllemand,
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
+    final liste = audio(moteur);
     // Sans langue, la piste se nomme par son titre — jamais « UNKNOWN ».
-    expect(find.text('UNKNOWN'), findsNothing);
-    await tester.tap(_carteDe('Commentaire'));
-    await tester.pumpAndSettle();
+    expect(libelles(liste), isNot(contains('UNKNOWN')));
+    final bool fait = await ligne(liste, 'Commentaire').onSelect();
 
+    expect(fait, isTrue);
     expect(moteur.pistesAudioChoisies.single.id, kAudioSansLangue.id,
         reason: 'la piste est bien posée pour CE titre');
     expect(TrackPreferencesService.audio, 'fr',
         reason: 'la mémoire n\'est ni écrasée par un numéro, ni effacée');
   });
 
-  testWidgets(
-      'R43 — mémoire audio : la ligne NOMME la langue, ferme la section, et la défait',
-      (tester) async {
+  test('§trackRebuffer — la piste audio DÉJÀ active n\'est pas ré-appliquée',
+      () async {
+    TrackPreferencesService.audio = 'fr';
+    final moteur = _FauxMoteur(
+      audioTracks: const [kAudioAllemand, kAudioSansLangue],
+      currentAudioTrack: kAudioAllemand,
+    );
+
+    final bool fait = await ligne(audio(moteur), fr.langGerman).onSelect();
+
+    expect(fait, isTrue);
+    expect(moteur.journal, isEmpty, reason: 'ré-appliquer re-démuxe (~3 s)');
+    expect(TrackPreferencesService.audio, 'fr',
+        reason: 'aucun choix fait, aucune mémoire écrite');
+  });
+
+  test(
+      'R43 — mémoire audio : la ligne NOMME la langue, ferme la liste, et la défait',
+      () async {
     TrackPreferencesService.audio = 'de';
     final moteur = _FauxMoteur(
       audioTracks: const [kAudioAllemand, kAudioSansLangue],
@@ -504,63 +545,106 @@ void main() {
       subtitleTracks: const [kFrancais],
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
-
+    final liste = audio(moteur);
     final libelle = fr.tracksMemoryAudio(fr.langGerman);
-    expect(find.text(libelle), findsOneWidget,
+    expect(libelles(liste), contains(libelle),
         reason: 'la mémoire se dit avec le NOM de la langue, pas « de »');
-    // EN FIN de section audio : à la télécommande, la première ligne est
-    // l'action par défaut du bouton OK — « oublier ma langue » ne doit pas
-    // l'être. Et AVANT les sous-titres : c'est la mémoire de CETTE section.
-    final yDerniereAudio = tester.getTopLeft(_carteDe('Commentaire')).dy;
-    final yMemoire = tester.getTopLeft(_carteDe(libelle)).dy;
-    final ySousTitres = tester.getTopLeft(_carteDe(fr.tracksDisabled)).dy;
-    expect(yMemoire, greaterThan(yDerniereAudio));
-    expect(yMemoire, lessThan(ySousTitres));
+    // EN FIN de liste audio : à la télécommande, la ligne cochée (ou la
+    // première) est l'action par défaut du bouton OK — « oublier ma langue »
+    // ne doit pas l'être. Et elle n'appartient qu'à la liste AUDIO.
+    expect(libelles(liste).last, libelle);
+    expect(libelles(liste).indexOf(libelle),
+        greaterThan(libelles(liste).indexOf('Commentaire')));
+    expect(libelles(sousTitres(moteur)), isNot(contains(libelle)));
+    expect(ligne(liste, libelle).selected, isFalse);
 
-    await tester.tap(_carteDe(libelle));
-    await tester.pumpAndSettle();
+    final bool fait = await ligne(liste, libelle).onSelect();
 
     expect(moteur.retoursAudio, 1);
     expect(moteur.pistesAudioChoisies, isEmpty);
     expect(TrackPreferencesService.audio, isNull);
-    expect(find.text(libelle), findsNothing, reason: 'feuille refermée');
+    expect(fait, isTrue, reason: 'liste refermée');
   });
 
   testWidgets(
-      'R43 — une piste audio REFUSÉE ne mémorise rien et laisse la feuille ouverte',
+      'R43 — une piste audio REFUSÉE ne mémorise rien et laisse la liste ouverte',
       (tester) async {
+    final messenger = await messager(tester);
     final moteur = _FauxMoteur(
       audioTracks: const [kAudioAllemand, kAudioSansLangue],
       currentAudioTrack: kAudioSansLangue,
       pisteReussit: false,
     );
 
-    await _ouvrirLaFeuille(tester, moteur);
-    await tester.tap(_carteDe(fr.langGerman));
+    final bool fait =
+        await ligne(audio(moteur, messenger: messenger), fr.langGerman)
+            .onSelect();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text(fr.tracksTrackFailed), findsOneWidget,
         reason: 'avant, le canal vendoré avalait l\'échec : la feuille se '
             'fermait et mémorisait une langue qu\'aucune piste ne portait');
-    expect(find.text(fr.langGerman), findsOneWidget, reason: 'feuille ouverte');
+    expect(fait, isFalse, reason: 'liste ouverte');
+    expect(appliques, 0);
     expect(TrackPreferencesService.audio, isNull);
 
     await tester.pump(const Duration(seconds: 5));
   });
 
-  testWidgets('R42 — sans aucune piste, l\'interface ne promet pas de couper',
-      (tester) async {
+  // ── Sans aucune piste : une information, jamais une promesse ─────────────
+
+  test('R42 — sans aucune piste, l\'interface ne promet pas de couper',
+      () async {
     // ⚠️ Des sous-titres INCRUSTÉS dans l'image se présentent ainsi (zéro
     // piste, du texte à l'écran) : aucun lecteur ne sait les retirer, et
     // afficher « Désactivés » serait mentir.
+    //
+    // §playerPanel — La rangée TV de la 1.20.2 avait perdu cette règle (ligne
+    // « Désactivés » inconditionnelle) : régression refermée, pour les deux
+    // plateformes, par la fonction partagée.
     final moteur = _FauxMoteur(subtitleTracks: const []);
 
-    await _ouvrirLaFeuille(tester, moteur);
+    final liste = sousTitres(moteur);
+    expect(libelles(liste), [fr.tracksNoSubtitles],
+        reason: 'le hint est là, et rien d\'autre sans mémoire ni recherche');
+    expect(libelles(liste), isNot(contains(fr.tracksDisabled)));
 
-    expect(find.text(fr.tracksNoSubtitles), findsOneWidget);
-    expect(find.text(fr.tracksDisabled), findsNothing);
+    // Une ligne d'INFORMATION : jamais cochée, et la choisir n'applique RIEN
+    // — elle referme simplement la liste.
+    final info = liste.single;
+    expect(info.selected, isFalse);
+    expect(await info.onSelect(), isTrue);
+    expect(moteur.journal, isEmpty);
+    expect(moteur.coupures, 0);
+    expect(appliques, 0);
+    expect(TrackPreferencesService.subtitle, isNull,
+        reason: 'choisir l\'information ne mémorise aucune coupure');
+  });
+
+  test('R42 — sans aucune piste audio, la liste le DIT (et n\'est jamais vide)',
+      () async {
+    final moteur = _FauxMoteur(audioTracks: const []);
+
+    final liste = audio(moteur);
+    expect(libelles(liste), [fr.tracksNoAudio]);
+    expect(liste.single.selected, isFalse);
+    expect(await liste.single.onSelect(), isTrue,
+        reason: 'la ligne referme la liste');
+    expect(moteur.journal, isEmpty, reason: 'et n\'applique rien');
+    expect(appliques, 0);
+  });
+
+  test(
+      'R43 — sans aucune piste audio, la mémoire reste défaisable, APRÈS '
+      'l\'information', () {
+    TrackPreferencesService.audio = 'de';
+    final moteur = _FauxMoteur(audioTracks: const []);
+
+    expect(libelles(audio(moteur)), [
+      fr.tracksNoAudio,
+      fr.tracksMemoryAudio(fr.langGerman),
+    ]);
   });
 
   // ── Le moteur réel ────────────────────────────────────────────────────────
@@ -594,7 +678,7 @@ void main() {
 
       // ⚠️ Sans vue de plateforme, le contrôleur n'a pas de canal : l'écriture
       // native partirait dans le vide SANS lever. Rendre `true` ici serait le
-      // pire des cas — la feuille se fermerait et « coupés » serait mémorisé
+      // pire des cas — la liste se fermerait et « coupés » serait mémorisé
       // pour tous les titres suivants, alors que rien n'a été coupé.
       final ok = await moteur.disableSubtitles();
 

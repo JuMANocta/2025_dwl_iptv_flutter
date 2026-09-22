@@ -11,7 +11,7 @@ import 'package:aetherStream/data/services/track_preferences_service.dart';
 import 'package:aetherStream/feature/player/playback_engine.dart';
 import 'package:aetherStream/feature/player/playback_error_message.dart';
 import 'package:aetherStream/feature/player/player_error.dart';
-import 'package:aetherStream/feature/player/widgets/track_selector_sheet.dart';
+import 'package:aetherStream/feature/player/widgets/track_choices.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';

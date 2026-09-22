@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import '../playback_engine.dart';
 
 import '../../../core/themes/colors.dart';
@@ -41,6 +43,15 @@ class VideoStatsOverlay extends StatefulWidget {
   /// ⚠️ ne pas y rajouter `MediaQuery.padding.top`, la mesure le contient déjà.
   final double topInset;
 
+  /// §playerPanel — Distance ABSOLUE entre le BAS de l'écran et le bas de
+  /// l'encart, marge du bas comprise. Contrôles visibles, l'appelant y met la
+  /// hauteur MESURÉE du bloc bas (rangée d'options + barre de lecture +
+  /// temps) : en paysage téléphone, les 13 lignes de l'encart descendaient
+  /// jusqu'en bas de l'écran et recouvraient la rangée. L'encart ne dépasse
+  /// jamais cette borne : au-delà, ses DERNIÈRES lignes sont tues, jamais
+  /// coupées à mi-hauteur ([videoStatsMaxHeight]).
+  final double bottomInset;
+
   /// §videoStatsTags — Les lignes à montrer ; `null` = toutes.
   final Set<VideoStatKey>? visibleRows;
 
@@ -50,6 +61,7 @@ class VideoStatsOverlay extends StatefulWidget {
     this.hidden = false,
     this.announcedQuality,
     this.topInset = 72,
+    this.bottomInset = 12,
     this.visibleRows,
   });
 
@@ -164,17 +176,23 @@ class _VideoStatsOverlayState extends State<VideoStatsOverlay> {
       left: 12,
       child: RepaintBoundary(
         child: IgnorePointer(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black.withAlpha(170),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: kAccentPrimary.withAlpha(90)),
+          // §playerPanel — Au-dessus du bloc bas des contrôles, jamais dessus.
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: videoStatsMaxHeight(
+                screenHeight: MediaQuery.sizeOf(context).height,
+                topInset: widget.topInset,
+                bottomInset: widget.bottomInset,
+              ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: rows,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withAlpha(170),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: kAccentPrimary.withAlpha(90)),
+              ),
+              child: _WholeRows(children: rows),
             ),
           ),
         ),
@@ -439,5 +457,117 @@ class _StatRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// §playerPanel — La hauteur que l'encart peut occuper entre [topInset] et
+/// [bottomInset] (distances aux bords haut et bas d'un écran haut de
+/// [screenHeight]), jamais négative.
+///
+/// Mesuré en recette (téléphone paysage, ~915×411 dp) : barre du haut ~82 dp,
+/// bloc bas ~140 dp — il reste ~190 dp, quand les 13 lignes en demandent ~250.
+double videoStatsMaxHeight({
+  required double screenHeight,
+  required double topInset,
+  required double bottomInset,
+}) =>
+    math.max(0.0, screenHeight - topInset - bottomInset);
+
+/// §playerPanel — La colonne de l'encart, bornée en hauteur : elle montre, dans
+/// l'ordre, autant de lignes ENTIÈRES que la place en laisse, et tait les
+/// suivantes. Une ligne coupée à mi-hauteur se lirait mal, et un défilement
+/// n'aurait pas de sens dans un encart qu'on ne touche pas.
+///
+/// Les lignes du bas sont donc les premières à se taire quand les contrôles
+/// sont affichés ; elles reviennent dès qu'ils se masquent (l'encart reprend
+/// alors toute la hauteur).
+class _WholeRows extends MultiChildRenderObjectWidget {
+  const _WholeRows({required super.children});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderWholeRows();
+}
+
+class _WholeRowsParentData extends ContainerBoxParentData<RenderBox> {
+  /// La ligne tient dans la hauteur disponible (peinte), ou non (tue).
+  bool shown = false;
+}
+
+class _RenderWholeRows extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _WholeRowsParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _WholeRowsParentData> {
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _WholeRowsParentData) {
+      child.parentData = _WholeRowsParentData();
+    }
+  }
+
+  @override
+  void performLayout() {
+    final BoxConstraints rowConstraints =
+        BoxConstraints(maxWidth: constraints.maxWidth);
+    double y = 0;
+    double width = 0;
+    bool full = false;
+    RenderBox? child = firstChild;
+    while (child != null) {
+      final _WholeRowsParentData pd = child.parentData! as _WholeRowsParentData;
+      child.layout(rowConstraints, parentUsesSize: true);
+      final double h = child.size.height;
+      // Dès qu'une ligne ne tient plus, les suivantes se taisent aussi :
+      // l'ordre de lecture ne saute jamais une ligne.
+      pd.shown = !full && y + h <= constraints.maxHeight;
+      if (pd.shown) {
+        pd.offset = Offset(0, y);
+        y += h;
+        width = math.max(width, child.size.width);
+      } else {
+        full = true;
+        pd.offset = Offset.zero;
+      }
+      child = pd.nextSibling;
+    }
+    size = constraints.constrain(Size(width, y));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    RenderBox? child = firstChild;
+    while (child != null) {
+      final _WholeRowsParentData pd = child.parentData! as _WholeRowsParentData;
+      if (pd.shown) context.paintChild(child, offset + pd.offset);
+      child = pd.nextSibling;
+    }
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    RenderBox? child = lastChild;
+    while (child != null) {
+      final _WholeRowsParentData pd = child.parentData! as _WholeRowsParentData;
+      if (pd.shown &&
+          result.addWithPaintOffset(
+            offset: pd.offset,
+            position: position,
+            hitTest: (BoxHitTestResult r, Offset p) =>
+                child!.hitTest(r, position: p),
+          )) {
+        return true;
+      }
+      child = pd.previousSibling;
+    }
+    return false;
+  }
+
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
+    RenderObject? child = firstChild;
+    while (child != null) {
+      final _WholeRowsParentData pd = child.parentData! as _WholeRowsParentData;
+      if (pd.shown) visitor(child);
+      child = pd.nextSibling;
+    }
   }
 }

@@ -292,7 +292,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsBackupSub =>
-      'Export/import accounts, TMDB, theme, favorites (encrypted .aether)';
+      'Export/import accounts, settings, themes, favorites (encrypted .aether)';
 
   @override
   String get settingsAbout => 'About';
@@ -1972,12 +1972,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ctrlPip => 'Shrink to a window';
 
   @override
-  String get ctrlOptions => 'Playback options';
-
-  @override
-  String get ctrlTracks => 'Audio and subtitle tracks';
-
-  @override
   String get ctrlNextEpisode => 'Next episode';
 
   @override
@@ -1988,12 +1982,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get ctrlUnlock => 'Unlock';
-
-  @override
-  String get optNextEpisodeSub => 'Skip to the next episode';
-
-  @override
-  String get optTracksSub => 'Audio language · turn subtitles on';
 
   @override
   String get optVideoInfo => 'Video info';
@@ -2023,9 +2011,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ctrlBadgeReplay => 'REPLAY';
 
   @override
-  String get optTitle => 'Options';
-
-  @override
   String get optBackToVideo => 'Back to video';
 
   @override
@@ -2053,19 +2038,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get optBackToVideoSub => 'Closes this panel, playback continues';
 
   @override
-  String get optNextEpisode => 'Next episode';
-
-  @override
-  String get optTracksTitle => 'Audio & subtitle tracks';
-
-  @override
   String get optSpeedTitle => 'Speed';
 
   @override
   String get optFitTitle => 'Picture format';
-
-  @override
-  String get optSpeedNormal => '1.0×  ·  Normal';
 
   @override
   String get castSheetDeviceFallback => 'the TV';
@@ -2176,7 +2152,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get bkCreateSub =>
-      'Encrypts your accounts, TMDB key, theme, favorites and progress into a .aether file.';
+      'Encrypts your accounts, keys, themes, settings, favorites and progress into a .aether file.';
 
   @override
   String get bkEncrypting => 'Encrypting…';
@@ -2199,7 +2175,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get bkHowBody =>
-      '• `.aether` file encrypted with AES-256-GCM + PBKDF2 (100k iterations).\n• Password chosen by you — the app stores it nowhere.\n• Location: Download/AetherStream/ (survives an uninstall).\n• Contents: IPTV accounts, TMDB key, theme, favorites, progress.\n• Excluded: downloads (too heavy), search history.\n• Importing overwrites the whole current configuration (irreversible).';
+      '• `.aether` file encrypted with AES-256-GCM + PBKDF2 (100k iterations).\n• Password chosen by you — the app stores it nowhere.\n• Location: Download/AetherStream/ (survives an uninstall).\n• Contents: IPTV accounts, TMDB and subtitle keys, themes, settings, favorites, progress.\n• Excluded: downloads (too heavy), search history.\n• Importing overwrites the whole current configuration (irreversible).';
 
   @override
   String get bkRestorePasswordTitle => 'Backup password';
@@ -2483,6 +2459,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get bkPartTheme => 'theme';
+
+  @override
+  String get bkPartSubtitleKey => 'online subtitles key';
+
+  @override
+  String get bkPartPlayerSettings => 'player settings';
+
+  @override
+  String get bkPartTrackMemory => 'track languages';
 
   @override
   String bkPartHiddenRegions(int count) {
@@ -3439,15 +3424,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get personRoleCamera => 'Cinematography';
 
   @override
-  String get optSpeedCurrentNormal => 'Normal (1.0×)';
-
-  @override
-  String get tracksTitle => 'Tracks';
-
-  @override
-  String get tracksSubtitle => 'audio & subtitles';
-
-  @override
   String get tracksAudio => 'Audio';
 
   @override
@@ -4042,12 +4018,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get optQualityFailed => 'This quality could not be applied';
 
   @override
-  String get optStatsShow => 'Show the panel';
-
-  @override
-  String get optStatsShowSub => 'What your device really decodes';
-
-  @override
   String get detMoreBelow => 'More below';
 
   @override
@@ -4125,9 +4095,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tracksOnlineSearching => 'Looking…';
-
-  @override
-  String get tracksOnlineTitle => 'Subtitles found';
 
   @override
   String get tracksOnlineHearing => 'For deaf and hard of hearing';

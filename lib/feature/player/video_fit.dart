@@ -91,4 +91,17 @@ abstract final class VideoFitPreference {
       return false;
     });
   }
+
+  /// §playerPanel backup — Le mode nommé par [name] (`VideoFitMode.name`), ou
+  /// `null` si absent ou inconnu (sauvegarde antérieure à ce réglage, ou faite
+  /// par une version plus récente qui a ajouté un mode). L'appelant ne touche
+  /// alors PAS à [current] — même règle que les autres réglages accessoires
+  /// de `.aether` : jamais de valeur par défaut imposée.
+  static VideoFitMode? fromName(String? name) {
+    if (name == null) return null;
+    for (final VideoFitMode m in VideoFitMode.values) {
+      if (m.name == name) return m;
+    }
+    return null;
+  }
 }
