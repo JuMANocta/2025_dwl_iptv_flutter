@@ -590,9 +590,14 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
   }
 
   Widget _buildProfilesRow(ColorScheme cs) {
+    // 2026-09-21 — Rangée CENTRÉE (demande de l'utilisateur : « pas très joli à
+    // gauche »). `shrinkWrap` fait épouser au défilement la largeur des trois
+    // tuiles ; plus large que l'écran, elle défile comme avant.
     return SizedBox(
       height: 84,
-      child: ListView.separated(
+      child: Center(
+        child: ListView.separated(
+        shrinkWrap: true,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         scrollDirection: Axis.horizontal,
         itemCount: PerfConfig.presets.length,
@@ -680,6 +685,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
             ),
           );
         },
+      ),
       ),
     );
   }

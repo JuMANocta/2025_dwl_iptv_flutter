@@ -18,6 +18,8 @@
 /// de la piste. Un message qui nomme le rendu vidéo n'est jamais audio.
 library;
 
+import 'playback_engine.dart' show AetherTrack;
+
 const Set<String> _audioOnlyCodes = <String>{
   'ERROR_CODE_AUDIO_TRACK_INIT_FAILED',
   'ERROR_CODE_AUDIO_TRACK_WRITE_FAILED',
@@ -53,4 +55,51 @@ bool isMedia3AudioError({String? codeName, required String rawMessage}) {
   if (!_decoderCodes.contains(code)) return false;
   if (_reVideoSide.hasMatch(rawMessage)) return false;
   return _reAudioSide.hasMatch(rawMessage);
+}
+
+/// R5 — Le message BRUT nomme-t-il un rendu audio en échec, SANS code Media3 ?
+/// C'est le cas d'une erreur levée à l'OUVERTURE du flux (`LOAD_ERROR` : le
+/// code n'est pas joint). Sert à dire « le son », jamais à l'afficher.
+bool rawMessageNamesAudioRenderer(String rawMessage) =>
+    !_reVideoSide.hasMatch(rawMessage) && _reAudioSide.hasMatch(rawMessage);
+
+/// `format=Format(id, label, conteneur, type MIME, codecs, débit, langue, …`
+/// — la forme de `Format.toString()` de Media3.
+final RegExp _reFormat = RegExp(
+  r'format=Format\(([^,]*), ([^,]*), ([^,]*), ([^,]*), ([^,]*), ([^,]*), ([^,\]]*)',
+);
+
+/// R5 (recette AVD du 2026-09-21) — La piste audio que l'erreur DÉSIGNE.
+///
+/// **Le défaut corrigé** : la bascule §audioFallback partait de la piste
+/// « courante » du moteur, et celle-ci était inconnue au moment de l'erreur
+/// (`currentAudioTrack == null`) : la bascule rendait la main sans rien faire,
+/// et le flux était relancé cinq fois en place puis rouvert, sur la MÊME piste
+/// indécodable (« MediaCodecAudioRenderer error, index=1,
+/// format=Format(3, null, null, audio/mpeg-L2, null, -1, en, … »). Or le
+/// message dit exactement quelle piste a échoué : son type MIME et sa langue.
+///
+/// Rend la seule piste de [tracks] dont le codec (et la langue, s'il faut
+/// départager) correspond ; `null` si aucune, ou si plusieurs restent
+/// possibles — on ne devine pas.
+AetherTrack? audioTrackNamedByError(String rawMessage, List<AetherTrack> tracks) {
+  final Match? m = _reFormat.firstMatch(rawMessage);
+  if (m == null) return null;
+  String? field(int i) {
+    final String v = m.group(i)!.trim();
+    return (v.isEmpty || v == 'null') ? null : v.toLowerCase();
+  }
+
+  final String? mime = field(4);
+  final String? lang = field(7);
+  if (mime == null) return null;
+  final List<AetherTrack> byCodec = tracks
+      .where((t) => !t.isSpecial && (t.codec ?? '').toLowerCase() == mime)
+      .toList();
+  if (byCodec.length == 1) return byCodec.single;
+  if (byCodec.isEmpty || lang == null) return null;
+  final List<AetherTrack> byLang = byCodec
+      .where((t) => (t.language ?? '').toLowerCase() == lang)
+      .toList();
+  return byLang.length == 1 ? byLang.single : null;
 }

@@ -22,6 +22,8 @@ import 'widgets/player_controls.dart';
 import 'widgets/player_gestures.dart';
 import 'widgets/player_replay_bar.dart';
 import 'widgets/track_selector_sheet.dart';
+import 'widgets/tv_option_bar.dart';
+import 'track_language_names.dart';
 import '../../data/services/measured_quality_service.dart';
 import 'background_video_policy.dart';
 import 'cast_autostart_policy.dart';
@@ -404,6 +406,16 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// du menu ne peuvent plus se contredire.
   double _speed = 1.0;
 
+  /// §tvPlayerPanel — La rangée d'options TV (boutons dans la barre du bas,
+  /// liste au-dessus du bouton). Un automate pur : la racine `DpadFocusable`
+  /// lui délègue OK, les flèches et Retour tant qu'il est actif.
+  final TvOptionsController _tvOptions = TvOptionsController();
+  bool _tvOptionsWasActive = false;
+
+  /// §tvPlayerPanel — Recherche de sous-titres en ligne en cours (la ligne
+  /// de la liste dit « Recherche… » ; un second OK est ignoré).
+  bool _tvOnlineBusy = false;
+
   // §seekAccum — Accumulation des sauts rapprochés (double-tap mobile + flèches
   // télécommande TV). Les sauts dans une même direction et un court intervalle
   // s'additionnent et l'overlay affiche le total cumulé (ex: 3 sauts → +30s).
@@ -443,6 +455,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // moteur, et c'est elle qui a rendu la bascule possible sans réécrire le
     // lecteur), même avec une seule implémentation.
     _ctrl = Media3Engine();
+    _tvOptions
+      ..addListener(_onTvOptionsChanged)
+      ..heldFor = _arrowHeldFor;
+    HardwareKeyboard.instance.addHandler(_trackArrowHold);
     _listenErrors();
     _listenPlaybackForWakelock();
     _listenVideoParamsForQuality();
@@ -1533,24 +1549,31 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// vidéo est géré nativement par `dpad` (`restoreFocus`).
   Future<void> _showTrackSelector() async {
     _hideTimer?.cancel();
+    // La sélection affichée (coches) est relue au moteur avant d'ouvrir.
+    await _ctrl.refreshTracks();
+    if (!mounted) return;
     await showTrackSelector(
       context,
       _ctrl,
-      // Lot 11 — De quoi chercher des sous-titres en ligne. `null` pour ce
-      // qui ne s'identifie pas auprès de TMDB : une chaîne en direct, un
-      // replay, un titre vide — la ligne n'apparaît alors pas du tout,
-      // plutôt que de promettre une recherche qui ne rendrait rien.
-      onlineSearch: _media.badgeType == PlayerBadgeType.live
+      onlineSearch: _onlineSearchContext(),
+    );
+    if (mounted) _startHideTimer();
+  }
+
+  /// Lot 11 — De quoi chercher des sous-titres en ligne. `null` pour ce qui ne
+  /// s'identifie pas auprès de TMDB : une chaîne en direct, un replay, un
+  /// titre vide — la ligne n'apparaît alors pas du tout, plutôt que de
+  /// promettre une recherche qui ne rendrait rien. Partagé par la feuille
+  /// (téléphone) et la rangée TV (§tvPlayerPanel).
+  SubtitleSearchContext? _onlineSearchContext() =>
+      _media.badgeType == PlayerBadgeType.live
           ? null
           : subtitleSearchContextFor(
               title: _media.title,
               seriesName: _media.seriesName,
               episodeTag: _media.episodeTag,
               seasonNumber: _media.seasonNumber,
-            ),
-    );
-    if (mounted) _startHideTimer();
-  }
+            );
 
   /// §tvPlayerNav + §playerOptionsTouch — Panneau d'options du lecteur :
   /// pistes audio/sous-titres, vitesse, format d'image, infos vidéo, épisode
@@ -1559,7 +1582,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// Ouvert par ↑ / appui long sur TV, et par le bouton ⚙ des contrôles au
   /// tactile — l'ancien nom `_showPlayerOptionsPanel` laissait croire à un chemin
   /// réservé à la télécommande, ce qui est précisément l'oubli qu'on corrige.
+  ///
+  /// §tvPlayerPanel — Sur TV, plus de Dialog : ce chemin (↑, appui long, et
+  /// l'action « options » de la télécommande web) ouvre la rangée de boutons
+  /// dans la vidéo. Le téléphone garde sa feuille.
   Future<void> _showPlayerOptionsPanel() async {
+    if (PlatformTv.isTv) {
+      _openTvOptions();
+      return;
+    }
     _hideTimer?.cancel();
     await showPlayerOptions(
       context,
@@ -1600,29 +1631,354 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (mounted) _startHideTimer();
   }
 
-  /// §videoStats / §videoStatsTags — Sous-menu de l'encart de diagnostic :
-  /// oui / non, toujours à l'écran ou avec les contrôles, lignes affichées.
+  /// §videoStats + §tvPlayerPanel — Sous-menu de l'encart de diagnostic : un
+  /// seul interrupteur (téléphone). L'encart activé reste à l'écran.
   Future<void> _showStatsMenu() async {
     _hideTimer?.cancel();
     await showVideoStatsMenu(
       context,
       enabled: _statsEnabled,
-      permanent: VideoStatsRowsPreference.permanent,
-      rows: VideoStatsRowsPreference.rows,
-      onEnabled: (v) {
-        setState(() => _statsEnabled = v);
-        VideoStatsPreference.set(v);
-      },
-      onPermanent: (v) {
-        VideoStatsRowsPreference.setPermanent(v);
-        if (mounted) setState(() {});
-      },
-      onRow: (k, shown) {
-        VideoStatsRowsPreference.setRow(k, shown);
-        if (mounted) setState(() {});
-      },
+      onEnabled: _setStatsEnabled,
     );
     if (mounted) _startHideTimer();
+  }
+
+  void _setStatsEnabled(bool v) {
+    setState(() => _statsEnabled = v);
+    VideoStatsPreference.set(v);
+  }
+
+  // ── §tvPlayerPanel — rangée d'options TV ─────────────────────────────────
+
+  /// §tvSeekBar — Depuis quand ←/→ est enfoncée. `DpadFocusable.onDirection`
+  /// reçoit l'appui ET ses répétitions sans les distinguer, et ne voit jamais
+  /// le relâchement : on l'observe ici, sans rien consommer (`false`).
+  DateTime? _arrowDownAt;
+
+  bool _trackArrowHold(KeyEvent e) {
+    final LogicalKeyboardKey k = e.logicalKey;
+    if (k != LogicalKeyboardKey.arrowLeft && k != LogicalKeyboardKey.arrowRight) {
+      return false;
+    }
+    if (e is KeyDownEvent) {
+      _arrowDownAt = DateTime.now();
+    } else if (e is KeyUpEvent) {
+      _arrowDownAt = null; // relâchée : le pas repart à 10 s
+    }
+    return false;
+  }
+
+  Duration _arrowHeldFor() {
+    final DateTime? t = _arrowDownAt;
+    return t == null ? Duration.zero : DateTime.now().difference(t);
+  }
+
+  /// ↓ / ↑ / appui long depuis la vidéo : contrôles affichés, focus sur la
+  /// rangée (dernier bouton utilisé, sinon Audio). `false` = pas de rangée
+  /// possible (verrou, diffusion, encart de fin…).
+  bool _openTvOptions() {
+    if (!_tvOptions.open()) return false;
+    _showControls();
+    // Recette 2026-09-21 — « Audio : Automatique » sur un film en français :
+    // la sélection gardée par le moteur datait du chargement. On la relit à
+    // chaque ouverture ; les étiquettes et les coches suivent au rebuild.
+    unawaited(_ctrl.refreshTracks().then((_) {
+      if (mounted) setState(() {});
+    }));
+    return true;
+  }
+
+  /// Entrée / sortie de la rangée : tant qu'on y est, les contrôles restent
+  /// affichés (minuteur de masquage suspendu) ; à la sortie, ils se masquent
+  /// ensuite normalement. Et `PopScope.canPop` suit l'état (Retour referme la
+  /// liste, puis la rangée, et seulement ensuite quitte le film).
+  void _onTvOptionsChanged() {
+    if (!mounted) return;
+    final bool active = _tvOptions.active;
+    if (active) {
+      _hideTimer?.cancel();
+      _controlsVisible = true;
+    } else if (_tvOptionsWasActive) {
+      _startHideTimer();
+    }
+    _tvOptionsWasActive = active;
+    setState(() {});
+  }
+
+  /// Les boutons de la rangée, recalculés à chaque image : leurs étiquettes
+  /// disent l'ÉTAT courant. Vide = rangée absente (et refermée si elle était
+  /// ouverte) : verrou, diffusion (§castSend), PiP, encart de fin
+  /// (§autoNextEp, qui garde la main).
+  List<TvOptionButton> _tvButtons(BuildContext context) {
+    if (!PlatformTv.isTv ||
+        _isLocked ||
+        _cast != null ||
+        _relay != null ||
+        _inPip ||
+        _endOfPlayback != null) {
+      return const [];
+    }
+    final l10n = context.l10n;
+    final AetherTrack? audio = _ctrl.currentAudioTrack;
+    final AetherTrack? sub = _ctrl.currentSubtitleTrack;
+    final List<AetherQuality> qualities = _ctrl.qualities;
+    final AetherQuality? quality = _ctrl.currentQuality;
+    // §engineFeatures — même règle que le panneau téléphone : la Qualité
+    // n'existe que s'il y a un choix à faire.
+    final bool hasQualities = qualities.where((q) => !q.isAuto).length >= 2;
+    return [
+      if (widget.onRequestNext != null)
+        TvOptionButton(
+          kind: TvOptionKind.nextEpisode,
+          icon: Icons.skip_next_rounded,
+          title: l10n.ctrlNextEpisode,
+          onAction: _requestNextEpisode,
+          leavesRow: true,
+        ),
+      TvOptionButton(
+        kind: TvOptionKind.audio,
+        icon: Icons.graphic_eq_rounded,
+        title: l10n.tracksAudio,
+        value: audio == null ? l10n.tvOptAuto : trackDisplayTitle(audio),
+        items: _tvAudioItems,
+      ),
+      TvOptionButton(
+        kind: TvOptionKind.subtitles,
+        icon: Icons.closed_caption_rounded,
+        title: l10n.tracksSubtitles,
+        value: sub == null ? l10n.tvOptSubsOff : trackDisplayTitle(sub),
+        items: _tvSubtitleItems,
+      ),
+      TvOptionButton(
+        kind: TvOptionKind.speed,
+        icon: Icons.speed_rounded,
+        title: l10n.optSpeedTitle,
+        value: tvSpeedLabel(_speed, l10n),
+        items: () => [
+          for (final s in kPlaybackSpeeds)
+            TvOptionItem(
+              label: tvSpeedLabel(s, l10n),
+              selected: s == _speed,
+              onSelect: () async {
+                _setSpeed(s);
+                return true;
+              },
+            ),
+        ],
+      ),
+      TvOptionButton(
+        kind: TvOptionKind.fit,
+        icon: _fit.icon,
+        title: l10n.optFitTitle,
+        value: _fit.label,
+        items: () => [
+          for (final mode in VideoFitMode.values)
+            TvOptionItem(
+              label: mode.label,
+              detail: mode.description,
+              icon: mode.icon,
+              selected: mode == _fit,
+              onSelect: () async {
+                // Même effet que `_showFitMenu` : état + mémoire.
+                setState(() => _fit = mode);
+                VideoFitPreference.set(mode);
+                return true;
+              },
+            ),
+        ],
+      ),
+      if (hasQualities)
+        TvOptionButton(
+          kind: TvOptionKind.quality,
+          icon: Icons.high_quality_rounded,
+          title: l10n.optQualityTitle,
+          value: quality == null || quality.isAuto
+              ? l10n.optQualityAuto
+              : quality.label,
+          items: () => [
+            for (final q in _ctrl.qualities)
+              TvOptionItem(
+                label: q.isAuto ? l10n.optQualityAuto : q.label,
+                detail:
+                    q.isAuto ? l10n.optQualityAutoSub : formatBitrate(q.bitrate),
+                selected: q == _ctrl.currentQuality,
+                onSelect: () async {
+                  final bool ok = await _ctrl.setQuality(q);
+                  if (!mounted) return ok;
+                  if (!ok) {
+                    AppSnackBar.show(
+                        this.context, this.context.l10n.optQualityFailed);
+                  }
+                  setState(() {});
+                  return ok;
+                },
+              ),
+          ],
+        ),
+      TvOptionButton(
+        kind: TvOptionKind.stats,
+        // Recette 2026-09-21 — l'icône « compteur » était déjà celle de
+        // Vitesse : les deux boutons se confondaient.
+        icon: Icons.query_stats_rounded,
+        title: l10n.optVideoInfo,
+        value: _statsEnabled ? l10n.tvOptStatsShown : l10n.tvOptStatsHidden,
+        onAction: () => _setStatsEnabled(!_statsEnabled),
+      ),
+    ];
+  }
+
+  /// Recette TV n° 2 (2026-09-21) — Après un choix de piste, le bouton disait
+  /// encore l'ANCIENNE langue jusqu'à la réouverture suivante : le natif
+  /// applique la sélection sur son propre fil, et la relecture faite juste
+  /// après l'appel voyait encore l'état d'avant (aucun événement « pistes
+  /// changées » ne remonte du vendoré). On relit donc tout de suite, puis
+  /// deux fois encore le temps que le natif publie, et l'étiquette suit.
+  void _rereadTracksSoon() {
+    for (final int ms in const [0, 400, 1200]) {
+      Timer(Duration(milliseconds: ms), () async {
+        if (!mounted) return;
+        await _ctrl.refreshTracks();
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  /// Liste Audio : les pistes, puis la mémoire « revenir à l'automatique »
+  /// (R43 : en FIN de liste, jamais l'action par défaut d'OK).
+  List<TvOptionItem> _tvAudioItems() {
+    final l10n = context.l10n;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final AetherTrack? cur = _ctrl.currentAudioTrack;
+    final String? memory = TrackPreferencesService.audio;
+    return [
+      for (final t in _ctrl.audioTracks)
+        TvOptionItem(
+          label: trackDisplayTitle(t),
+          detail: trackDisplayDetail(t),
+          selected: t.id == cur?.id,
+          onSelect: () async {
+            // §trackRebuffer — ne pas ré-appliquer une piste déjà active.
+            if (t.id == _ctrl.currentAudioTrack?.id) return true;
+            final bool ok = await applyAudioTrackChoice(_ctrl, t);
+            if (!ok) showTrackToast(messenger, l10n.tracksTrackFailed);
+            if (ok) _rereadTracksSoon();
+            return ok;
+          },
+        ),
+      if (memory != null)
+        TvOptionItem(
+          label: l10n.tracksMemoryAudio(
+              trackLanguageName(memory) ?? memory.toUpperCase()),
+          detail: l10n.tracksMemoryForget,
+          icon: Icons.restart_alt_rounded,
+          onSelect: () async {
+            final bool ok = await _ctrl.resetAudioToAuto();
+            if (!ok) showTrackToast(messenger, l10n.tracksResetFailed);
+            if (ok) _rereadTracksSoon();
+            return ok;
+          },
+        ),
+    ];
+  }
+
+  /// Liste Sous-titres : « Désactivés » EN TÊTE toujours (§subOff), les
+  /// pistes, la coupure mémorisée (R43), puis « Chercher en ligne » en
+  /// DERNIER — une recherche remplace la liste par ses résultats.
+  List<TvOptionItem> _tvSubtitleItems() {
+    final l10n = context.l10n;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final AetherTrack? cur = _ctrl.currentSubtitleTrack;
+    final SubtitleSearchContext? search = _onlineSearchContext();
+    return [
+      TvOptionItem(
+        label: l10n.tracksDisabled,
+        icon: Icons.subtitles_off_rounded,
+        selected: cur == null,
+        onSelect: () async {
+          // R42 — coupure sémantique, ATTENDUE : un échec se dit.
+          final bool ok = await _ctrl.disableSubtitles();
+          if (!ok) showTrackToast(messenger, l10n.tracksDisableFailed);
+          if (ok) _rereadTracksSoon();
+          return ok;
+        },
+      ),
+      for (final t in _ctrl.subtitleTracks)
+        TvOptionItem(
+          label: trackDisplayTitle(t),
+          detail: trackDisplayDetail(t),
+          selected: t.id == cur?.id,
+          onSelect: () async {
+            if (t.id == _ctrl.currentSubtitleTrack?.id) return true;
+            // R43 — rien n'est mémorisé ici : c'est le moteur qui lève la
+            // coupure mémorisée, et une piste ne vaut que pour ce titre.
+            final bool ok = await _ctrl.setSubtitleTrack(t);
+            if (!ok) showTrackToast(messenger, l10n.tracksTrackFailed);
+            if (ok) _rereadTracksSoon();
+            return ok;
+          },
+        ),
+      if (TrackPreferencesService.subtitle ==
+          TrackPreferencesService.kSubtitlesOff)
+        TvOptionItem(
+          label: l10n.tracksMemorySubOff,
+          detail: l10n.tracksMemoryForget,
+          icon: Icons.restart_alt_rounded,
+          onSelect: () async {
+            final bool ok = await _ctrl.resetSubtitlesToAuto();
+            if (!ok) showTrackToast(messenger, l10n.tracksResetFailed);
+            if (ok) _rereadTracksSoon();
+            return ok;
+          },
+        ),
+      if (search != null)
+        TvOptionItem(
+          label: l10n.tracksSearchOnline,
+          detail: _tvOnlineBusy
+              ? l10n.tracksOnlineSearching
+              : l10n.tracksSearchOnlineSub,
+          icon: Icons.travel_explore_rounded,
+          onSelect: () => _tvSearchOnline(search),
+        ),
+    ];
+  }
+
+  /// Lot 11 sur TV — la recherche remplace la liste Sous-titres par ses
+  /// résultats, dans le même popover ; OK pose un résultat. Un échec se dit
+  /// par le toast, et la liste reste ouverte.
+  Future<bool> _tvSearchOnline(SubtitleSearchContext search) async {
+    // §boundFocus — la ligne reste activable pendant la recherche ; c'est ici
+    // qu'un second départ est refusé.
+    if (_tvOnlineBusy) return false;
+    final l10n = context.l10n;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    _tvOnlineBusy = true;
+    _tvOptions.refresh();
+    try {
+      final found = await findOnlineSubtitles(search, l10n);
+      if (!mounted) return false;
+      if (found.error != null) {
+        showTrackToast(messenger, found.error!);
+        return false;
+      }
+      _tvOptions.replaceList(TvOptionKind.subtitles, [
+        for (final s in found.results)
+          TvOptionItem(
+            label: trackLanguageName(s.language) ?? s.display,
+            detail: onlineSubtitleDetail(l10n, s),
+            onSelect: () async {
+              final bool ok = await loadOnlineSubtitle(_ctrl, s);
+              showTrackToast(messenger,
+                  ok ? l10n.tracksOnlineAdded : l10n.tracksOnlineAddFailed);
+              if (ok) _rereadTracksSoon();
+              return ok;
+            },
+          ),
+      ]);
+      return false;
+    } finally {
+      _tvOnlineBusy = false;
+      if (mounted) _tvOptions.refresh();
+    }
   }
 
   /// §engineFeatures — Sous-menu Qualité HLS.
@@ -1703,10 +2059,31 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// indécodables. ⚠️ En dernier recours on lit **sans son** plutôt que
   /// d'abandonner : une image sans audio reste regardable, un écran d'erreur
   /// non — mais on le DIT, sinon ça passe pour une panne.
+  ///
+  /// ⚠️ Recette 2026-09-21 (AVD TV, piste MP2 anglaise) — la bascule ne se
+  /// déclenchait JAMAIS : elle partait de `currentAudioTrack`, inconnue au
+  /// moment de l'erreur, et rendait `false` ; le flux était alors relancé
+  /// cinq fois en place puis rouvert, sur la même piste. La piste fautive se
+  /// lit désormais d'abord dans le MESSAGE de l'erreur (`lastErrorAudioTrack`),
+  /// puis la piste courante, puis le dernier choix de l'utilisateur.
   bool _recoverFromAudioError() {
-    final current = _ctrl.currentAudioTrack;
-    if (current == null) return false;
+    final AudioChoice? choice = lastAudioChoice(_ctrl);
+    AetherTrack? byId(String? id) =>
+        id == null ? null : _ctrl.audioTracks.where((t) => t.id == id).firstOrNull;
+    final current = _ctrl.lastErrorAudioTrack ??
+        _ctrl.currentAudioTrack ??
+        byId(choice?.trackId);
+    if (current == null) {
+      debugPrint('⚠️ §audioFallback — erreur audio, piste fautive inconnue');
+      return false;
+    }
     _rejectedAudioIds.add(current.id);
+    // §trackMemory — si c'est le choix que l'utilisateur vient de faire, la
+    // langue qu'il a mémorisée est défaite : sinon chaque titre suivant
+    // rouvrirait sur une piste que cet appareil ne décode pas.
+    if (choice != null && choice.trackId == current.id) {
+      unawaited(undoAudioChoice(_ctrl, current.id));
+    }
 
     // §engineVendor étape 3 — `isSpecial` remplace le test en dur sur les
     // identifiants mpv « no »/« auto » : ces valeurs n'existent que pour ce
@@ -1717,7 +2094,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     }).toList();
 
     if (candidates.isNotEmpty) {
-      final next = candidates.first;
+      // La piste d'AVANT le choix d'abord (elle jouait), sinon la première.
+      final String? before =
+          choice != null && choice.trackId == current.id ? choice.trackBefore : null;
+      final next =
+          candidates.where((t) => t.id == before).firstOrNull ?? candidates.first;
       debugPrint('🔈 §audioFallback — piste « ${current.id} » indécodable, '
           'bascule sur « ${next.id} » (${next.language ?? "langue inconnue"})');
       unawaited(_applyAudioRecovery(next));
@@ -1725,7 +2106,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         AppSnackBar.show(
           context,
           context.l10n.playerAudioTrackSwitched(
-              next.title ?? next.language ?? context.l10n.playerOtherTrack),
+              // Le même nom que dans les listes (« Français », pas « fre »).
+              trackDisplayTitle(next)),
           duration: const Duration(seconds: 3),
         );
       }
@@ -1760,6 +2142,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       await _ctrl.disableAudio();
     }
     if (!mounted) return;
+    _rereadTracksSoon(); // l'étiquette Audio suit la bascule
     final bool ok = await _ctrl.recoverInPlace();
     if (!ok && mounted) {
       debugPrint('⚠️ §audioFallback — reprise en place refusée, réouverture');
@@ -1913,6 +2296,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   void _startHideTimer() {
     _hideTimer?.cancel();
+    // §tvPlayerPanel — Rangée ou liste d'options ouverte : pas de masquage.
+    // Relancé par `_onTvOptionsChanged` à la sortie.
+    if (_tvOptions.active) return;
     _hideTimer = Timer(_controlsHideDelay, () {
       if (mounted) setState(() => _controlsVisible = false);
     });
@@ -2066,6 +2452,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // c'est là que vivent la transition de route, la rotation et le
     // repeint de la page du dessous.
     final Stopwatch swAll = Stopwatch()..start();
+    HardwareKeyboard.instance.removeHandler(_trackArrowHold);
+    _tvOptions
+      ..removeListener(_onTvOptionsChanged)
+      ..dispose();
     JankMeter.beginSpan('sortie lecteur');
     Timer(const Duration(milliseconds: 1500), JankMeter.endSpan);
     final DateTime tSortie = DateTime.now();
@@ -2166,7 +2556,11 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // sans contrôles dans les deux cas (`PlayerControls.visible`). Contrepartie
     // assumée : une erreur locale survenue pendant la diffusion d'un AUTRE
     // titre ne se voit qu'à la fin de celle-ci.
-    if (_hasError && _cast == null) return _buildErrorScreen();
+    if (_hasError && _cast == null) {
+      // §tvPlayerPanel — L'écran d'erreur n'a pas de rangée : refermée.
+      _tvOptions.syncButtons(const []);
+      return _buildErrorScreen();
+    }
 
     // §3c-5 — Sur Android TV : wrap Shortcuts/Actions/Focus pour mapper le
     // D-pad sur les actions du player. Sur mobile : pass-through neutre.
@@ -2182,8 +2576,32 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // avant que la transition ne commence) : Android tourne pendant que le
     // lecteur s'efface, et la fiche arrive déjà en portrait. `dispose()`
     // redemande la même orientation : c'est idempotent, sans effet.
+    // §tvPlayerPanel — Les boutons du moment (vide = pas de rangée : verrou,
+    // diffusion, encart de fin…). Ne notifie pas : on est dans `build`.
+    // §tvSeekBar — la barre n'est sélectionnable que sur un flux qui a une
+    // durée (pas un direct). Posée AVANT `syncButtons`, qui la relit.
+    _tvOptions.seekSource = _media.badgeType == PlayerBadgeType.live
+        ? null
+        : TvSeekSource(
+            position: () => _ctrl.position,
+            duration: () => _ctrl.duration,
+            // Le point de saut unique (§castSend, badge cumulé).
+            commit: (target) => _handleSeek(target - _ctrl.position),
+          );
+    _tvOptions.syncButtons(_tvButtons(context));
     return PopScope(
-      onPopInvokedWithResult: _onPlayerPop,
+      // §tvPlayerPanel — Retour dans la rangée ou dans une liste referme ce
+      // niveau (`_tvOptions.back()`), il ne quitte JAMAIS le film : seule la
+      // vidéo elle-même le fait (§tvOptionsBack). `AppBack` passe par
+      // `maybePop`, qui respecte ce `canPop`.
+      canPop: !_tvOptions.active,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _tvOptions.back();
+          return;
+        }
+        _onPlayerPop(didPop, result);
+      },
       child: Scaffold(
       backgroundColor: Colors.black,
       // §dpadNav — La zone vidéo est un `DpadFocusable` (autofocus) qui capte la
@@ -2207,7 +2625,12 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         // directions) : à la télécommande SEULE on ne peut ni verrouiller ni
         // déverrouiller — pas de piège, mais pas non plus un mode « TV ».
         // Le rendre focusable est un sujet §navBlind, pas §tourFix.
+        //
+        // §tvPlayerPanel — Tant que la rangée d'options est active, OK et les
+        // flèches lui appartiennent : pas de play/pause, pas de saut ±10 s.
+        // ↓ et ↑ depuis la vidéo ouvrent la rangée (↑ ouvrait un Dialog).
         onSelect: () {
+          if (_tvOptions.select()) return;
           if (_isLocked) {
             _showControls();
             return;
@@ -2215,13 +2638,20 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           _togglePlayPause();
         },
         onLongSelect: () {
-          if (_isLocked) return;
+          if (_isLocked || _tvOptions.active) return;
           _showPlayerOptionsPanel();
         },
         onDirection: (dir) {
+          if (_tvOptions.move(dir)) return true;
           // Verrouillé : les directions bloquées sont CONSOMMÉES (`true`) —
           // rendre `false` laisserait le focus s'échapper de la vidéo.
           if (_isLocked && dir != TraversalDirection.down) return true;
+          if ((dir == TraversalDirection.up ||
+                  dir == TraversalDirection.down) &&
+              !_isLocked &&
+              _openTvOptions()) {
+            return true;
+          }
           if (dir == TraversalDirection.left) {
             _handleSeek(const Duration(seconds: -10));
             return true;
@@ -2231,7 +2661,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
             return true;
           }
           if (dir == TraversalDirection.up) {
-            _showPlayerOptionsPanel();
+            // TV sans rangée possible (diffusion, encart de fin) : les
+            // contrôles, jamais un Dialog. Clavier du téléphone : la feuille.
+            if (PlatformTv.isTv) {
+              _showControls();
+            } else {
+              _showPlayerOptionsPanel();
+            }
             return true;
           }
           if (dir == TraversalDirection.down) {
@@ -2293,15 +2729,23 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
               // partagé) : un `pop()` direct doublonnait avec elle.
               onBack: AppBack.popFromUi,
               onInteraction: _showControls,
-              speed: _speed,
-              onSpeedChanged: _setSpeed,
               onLockChanged: (locked) {
                 setState(() => _isLocked = locked);
                 _syncAutoPip(); // §pipPhone — pas de PiP à l'insu, sous verrou
               },
               onNextEpisode:
                   widget.onRequestNext == null ? null : _requestNextEpisode,
-              onShowTracks: _showTrackSelector,
+              // §tvPlayerPanel — Sur TV, le bouton CC n'était qu'un ornement
+              // inatteignable : Audio et Sous-titres sont dans la rangée.
+              onShowTracks: isTv ? null : _showTrackSelector,
+              tvBar: isTv ? TvOptionBar(controller: _tvOptions) : null,
+              tvSeekOverlay: isTv
+                  ? (position, duration) => TvSeekMarker(
+                        controller: _tvOptions,
+                        position: position,
+                        duration: duration,
+                      )
+                  : null,
               // R17 — La barre dit sa hauteur, l'encart des stats se pose
               // dessous. Ne repeindre que si l'encart est là pour en profiter.
               onTopBarHeight: (h) {
@@ -2447,11 +2891,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                 player: _ctrl,
                 // §castSend — les stats du lecteur LOCAL (en pause) n'ont
                 // rien à dire sur ce que le téléviseur décode : masquées.
-                // §videoStatsTags — et, sauf « toujours à l'écran », l'encart
-                // suit les contrôles : révélé au toucher ou à la télécommande.
-                hidden: _isLocked ||
-                    _cast != null ||
-                    (!VideoStatsRowsPreference.permanent && !_controlsVisible),
+                // §tvPlayerPanel — Activé = TOUJOURS à l'écran (le mode « avec
+                // les contrôles » et le choix des lignes ont été retirés).
+                hidden: _isLocked || _cast != null,
                 // §qualityTruth — la qualité que la LISTE annonce, à confronter
                 // à ce qui est réellement décodé.
                 announcedQuality: _media.qualityTag,
@@ -2462,7 +2904,6 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                 topInset: _controlsVisible
                     ? _topBarHeight
                     : MediaQuery.of(context).padding.top + 12,
-                visibleRows: VideoStatsRowsPreference.rows,
               ),
 
             // §seekAccum — Badge central du saut cumulé (ex: « ⏩ +30s »).

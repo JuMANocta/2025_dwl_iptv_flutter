@@ -1430,14 +1430,6 @@
   "perrDrm": "Protected content (DRM) cannot be played.",
   "perrDecodeVideo": "Video decoding failed.",
   "perrCannotPlay": "Playback failed.",
-  "perrCannotPlayWith": "Playback failed: {detail}",
-  "@perrCannotPlayWith": {
-    "placeholders": {
-      "detail": {
-        "type": "String"
-      }
-    }
-  },
   "relayBatteryPluggedOk": "The phone is plugged in, perfect for a movie.",
   "relayBatteryPlugIfYouCan": "Plug the phone in if you can: converting uses a lot of battery.",
   "relayBatteryLow": "Battery at {percent}% — plug the phone in, casting depends on it.",
@@ -1706,7 +1698,6 @@
   "ctrlPip": "Shrink to a window",
   "ctrlOptions": "Playback options",
   "ctrlTracks": "Audio and subtitle tracks",
-  "ctrlSpeed": "Playback speed",
   "ctrlNextEpisode": "Next episode",
   "ctrlBadgeMovie": "MOVIE",
   "ctrlBadgeSeries": "SERIES",
@@ -1714,8 +1705,6 @@
   "optNextEpisodeSub": "Skip to the next episode",
   "optTracksSub": "Audio language · turn subtitles on",
   "optVideoInfo": "Video info",
-  "optVideoInfoOn": "Shown · tap to hide",
-  "optVideoInfoSub": "Decoding, resolution, frames/s, drops",
   "fitContainSub": "Whole picture · black bars possible",
   "fitCoverSub": "Removes black bars · crops the edges",
   "fitFill": "Full screen",
@@ -1798,7 +1787,6 @@
       }
     }
   },
-  "playerOtherTrack": "another track",
   "commonOk": "OK",
   "commonApply": "Apply",
   "commonApplying": "Applying…",
@@ -3026,9 +3014,6 @@
   "optQualityFailed": "This quality could not be applied",
   "optStatsShow": "Show the panel",
   "optStatsShowSub": "What your device really decodes",
-  "optStatsPermanent": "Keep it on screen",
-  "optStatsPermanentSub": "Stays visible while you watch",
-  "optStatsRows": "Lines shown",
   "detMoreBelow": "More below",
   "detSeeMoreCast": "See more",
   "settingsSubtitles": "Online subtitles",
@@ -3065,5 +3050,11 @@
   "tracksOnlineQuota": "You have used today's searches",
   "tracksOnlineFailed": "The search could not be completed",
   "themeDefaultName": "My theme {n}",
-  "@themeDefaultName": {"placeholders": {"n": {"type": "int"}}}
+  "@themeDefaultName": {"placeholders": {"n": {"type": "int"}}},
+  "tvOptSpeedValue": "{speed}×",
+  "@tvOptSpeedValue": {"placeholders": {"speed": {"type": "String"}}},
+  "tvOptSubsOff": "Off",
+  "tvOptAuto": "Automatic",
+  "tvOptStatsShown": "Shown",
+  "tvOptStatsHidden": "Hidden"
 }

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/aether_theme_extension.dart';
 import 'package:aetherStream/core/themes/themes.dart';
 import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
@@ -453,6 +454,12 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
               backgroundColor: kAccentPrimary,
               // Revue 2026-09-11, D4B-08 — le texte suit le fond (Tron : blanc).
               foregroundColor: onColorFor(kAccentPrimary),
+              // Recette TV 2026-09-21 — le FAB recevait le focus à la croix
+              // SANS aucun anneau : OK ouvrait « Ajouter » par surprise. Il
+              // porte maintenant l'anneau du thème (§btnShape : rayon du thème,
+              // pas une pilule), résolu par état. ⛔ Jamais `null` rendu
+              // (§themeReboot) : hors focus, la même forme sans bordure.
+              shape: _fabFocusShape(ctx),
             );
           },
         ),
@@ -576,6 +583,25 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
           label: Text(context.l10n.reloadAllTooltip),
           style: aetherFilledStyle(kAccentPrimary),
         ),
+      ),
+    );
+  }
+
+  /// Forme du FAB : rayon du thème, et un anneau quand il a le focus (le
+  /// seul signal visible au D-pad). §focusContrast — le FAB est PLEIN, à
+  /// l'accent : un anneau `focusGlowColor` (= l'accent) s'y fondrait. Comme
+  /// les `FilledButton` du thème, l'anneau prend la couleur du TEXTE du
+  /// bouton, contrastée contre le fond ET le bouton.
+  static OutlinedBorder _fabFocusShape(BuildContext context) {
+    final ext = Theme.of(context).extension<AetherThemeExtension>();
+    final double radius = ext?.borderRadius ?? 12;
+    final Color ring = onColorFor(kAccentPrimary);
+    return WidgetStateOutlinedBorder.resolveWith(
+      (states) => RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radius),
+        side: states.contains(WidgetState.focused)
+            ? BorderSide(color: ring, width: 2.6)
+            : BorderSide.none,
       ),
     );
   }

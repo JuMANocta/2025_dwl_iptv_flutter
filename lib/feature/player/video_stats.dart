@@ -324,9 +324,6 @@ abstract final class VideoStatsPreference {
     } catch (e) {
       debugPrint('⚠️ §videoStats — lecture impossible : $e');
     }
-    // §videoStatsTags — Les lignes et le mode d'affichage se chargent avec
-    // l'interrupteur : un seul point d'entrée au démarrage.
-    await VideoStatsRowsPreference.load();
   }
 
   static void set(bool value) {
@@ -342,8 +339,9 @@ abstract final class VideoStatsPreference {
 }
 
 /// §videoStatsTags — Les lignes de l'encart, une clé par ligne. L'ordre est
-/// celui de l'affichage. ⚠️ Persistées par NOM (`name`), jamais par index :
-/// une ligne ajoutée au milieu ne décalerait pas la sélection enregistrée.
+/// celui de l'affichage. §tvPlayerPanel — plus rien n'est persisté par ligne
+/// (le choix des lignes a été retiré) : la clé ne sert qu'au filtre éventuel
+/// de `VideoStatsOverlay.visibleRows`.
 enum VideoStatKey {
   decoding,
   output,
@@ -362,76 +360,6 @@ enum VideoStatKey {
   audio,
   stalls,
   startup,
-}
-
-/// §videoStatsTags — Ce que l'utilisateur veut VOIR dans l'encart, et quand.
-///
-/// Deux réglages, hors `PerfConfig` (ce n'est pas de la performance,
-/// §perfSettings) : les lignes affichées ([rows], toutes par défaut) et
-/// [permanent] — `false` (défaut) : l'encart apparaît AVEC les contrôles, au
-/// toucher ou à la télécommande, et s'efface avec eux ; `true` : il reste à
-/// l'écran, le mode utile pour surveiller des images perdues qui n'arrivent
-/// qu'après plusieurs minutes.
-abstract final class VideoStatsRowsPreference {
-  static const _rowsKey = 'player_video_stats_rows_v1';
-  static const _permanentKey = 'player_video_stats_permanent_v1';
-
-  static Set<VideoStatKey> _rows = VideoStatKey.values.toSet();
-  static bool _permanent = false;
-
-  static Set<VideoStatKey> get rows => Set.unmodifiable(_rows);
-  static bool get permanent => _permanent;
-
-  static Future<void> load() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final List<String>? names = prefs.getStringList(_rowsKey);
-      if (names != null) _rows = decodeRows(names);
-      _permanent = prefs.getBool(_permanentKey) ?? false;
-    } catch (e) {
-      debugPrint('⚠️ §videoStatsTags — lecture impossible : $e');
-    }
-  }
-
-  /// Fonction pure : les noms enregistrés → l'ensemble des lignes. Un nom
-  /// inconnu (ligne retirée depuis) est ignoré ; une liste VIDE reste vide
-  /// (l'utilisateur a tout décoché : on ne lui remet pas tout).
-  static Set<VideoStatKey> decodeRows(List<String> names) {
-    final byName = {for (final k in VideoStatKey.values) k.name: k};
-    return {
-      for (final n in names)
-        if (byName[n] != null) byName[n]!,
-    };
-  }
-
-  static void setRow(VideoStatKey key, bool shown) {
-    final next = Set<VideoStatKey>.of(_rows);
-    if (shown) {
-      next.add(key);
-    } else {
-      next.remove(key);
-    }
-    if (next.length == _rows.length && next.containsAll(_rows)) return;
-    _rows = next;
-    SharedPreferences.getInstance()
-        .then((prefs) => prefs.setStringList(
-            _rowsKey, VideoStatKey.values.where(_rows.contains).map((k) => k.name).toList()))
-        .catchError((e) {
-      debugPrint('⚠️ §videoStatsTags — écriture impossible : $e');
-      return false;
-    });
-  }
-
-  static void setPermanent(bool value) {
-    if (value == _permanent) return;
-    _permanent = value;
-    SharedPreferences.getInstance()
-        .then((prefs) => prefs.setBool(_permanentKey, value))
-        .catchError((e) {
-      debugPrint('⚠️ §videoStatsTags — écriture impossible : $e');
-      return false;
-    });
-  }
 }
 
 /// Un nombre a une décimale, avec le séparateur de la LANGUE de l'interface

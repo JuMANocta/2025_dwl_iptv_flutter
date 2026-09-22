@@ -1601,11 +1601,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get perrCannotPlay => 'Playback failed.';
 
   @override
-  String perrCannotPlayWith(String detail) {
-    return 'Playback failed: $detail';
-  }
-
-  @override
   String get relayBatteryPluggedOk =>
       'The phone is plugged in, perfect for a movie.';
 
@@ -1983,9 +1978,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ctrlTracks => 'Audio and subtitle tracks';
 
   @override
-  String get ctrlSpeed => 'Playback speed';
-
-  @override
   String get ctrlNextEpisode => 'Next episode';
 
   @override
@@ -2005,12 +1997,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get optVideoInfo => 'Video info';
-
-  @override
-  String get optVideoInfoOn => 'Shown · tap to hide';
-
-  @override
-  String get optVideoInfoSub => 'Decoding, resolution, frames/s, drops';
 
   @override
   String get fitContainSub => 'Whole picture · black bars possible';
@@ -2147,9 +2133,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String playerRecovering(int attempt, int max) {
     return 'Resuming playback… ($attempt/$max)';
   }
-
-  @override
-  String get playerOtherTrack => 'another track';
 
   @override
   String get commonOk => 'OK';
@@ -4065,15 +4048,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get optStatsShowSub => 'What your device really decodes';
 
   @override
-  String get optStatsPermanent => 'Keep it on screen';
-
-  @override
-  String get optStatsPermanentSub => 'Stays visible while you watch';
-
-  @override
-  String get optStatsRows => 'Lines shown';
-
-  @override
   String get detMoreBelow => 'More below';
 
   @override
@@ -4187,4 +4161,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String themeDefaultName(int n) {
     return 'My theme $n';
   }
+
+  @override
+  String tvOptSpeedValue(String speed) {
+    return '$speed×';
+  }
+
+  @override
+  String get tvOptSubsOff => 'Off';
+
+  @override
+  String get tvOptAuto => 'Automatic';
+
+  @override
+  String get tvOptStatsShown => 'Shown';
+
+  @override
+  String get tvOptStatsHidden => 'Hidden';
 }

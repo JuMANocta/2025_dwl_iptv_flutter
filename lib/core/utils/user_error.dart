@@ -98,7 +98,12 @@ String _describe(Object error) {
   if (error is FileSystemException) {
     return _t.errFileSystem;
   }
-  if (error is ArgumentError || error is StateError) {
+  // Recette TV 2026-09-21 — ⛔ Une `Error` Dart est un défaut de NOTRE code
+  // (`TypeError` d'un `!` sur null, `RangeError`, `NoSuchMethodError`…) :
+  // son texte (« Null check operator used on a null value ») n'a rien à dire
+  // à l'utilisateur. Il s'affichait sous la carte d'un compte. Le journal
+  // garde l'original (l'appelant le trace).
+  if (error is Error) {
     return _t.errInternal;
   }
   return _stripPrefix(error.toString());

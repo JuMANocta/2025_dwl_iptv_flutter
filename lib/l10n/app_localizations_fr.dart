@@ -1612,11 +1612,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get perrCannotPlay => 'Lecture impossible.';
 
   @override
-  String perrCannotPlayWith(String detail) {
-    return 'Lecture impossible : $detail';
-  }
-
-  @override
   String get relayBatteryPluggedOk =>
       'Le téléphone est branché, parfait pour un film.';
 
@@ -1995,9 +1990,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get ctrlTracks => 'Pistes audio et sous-titres';
 
   @override
-  String get ctrlSpeed => 'Vitesse de lecture';
-
-  @override
   String get ctrlNextEpisode => 'Épisode suivant';
 
   @override
@@ -2017,12 +2009,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get optVideoInfo => 'Infos vidéo';
-
-  @override
-  String get optVideoInfoOn => 'Affichées · toucher pour masquer';
-
-  @override
-  String get optVideoInfoSub => 'Décodage, résolution, images/s, pertes';
 
   @override
   String get fitContainSub => 'Image entière · bandes noires possibles';
@@ -2159,9 +2145,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String playerRecovering(int attempt, int max) {
     return 'Reprise de la lecture… ($attempt/$max)';
   }
-
-  @override
-  String get playerOtherTrack => 'une autre piste';
 
   @override
   String get commonOk => 'OK';
@@ -4085,15 +4068,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get optStatsShowSub => 'Ce que votre appareil décode vraiment';
 
   @override
-  String get optStatsPermanent => 'Le garder à l’écran';
-
-  @override
-  String get optStatsPermanentSub => 'Reste visible pendant que vous regardez';
-
-  @override
-  String get optStatsRows => 'Lignes affichées';
-
-  @override
   String get detMoreBelow => 'Suite de la fiche plus bas';
 
   @override
@@ -4210,4 +4184,21 @@ class AppLocalizationsFr extends AppLocalizations {
   String themeDefaultName(int n) {
     return 'Mon thème $n';
   }
+
+  @override
+  String tvOptSpeedValue(String speed) {
+    return '$speed×';
+  }
+
+  @override
+  String get tvOptSubsOff => 'Coupés';
+
+  @override
+  String get tvOptAuto => 'Automatique';
+
+  @override
+  String get tvOptStatsShown => 'Affichées';
+
+  @override
+  String get tvOptStatsHidden => 'Masquées';
 }

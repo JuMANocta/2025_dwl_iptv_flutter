@@ -48,6 +48,7 @@ import 'data/services/remote_control_service.dart';
 import 'core/themes/saved_themes_service.dart';
 import 'core/themes/themes.dart';
 import 'core/themes/colors.dart';
+import 'core/themes/light_palette.dart';
 import 'core/themes/theme_service.dart';
 import 'core/themes/app_theme_config.dart';
 import 'core/settings/performance_settings_service.dart';
@@ -334,7 +335,7 @@ class MyApp extends StatelessWidget {
         Locale('en'), // Anglais
       ],
 
-      // Le `builder` est utilisé ici pour superposer un bandeau "BETA"
+      // Le `builder` est utilisé ici pour superposer un bandeau "ALPHA"
       // uniquement en mode debug, sans interférer avec le widget `home`.
       // §3c-7 — Sur TV : texte en taille native (×1.0). Les itérations
       // précédentes (×1.3 puis ×1.15) donnaient une sensation "ultra-zoomée"
@@ -418,9 +419,22 @@ class MyApp extends StatelessWidget {
 
         if (isDebug) {
           wrapped = Banner(
-            message: "BETA",
+            // 2026-09-21 — « ALPHA » pour les versions debug (demande de
+            // l'utilisateur) ; « BETA » ne se dit plus.
+            message: "ALPHA",
             location: BannerLocation.topEnd,
             color: kAccentPrimary,
+            // 2026-09-21 — Le texte d'un `Banner` est BLANC en dur : sur un
+            // accent clair (Phosphore, Matrix…), « BETA » disparaissait. Même
+            // règle que partout : le texte suit son fond (`onColorFor`). Les
+            // autres valeurs reprennent le style par défaut du `Banner`.
+            // ⚠️ Ce bandeau servira à dire « FREE » en version gratuite (R25).
+            textStyle: TextStyle(
+              color: onColorFor(kAccentPrimary),
+              fontSize: 10.2,
+              fontWeight: FontWeight.w900,
+              height: 1.0,
+            ),
             child: wrapped,
           );
         }

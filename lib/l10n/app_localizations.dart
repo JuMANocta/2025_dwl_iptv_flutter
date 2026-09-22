@@ -2756,12 +2756,6 @@ abstract class AppLocalizations {
   /// **'Playback failed.'**
   String get perrCannotPlay;
 
-  /// No description provided for @perrCannotPlayWith.
-  ///
-  /// In en, this message translates to:
-  /// **'Playback failed: {detail}'**
-  String perrCannotPlayWith(String detail);
-
   /// No description provided for @relayBatteryPluggedOk.
   ///
   /// In en, this message translates to:
@@ -3410,12 +3404,6 @@ abstract class AppLocalizations {
   /// **'Audio and subtitle tracks'**
   String get ctrlTracks;
 
-  /// No description provided for @ctrlSpeed.
-  ///
-  /// In en, this message translates to:
-  /// **'Playback speed'**
-  String get ctrlSpeed;
-
   /// No description provided for @ctrlNextEpisode.
   ///
   /// In en, this message translates to:
@@ -3457,18 +3445,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Video info'**
   String get optVideoInfo;
-
-  /// No description provided for @optVideoInfoOn.
-  ///
-  /// In en, this message translates to:
-  /// **'Shown · tap to hide'**
-  String get optVideoInfoOn;
-
-  /// No description provided for @optVideoInfoSub.
-  ///
-  /// In en, this message translates to:
-  /// **'Decoding, resolution, frames/s, drops'**
-  String get optVideoInfoSub;
 
   /// No description provided for @fitContainSub.
   ///
@@ -3715,12 +3691,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Resuming playback… ({attempt}/{max})'**
   String playerRecovering(int attempt, int max);
-
-  /// No description provided for @playerOtherTrack.
-  ///
-  /// In en, this message translates to:
-  /// **'another track'**
-  String get playerOtherTrack;
 
   /// No description provided for @commonOk.
   ///
@@ -6949,24 +6919,6 @@ abstract class AppLocalizations {
   /// **'What your device really decodes'**
   String get optStatsShowSub;
 
-  /// No description provided for @optStatsPermanent.
-  ///
-  /// In en, this message translates to:
-  /// **'Keep it on screen'**
-  String get optStatsPermanent;
-
-  /// No description provided for @optStatsPermanentSub.
-  ///
-  /// In en, this message translates to:
-  /// **'Stays visible while you watch'**
-  String get optStatsPermanentSub;
-
-  /// No description provided for @optStatsRows.
-  ///
-  /// In en, this message translates to:
-  /// **'Lines shown'**
-  String get optStatsRows;
-
   /// No description provided for @detMoreBelow.
   ///
   /// In en, this message translates to:
@@ -7182,6 +7134,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'My theme {n}'**
   String themeDefaultName(int n);
+
+  /// No description provided for @tvOptSpeedValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{speed}×'**
+  String tvOptSpeedValue(String speed);
+
+  /// No description provided for @tvOptSubsOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get tvOptSubsOff;
+
+  /// No description provided for @tvOptAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic'**
+  String get tvOptAuto;
+
+  /// No description provided for @tvOptStatsShown.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown'**
+  String get tvOptStatsShown;
+
+  /// No description provided for @tvOptStatsHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden'**
+  String get tvOptStatsHidden;
 }
 
 class _AppLocalizationsDelegate

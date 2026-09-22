@@ -12,6 +12,7 @@ import '../../../data/services/tmdb_service.dart';
 import '../../../data/services/track_preferences_service.dart';
 import '../../../widgets/tv/focusable_card.dart';
 import '../../../widgets/tv/tv_adaptive_modal.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../l10n/l10n_ext.dart';
 import '../track_language_names.dart';
 import 'player_options_sheet.dart' show BackToVideoRow;
@@ -51,6 +52,179 @@ Future<void> showTrackSelector(
       onClose: () => Navigator.of(sheetCtx).pop(),
     ),
   );
+}
+
+// ─── Logique partagée (§tvPlayerPanel) ──────────────────────────────────────
+//
+// La feuille ci-dessous (téléphone) et la rangée d'options TV
+// (`tv_option_bar.dart`) appliquent les pistes par ces fonctions, et elles
+// seules : deux copies de la règle R43 (« mémoriser seulement si la piste est
+// posée ») finiraient par diverger.
+
+/// Le nom d'une piste tel qu'on l'affiche : sa langue, sinon son titre, sinon
+/// « Piste N ».
+String trackDisplayTitle(AetherTrack t) =>
+    trackLanguageName(t.language) ??
+    t.title?.trim() ??
+    L10n.current.tracksTrackN(t.id);
+
+/// Le titre de la piste quand il dit AUTRE CHOSE que [trackDisplayTitle]
+/// (« Commentaire », « VFQ »…), sinon `null`.
+String? trackDisplayDetail(AetherTrack t) {
+  final String title = trackDisplayTitle(t);
+  final String? raw = t.title?.trim();
+  return (raw != null && raw.isNotEmpty && raw != title) ? raw : null;
+}
+
+/// R43 — Pose une piste audio choisie par l'utilisateur, puis mémorise SA
+/// LANGUE pour les prochains titres — seulement si la piste est posée : avant,
+/// le canal vendoré avalait l'échec et l'app mémorisait une langue qu'aucune
+/// piste ne portait. ⛔ Jamais un numéro ni « unknown » (`languageKeyFor`).
+///
+/// §trackMemory + R5 (recette 2026-09-21) — « posée » ne veut pas dire
+/// « décodable » : le décodeur peut échouer APRÈS (piste MP2 sur l'AVD), et la
+/// langue restait mémorisée pour tous les titres suivants — chacun rouvert sur
+/// la piste indécodable. Le choix est donc NOTÉ ([AudioChoice]) : si la bascule
+/// R5 rejette cette piste, [undoAudioChoice] rend la mémoire d'avant.
+Future<bool> applyAudioTrackChoice(
+    AetherPlaybackEngine player, AetherTrack t) async {
+  final String? memoryBefore = TrackPreferencesService.audio;
+  final String? trackBefore = player.currentAudioTrack?.id;
+  final bool ok = await player.setAudioTrack(t);
+  if (!ok) return false;
+  final key = TrackPreferencesService.languageKeyFor(t.language);
+  if (key != null) await TrackPreferencesService.setAudio(key);
+  _audioChoices[player] = AudioChoice(
+    trackId: t.id,
+    memoryBefore: memoryBefore,
+    trackBefore: trackBefore,
+  );
+  return true;
+}
+
+/// R5 + §trackMemory — Le dernier choix de piste audio fait par
+/// l'utilisateur sur un moteur : la piste choisie, la langue mémorisée AVANT
+/// ce choix, et la piste qui jouait avant lui.
+class AudioChoice {
+  const AudioChoice({
+    required this.trackId,
+    required this.memoryBefore,
+    required this.trackBefore,
+  });
+
+  final String trackId;
+  final String? memoryBefore;
+  final String? trackBefore;
+}
+
+/// Un choix par moteur, qui meurt avec lui (pas de fuite, pas de registre).
+final Expando<AudioChoice> _audioChoices = Expando<AudioChoice>('audioChoice');
+
+/// Le dernier choix audio fait sur [player], ou `null`.
+AudioChoice? lastAudioChoice(AetherPlaybackEngine player) =>
+    _audioChoices[player];
+
+/// R5 — La piste [rejectedTrackId] ne se décode pas. Si c'est celle que
+/// l'utilisateur vient de choisir, la langue mémorisée par ce choix est
+/// DÉFAITE (valeur d'avant rendue) et le choix oublié. Rend le choix défait,
+/// ou `null` si la piste rejetée n'était pas un choix de l'utilisateur.
+Future<AudioChoice?> undoAudioChoice(
+    AetherPlaybackEngine player, String rejectedTrackId) async {
+  final AudioChoice? c = _audioChoices[player];
+  if (c == null || c.trackId != rejectedTrackId) return null;
+  _audioChoices[player] = null;
+  await TrackPreferencesService.setAudio(c.memoryBefore);
+  debugPrint('↩️ R5 — piste « $rejectedTrackId » indécodable : langue mémorisée rendue (${c.memoryBefore ?? 'auto'})');
+  return c;
+}
+
+/// Un échec se DIT, et la liste reste ouverte (R42) — même toast partout.
+/// ⚠️ Durée EXPLICITE : un `SnackBar` nu prend le défaut de Flutter (4 s),
+/// pas celui de l'app (2 s) — `showVia` ne l'impose pas.
+void showTrackToast(ScaffoldMessengerState? messenger, String text) {
+  if (messenger == null) return;
+  AppSnackBar.showVia(
+    messenger,
+    SnackBar(content: Text(text), duration: const Duration(seconds: 3)),
+  );
+}
+
+/// Lot 11 — Recherche de sous-titres en ligne pour [search] : les résultats,
+/// ou la phrase à dire à l'utilisateur (`error`, déjà traduite). Jamais les
+/// deux.
+Future<({List<OnlineSubtitle> results, String? error})> findOnlineSubtitles(
+  SubtitleSearchContext search,
+  AppLocalizations l10n,
+) async {
+  const none = <OnlineSubtitle>[];
+  final String? key = await SubtitleApiService.getApiKey();
+  if (key == null || key.isEmpty) {
+    return (results: none, error: l10n.tracksOnlineNoKey);
+  }
+
+  // La langue de l'interface d'abord, l'anglais ensuite : c'est la paire qui
+  // couvre presque tout, et demander TOUTES les langues rendait des centaines
+  // de lignes à faire défiler à la télécommande.
+  final String ui = l10n.localeName;
+  final String languages = ui == 'en' ? 'en' : '$ui,en';
+
+  // Le fournisseur travaille sur un identifiant TMDB ; nos listes n'en
+  // portent pas. `resolveTmdbId` fait la recherche et la mémorise.
+  final int? tmdbId = await TmdbService.instance.resolveTmdbId(
+    query: search.query,
+    isTv: search.isTv,
+  );
+  if (tmdbId == null) return (results: none, error: l10n.tracksOnlineNoTitle);
+
+  final SubtitleSearchOutcome outcome = await OnlineSubtitlesService.search(
+    tmdbId: tmdbId,
+    languages: languages,
+    apiKey: key,
+    season: search.season,
+    episode: search.episode,
+  );
+  if (!outcome.isOk) {
+    return (
+      results: none,
+      error: switch (outcome.error!) {
+        SubtitleSearchError.badKey => l10n.tracksOnlineBadKey,
+        SubtitleSearchError.quota => l10n.tracksOnlineQuota,
+        SubtitleSearchError.network => l10n.tracksOnlineFailed,
+      },
+    );
+  }
+  if (outcome.results.isEmpty) {
+    return (results: none, error: l10n.tracksOnlineNone);
+  }
+  return (results: outcome.results, error: null);
+}
+
+/// Lot 11 — Télécharge [s] puis le pose dans le moteur, qui le charge ET le
+/// sélectionne ; la piste rejoint ensuite la liste ordinaire (cf.
+/// `loadExternalSubtitle`). `false` = rien n'a été posé.
+Future<bool> loadOnlineSubtitle(
+    AetherPlaybackEngine player, OnlineSubtitle s) async {
+  final Directory cache = await getTemporaryDirectory();
+  final String? path = await OnlineSubtitlesService.download(s, cacheDir: cache);
+  if (path == null) return false;
+  final bool ok = await player.loadExternalSubtitle(
+    filePath: path,
+    language: s.language,
+    label: s.display,
+  );
+  if (ok) debugPrint('✅ lot 11 — sous-titre en ligne posé (${s.language})');
+  return ok;
+}
+
+/// Lot 11 — Ce qui distingue un résultat des autres de la même langue : la
+/// version, la provenance, et la mention « sourds et malentendants ».
+String? onlineSubtitleDetail(AppLocalizations l10n, OnlineSubtitle s) {
+  final parts = <String>[
+    if (s.release != null) s.release!,
+    if (s.source != null && s.source!.isNotEmpty) s.source!,
+    if (s.hearingImpaired) l10n.tracksOnlineHearing,
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
 }
 
 class _TrackSelector extends StatelessWidget {
@@ -203,37 +377,23 @@ class _TrackSelector extends StatelessWidget {
   /// Elles portaient le dernier « Auto » écrit en dur de la feuille.
   Widget _audioRow(
       BuildContext context, AetherTrack t, AetherTrack? cur) {
-    final title = trackLanguageName(t.language) ??
-        t.title?.trim() ??
-        L10n.current.tracksTrackN(t.id);
-    final sub = (t.title != null &&
-            t.title!.trim().isNotEmpty &&
-            t.title!.trim() != title)
-        ? t.title!.trim()
-        : null;
     return _TrackRow(
       accent: kAccentPrimary,
       leading: _LangBadge(trackLanguageShort(t.language), kAccentPrimary),
-      title: title,
-      subtitle: sub,
+      title: trackDisplayTitle(t),
+      subtitle: trackDisplayDetail(t),
       selected: t.id == cur?.id,
       onTap: () async {
         final messenger = ScaffoldMessenger.maybeOf(context);
         final nav = Navigator.of(context);
         final echec = context.l10n.tracksTrackFailed;
         // R43 — ATTENDU, et la mémoire n'est écrite QUE si la piste est
-        // posée : avant, le canal vendoré avalait l'échec et l'app mémorisait
-        // une langue qu'aucune piste ne portait.
-        final ok = await player.setAudioTrack(t);
+        // posée (`applyAudioTrackChoice`, partagé avec la rangée TV).
+        final ok = await applyAudioTrackChoice(player, t);
         if (!ok) {
           _toast(messenger, echec);
           return;
         }
-        // Un geste de l'utilisateur sur une piste audio = sa langue pour les
-        // prochains titres. ⛔ Jamais un numéro ni « unknown » : une piste sans
-        // langue ne touche pas à la mémoire (`languageKeyFor`).
-        final key = TrackPreferencesService.languageKeyFor(t.language);
-        if (key != null) await TrackPreferencesService.setAudio(key);
         nav.pop();
       },
     );
@@ -282,16 +442,9 @@ class _TrackSelector extends StatelessWidget {
     nav.pop();
   }
 
-  /// Un échec se DIT, et la feuille reste ouverte (R42) — même toast partout.
-  /// ⚠️ Durée EXPLICITE : un `SnackBar` nu prend le défaut de Flutter (4 s),
-  /// pas celui de l'app (2 s) — `showVia` ne l'impose pas.
-  static void _toast(ScaffoldMessengerState? messenger, String text) {
-    if (messenger == null) return;
-    AppSnackBar.showVia(
-      messenger,
-      SnackBar(content: Text(text), duration: const Duration(seconds: 3)),
-    );
-  }
+  /// Un échec se DIT, et la feuille reste ouverte (R42) : [showTrackToast].
+  static void _toast(ScaffoldMessengerState? messenger, String text) =>
+      showTrackToast(messenger, text);
 
   /// R42 — « Désactivés » : coupure **sémantique** ([disableSubtitles]), jamais
   /// un identifiant de piste — ceux-ci ne sont pas portables d'un moteur à
@@ -336,19 +489,11 @@ class _TrackSelector extends StatelessWidget {
   /// juste au-dessus.
   Widget _subtitleRow(
       BuildContext context, AetherTrack t, AetherTrack? cur) {
-    final title = trackLanguageName(t.language) ??
-        t.title?.trim() ??
-        L10n.current.tracksTrackN(t.id);
-    final sub = (t.title != null &&
-            t.title!.trim().isNotEmpty &&
-            t.title!.trim() != title)
-        ? t.title!.trim()
-        : null;
     return _TrackRow(
       accent: kAccentSecondary,
       leading: _LangBadge(trackLanguageShort(t.language), kAccentSecondary),
-      title: title,
-      subtitle: sub,
+      title: trackDisplayTitle(t),
+      subtitle: trackDisplayDetail(t),
       selected: t.id == cur?.id,
       onTap: () async {
         final messenger = ScaffoldMessenger.maybeOf(context);
@@ -622,53 +767,15 @@ class _OnlineSubtitleRowState extends State<_OnlineSubtitleRow> {
     final l10n = context.l10n;
     setState(() => _busy = true);
     try {
-      final String? key = await SubtitleApiService.getApiKey();
-      if (key == null || key.isEmpty) {
-        _TrackSelector._toast(messenger, l10n.tracksOnlineNoKey);
-        return;
-      }
-
-      // La langue de l'interface d'abord, l'anglais ensuite : c'est la paire
-      // qui couvre presque tout, et demander TOUTES les langues rendait des
-      // centaines de lignes à faire défiler à la télécommande.
-      final String ui = l10n.localeName;
-      final String languages = ui == 'en' ? 'en' : '$ui,en';
-
-      // Le fournisseur travaille sur un identifiant TMDB ; nos listes n'en
-      // portent pas. `resolveTmdbId` fait la recherche et la mémorise.
-      final int? tmdbId = await TmdbService.instance.resolveTmdbId(
-        query: widget.search.query,
-        isTv: widget.search.isTv,
-      );
-      if (tmdbId == null) {
-        _TrackSelector._toast(messenger, l10n.tracksOnlineNoTitle);
-        return;
-      }
-
-      final SubtitleSearchOutcome outcome = await OnlineSubtitlesService.search(
-        tmdbId: tmdbId,
-        languages: languages,
-        apiKey: key,
-        season: widget.search.season,
-        episode: widget.search.episode,
-      );
-      if (!outcome.isOk) {
-        _TrackSelector._toast(
-          messenger,
-          switch (outcome.error!) {
-            SubtitleSearchError.badKey => l10n.tracksOnlineBadKey,
-            SubtitleSearchError.quota => l10n.tracksOnlineQuota,
-            SubtitleSearchError.network => l10n.tracksOnlineFailed,
-          },
-        );
-        return;
-      }
-      if (outcome.results.isEmpty) {
-        _TrackSelector._toast(messenger, l10n.tracksOnlineNone);
+      // Lot 11 — La chaîne (clé, identification TMDB, fournisseur) est
+      // partagée avec la rangée TV : `findOnlineSubtitles`.
+      final found = await findOnlineSubtitles(widget.search, l10n);
+      if (found.error != null) {
+        _TrackSelector._toast(messenger, found.error!);
         return;
       }
       if (!mounted) return;
-      await _showResults(outcome.results);
+      await _showResults(found.results);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -685,32 +792,18 @@ class _OnlineSubtitleRowState extends State<_OnlineSubtitleRow> {
     );
   }
 
-  /// Télécharge puis pose le fichier. ⚠️ Tout ce qui vient d'un contexte est
-  /// pris AVANT les attentes : les deux feuilles se referment en chemin.
+  /// Télécharge puis pose le fichier (`loadOnlineSubtitle`). ⚠️ Tout ce qui
+  /// vient d'un contexte est pris AVANT les attentes : les deux feuilles se
+  /// referment en chemin.
   Future<void> _apply(BuildContext sheetCtx, OnlineSubtitle s) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
     final l10n = context.l10n;
     final nav = Navigator.of(sheetCtx);
 
-    final Directory cache = await getTemporaryDirectory();
-    final String? path =
-        await OnlineSubtitlesService.download(s, cacheDir: cache);
-    if (path == null) {
+    if (!await loadOnlineSubtitle(widget.player, s)) {
       _TrackSelector._toast(messenger, l10n.tracksOnlineAddFailed);
       return;
     }
-    // Le moteur charge le fichier ET le sélectionne ; la piste rejoint ensuite
-    // la liste ordinaire (cf. `loadExternalSubtitle`).
-    final bool ok = await widget.player.loadExternalSubtitle(
-      filePath: path,
-      language: s.language,
-      label: s.display,
-    );
-    if (!ok) {
-      _TrackSelector._toast(messenger, l10n.tracksOnlineAddFailed);
-      return;
-    }
-    debugPrint('✅ lot 11 — sous-titre en ligne posé (${s.language})');
     if (nav.canPop()) nav.pop();
     widget.onLoaded();
     _TrackSelector._toast(messenger, l10n.tracksOnlineAdded);
@@ -767,7 +860,7 @@ class _OnlineResults extends StatelessWidget {
                       leading: _LangBadge(
                           trackLanguageShort(s.language), kAccentSecondary),
                       title: trackLanguageName(s.language) ?? s.display,
-                      subtitle: _describe(context, s),
+                      subtitle: onlineSubtitleDetail(context.l10n, s),
                       selected: false,
                       onTap: () => onPick(s),
                     )),
@@ -780,16 +873,5 @@ class _OnlineResults extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  /// Ce qui distingue cette ligne des autres : la version, la provenance, et
-  /// la mention « sourds et malentendants » quand elle s'applique.
-  static String? _describe(BuildContext context, OnlineSubtitle s) {
-    final parts = <String>[
-      if (s.release != null) s.release!,
-      if (s.source != null && s.source!.isNotEmpty) s.source!,
-      if (s.hearingImpaired) context.l10n.tracksOnlineHearing,
-    ];
-    return parts.isEmpty ? null : parts.join(' · ');
   }
 }

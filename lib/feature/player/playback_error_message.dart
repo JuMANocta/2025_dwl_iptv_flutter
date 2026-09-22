@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart' show PlatformException;
 
 import '../../core/diagnostics/log_buffer.dart' show sanitizeForLog;
 import '../../core/utils/user_error.dart' show describeError;
 import '../../l10n/l10n_ext.dart';
+import 'player_error.dart'
+    show isMedia3AudioError, rawMessageNamesAudioRenderer;
 
 /// §userError — Phrase d'écran pour une erreur levée à l'OUVERTURE du flux
 /// (`initialize` / `loadUrl`), c'est-à-dire hors de `errorStream`.
@@ -54,6 +57,13 @@ String playbackErrorMessage({
   // after 30s` / `Load timed out after …`.
   if (name.isEmpty && raw.toLowerCase().contains('timed out')) {
     return L10n.current.perrTimedOut;
+  }
+
+  // R5 (recette 2026-09-21) — Un décodeur qui échoue sur une piste AUDIO
+  // n'est pas « le décodeur vidéo » : `DECODER_INIT_FAILED` sur une piste MP2
+  // disait « Impossible d'initialiser le décodeur vidéo ».
+  if (isMedia3AudioError(codeName: name, rawMessage: raw)) {
+    return L10n.current.perrAudioOutput;
   }
 
   switch (name) {
@@ -131,11 +141,19 @@ String playbackErrorMessage({
     return L10n.current.perrDecodeVideo;
   }
 
-  // Repli : message brut du moteur, expurgé. « Unknown error » et « Source
-  // error » ne disent rien à personne → phrase générique.
-  final String lower = raw.toLowerCase();
-  if (raw.isEmpty || lower == 'unknown error' || lower == 'source error') {
-    return L10n.current.perrCannotPlay;
+  // Sans code (erreur levée à l'OUVERTURE : `LOAD_ERROR` ne joint pas le
+  // code Media3) — le message brut dit au moins QUEL rendu a échoué.
+  if (name.isEmpty && rawMessageNamesAudioRenderer(raw)) {
+    return L10n.current.perrAudioOutput;
   }
-  return L10n.current.perrCannotPlayWith(sanitizeForLog(raw));
+
+  // Repli : la phrase générique. ⛔ Plus jamais le message brut à l'écran
+  // (recette AVD du 2026-09-21 : « Playback failed: MediaCodecAudioRenderer
+  // error, index=1, format=Format(3, null, null, audio/mpeg-L2… » s'affichait
+  // tel quel) — §userError, « un code natif inconnu ne s'affiche jamais ».
+  // Il part au journal, expurgé.
+  if (raw.isNotEmpty) {
+    debugPrint('⚠️ §userError — erreur de lecture non reconnue : ${name.isEmpty ? 'sans code' : name} — ${sanitizeForLog(raw)}');
+  }
+  return L10n.current.perrCannotPlay;
 }

@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import '../playback_engine.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
-import 'player_options_sheet.dart' show kPlaybackSpeeds;
 import '../../../l10n/l10n_ext.dart';
 
 /// Overlay de contrôles du player.
 ///
 /// - Barre du haut : bouton retour + titre + spinner buffering
-/// - Barre du bas  : seek bar + temps + play/pause + vitesse + lock
+/// - Barre du bas  : seek bar + temps + options + pistes + épisode suivant + lock
+///   (TV : la rangée d'options §tvPlayerPanel au-dessus de la seek bar)
 /// - Mode lock     : masque tout sauf un bouton cadenas pour déverrouiller
 class PlayerControls extends StatefulWidget {
   final AetherPlaybackEngine player;
@@ -61,14 +61,10 @@ class PlayerControls extends StatefulWidget {
   /// une barre qu'on ne peut pas atteindre.
   final VoidCallback? onShowOptions;
 
-  /// §tourFix — Vitesse courante, possédée par [PlayerPage]. Ce widget avait
-  /// SA copie, jamais synchronisée avec celle du sous-menu Vitesse : le badge
-  /// restait figé à 1.0× quand on changeait la vitesse depuis le panneau TV.
-  final double speed;
-
-  /// §tourFix — Le badge inline demande le changement au propriétaire au lieu
-  /// d'appeler `setRate` lui-même : une seule voie, un seul état.
-  final ValueChanged<double> onSpeedChanged;
+  // §tvPlayerPanel (2026-09-21, demande de l'utilisateur) — Le badge « 1.0x »
+  // de la barre est retiré, TV et téléphone : la vitesse se règle dans la
+  // rangée d'options (TV) et dans la feuille d'options (téléphone). `speed` et
+  // `onSpeedChanged` n'avaient pas d'autre lecteur.
 
   /// R17 — La hauteur RÉELLE de la barre du haut, mesurée à chaque mise en
   /// page, pour que l'encart des stats vidéo se pose dessous au lieu de la
@@ -79,6 +75,16 @@ class PlayerControls extends StatefulWidget {
   /// texte — le plancher `TvSmallTextScaler` du téléviseur (§tvSmallText)
   /// suffit à faire mentir n'importe quelle constante.
   final ValueChanged<double>? onTopBarHeight;
+
+  /// §tvPlayerPanel — La rangée d'options TV (`TvOptionBar`), posée au-dessus
+  /// de la barre de lecture. `null` sur téléphone : ses boutons restent ceux
+  /// de la barre, inchangés.
+  final Widget? tvBar;
+
+  /// §tvSeekBar — Calque posé sur la barre de progression (le repère TV),
+  /// construit avec la position et la durée COURANTES à chaque image. `null`
+  /// sur téléphone.
+  final Widget Function(Duration position, Duration duration)? tvSeekOverlay;
 
   const PlayerControls({
     super.key,
@@ -92,8 +98,6 @@ class PlayerControls extends StatefulWidget {
     this.badgeType = PlayerBadgeType.none,
     required this.onBack,
     required this.onInteraction,
-    required this.speed,
-    required this.onSpeedChanged,
     this.onLockChanged,
     this.onNextEpisode,
     this.onShowTracks,
@@ -102,6 +106,8 @@ class PlayerControls extends StatefulWidget {
     this.onCast,
     this.castActive = false,
     this.onTopBarHeight,
+    this.tvBar,
+    this.tvSeekOverlay,
   });
 
   @override
@@ -175,15 +181,6 @@ class _PlayerControlsState extends State<PlayerControls> {
     if (_duration == Duration.zero) return;
     widget.player
         .seek(Duration(milliseconds: (ratio * _duration.inMilliseconds).round()));
-    widget.onInteraction();
-  }
-
-  void _cycleSpeed() {
-    // `indexOf` renvoie -1 si la vitesse courante n'est pas dans la liste
-    // (impossible en pratique) : (-1 + 1) % n = 0 → on repart du début.
-    final idx = kPlaybackSpeeds.indexOf(widget.speed);
-    final next = kPlaybackSpeeds[(idx + 1) % kPlaybackSpeeds.length];
-    widget.onSpeedChanged(next);
     widget.onInteraction();
   }
 
@@ -440,9 +437,21 @@ class _PlayerControlsState extends State<PlayerControls> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // §tvPlayerPanel — Les réglages, sélectionnables à la
+                  // télécommande ; leur liste s'ouvre au-dessus, dans l'image.
+                  if (widget.tvBar != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: widget.tvBar!,
+                      ),
+                    ),
                   // Seek bar avec buffer visible.
                   Stack(
                     alignment: Alignment.centerLeft,
+                    // §tvSeekBar — l'heure visée s'affiche AU-DESSUS du repère.
+                    clipBehavior: Clip.none,
                     children: [
                       // Barre buffer (fond).
                       LinearProgressIndicator(
@@ -487,6 +496,12 @@ class _PlayerControlsState extends State<PlayerControls> {
                           },
                         ),
                       ),
+                      if (widget.tvSeekOverlay != null)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: widget.tvSeekOverlay!(_position, _duration),
+                          ),
+                        ),
                     ],
                   ),
 
@@ -547,26 +562,6 @@ class _PlayerControlsState extends State<PlayerControls> {
                         ),
                         const SizedBox(width: 4),
                       ],
-                      // Sélecteur de vitesse.
-                      _TapTarget(
-                        tooltip: context.l10n.ctrlSpeed,
-                        onTap: _cycleSpeed,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white54),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '${widget.speed}x',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
                       // §playerReach — ⚠️ Play/Pause N'EST PLUS ICI : il est
                       // au CENTRE de l'écran (voir `_CenterPlayButton`).
                       // Signalement du 2026-09-08 : « le bouton suivant est

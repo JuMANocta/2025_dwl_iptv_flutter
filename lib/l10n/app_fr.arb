@@ -1427,14 +1427,6 @@
   "perrDrm": "Contenu protégé (DRM) non lisible.",
   "perrDecodeVideo": "Échec du décodage vidéo.",
   "perrCannotPlay": "Lecture impossible.",
-  "perrCannotPlayWith": "Lecture impossible : {detail}",
-  "@perrCannotPlayWith": {
-    "placeholders": {
-      "detail": {
-        "type": "String"
-      }
-    }
-  },
   "relayBatteryPluggedOk": "Le téléphone est branché, parfait pour un film.",
   "relayBatteryPlugIfYouCan": "Branche le téléphone si tu peux : la conversion consomme beaucoup de batterie.",
   "relayBatteryLow": "Batterie à {percent} % — branche le téléphone, la diffusion en dépend.",
@@ -1689,7 +1681,6 @@
   "ctrlPip": "Réduire en fenêtre",
   "ctrlOptions": "Options de lecture",
   "ctrlTracks": "Pistes audio et sous-titres",
-  "ctrlSpeed": "Vitesse de lecture",
   "ctrlNextEpisode": "Épisode suivant",
   "ctrlBadgeMovie": "FILM",
   "ctrlBadgeSeries": "SÉRIE",
@@ -1697,8 +1688,6 @@
   "optNextEpisodeSub": "Passer à l'épisode suivant",
   "optTracksSub": "Langue audio · activer les sous-titres",
   "optVideoInfo": "Infos vidéo",
-  "optVideoInfoOn": "Affichées · toucher pour masquer",
-  "optVideoInfoSub": "Décodage, résolution, images/s, pertes",
   "fitContainSub": "Image entière · bandes noires possibles",
   "fitCoverSub": "Efface les bandes noires · rogne les bords",
   "fitFill": "Plein écran",
@@ -1781,7 +1770,6 @@
       }
     }
   },
-  "playerOtherTrack": "une autre piste",
   "commonOk": "OK",
   "commonApply": "Appliquer",
   "commonApplying": "Application…",
@@ -2752,9 +2740,6 @@
   "optQualityFailed": "Cette qualité n'a pas pu être appliquée",
   "optStatsShow": "Afficher l'encart",
   "optStatsShowSub": "Ce que votre appareil décode vraiment",
-  "optStatsPermanent": "Le garder à l’écran",
-  "optStatsPermanentSub": "Reste visible pendant que vous regardez",
-  "optStatsRows": "Lignes affichées",
   "detMoreBelow": "Suite de la fiche plus bas",
   "detSeeMoreCast": "Voir plus",
   "settingsSubtitles": "Sous-titres en ligne",
@@ -2790,5 +2775,10 @@
   "tracksOnlineBadKey": "Votre clé a été refusée — vérifiez-la dans les Réglages",
   "tracksOnlineQuota": "Vous avez utilisé vos recherches du jour",
   "tracksOnlineFailed": "La recherche n’a pas pu aboutir",
-  "themeDefaultName": "Mon thème {n}"
+  "themeDefaultName": "Mon thème {n}",
+  "tvOptSpeedValue": "{speed}×",
+  "tvOptSubsOff": "Coupés",
+  "tvOptAuto": "Automatique",
+  "tvOptStatsShown": "Affichées",
+  "tvOptStatsHidden": "Masquées"
 }
