@@ -218,6 +218,16 @@ abstract class AetherPlaybackEngine {
   /// autorise la bascule de piste plutôt qu'un rechargement.
   bool get lastErrorWasAudio;
 
+  /// R5 (recette 2026-09-21) — La piste audio que la dernière erreur audio
+  /// DÉSIGNE (type MIME et langue lus dans le message brut du moteur), ou
+  /// `null`. La bascule §audioFallback part d'elle d'abord : la piste
+  /// « courante » peut être inconnue au moment de l'erreur.
+  AetherTrack? get lastErrorAudioTrack;
+
+  /// Relit les pistes et la sélection auprès du moteur (§tvPlayerPanel : à
+  /// l'ouverture de la rangée, pour que les étiquettes disent l'état réel).
+  Future<void> refreshTracks();
+
   /// §bgAudio (patch 26) — Coupe (`false`) ou rallume (`true`) la piste
   /// VIDÉO, le son continuant. Écran éteint, un rendu vidéo qui décode pour
   /// personne coûte de la batterie. `false` si le moteur n'a pas pu.

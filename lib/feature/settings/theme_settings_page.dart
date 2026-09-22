@@ -326,6 +326,11 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Le mode (Sombre / Clair / Système) passe en tête : c'est
+                      // le premier choix qu'on fait, et il était tout en bas,
+                      // sous les curseurs d'effets.
+                      _sectionLabel(context.l10n.themeSectionMode, cs),
+                      _buildThemeModeRow(cs),
                       _sectionLabel(context.l10n.themeSectionPresets, cs),
                       _buildPresetsRow(cs),
                       _sectionLabel(context.l10n.themeSectionMyThemes, cs),
@@ -368,8 +373,6 @@ class _ThemeSettingsPageState extends State<ThemeSettingsPage>
                         onChanged: (v) =>
                             _apply(_config.copyWith(borderRadius: v)),
                       ),
-                      _sectionLabel(context.l10n.themeSectionMode, cs),
-                      _buildThemeModeRow(cs),
                       const SizedBox(height: 8),
                     ],
                   ),

@@ -9,6 +9,204 @@ part of 'home_page.dart';
 // la carte centrale → ouverture du media ; tap sur une carte secondaire →
 // elle vient prendre la position centrale.
 
+// ─── Géométrie « main de cartes » (§heroHand) ────────────────────────────────
+//
+// Sur grand écran (TV, tablette, téléphone en paysage), l'éventail historique
+// occupait ~1 000 px sur ~1 740 disponibles : un écart FIXE de 22 % de carte
+// par rang et une opacité qui tombait à rien dès le 3e rang laissaient cinq
+// cartes serrées au milieu, du vide des deux côtés. Et la descente linéaire
+// des voisines faisait une PILE, pas un arc.
+//
+// La main tient désormais comme de vraies cartes en main : chaque carte tourne
+// d'un angle θ = rang × pas autour d'un PIVOT situé loin sous les cartes. Son
+// pied se pose donc en (R·sin θ, R·(1 − cos θ)) et elle est inclinée de θ —
+// les bords descendent en courbe naturelle. Le rayon R se calcule pour que la
+// main couvre ~90 % de la largeur disponible.
+//
+// Géométrie PURE (aucun widget) : la même fonction décide où peindre une
+// carte, si elle vaut d'être construite, et de combien le doigt la « tient »
+// au glissé — trois règles qui ne doivent jamais diverger.
+
+/// Pose d'une carte de la main : pied (`x`, `y`) relatif au pied de la carte
+/// active, inclinaison `angle` (radians, autour du pied), `scale`, `opacity`.
+typedef HeroHandPose = ({
+  double x,
+  double y,
+  double angle,
+  double scale,
+  double opacity,
+});
+
+class HeroHandGeometry {
+  /// §heroPaint — En dessous, une carte ne se voit plus : elle ne coûte.
+  ///
+  /// ⚠️ Le rang 3 de la pile tombait à **4 %** d'opacité — invisible à l'œil,
+  /// mais payé plein tarif : une couche `RepaintBoundary` créée, une image
+  /// décodée, une ombre floutée tracée, et un `saveLayer` pour l'opacité. Il y
+  /// en avait un de chaque côté, soit 2 cartes sur 7.
+  static const double minVisibleOpacity = 0.06;
+
+  /// §heroHand — Angle entre deux cartes voisines (~2,6°). Petit exprès : la
+  /// descente des bords croît comme θ², et chaque pixel de descente est
+  /// repris sur la hauteur du conteneur (le hero ne doit pas mordre sur les
+  /// onglets en dessous). Au 4e rang, ~10° : la courbe se lit, sans plus.
+  static const double handPitch = 0.045;
+
+  /// §heroHand — Part de la largeur que la main couvre au repos.
+  static const double handCoverage = 0.90;
+
+  /// §heroHand — Cartes pleinement tenues de chaque côté de l'active.
+  static const int maxSideCount = 4;
+
+  /// §heroHand — Opacité de la dernière carte tenue, puis longueur (en rangs)
+  /// du fondu vers zéro au-delà : pendant une rotation, la carte qui entre ou
+  /// sort de la main s'efface au lieu d'apparaître d'un coup.
+  static const double _edgeOpacity = 0.4;
+  static const double _tailLength = 0.6;
+
+  /// Main élargie (sinon : l'éventail historique, valeurs inchangées).
+  final bool wide;
+  final double cardWidth;
+  final double cardHeight;
+
+  /// Distance du pivot sous le pied des cartes (main élargie seulement).
+  final double radius;
+
+  /// Cartes tenues de chaque côté (main élargie seulement).
+  final int sideCount;
+
+  const HeroHandGeometry._({
+    required this.wide,
+    required this.cardWidth,
+    required this.cardHeight,
+    this.radius = 0,
+    this.sideCount = 0,
+  });
+
+  /// L'éventail historique (téléphone en portrait, profils allégés).
+  const HeroHandGeometry.narrow({
+    required double cardWidth,
+    required double cardHeight,
+  }) : this._(wide: false, cardWidth: cardWidth, cardHeight: cardHeight);
+
+  /// Calcule la main pour [availableWidth]. [wide] à `false` → éventail
+  /// historique. [cardCount] borne les côtés : avec cinq cartes, deux par
+  /// côté seulement — on n'étale pas un trou.
+  factory HeroHandGeometry.fit({
+    required double availableWidth,
+    required double cardWidth,
+    required double cardHeight,
+    required bool wide,
+    int cardCount = 1 << 20,
+  }) {
+    final narrow =
+        HeroHandGeometry.narrow(cardWidth: cardWidth, cardHeight: cardHeight);
+    final int side = math.min(maxSideCount, cardCount ~/ 2);
+    if (!wide || side < 1 || availableWidth <= 0) return narrow;
+    final probe = HeroHandGeometry._(
+      wide: true,
+      cardWidth: cardWidth,
+      cardHeight: cardHeight,
+      sideCount: side,
+    );
+    final double half = availableWidth / 2;
+    // Au repos, la dernière carte tenue touche 90 % de la largeur…
+    double r = (half * handCoverage - probe._reach(side.toDouble())) /
+        math.sin(side * handPitch);
+    // … et la carte qui s'efface au-delà (en pleine rotation) ne sort jamais
+    // de la largeur disponible.
+    final double dMax = probe.maxVisibleDelta;
+    r = math.min(r, (half - probe._reach(dMax)) / math.sin(dMax * handPitch));
+    // Des voisines qui ne se chevauchent plus ne font plus une main : l'écart
+    // reste sous les trois quarts d'une carte, quitte à couvrir moins large.
+    r = math.min(r, cardWidth * 0.75 / math.sin(handPitch));
+    if (r <= 0) return narrow; // carte trop large pour l'écran : pas de main
+    return HeroHandGeometry._(
+      wide: true,
+      cardWidth: cardWidth,
+      cardHeight: cardHeight,
+      radius: r,
+      sideCount: side,
+    );
+  }
+
+  double _scale(double absDelta) => wide
+      ? math.max(0.7, 1.0 - absDelta * 0.06)
+      : math.max(0.55, 1.0 - absDelta * 0.07);
+
+  /// §heroPaint — Opacité d'une carte selon son rang.
+  ///
+  /// Elle sert **aussi** à décider si la carte vaut la peine d'être
+  /// construite : la règle de visibilité et la règle d'affichage doivent être
+  /// la même, sinon on écarte une carte encore visible ou on en peint une qui
+  /// ne l'est pas.
+  double opacity(double absDelta) {
+    if (!wide) return math.max(0.0, 1.0 - absDelta * 0.32).clamp(0.0, 1.0);
+    if (absDelta <= sideCount) {
+      return 1.0 - (1.0 - _edgeOpacity) * absDelta / sideCount;
+    }
+    return math.max(
+        0.0, _edgeOpacity * (1.0 - (absDelta - sideCount) / _tailLength));
+  }
+
+  /// Dernier rang (fractionnaire) encore construit.
+  double get maxVisibleDelta => wide
+      ? sideCount + _tailLength * (1.0 - minVisibleOpacity / _edgeOpacity)
+      : (1.0 - minVisibleOpacity) / 0.32;
+
+  /// Écart à l'écran entre la carte active et sa voisine : 1 unité de
+  /// `_current` au glissé, pour que le doigt « tienne » la carte.
+  double get spacing =>
+      wide ? radius * math.sin(handPitch) : cardWidth * 0.22;
+
+  HeroHandPose pose(double delta) {
+    final double absDelta = delta.abs();
+    final double s = _scale(absDelta);
+    final double o = opacity(absDelta);
+    if (!wide) {
+      return (
+        x: delta * (cardWidth * 0.22),
+        y: math.min(absDelta * 14.0, 42.0),
+        angle: delta * 0.08, // ~4.5° par rang
+        scale: s,
+        opacity: o,
+      );
+    }
+    final double a = delta * handPitch;
+    return (
+      x: radius * math.sin(a),
+      y: radius * (1 - math.cos(a)),
+      angle: a,
+      scale: s,
+      opacity: o,
+    );
+  }
+
+  /// Portée horizontale d'une carte depuis son pied, côté extérieur : le
+  /// coin haut s'écarte avec l'inclinaison (rotation autour du pied).
+  double _reach(double absDelta) {
+    final double s = _scale(absDelta);
+    final double a = absDelta * handPitch;
+    return cardWidth * s / 2 * math.cos(a) + cardHeight * s * math.sin(a);
+  }
+
+  /// Bord extérieur d'une carte au rang [delta], depuis l'axe de l'active.
+  double outerEdge(double delta) {
+    final p = pose(delta.abs());
+    final double s = p.scale;
+    return p.x +
+        cardWidth * s / 2 * math.cos(p.angle) +
+        cardHeight * s * math.sin(p.angle);
+  }
+
+  /// Point le plus bas d'une carte visible sous le pied de l'active : pied
+  /// descendu sur l'arc + coin bas extérieur abaissé par l'inclinaison.
+  double get maxDrop {
+    final p = pose(maxVisibleDelta);
+    return p.y + math.sin(p.angle.abs()) * cardWidth * p.scale / 2;
+  }
+}
+
 class _HeroFanBanner extends StatefulWidget {
   final List<List<M3uEntry>> featured;
   final M3uContentType type;
@@ -58,6 +256,8 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
   void _onPerfChanged() {
     if (!mounted) return;
     _scheduleNext(); // re-court-circuite (ou relance) selon heroAutoRotate
+    // §heroHand — changer de profil élargit (ou resserre) la main en direct.
+    setState(() {});
   }
 
   /// Revue 2026-09-11, D4A-12 — Le bandeau est construit SANS clé et survit
@@ -267,22 +467,23 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     _scheduleNext();
   }
 
-  /// §heroPaint — Opacité d'une carte selon son rang dans la pile.
-  ///
-  /// Extraite en fonction parce qu'elle sert désormais **aussi** à décider si
-  /// la carte vaut la peine d'être construite : la règle de visibilité et la
-  /// règle d'affichage doivent être la même, sinon on écarte une carte encore
-  /// visible ou on en peint une qui ne l'est pas.
-  static double _opacityFor(double absDelta) =>
-      math.max(0.0, 1.0 - absDelta * 0.32).clamp(0.0, 1.0);
+  // §heroPaint — L'opacité par rang et le seuil de visibilité vivent dans
+  // `HeroHandGeometry` (`opacity`, `minVisibleOpacity`) : la main élargie
+  // (§heroHand) a sa propre courbe, et la règle doit rester UNE.
 
-  /// §heroPaint — En dessous, une carte ne se voit plus : elle ne coûte.
+  /// §heroHand — La main élargie n'est tenue qu'en profil **Complet** : plus
+  /// de cartes visibles = plus de couches, d'images décodées et de
+  /// `saveLayer` d'opacité (§heroPaint). En Équilibré / Léger, l'éventail
+  /// historique.
   ///
-  /// ⚠️ Le rang 3 de la pile tombait à **4 %** d'opacité — invisible à l'œil,
-  /// mais payé plein tarif : une couche `RepaintBoundary` créée, une image
-  /// décodée, une ombre floutée tracée, et un `saveLayer` pour l'opacité. Il y
-  /// en avait un de chaque côté, soit 2 cartes sur 7.
-  static const double _minVisibleOpacity = 0.06;
+  /// ⚠️ Un fichier `part` ne peut rien importer : `PerfConfig` est importé par
+  /// `home_page.dart` pour cette comparaison.
+  static bool _handAllowed() =>
+      // Le profil Complet, exactement : `==` ne compare que les LEVIERS de
+      // fluidité (§perfNotify), donc un réglage de confort changé ne retire
+      // pas la main, mais un levier baissé à la main (moins de cartes, rotation
+      // coupée) la retire — c'est le signe d'un appareil qu'on ménage.
+      PerformanceSettingsService.config.value == PerfConfig.defaults;
 
   /// §heroPaint — Au-delà de ce rang, plus d'ombre portée.
   ///
@@ -311,10 +512,28 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
         // pas 40 % (TV) / 55 % (mobile) de la largeur dispo.
         final cardW = math.min(cardWByH, screenW * (isTv ? 0.40 : 0.55));
         final cardH = cardW * 1.45;
-        final containerH = cardH + 52;
-        // 1 carte d'écart visuel = ~22 % de la largeur d'une carte.
-        // Sensibilité du drag : 1 unité de `_current` = `cardSpacing` pixels.
-        final cardSpacing = cardW * 0.22;
+        // §heroHand — Main élargie sur grand écran (plus large que haut, ou
+        // ≥ 900 dp), en profil Complet seulement ; téléphone en portrait et
+        // profils allégés gardent l'éventail historique, valeurs inchangées.
+        final screen = MediaQuery.sizeOf(context);
+        final bool wide = (screen.width > screen.height || screenW >= 900) &&
+            _handAllowed();
+        final geometry = HeroHandGeometry.fit(
+          // 8 + 8 px : le `Padding` horizontal autour du `Stack`.
+          availableWidth: screenW - 16,
+          cardWidth: cardW,
+          cardHeight: cardH,
+          wide: wide,
+          cardCount: widget.featured.length,
+        );
+        // Marge basse historique : 52 px (inclinaison + dots). La main
+        // descend plus sur ses bords : on agrandit d'autant, sinon les cartes
+        // extérieures mordraient sur les onglets Séries / Films / Chaînes.
+        final containerH = cardH +
+            (geometry.wide ? math.max(52.0, geometry.maxDrop + 12) : 52.0);
+        // Sensibilité du drag : 1 unité de `_current` = `cardSpacing` pixels,
+        // l'écart RÉEL entre deux cartes à l'écran (le doigt tient la carte).
+        final cardSpacing = geometry.spacing;
 
         // Pour le z-order : on trie par |delta| desc → grandes valeurs au début
         // de la liste = dessinées en premier = derrière.
@@ -324,7 +543,8 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
           // §heroPaint — On ne construit que ce qui se VOIT. Le rang 3 était à
           // 4 % d'opacité : deux cartes sur sept, invisibles et payées plein
           // tarif au premier tracé (couche + image + ombre floutée + saveLayer).
-          if (_opacityFor(d.abs()) >= _minVisibleOpacity) {
+          if (geometry.opacity(d.abs()) >=
+              HeroHandGeometry.minVisibleOpacity) {
             cards.add((i: i, delta: d));
           }
         }
@@ -349,7 +569,7 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
                 clipBehavior: Clip.none,
                 children: [
                   for (final c in cards)
-                    _buildFannedCard(context, c.i, c.delta, cardW, cardH),
+                    _buildFannedCard(context, c.i, c.delta, geometry),
                   Positioned(bottom: 4, child: _buildDots()),
                 ],
               ),
@@ -382,17 +602,21 @@ class _HeroFanBannerState extends State<_HeroFanBanner>
     BuildContext context,
     int i,
     double delta,
-    double w,
-    double h,
+    HeroHandGeometry geometry,
   ) {
     final absDelta = delta.abs();
     final isActive = absDelta < 0.5;
+    final w = geometry.cardWidth;
+    final h = geometry.cardHeight;
 
-    final rotation = delta * 0.08; // ~4.5° par rang
-    final offsetX = delta * (w * 0.22);
-    final offsetY = math.min(absDelta * 14.0, 42.0);
-    final scale = math.max(0.55, 1.0 - absDelta * 0.07);
-    final opacity = _opacityFor(absDelta);
+    // §heroHand — Pose calculée par la géométrie pure : éventail historique,
+    // ou carte posée sur l'arc de la main (pied sur le cercle, inclinée de θ).
+    final pose = geometry.pose(delta);
+    final rotation = pose.angle;
+    final offsetX = pose.x;
+    final offsetY = pose.y;
+    final scale = pose.scale;
+    final opacity = pose.opacity;
 
     return Transform(
       // §posterScope — Clé OBLIGATOIRE : la pile est retriée par profondeur à

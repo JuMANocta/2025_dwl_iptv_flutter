@@ -40,6 +40,31 @@ void main() {
           FleetStep.loadCache);
     });
 
+    // Recette TV 2026-09-21 — la carte du compte affichait « Null check
+    // operator used on a null value » : un cache analysé SANS fichier source
+    // menait à `loadCache`, qui passait `sourcePath!` (null) au chargeur.
+    test('cache analysé mais source absente : jamais « lecture disque »', () {
+      for (final bool net in [true, false]) {
+        for (final bool stale in [true, false]) {
+          expect(
+            step(
+                hasParsedCache: true,
+                hasSourceFile: false,
+                sourceIsStale: stale,
+                allowNetwork: net),
+            isNot(FleetStep.loadCache),
+            reason: 'réseau $net, périmé $stale',
+          );
+        }
+      }
+      expect(step(hasParsedCache: true, sourceIsStale: true),
+          FleetStep.download, reason: 'la source se retélécharge');
+      expect(
+          step(hasParsedCache: true, sourceIsStale: true, allowNetwork: false),
+          FleetStep.fail,
+          reason: 'sans réseau : un échec motivé, pas une exception');
+    });
+
     test('pas de cache mais un catalogue brut : ré-analyse (le repli manquant)',
         () {
       expect(step(hasSourceFile: true), FleetStep.reparse);

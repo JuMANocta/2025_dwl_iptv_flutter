@@ -129,4 +129,49 @@ void main() {
       expect(ownTransfersOn('', tasks: tasks), 0);
     });
   });
+
+  // §busyRelease (2026-09-21) — « si je sors d'une vidéo et que je reprends,
+  // il me dit que cet abonnement est occupé » : le panel compte encore, 30 à
+  // 60 s, la connexion que nous venons de fermer.
+  group('§busyRelease — connexion que nous venons de fermer', () {
+    setUp(resetOpenPlayersForTest);
+
+    test('1/1 expliqué par notre lecteur fermé : on lance sans un mot', () {
+      expect(
+          alreadyStreamingVerdict(active: 1, max: 1, own: 0, releasing: 1),
+          StreamingSlotVerdict.free);
+    });
+
+    test('un VRAI autre écran en plus reste signalé', () {
+      expect(
+          alreadyStreamingVerdict(active: 2, max: 2, own: 0, releasing: 1),
+          StreamingSlotVerdict.busyElsewhere);
+    });
+
+    test('nos transferts gardent leur message à eux', () {
+      expect(
+          alreadyStreamingVerdict(active: 1, max: 1, own: 1, releasing: 1),
+          StreamingSlotVerdict.busyOurselves);
+    });
+
+    test('une fermeture compte 6 min (panel mesuré : ~5 min 30), puis plus', () {
+      final DateTime t0 = DateTime(2026, 9, 21, 20);
+      notePlayerClosed('acc', at: t0);
+      // Le cas mesuré : le panel disait encore 1/1 à 5 min 06.
+      expect(releasingPlayersOn('acc', now: t0.add(const Duration(seconds: 306))), 1);
+      expect(releasingPlayersOn('acc', now: t0.add(const Duration(seconds: 359))), 1);
+      expect(releasingPlayersOn('acc', now: t0.add(const Duration(minutes: 6))), 0);
+    });
+
+    test('par abonnement : fermer sur A ne libère rien sur B', () {
+      notePlayerClosed('A');
+      expect(releasingPlayersOn('A'), 1);
+      expect(releasingPlayersOn('B'), 0);
+    });
+
+    test("sans compte connu, rien n'est noté", () {
+      notePlayerClosed('');
+      expect(releasingPlayersOn(''), 0);
+    });
+  });
 }

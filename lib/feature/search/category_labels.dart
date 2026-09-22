@@ -139,6 +139,23 @@ String categoryDisplayLabel(String key, AppLocalizations l10n) {
   }
 }
 
+/// §regionMerge (2026-09-21) — Le libellé d'une ligne de « Langues et
+/// régions » : une clé seule garde son nom ; un groupe de doublons
+/// (`kRegionHideGroups`) dit ce qu'il réunit.
+String regionRowLabel(List<String> row, AppLocalizations l10n) {
+  if (row.length == 1) return regionDisplayLabel(row.first, l10n);
+  switch (row.first) {
+    case 'Brésil':
+      return l10n.regBrazilGroup;
+    case 'UK':
+      return l10n.regEnglishGroup;
+    case 'Ex-Yougoslavie':
+      return l10n.regExYugoslaviaGroup;
+    default:
+      return row.map((k) => regionDisplayLabel(k, l10n)).join(' · ');
+  }
+}
+
 /// Libellé affichable d'une **région / langue**, à partir de sa clé française.
 ///
 /// Sert à la fois aux rangées de l'accueil (une région EST une catégorie) et à

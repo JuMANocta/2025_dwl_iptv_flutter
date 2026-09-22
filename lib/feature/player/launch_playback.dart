@@ -184,18 +184,30 @@ enum StreamingSlotVerdict {
 /// ⚠️ **Jamais un refus, jamais une supposition.** Une limite inconnue
 /// (`max <= 0`, panel muet) rend [StreamingSlotVerdict.free] : on n'invente
 /// pas un obstacle à partir d'une absence de mesure.
+///
+/// [releasing] — §busyRelease (2026-09-21) : lecteurs que NOUS venons de
+/// fermer sur cet abonnement, que le panel compte encore (il met ~5 min 30,
+/// mesurées, à libérer une connexion). Signalé par l'utilisateur : « si je
+/// sors d'une vidéo et que je reprends, il me dit que cet abonnement est
+/// occupé ». Une
+/// saturation qu'ils expliquent à eux seuls n'est pas un autre écran : on
+/// lance sans un mot.
 StreamingSlotVerdict alreadyStreamingVerdict({
   required int active,
   required int max,
   required int own,
+  int releasing = 0,
 }) {
   if (max <= 0 || active <= 0) return StreamingSlotVerdict.free;
   // Le panel refuse la connexion de trop, quel que soit qui tient les autres.
   if (active < max) return StreamingSlotVerdict.free;
   final int others = active - (own < 0 ? 0 : own);
-  return others > 0
-      ? StreamingSlotVerdict.busyElsewhere
-      : StreamingSlotVerdict.busyOurselves;
+  if (others <= 0) return StreamingSlotVerdict.busyOurselves;
+  // §busyRelease — Ce qui reste est-il NOTRE connexion en cours de fermeture ?
+  if (others - (releasing < 0 ? 0 : releasing) <= 0) {
+    return StreamingSlotVerdict.free;
+  }
+  return StreamingSlotVerdict.busyElsewhere;
 }
 
 /// L'hôte (`serveur:port`) d'une URL, ou une chaîne vide si elle est illisible.
@@ -231,10 +243,10 @@ int ownTransfersOn(String host, {Iterable<DownloadTask>? tasks}) {
 /// Un lecteur laissé ouvert en PiP pendant qu'on lance un second titre
 /// s'accusait donc lui-même d'être « un autre écran ».
 ///
-/// ⚠️ **Il ne couvre PAS tout, et ce n'est pas réparable ici** : un panel met
-/// 30 à 60 s à libérer une connexion fermée, donc relancer juste après avoir
-/// quitté le lecteur peut encore avertir à tort. L'avertissement n'étant
-/// jamais un refus, le coût est borné.
+/// ⚠️ Un panel met plusieurs minutes (mesuré : ~5 min 30) à libérer une
+/// connexion fermée : relancer juste
+/// après avoir quitté le lecteur avertissait à tort. §busyRelease y répond par
+/// [releasingPlayersOn] (les fermetures récentes, retenues [kPanelReleaseGrace]).
 ///
 /// ⛔ Posé et relâché ICI, autour du `push` — `player_page.dart` n'est pas
 /// touché : la route rend la main quand le lecteur se ferme.
@@ -243,9 +255,46 @@ final Map<String, int> _playersByAccount = <String, int>{};
 /// Nombre de lecteurs que NOUS tenons ouverts sur [accountId].
 int openPlayersOn(String accountId) => _playersByAccount[accountId] ?? 0;
 
+/// §busyRelease — Combien de temps une connexion que nous venons de fermer
+/// peut encore être comptée par le panel.
+///
+/// ⚠️ MESURÉ, pas supposé (2026-09-21, abonnement de test, deux AVD) : lecteur
+/// fermé sur la TV à 19:36:13, le panel répondait encore « 1/1 » à 19:41:19 et
+/// « 0/1 » à 19:41:49 — entre 5 min 06 et 5 min 36. L'ancien commentaire
+/// disait « 30 à 60 s » : c'était une supposition. Six minutes, marge incluse.
+/// Le prix, assumé : pendant ce délai, un AUTRE écran qui prendrait la place
+/// ne serait pas signalé — l'avertissement n'est jamais un refus.
+const Duration kPanelReleaseGrace = Duration(minutes: 6);
+
+/// §busyRelease — Heures de fermeture de NOS lecteurs, par abonnement.
+final Map<String, List<DateTime>> _closedPlayersByAccount =
+    <String, List<DateTime>>{};
+
+/// §busyRelease — Lecteurs fermés depuis moins de [kPanelReleaseGrace] sur
+/// [accountId] : le panel peut encore les compter. Purge au passage.
+int releasingPlayersOn(String accountId, {DateTime? now}) {
+  final List<DateTime>? closed = _closedPlayersByAccount[accountId];
+  if (closed == null) return 0;
+  final DateTime t = now ?? DateTime.now();
+  closed.removeWhere((d) => t.difference(d) >= kPanelReleaseGrace);
+  if (closed.isEmpty) _closedPlayersByAccount.remove(accountId);
+  return closed.length;
+}
+
+/// §busyRelease — Note la fermeture d'un de nos lecteurs (et en tests, à une
+/// heure choisie).
+void notePlayerClosed(String accountId, {DateTime? at}) {
+  if (accountId.isEmpty) return;
+  (_closedPlayersByAccount[accountId] ??= <DateTime>[])
+      .add(at ?? DateTime.now());
+}
+
 /// Remet les compteurs à zéro (tests uniquement).
 @visibleForTesting
-void resetOpenPlayersForTest() => _playersByAccount.clear();
+void resetOpenPlayersForTest() {
+  _playersByAccount.clear();
+  _closedPlayersByAccount.clear();
+}
 
 /// R23 — Combien de temps on accepte d'attendre le panel avant de lancer.
 ///
@@ -301,6 +350,7 @@ Future<void> launchPlayback(
     );
   } finally {
     if (counts) {
+      notePlayerClosed(accountId); // §busyRelease
       final int n = openPlayersOn(accountId) - 1;
       if (n <= 0) {
         _playersByAccount.remove(accountId);
@@ -344,8 +394,9 @@ Future<bool> _confirmStreamingSlot(
       // encore ouverts (PiP) : tout ce que le panel compte et qui vient de
       // nous. Sans ça, l'app accuserait « un autre écran » d'être elle-même.
       own: ownTransfersOn(hostOfUrl(url)) + openPlayersOn(accountId),
+      releasing: releasingPlayersOn(accountId),
     );
-    debugPrint('🔌 R23 — connexions ${info.activeConnections}/${info.maxConnections} : ${verdict.name}');
+    debugPrint('🔌 R23 — connexions ${info.activeConnections}/${info.maxConnections} (dont ${releasingPlayersOn(accountId)} fermée(s) par nous il y a < 6 min) : ${verdict.name}');
   } catch (e) {
     // §userError — rien à l'écran : une question sans réponse n'est pas une
     // panne, et bloquer la lecture sur un panel lent serait pire que se taire.

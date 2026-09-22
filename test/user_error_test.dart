@@ -124,6 +124,26 @@ void main() {
       }
     });
 
+    // Recette TV 2026-09-21 — « Null check operator used on a null value »
+    // s'affichait sous la carte d'un compte : une `Error` Dart (défaut de
+    // notre code) ne dit jamais son texte à l'écran.
+    test('une Error Dart (null check, RangeError…) → phrase interne, jamais son texte',
+        () {
+      Object nullCheck;
+      try {
+        final String? rien = null;
+        rien!.length;
+        nullCheck = StateError('inatteignable');
+      } catch (e) {
+        nullCheck = e;
+      }
+      for (final Object e in [nullCheck, RangeError('r'), UnsupportedError('u')]) {
+        final out = describeError(e);
+        expect(out, 'Une erreur interne est survenue.', reason: '${e.runtimeType}');
+        expect(out.toLowerCase(), isNot(contains('null')), reason: '${e.runtimeType}');
+      }
+    });
+
     test('Exception(\'Bad state: foo\') → les préfixes empilés sont retirés', () {
       final out = describeError(Exception('Bad state: foo'));
       expect(out, 'foo');

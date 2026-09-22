@@ -421,7 +421,15 @@ abstract final class FleetPolicy {
       return FleetStep.none;
     }
 
-    if (hasParsedCache && !sourceIsStale) return FleetStep.loadCache;
+    // Recette TV 2026-09-21 — ⚠️ Un cache analysé ne se lit PAS sans son
+    // fichier source : `_loadFromDisk` compare leurs dates et rend `null` si
+    // la source manque, et l'appelant passait `facts.sourcePath!` — `null`.
+    // Serveur du banc arrêté au démarrage : le téléchargement échouait, le
+    // cache restait, et la carte du compte affichait « Null check operator
+    // used on a null value ». Sans source, il faut la retélécharger.
+    final bool cacheUsable = hasParsedCache && hasSourceFile;
+
+    if (cacheUsable && !sourceIsStale) return FleetStep.loadCache;
 
     // Source périmée : on préfère rafraîchir, mais seulement si on a le droit.
     if (sourceIsStale && hasSourceFile && allowNetwork) {
@@ -429,7 +437,7 @@ abstract final class FleetPolicy {
     }
 
     // ⚠️ Périmé vaut mieux que rien : sans réseau, on sert quand même.
-    if (hasParsedCache) return FleetStep.loadCache;
+    if (cacheUsable) return FleetStep.loadCache;
 
     // Le repli qui manquait : un catalogue brut est là, mais aucun cache
     // analysé — on ré-analyse au lieu d'abandonner en silence.

@@ -4,6 +4,7 @@ import 'package:dpad/dpad.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/themes/theme_service.dart';
 import '../../core/themes/colors.dart';
+import '../../core/themes/aether_theme_extension.dart';
 import '../../core/themes/light_palette.dart';
 import '../../core/utils/platform_tv.dart';
 import '../../core/utils/formatters.dart' show formatCountFor;
@@ -122,6 +123,27 @@ String? seriesKeyToForget({
 /// §detailsMore (b) — L'indice « suite plus bas » est visible tant qu'il reste
 /// quelque chose dessous ET que la personne n'a pas bougé de plus de 24 points
 /// depuis l'ouverture ([baseline], qui n'est PAS zéro sur téléviseur).
+/// R48 (2026-09-21) — La couleur du texte et de l'icône d'une pastille de
+/// version, calculée contre son fond RÉEL : la teinte de qualité à 27 % quand
+/// elle est choisie (atténuée sinon), posée sur [surface], plus — sur TV — le
+/// halo de focus [focusGlow] (accent à 50 %) que `DpadGlowEffect` peint DANS
+/// la pastille. La teinte reste celle de la qualité ; elle est assombrie ou
+/// éclaircie jusqu'à 4,5:1. **Pure** — testée.
+Color versionChipInk({
+  required Color quality,
+  required Color surface,
+  required bool selected,
+  Color? focusGlow,
+}) {
+  final Color faded = mutedOn(quality, surface);
+  Color bg = Color.alphaBlend(
+      selected ? quality.withAlpha(70) : faded.withAlpha(20), surface);
+  if (focusGlow != null) bg = Color.alphaBlend(focusGlow.withAlpha(128), bg);
+  return selected
+      ? brandReadableOn(quality, bg, minRatio: kMinTextContrast)
+      : mutedOn(quality, bg, minRatio: kMinTextContrast);
+}
+
 bool scrollHintVisibleFor({
   required double pixels,
   required double baseline,
@@ -265,6 +287,11 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// défilement — la repeindre entière pour une pastille serait §jankNext en
   /// pire.
   final ValueNotifier<bool> _scrollHintVisible = ValueNotifier<bool>(false);
+
+  /// R48 — Index de la pastille de version qui a le focus D-pad (`null` :
+  /// aucune). Un notifieur, pas un `setState` : seule la pastille concernée
+  /// recalcule sa couleur, pas toute la fiche.
+  final ValueNotifier<int?> _focusedVersion = ValueNotifier<int?>(null);
 
   /// Position de défilement à l'OUVERTURE (après le focus d'entrée).
   double? _scrollHintBaseline;
@@ -445,6 +472,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     _pageScroll.removeListener(_updateScrollHint);
     _pageScroll.dispose();
     _scrollHintVisible.dispose();
+    _focusedVersion.dispose();
     super.dispose();
   }
 
@@ -1929,10 +1957,17 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _updateScrollHint();
     });
+    // R49 (recette AVD TV du 2026-09-21) — L'indice se posait PAR-DESSUS le
+    // contenu, centré en bas : c'est l'endroit exact du bouton « Télécharger »,
+    // dont le libellé devenait « DOWNLOA… ». La marge latérale est trop
+    // étroite pour l'y loger (contenu 820 sur ~960). On fait comme les apps de
+    // streaming : un VOILE en dégradé efface le bas de l'écran — la suite
+    // « passe dessous » — et l'indice se lit sur ce voile, plus sur un bouton.
     return Positioned(
       left: 0,
       right: 0,
-      bottom: 12,
+      bottom: 0,
+      height: 120,
       child: IgnorePointer(
         child: ValueListenableBuilder<bool>(
           valueListenable: _scrollHintVisible,
@@ -1941,7 +1976,23 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
             duration: const Duration(milliseconds: 220),
             child: child,
           ),
-          child: Center(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  cs.surface.withAlpha(0),
+                  cs.surface.withAlpha(235),
+                  cs.surface,
+                ],
+                stops: const [0.0, 0.6, 1.0],
+              ),
+            ),
+            child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+            padding: const EdgeInsets.only(bottom: 12),
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -1968,6 +2019,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                   ),
                 ],
               ),
+            ),
+            ),
             ),
           ),
         ),
@@ -2456,16 +2509,42 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         // ⛔ Le code couleur des qualités, lui, ne bouge pas : la version
         // CHOISIE porte toujours la teinte brute.
         final Color faded     = mutedOn(color, cs.surface);
-        final Color fadedText =
-            mutedOn(color, cs.surface, minRatio: kMinTextContrast);
+        // R48 (recette AVD du 2026-09-21) — Le texte se calculait contre
+        // `cs.surface` seule, alors que la pastille a SON fond : teinte de
+        // qualité à 27 % quand elle est choisie, et, sur TV, le halo de focus
+        // (`DpadGlowEffect`, accent à 50 %) peint DEDANS. Résultat mesuré :
+        // « FHD · MULTI » jaune sur jaune, sur la pastille focalisée à la TV et
+        // sur la pastille choisie au téléphone en thème clair. La teinte reste
+        // celle de la qualité (code couleur), rendue lisible à 4,5:1 sur le
+        // fond RÉEL, focus compris.
+        final Color glow =
+            Theme.of(context).extension<AetherThemeExtension>()?.focusGlowColor ??
+                cs.primary;
+        final int index = e.key;
         // §3c Phase 1 — FocusableChip : la version FHD/HD devient sélectionnable
         // au D-pad (avant : GestureDetector tap-only).
         return FocusableChip(
           onTap: () => setState(() => _selectedEntry = v),
           borderRadius: BorderRadius.circular(8),
+          onFocusChange: (f) {
+            if (f) {
+              _focusedVersion.value = index;
+            } else if (_focusedVersion.value == index) {
+              _focusedVersion.value = null;
+            }
+          },
           child: GestureDetector(
           onTap: () => setState(() => _selectedEntry = v),
-          child: AnimatedContainer(
+          child: ValueListenableBuilder<int?>(
+          valueListenable: _focusedVersion,
+          builder: (context, focusedIdx, _) {
+          final Color ink = versionChipInk(
+            quality: color,
+            surface: cs.surface,
+            selected: selected,
+            focusGlow: focusedIdx == index ? glow : null,
+          );
+          return AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             // §versionSelected — La sélection ne peut PAS reposer sur la seule
@@ -2501,7 +2580,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                           ? Icons.check_circle_rounded
                           : Icons.radio_button_unchecked,
                       size: 13,
-                      color: selected ? color : faded,
+                      color: ink, // R48
                     ),
                     const SizedBox(width: 5),
                     Text(
@@ -2510,7 +2589,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                        color: selected ? color : fadedText,
+                        color: ink, // R48
                         height: 1.3,
                       ),
                     ),
@@ -2558,6 +2637,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
                 ],
               ],
             ),
+          );
+          },
           ),
           ),
         );

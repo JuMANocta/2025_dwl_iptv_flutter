@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aetherStream/core/utils/user_error.dart';
 import 'package:aetherStream/core/themes/colors.dart';
+import 'package:aetherStream/core/themes/aether_theme_extension.dart';
 import 'package:aetherStream/core/themes/themes.dart';
 import 'package:aetherStream/core/themes/light_palette.dart';
 import 'package:aetherStream/core/utils/platform_tv.dart';
@@ -434,29 +435,10 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
           title: Text(l10n.accountsTitle),
           elevation: 0,
           scrolledUnderElevation: 0,
-          // §reloadAll — Action de PAGE, pas de carte. Avec quatre comptes, le
-          // rechargement un par un demandait quatre descentes, quatre
-          // confirmations et quatre attentes ; sur TV, chaque aller-retour au
-          // D-pad le doublait. L'AppBar était libre, et le FAB déjà pris par
-          // « Ajouter ».
-          actions: [
-            FutureBuilder<List<StreamAccount>>(
-              future: _accountsFuture,
-              builder: (ctx, snap) {
-                final accounts = snap.data;
-                if (accounts == null || accounts.length < 2) {
-                  // Un seul compte : le bouton de sa carte suffit, une action
-                  // de page ferait doublon.
-                  return const SizedBox.shrink();
-                }
-                return IconButton(
-                  tooltip: ctx.l10n.reloadAllConfirm,
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _reloadingAll ? null : () => _reloadAll(accounts),
-                );
-              },
-            ),
-          ],
+          // §reloadAll — L'action « Recharger toutes les listes » vivait ici,
+          // en ↻ nu : personne ne devinait ce que rechargeait une icône sans
+          // mot. Elle est devenue un bouton libellé en tête de la liste, cf.
+          // `_buildReloadAllButton`.
         ),
         floatingActionButton: FutureBuilder<List<StreamAccount>>(
           future: _accountsFuture,
@@ -472,6 +454,12 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
               backgroundColor: kAccentPrimary,
               // Revue 2026-09-11, D4B-08 — le texte suit le fond (Tron : blanc).
               foregroundColor: onColorFor(kAccentPrimary),
+              // Recette TV 2026-09-21 — le FAB recevait le focus à la croix
+              // SANS aucun anneau : OK ouvrait « Ajouter » par surprise. Il
+              // porte maintenant l'anneau du thème (§btnShape : rayon du thème,
+              // pas une pilule), résolu par état. ⛔ Jamais `null` rendu
+              // (§themeReboot) : hors focus, la même forme sans bordure.
+              shape: _fabFocusShape(ctx),
             );
           },
         ),
@@ -517,6 +505,10 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
               // qui met la dernière carte hors de portée du bouton.
               const double fabInset = 88; // 56 (FAB) + 16 marge + 16 respiration
               final bool isTv = PlatformTv.isTv;
+              // §reloadAll — Un seul compte : le bouton de sa carte suffit, une
+              // action de page ferait doublon.
+              final bool showReloadAll = accounts.length >= 2;
+              final int headerCount = showReloadAll ? 2 : 1;
               return Padding(
                 padding: EdgeInsets.only(bottom: isTv ? fabInset : 0),
                 child: RefreshIndicator(
@@ -526,10 +518,15 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
                     // sa case de position avec les autres de la même route.
                     key: const PageStorageKey<String>('accounts_list'),
                     padding: EdgeInsets.fromLTRB(12, 16, 12, isTv ? 12 : 100),
-                    itemCount: accounts.length + 1, // +1 pour le bandeau info
+                    // +1 pour le bandeau info, +1 pour « Recharger toutes les
+                    // listes » à partir de deux comptes.
+                    itemCount: accounts.length + headerCount,
                     itemBuilder: (_, i) {
                       if (i == 0) return _buildPriorityBanner(accounts, cs);
-                      final acc = accounts[i - 1];
+                      if (showReloadAll && i == 1) {
+                        return _buildReloadAllButton(accounts);
+                      }
+                      final acc = accounts[i - headerCount];
                       final isPriority = _priorityAccountId == acc.id;
                       return _AccountCard(
                         // R22 (D4B-10) — La carte s'identifie par son COMPTE,
@@ -550,6 +547,61 @@ class _AccountsPageState extends State<AccountsPage> with TvInitialFocus {
             },
           ),
         ),
+      ),
+    );
+  }
+
+  /// §reloadAll — Action de PAGE, pas de carte : avec quatre comptes, le
+  /// rechargement un par un demandait quatre descentes, quatre confirmations
+  /// et quatre attentes ; sur TV, chaque aller-retour au D-pad le doublait.
+  ///
+  /// §dpadChildFocus — Élément de la liste, FRÈRE des cartes : jamais dans une
+  /// `FocusableCard`, sinon il n'est candidat nulle part au D-pad. Le bandeau
+  /// au-dessus n'a rien de focusable : c'est la première étape du corps, la
+  /// croix bas y mène depuis l'AppBar et en repart vers la première carte.
+  ///
+  /// §boundFocus — Pendant un rechargement, le bouton reste ACTIF : passer à
+  /// `onPressed: null` le retirerait alors qu'il a le focus, et le focus
+  /// sauterait ailleurs. `_reloadAll` ignore déjà un second appui.
+  Widget _buildReloadAllButton(List<StreamAccount> accounts) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: () => _reloadAll(accounts),
+          icon: _reloadingAll
+              ? SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: onColorFor(kAccentPrimary),
+                  ),
+                )
+              : const Icon(Icons.refresh),
+          label: Text(context.l10n.reloadAllTooltip),
+          style: aetherFilledStyle(kAccentPrimary),
+        ),
+      ),
+    );
+  }
+
+  /// Forme du FAB : rayon du thème, et un anneau quand il a le focus (le
+  /// seul signal visible au D-pad). §focusContrast — le FAB est PLEIN, à
+  /// l'accent : un anneau `focusGlowColor` (= l'accent) s'y fondrait. Comme
+  /// les `FilledButton` du thème, l'anneau prend la couleur du TEXTE du
+  /// bouton, contrastée contre le fond ET le bouton.
+  static OutlinedBorder _fabFocusShape(BuildContext context) {
+    final ext = Theme.of(context).extension<AetherThemeExtension>();
+    final double radius = ext?.borderRadius ?? 12;
+    final Color ring = onColorFor(kAccentPrimary);
+    return WidgetStateOutlinedBorder.resolveWith(
+      (states) => RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radius),
+        side: states.contains(WidgetState.focused)
+            ? BorderSide(color: ring, width: 2.6)
+            : BorderSide.none,
       ),
     );
   }

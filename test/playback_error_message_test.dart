@@ -78,8 +78,10 @@ void main() {
       );
       expect(s, isNot(contains('SECRETU')));
       expect(s, isNot(contains('SECRETP')));
-      expect(s, contains('***'));
-      expect(s, startsWith('Lecture impossible'));
+      // Recette 2026-09-21 — le texte brut ne va plus du tout à l'écran
+      // (expurgé, il allait encore après « Lecture impossible : ») : il part au
+      // journal, l'écran dit la phrase générique.
+      expect(s, 'Lecture impossible.');
     });
 
     test('une query username/password dans le texte brut est expurgée', () {

@@ -99,12 +99,16 @@ Future<void> showPlayerOptions(
         // c'est un outil de mise au point, pas une action de lecture, il ne
         // doit pas passer devant « Épisode suivant » au focus D-pad.
         OptionSheetRow(
-          icon: statsEnabled ? Icons.speed_outlined : Icons.query_stats_rounded,
+          // Recette 2026-09-22 — `speed_outlined` était l'icône de Vitesse,
+          // juste au-dessus : les deux lignes se confondaient. Et « toucher
+          // pour masquer » n'était plus vrai (un tap ouvre l'interrupteur) :
+          // la ligne dit l'ÉTAT seul, comme le bouton TV.
+          icon: Icons.query_stats_rounded,
           accent: kAccentTertiary,
           title: context.l10n.optVideoInfo,
           subtitle: statsEnabled
-              ? context.l10n.optVideoInfoOn
-              : context.l10n.optVideoInfoSub,
+              ? context.l10n.tvOptStatsShown
+              : context.l10n.tvOptStatsHidden,
           selected: statsEnabled,
           onTap: onStats,
         ),
@@ -226,48 +230,18 @@ Future<void> showQualityMenu(
   );
 }
 
-/// §videoStatsTags — Le nom d'une ligne de l'encart, celui qu'elle porte à
-/// l'écran.
-String videoStatLabel(BuildContext context, VideoStatKey k) {
-  final l = context.l10n;
-  return switch (k) {
-    VideoStatKey.decoding => l.statsDecoding,
-    VideoStatKey.output => l.statsOutput,
-    VideoStatKey.codec => l.statsCodec,
-    VideoStatKey.resolution => l.statsResolution,
-    VideoStatKey.announced => l.statsAnnouncedLabel,
-    VideoStatKey.hdr => l.statsHdr,
-    VideoStatKey.fps => l.statsFps,
-    VideoStatKey.lost => l.statsLost,
-    VideoStatKey.rendered => l.statsRendered,
-    VideoStatKey.dropped => l.statsDropped,
-    VideoStatKey.bitrate => l.statsBitrate,
-    VideoStatKey.network => l.statsNetwork,
-    VideoStatKey.buffer => l.statsBuffer,
-    VideoStatKey.transferred => l.statsTransferred,
-    VideoStatKey.audio => l.statsAudio,
-    VideoStatKey.stalls => l.statsStalls,
-    VideoStatKey.startup => l.statsStartup,
-  };
-}
-
-/// §videoStatsTags — Sous-menu « Infos vidéo » : l'encart oui / non, toujours
-/// à l'écran ou seulement avec les contrôles, et la liste des lignes à
-/// montrer. Chaque ligne se coche et se décoche sur place (la feuille reste
-/// ouverte : à la télécommande, refaire le chemin pour chaque ligne serait
-/// une punition), focusable D-pad, sortie en dernier (§tvOptionsBack).
+/// §videoStats + §tvPlayerPanel — Sous-menu « Infos vidéo » (téléphone) : un
+/// seul interrupteur. Affiché = l'encart reste à l'écran avec toutes ses
+/// lignes ; le choix « avec les contrôles / toujours » et les cases ligne par
+/// ligne (§videoStatsTags) ont été retirés à la demande de l'utilisateur
+/// (2026-09-21) — un réglage de diagnostic qui demandait trois décisions.
+/// Sur TV, le bouton « Infos vidéo » de la rangée bascule directement.
 Future<void> showVideoStatsMenu(
   BuildContext context, {
   required bool enabled,
-  required bool permanent,
-  required Set<VideoStatKey> rows,
   required ValueChanged<bool> onEnabled,
-  required ValueChanged<bool> onPermanent,
-  required void Function(VideoStatKey key, bool shown) onRow,
 }) {
   bool en = enabled;
-  bool perm = permanent;
-  final Set<VideoStatKey> shown = Set.of(rows);
   return showAdaptiveActionSheet<void>(
     context: context,
     builder: (sheetCtx) => StatefulBuilder(
@@ -286,43 +260,6 @@ Future<void> showVideoStatsMenu(
               onEnabled(en);
             },
           ),
-          OptionSheetRow(
-            icon: perm ? Icons.check_circle_rounded : Icons.touch_app_rounded,
-            accent: kAccentTertiary,
-            title: context.l10n.optStatsPermanent,
-            subtitle: context.l10n.optStatsPermanentSub,
-            selected: perm,
-            onTap: () {
-              setLocal(() => perm = !perm);
-              onPermanent(perm);
-            },
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Text(
-              context.l10n.optStatsRows,
-              style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
-                    color: kAccentTertiary,
-                    letterSpacing: 1.2,
-                  ),
-            ),
-          ),
-          for (final k in VideoStatKey.values)
-            OptionSheetRow(
-              icon: shown.contains(k)
-                  ? Icons.check_box_rounded
-                  : Icons.check_box_outline_blank_rounded,
-              accent: kAccentTertiary,
-              title: videoStatLabel(ctx, k),
-              subtitle: null,
-              selected: shown.contains(k),
-              onTap: () {
-                setLocal(() {
-                  if (!shown.remove(k)) shown.add(k);
-                });
-                onRow(k, shown.contains(k));
-              },
-            ),
           // §tvOptionsBack — voir le sous-menu Format d'image.
           BackToVideoRow(onTap: () => Navigator.of(sheetCtx).pop()),
         ],

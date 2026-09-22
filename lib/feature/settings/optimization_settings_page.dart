@@ -590,9 +590,14 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
   }
 
   Widget _buildProfilesRow(ColorScheme cs) {
+    // 2026-09-21 — Rangée CENTRÉE (demande de l'utilisateur : « pas très joli à
+    // gauche »). `shrinkWrap` fait épouser au défilement la largeur des trois
+    // tuiles ; plus large que l'écran, elle défile comme avant.
     return SizedBox(
       height: 84,
-      child: ListView.separated(
+      child: Center(
+        child: ListView.separated(
+        shrinkWrap: true,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         scrollDirection: Axis.horizontal,
         itemCount: PerfConfig.presets.length,
@@ -614,7 +619,12 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
               onTap: applyPreset,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                width: 104,
+                // 2026-09-21 — Largeur MINIMALE, plus fixe : sur TV, le
+                // plancher de texte (§tvSmallText) agrandit le sous-titre et
+                // la tuile de 104 le coupait (« Static hero, short… »). La
+                // rangée défile déjà : la tuile s'élargit à son texte.
+                constraints: const BoxConstraints(minWidth: 104),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
                   color: kAccentSecondary.withAlpha(active ? 40 : 16),
@@ -675,6 +685,7 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
             ),
           );
         },
+      ),
       ),
     );
   }

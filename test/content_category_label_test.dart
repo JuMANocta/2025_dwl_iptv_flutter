@@ -312,7 +312,11 @@ void main() {
           .toList();
       final sorted = [...regions]..sort((a, b) => key(a).compareTo(key(b)));
       expect(regions, sorted);
-      expect(kHideableRegionLabels.last, kLegRegionLabel);
+      // §settingsTidy (2026-09-21) — la VO en fin, le legendado (brésilien)
+      // juste après « Brésil ».
+      expect(kHideableRegionLabels.last, kVoRegionLabel);
+      expect(kHideableRegionLabels[kHideableRegionLabels.indexOf('Brésil') + 1],
+          kLegRegionLabel);
     });
   });
 

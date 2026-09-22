@@ -5,7 +5,9 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/diagnostics/log_buffer.dart' show sanitizeForLog;
 import '../../core/settings/performance_settings_service.dart';
+import '../../data/services/device_caps_service.dart';
 import '../../data/services/track_preferences_service.dart';
+import 'buffer_policy.dart';
 import 'playback_engine.dart';
 import 'playback_error_message.dart';
 import 'player_error.dart';
@@ -92,9 +94,13 @@ class Media3Engine implements AetherPlaybackEngine {
   String _lastError = '';
   int _lastErrorCode = 0;
   bool _lastErrorAudio = false;
+  AetherTrack? _lastErrorAudioTrack;
 
   @override
   bool get lastErrorWasAudio => _lastErrorAudio;
+
+  @override
+  AetherTrack? get lastErrorAudioTrack => _lastErrorAudioTrack;
 
   // ── §engineFeatures — qualité HLS ─────────────────────────────────────────
 
@@ -260,16 +266,22 @@ class Media3Engine implements AetherPlaybackEngine {
   ///     produit la série de micro-coupures, bien plus pénible qu'une attente.
   static void _applyBufferProfile() {
     final seconds = PerformanceSettingsService.config.value.bufferSeconds;
+    // §bufferBudget — le plafond en OCTETS suit la mémoire mesurée de
+    // l'appareil, et « −10 s » repart de la mémoire (cf. buffer_policy.dart).
+    final int budget = bufferBudgetBytes(
+        memoryClassMb: DeviceCapsService.caps.value?.memory?.memoryClassMb);
+    final int back = backBufferMsFor(seconds);
     NativeVideoPlayerConfig.global = NativeVideoPlayerConfig(
       androidBufferConfig: NativeVideoPlayerAndroidBufferConfig(
         minBufferMs: seconds * 1000,
         maxBufferMs: seconds * 2 * 1000,
         bufferForPlaybackMs: 1500,
         bufferForPlaybackAfterRebufferMs: 5000,
+        targetBufferBytes: budget,
+        backBufferMs: back,
       ),
     );
-    debugPrint('🎚️ §playerBuffer — tampon ${seconds}s '
-        '(min ${seconds}s / max ${seconds * 2}s, départ 1,5s, reprise 5s)');
+    debugPrint('🎚️ §playerBuffer — tampon ${seconds}s (min ${seconds}s / max ${seconds * 2}s, départ 1,5s, reprise 5s) · plafond ${budget ~/ (1024 * 1024)} Mo · arrière ${back ~/ 1000}s');
   }
 
   /// ⚠️ Les abonnements se posent **avant** `initialize()` : le paquet le
@@ -351,6 +363,10 @@ class Media3Engine implements AetherPlaybackEngine {
     // R5 — Le verdict « son seul » se prend ICI, sur le code et le message
     // BRUTS : ce qui sort sur `errorStream` est traduit et ne dit plus rien.
     _lastErrorAudio = isMedia3AudioError(codeName: name, rawMessage: _lastError);
+    // R5 (recette 2026-09-21) — la piste que le message DÉSIGNE : la piste
+    // « courante » peut être inconnue à cet instant.
+    _lastErrorAudioTrack =
+        _lastErrorAudio ? audioTrackNamedByError(_lastError, _audio) : null;
     debugPrint('❌ §liveRecover — erreur moteur : '
         '${name ?? 'inconnue'} ($_lastErrorCode) — ${sanitizeForLog(_lastError)}');
     // §userError — Ce qui part ici finit À L'ÉCRAN (`player_page` l'affiche
@@ -386,6 +402,13 @@ class Media3Engine implements AetherPlaybackEngine {
   /// `dispose()` (terrain D2A-01).
   int _trackGen = 0;
 
+  /// §tvPlayerPanel — Dernière sélection journalisée (une ligne par
+  /// CHANGEMENT, pas par relecture).
+  String? _loggedSelection;
+
+  @override
+  Future<void> refreshTracks() => _refreshTracks();
+
   Future<void> _refreshTracks() async {
     final gen = ++_trackGen;
     try {
@@ -416,6 +439,15 @@ class Media3Engine implements AetherPlaybackEngine {
       final selS = t.where((e) => e.isSelected);
       _curAudio = selA.isEmpty ? null : _audio[a.indexOf(selA.first)];
       _curSub = selS.isEmpty ? null : _subtitles[t.indexOf(selS.first)];
+      // Recette 2026-09-21 — l'étiquette « Audio » disait « Automatique » sur
+      // un film en français : la sélection native n'était pas connue. On
+      // journalise ce que le natif dit, pour trancher sur appareil.
+      final String sel = 'audio ${_curAudio?.id ?? '-'}/${_audio.length} '
+          '· sous-titres ${_curSub?.id ?? '-'}/${_subtitles.length}';
+      if (sel != _loggedSelection) {
+        _loggedSelection = sel;
+        debugPrint('🎧 pistes — $sel');
+      }
     } catch (e) {
       debugPrint('⚠️ Media3Engine — pistes illisibles : $e');
     }

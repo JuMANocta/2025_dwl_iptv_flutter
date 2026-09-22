@@ -26,6 +26,7 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
   final _qualitiesCtrl = StreamController<List<AetherQuality>>.broadcast();
   AetherQuality? _currentQuality;
   bool _lastErrorAudio = false;
+  AetherTrack? _lastErrorAudioTrack;
   final _subs = <StreamSubscription<dynamic>>[];
 
   DateTime? _openTime;
@@ -93,6 +94,7 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
     _subs.add(player.stream.completed.listen(_completed.add));
     _subs.add(player.stream.error.listen((err) {
       _lastErrorAudio = err.toLowerCase().contains('audio');
+      _lastErrorAudioTrack = _lastErrorAudio ? currentAudioTrack : null;
       _error.add(err);
     }));
     _subs.add(player.stream.videoParams.listen((p) {
@@ -249,6 +251,14 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
   bool get lastErrorWasAudio => _lastErrorAudio;
 
   @override
+  AetherTrack? get lastErrorAudioTrack => _lastErrorAudioTrack;
+
+  @override
+  Future<void> refreshTracks() async {
+    // mpv / media_kit maintient player.state.tracks et player.state.track synchronisés en temps réel.
+  }
+
+  @override
   Future<bool> setVideoEnabled(bool enabled) async {
     try {
       await player.setVideoTrack(enabled ? VideoTrack.auto() : VideoTrack.no());
@@ -276,6 +286,8 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
     _stalls = 0;
     _stalled = Duration.zero;
     _watched = Duration.zero;
+    _lastErrorAudio = false;
+    _lastErrorAudioTrack = null;
 
     try {
       if (player.platform is NativePlayer) {
@@ -304,6 +316,8 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
     _stalls = 0;
     _stalled = Duration.zero;
     _watched = Duration.zero;
+    _lastErrorAudio = false;
+    _lastErrorAudioTrack = null;
 
     try {
       if (player.platform is NativePlayer) {

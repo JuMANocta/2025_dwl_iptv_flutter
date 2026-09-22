@@ -449,8 +449,14 @@ abstract class AppLocalizations {
   /// No description provided for @regionFilterTitle.
   ///
   /// In en, this message translates to:
-  /// **'Languages / regions'**
+  /// **'Languages and regions'**
   String get regionFilterTitle;
+
+  /// No description provided for @regionHideSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Content to hide'**
+  String get regionHideSection;
 
   /// No description provided for @themeSettingsTitle.
   ///
@@ -515,7 +521,7 @@ abstract class AppLocalizations {
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'Accounts, backup, theme, EPG, TMDB + remote (QR)'**
+  /// **'Set everything up from your phone, remote included'**
   String get settingsWebConsoleSub;
 
   /// Settings section header
@@ -533,7 +539,7 @@ abstract class AppLocalizations {
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'Providers, playlist stats & reload'**
+  /// **'Your subscriptions, what they hold, reload them'**
   String get settingsAccountsSub;
 
   /// Settings tile title
@@ -557,7 +563,7 @@ abstract class AppLocalizations {
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'XMLTV EPG — French DTT'**
+  /// **'What\'s on French free-to-air channels'**
   String get settingsXmltvSub;
 
   /// Settings section header
@@ -569,13 +575,13 @@ abstract class AppLocalizations {
   /// Settings tile title
   ///
   /// In en, this message translates to:
-  /// **'Languages / regions'**
+  /// **'Languages and regions'**
   String get settingsRegions;
 
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'Hide foreign content (saves memory)'**
+  /// **'Remembered tracks, foreign content to hide'**
   String get settingsRegionsSub;
 
   /// Settings tile title
@@ -587,7 +593,7 @@ abstract class AppLocalizations {
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'Theme, colors, cyberpunk effects'**
+  /// **'Theme, colors, light or dark'**
   String get settingsThemeSub;
 
   /// Settings tile title
@@ -599,7 +605,7 @@ abstract class AppLocalizations {
   /// Settings tile subtitle
   ///
   /// In en, this message translates to:
-  /// **'Performance profiles, hero, thumbnails, memory'**
+  /// **'Smoothness suited to your device'**
   String get settingsOptimizationSub;
 
   /// Settings section header
@@ -1304,12 +1310,6 @@ abstract class AppLocalizations {
   /// **'{seasons} ({episodes, plural, =1{1 episode} other{{episodes} episodes}})'**
   String infoSeasonsValue(int seasons, int episodes);
 
-  /// Sous-titre de la tuile Tout recharger (TV)
-  ///
-  /// In en, this message translates to:
-  /// **'Re-download all your lists from their servers'**
-  String get settingsReloadAllSub;
-
   /// §deviceCaps
   ///
   /// In en, this message translates to:
@@ -1661,7 +1661,7 @@ abstract class AppLocalizations {
   /// No description provided for @perfSectionHero.
   ///
   /// In en, this message translates to:
-  /// **'Hero banner'**
+  /// **'Home banner'**
   String get perfSectionHero;
 
   /// No description provided for @perfHeroSub.
@@ -1787,7 +1787,7 @@ abstract class AppLocalizations {
   /// No description provided for @perfImageRamLabel.
   ///
   /// In en, this message translates to:
-  /// **'Images (RAM)'**
+  /// **'Image memory'**
   String get perfImageRamLabel;
 
   /// No description provided for @perfImageRamSub.
@@ -2756,12 +2756,6 @@ abstract class AppLocalizations {
   /// **'Playback failed.'**
   String get perrCannotPlay;
 
-  /// No description provided for @perrCannotPlayWith.
-  ///
-  /// In en, this message translates to:
-  /// **'Playback failed: {detail}'**
-  String perrCannotPlayWith(String detail);
-
   /// No description provided for @relayBatteryPluggedOk.
   ///
   /// In en, this message translates to:
@@ -3140,12 +3134,6 @@ abstract class AppLocalizations {
   /// **'Automatic tracks restored'**
   String get settingsTracksResetDone;
 
-  /// No description provided for @settingsTracksNothing.
-  ///
-  /// In en, this message translates to:
-  /// **'Already automatic: nothing to forget.'**
-  String get settingsTracksNothing;
-
   /// No description provided for @langFrench.
   ///
   /// In en, this message translates to:
@@ -3416,12 +3404,6 @@ abstract class AppLocalizations {
   /// **'Audio and subtitle tracks'**
   String get ctrlTracks;
 
-  /// No description provided for @ctrlSpeed.
-  ///
-  /// In en, this message translates to:
-  /// **'Playback speed'**
-  String get ctrlSpeed;
-
   /// No description provided for @ctrlNextEpisode.
   ///
   /// In en, this message translates to:
@@ -3463,18 +3445,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Video info'**
   String get optVideoInfo;
-
-  /// No description provided for @optVideoInfoOn.
-  ///
-  /// In en, this message translates to:
-  /// **'Shown · tap to hide'**
-  String get optVideoInfoOn;
-
-  /// No description provided for @optVideoInfoSub.
-  ///
-  /// In en, this message translates to:
-  /// **'Decoding, resolution, frames/s, drops'**
-  String get optVideoInfoSub;
 
   /// No description provided for @fitContainSub.
   ///
@@ -3722,12 +3692,6 @@ abstract class AppLocalizations {
   /// **'Resuming playback… ({attempt}/{max})'**
   String playerRecovering(int attempt, int max);
 
-  /// No description provided for @playerOtherTrack.
-  ///
-  /// In en, this message translates to:
-  /// **'another track'**
-  String get playerOtherTrack;
-
   /// No description provided for @commonOk.
   ///
   /// In en, this message translates to:
@@ -3953,7 +3917,7 @@ abstract class AppLocalizations {
   /// No description provided for @themeSectionPresets.
   ///
   /// In en, this message translates to:
-  /// **'Presets'**
+  /// **'Ready-made themes'**
   String get themeSectionPresets;
 
   /// No description provided for @themeSectionColors.
@@ -5909,8 +5873,26 @@ abstract class AppLocalizations {
   /// No description provided for @regLegendado.
   ///
   /// In en, this message translates to:
-  /// **'Legendado (PT subtitles)'**
+  /// **'Brazil — subtitled original'**
   String get regLegendado;
+
+  /// No description provided for @regBrazilGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Brazil (dubbed, subtitled, new releases)'**
+  String get regBrazilGroup;
+
+  /// No description provided for @regEnglishGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'English (UK, US)'**
+  String get regEnglishGroup;
+
+  /// No description provided for @regExYugoslaviaGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Former Yugoslavia (Bosnia, Croatia)'**
+  String get regExYugoslaviaGroup;
 
   /// No description provided for @acctChipMain.
   ///
@@ -6637,12 +6619,6 @@ abstract class AppLocalizations {
   /// **'Minimalist'**
   String get themePresetMinimaliste;
 
-  /// No description provided for @settingsTracksResetTile.
-  ///
-  /// In en, this message translates to:
-  /// **'{memory} — back to automatic'**
-  String settingsTracksResetTile(String memory);
-
   /// No description provided for @dlNoticeSizeOf.
   ///
   /// In en, this message translates to:
@@ -6943,24 +6919,6 @@ abstract class AppLocalizations {
   /// **'What your device really decodes'**
   String get optStatsShowSub;
 
-  /// No description provided for @optStatsPermanent.
-  ///
-  /// In en, this message translates to:
-  /// **'Keep it on screen'**
-  String get optStatsPermanent;
-
-  /// No description provided for @optStatsPermanentSub.
-  ///
-  /// In en, this message translates to:
-  /// **'Stays visible while you watch'**
-  String get optStatsPermanentSub;
-
-  /// No description provided for @optStatsRows.
-  ///
-  /// In en, this message translates to:
-  /// **'Lines shown'**
-  String get optStatsRows;
-
   /// No description provided for @detMoreBelow.
   ///
   /// In en, this message translates to:
@@ -7176,6 +7134,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'My theme {n}'**
   String themeDefaultName(int n);
+
+  /// No description provided for @tvOptSpeedValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{speed}×'**
+  String tvOptSpeedValue(String speed);
+
+  /// No description provided for @tvOptSubsOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get tvOptSubsOff;
+
+  /// No description provided for @tvOptAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic'**
+  String get tvOptAuto;
+
+  /// No description provided for @tvOptStatsShown.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown'**
+  String get tvOptStatsShown;
+
+  /// No description provided for @tvOptStatsHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden'**
+  String get tvOptStatsHidden;
 }
 
 class _AppLocalizationsDelegate

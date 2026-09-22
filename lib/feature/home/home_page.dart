@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:aetherStream/core/diagnostics/jank_meter.dart';
 import 'package:aetherStream/core/diagnostics/log_buffer.dart';
+import 'package:aetherStream/core/settings/perf_config.dart';
 import 'package:aetherStream/core/settings/performance_settings_service.dart';
 import 'package:aetherStream/core/themes/colors.dart';
 import 'package:aetherStream/core/themes/light_palette.dart';
@@ -88,6 +89,13 @@ part 'home_search.dart';
 ///   - Hero : 16/9, auto-rotation, indicateur en dots, bouton Lire glow
 ///   - Favoris : pas de plafond 25 (l'utilisateur les a curatés lui-même)
 class HomePage extends StatefulWidget {
+  /// §homeTop (2026-09-21) — « Accueil » touché alors qu'on y est déjà :
+  /// l'onglet VISIBLE (Séries, Films ou Chaînes) glisse jusqu'en haut
+  /// (demande utilisateur : « je descends dans les catégories, je clique sur
+  /// accueil et hop je glisse jusqu'en haut »). Un compteur, pas un booléen :
+  /// deux appuis de suite sont deux demandes.
+  static final ValueNotifier<int> scrollToTopRequests = ValueNotifier<int>(0);
+
   /// Données pré-chargées par `_LaunchDecider`.
   final ({String path, String accountId, String accountName}) initialData;
 
@@ -1917,6 +1925,7 @@ class _TypePageState extends State<_TypePage>
   void initState() {
     super.initState();
     widget.contentTick.addListener(_onContentTick);
+    HomePage.scrollToTopRequests.addListener(_onScrollToTop);
     // Tendances seulement pour films/séries (pas de matching TMDB sur le live TV).
     if (widget.type != M3uContentType.tv) {
       _loadTrending();
@@ -1954,8 +1963,27 @@ class _TypePageState extends State<_TypePage>
   @override
   void dispose() {
     widget.contentTick.removeListener(_onContentTick);
+    HomePage.scrollToTopRequests.removeListener(_onScrollToTop);
     _tickerMode?.removeListener(_onVisibilityChanged);
+    _rowsScroll.dispose();
     super.dispose();
+  }
+
+  /// §homeTop — Contrôleur de la liste verticale des rangées. ⚠️ Il garde sa
+  /// position par la `PageStorageKey('homeRows_…')` de la liste
+  /// (`keepScrollOffset` par défaut) : §rowStorageKey reste intact.
+  final ScrollController _rowsScroll = ScrollController();
+
+  /// §homeTop — Seule la page VISIBLE remonte (le `TickerMode` posé par
+  /// `_pageFocusWrap`, §pageTick) : les deux autres onglets gardent leur
+  /// position. Durée bornée : une longue liste ne doit pas « défiler » 2 s.
+  void _onScrollToTop() {
+    if (!mounted || _tickerMode?.value.enabled != true) return;
+    if (!_rowsScroll.hasClients || _rowsScroll.offset <= 0) return;
+    final double from = _rowsScroll.offset;
+    final int ms = (250 + from / 12).clamp(250, 600).round();
+    unawaited(_rowsScroll.animateTo(0,
+        duration: Duration(milliseconds: ms), curve: Curves.easeOutCubic));
   }
 
   void _onContentTick() {
@@ -2815,6 +2843,7 @@ class _TypePageState extends State<_TypePage>
       child: JankScrollProbe(
       label: 'accueil vertical · ${widget.type.name}',
       child: ListView.builder(
+      controller: _rowsScroll, // §homeTop
       // §rowStorageKey — Case de sauvegarde PROPRE à cette liste.
       //
       // Flutter identifie l'emplacement où un scrollable range sa position par

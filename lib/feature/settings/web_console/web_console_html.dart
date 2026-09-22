@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../core/themes/app_theme_config.dart';
 import '../../../data/models/stream_account.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../search/category_labels.dart';
+import '../../search/m3u_filter.dart';
 
 /// Pages HTML de la console web (§webConsole — Phase 1).
 ///
@@ -251,7 +254,7 @@ String buildDashboard(AppThemeConfig t, String token) {
   <div class="group g2">
     <div class="ghead"><span class="gbar"></span><span class="glbl">Affichage</span></div>
     <div class="grid">
-      ${_navCard(token, 'langregion', '🌐', 'Langues / régions', 'Masquer le contenu étranger')}
+      ${_navCard(token, 'langregion', '🌐', 'Langues et régions', 'Masquer le contenu étranger')}
       ${_navCard(token, 'theme', '🎨', 'Thème', 'Presets cyberpunk')}
     </div>
   </div>
@@ -785,16 +788,25 @@ String buildTheme(AppThemeConfig t, String token, List<String> presetNames, Stri
 /// `RegionFilterPage`). [hidden] = régions actuellement masquées (cochées).
 String buildRegions(
     AppThemeConfig t, String token, List<String> labels, Set<String> hidden) {
-  final rows = labels.map((r) {
-    final checked = hidden.contains(r) ? ' checked' : '';
+  // §settingsTidy (2026-09-21) — La VALEUR reste la clé persistée ; le TEXTE
+  // passe par la même couche d'affichage que l'app (console en français) :
+  // « Legendado (sous-titré PT) » s'y lit « Brésil — VO sous-titrée ».
+  final AppLocalizations fr = lookupAppLocalizations(const Locale('fr'));
+  // §regionMerge — Une case par LIGNE (clé seule ou groupe de doublons) ; sa
+  // valeur porte toutes ses clés, jointes par « | » (aucune clé n'en contient).
+  final List<List<String>> lines = hideableRegionRows()
+      .where((row) => row.any(labels.contains))
+      .toList();
+  final rows = lines.map((row) {
+    final checked = row.any(hidden.contains) ? ' checked' : '';
     return '<label class="check">'
-        '<input type="checkbox" class="rg" value="${esc(r)}"$checked>'
-        '<span>${esc(r)}</span></label>';
+        '<input type="checkbox" class="rg" value="${esc(row.join('|'))}"$checked>'
+        '<span>${esc(regionRowLabel(row, fr))}</span></label>';
   }).join();
   final body = '''
   ${_backLink(token)}
   <div class="sec">
-    <h2>Langues / régions</h2>
+    <h2>Langues et régions</h2>
     <p class="muted">Coche les langues/régions à <b>masquer</b> du catalogue. Le
       contenu français (|FR|), québécois et VOSTFR est toujours conservé.<br>
       La mémoire est allégée dès « Appliquer » ; la taille sur disque diminue au
@@ -809,14 +821,14 @@ String buildRegions(
   <script>
     function setAll(v){ document.querySelectorAll('.rg').forEach(c=>c.checked=v); }
     async function saveRegions(){
-      const hidden = Array.from(document.querySelectorAll('.rg:checked')).map(c=>c.value);
+      const hidden = Array.from(document.querySelectorAll('.rg:checked')).flatMap(c=>c.value.split('|'));
       toast('⏳ Application…');
       const r = await api('/api/regions/save', {hidden});
       toast(r.ok ? '✅ Filtre appliqué — catalogue rechargé' : (r.data.error||'Erreur'), r.ok);
     }
   </script>
   ''';
-  return _shell(t, 'Langues / régions', body);
+  return _shell(t, 'Langues et régions', body);
 }
 
 // ─── Sauvegarde ────────────────────────────────────────────────────────────────

@@ -290,6 +290,8 @@ class NativeVideoPlayerAndroidBufferConfig {
     this.maxBufferMs = 50000,
     this.bufferForPlaybackMs = 2500,
     this.bufferForPlaybackAfterRebufferMs = 5000,
+    this.targetBufferBytes = -1,
+    this.backBufferMs = 0,
   });
 
   /// Preset for feeds with multiple simultaneous players: smaller buffers so
@@ -315,11 +317,23 @@ class NativeVideoPlayerAndroidBufferConfig {
   /// Buffer required to resume after a rebuffer, in milliseconds.
   final int bufferForPlaybackAfterRebufferMs;
 
+  /// Patch 27 (AetherStream, §bufferBudget) — cap of the buffer in BYTES
+  /// (`DefaultLoadControl.setTargetBufferBytes`); `<= 0` keeps Media3's
+  /// computed default (~125 MiB for video).
+  final int targetBufferBytes;
+
+  /// Patch 27 (AetherStream, §bufferBudget) — media kept BEHIND the playback
+  /// position, in milliseconds (`setBackBuffer(ms, retainFromKeyframe: true)`);
+  /// `0` keeps nothing (Media3's default).
+  final int backBufferMs;
+
   Map<String, dynamic> toMap() => <String, dynamic>{
     'minBufferMs': minBufferMs,
     'maxBufferMs': maxBufferMs,
     'bufferForPlaybackMs': bufferForPlaybackMs,
     'bufferForPlaybackAfterRebufferMs': bufferForPlaybackAfterRebufferMs,
+    'targetBufferBytes': targetBufferBytes,
+    'backBufferMs': backBufferMs,
   };
 }
 

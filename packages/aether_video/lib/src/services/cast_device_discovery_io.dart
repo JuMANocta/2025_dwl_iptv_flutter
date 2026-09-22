@@ -123,7 +123,24 @@ class CastDeviceDiscovery {
   }
 
   static Future<List<CastDevice>> _discover({required Duration timeout}) async {
-    final client = MDnsClient();
+    final client = MDnsClient(
+      rawDatagramSocketFactory: (
+        dynamic host,
+        int port, {
+        bool? reuseAddress,
+        bool? reusePort,
+        int? ttl,
+      }) async {
+        final socket = await RawDatagramSocket.bind(
+          host,
+          port,
+          reuseAddress: reuseAddress ?? true,
+          reusePort: Platform.isWindows ? false : (reusePort ?? true),
+          ttl: ttl ?? 1,
+        );
+        return Platform.isWindows ? _SafeDatagramSocket(socket) : socket;
+      },
+    );
     final found = <String, CastDevice>{};
     await client.start();
     try {
@@ -204,3 +221,93 @@ class CastDeviceDiscovery {
     return found.values.toList();
   }
 }
+
+/// A wrapper around [RawDatagramSocket] that safely ignores Windows-specific
+/// socket errors when joining multicast groups on network interfaces that do
+/// not support IP multicasting (e.g. Wi-Fi Direct virtual adapters).
+class _SafeDatagramSocket extends StreamView<RawSocketEvent>
+    implements RawDatagramSocket {
+  final RawDatagramSocket _inner;
+
+  _SafeDatagramSocket(this._inner) : super(_inner);
+
+  @override
+  InternetAddress get address => _inner.address;
+
+  @override
+  int get port => _inner.port;
+
+  @override
+  bool get broadcastEnabled => _inner.broadcastEnabled;
+
+  @override
+  set broadcastEnabled(bool value) => _inner.broadcastEnabled = value;
+
+  @override
+  bool get multicastLoopback => _inner.multicastLoopback;
+
+  @override
+  set multicastLoopback(bool value) => _inner.multicastLoopback = value;
+
+  @override
+  int get multicastHops => _inner.multicastHops;
+
+  @override
+  set multicastHops(int value) => _inner.multicastHops = value;
+
+  @override
+  // ignore: deprecated_member_use
+  NetworkInterface? get multicastInterface => _inner.multicastInterface;
+
+  @override
+  // ignore: deprecated_member_use
+  set multicastInterface(NetworkInterface? value) =>
+      // ignore: deprecated_member_use
+      _inner.multicastInterface = value;
+
+  @override
+  bool get readEventsEnabled => _inner.readEventsEnabled;
+
+  @override
+  set readEventsEnabled(bool value) => _inner.readEventsEnabled = value;
+
+  @override
+  bool get writeEventsEnabled => _inner.writeEventsEnabled;
+
+  @override
+  set writeEventsEnabled(bool value) => _inner.writeEventsEnabled = value;
+
+  @override
+  void close() => _inner.close();
+
+  @override
+  Datagram? receive() => _inner.receive();
+
+  @override
+  int send(List<int> buffer, InternetAddress address, int port) =>
+      _inner.send(buffer, address, port);
+
+  @override
+  void joinMulticast(InternetAddress group, [NetworkInterface? interface]) {
+    try {
+      _inner.joinMulticast(group, interface);
+    } catch (_) {
+      // Ignored: On Windows, some network interfaces (e.g. Wi-Fi Direct virtual adapters)
+      // throw SocketException (WSAENOPROTOOPT 10042) when joining multicast groups.
+    }
+  }
+
+  @override
+  void leaveMulticast(InternetAddress group, [NetworkInterface? interface]) {
+    try {
+      _inner.leaveMulticast(group, interface);
+    } catch (_) {}
+  }
+
+  @override
+  Uint8List getRawOption(RawSocketOption option) => _inner.getRawOption(option);
+
+  @override
+  void setRawOption(RawSocketOption option) => _inner.setRawOption(option);
+}
+

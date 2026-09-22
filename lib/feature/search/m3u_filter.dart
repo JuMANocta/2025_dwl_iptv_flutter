@@ -50,7 +50,7 @@ const String kVoRegionLabel = 'VO (non-FR)';
 const String kLegRegionLabel = 'Legendado (sous-titré PT)';
 
 /// §langFilter — Régions/langues que l'utilisateur peut choisir de MASQUER
-/// (cases à cocher dans les réglages). Ordre alpha + VO/Legendado en fin.
+/// (cases à cocher dans les réglages). Ordre alpha, legendado après le Brésil, VO en fin.
 ///
 /// ⚠️ **Doit couvrir tout [kForeignRegionLabels]** : une région reléguée en bas
 /// de l'accueil mais absente d'ici se voit sans pouvoir se cacher. Sept y
@@ -60,17 +60,65 @@ const String kLegRegionLabel = 'Legendado (sous-titré PT)';
 ///
 /// ⚠️ L'ordre de cette liste EST l'ordre à l'écran (recette du 2026-09-05 :
 /// « Arménie » précédait « Albanie », l'œil qui cherche une région dans une
-/// liste censée être triée la rate). Alphabétique strict, les deux langues
-/// (VO, Legendado) en fin.
+/// liste censée être triée la rate). Alphabétique strict, la VO en fin, le
+/// legendado juste après le Brésil (§settingsTidy).
 const List<String> kHideableRegionLabels = [
   'Albanie', 'Algérie', 'Allemagne', 'Arabe', 'Arménie', 'Asie', 'Belgique',
-  'Bosnie', 'Brésil', 'Canada', 'Coréen', 'Croatie', 'Espagne',
+  'Bosnie', 'Brésil',
+  // §settingsTidy (2026-09-21) — Le « legendado » vient des listes
+  // BRÉSILIENNES : sa case (affichée « Brésil — VO sous-titrée ») se range
+  // juste après « Brésil ». ⛔ La CLÉ ne change pas (persistée : réglage,
+  // cache des catégories, `.aether`) ; seul l'affichage passe par la l10n.
+  kLegRegionLabel,
+  'Canada', 'Coréen', 'Croatie', 'Espagne',
   'Ex-Yougoslavie', 'Grèce', 'Indien', 'Italie', 'Maghrébin', 'Novidades',
   'Pays-Bas', 'Pologne', 'Portugal', 'Ramadan', 'Rép. Dominicaine',
   'Roumanie', 'Russie', 'Scandinavie', 'Suisse', 'Tchéquie', 'Turc', 'UK',
   'USA',
-  kVoRegionLabel, kLegRegionLabel,
+  kVoRegionLabel,
 ];
+
+/// §regionMerge (2026-09-21) — Une case de « Langues et régions » peut porter
+/// PLUSIEURS clés : celles qui sont des DOUBLONS pour la personne qui trie
+/// (demande de l'utilisateur : « fusionne le Brésil, ou d'autres langues si
+/// elles sont doublon »).
+///
+/// - Brésil : le doublé `|BR|`, la VO sous-titrée `|LEG.|` et « Novidades »
+///   (nouveautés des catalogues lusophones, marquées LEG. / DUB.) ;
+/// - anglais : `UK` (ANGLAIS / ENGLISH / ENG) et `USA` ;
+/// - ex-Yougoslavie : la même langue sous trois noms (Bosnie, Croatie).
+///
+/// ⛔ Les CLÉS ne changent pas : elles restent persistées une par une
+/// (réglage, cache des catégories, `.aether`) et le filtre les teste une par
+/// une. Seul l'écran les réunit : cocher la case masque TOUTES ses clés.
+/// ⛔ Algérie reste SÉPARÉE de Maghrébin : filtre distinct demandé par
+/// l'utilisateur (voir la cascade plus bas). Portugal reste séparé du Brésil :
+/// un autre doublage.
+///
+/// La clé du groupe est sa PREMIÈRE clé (celle qui ouvre la ligne).
+const Map<String, List<String>> kRegionHideGroups = {
+  'Brésil': ['Brésil', kLegRegionLabel, 'Novidades'],
+  'UK': ['UK', 'USA'],
+  'Ex-Yougoslavie': ['Ex-Yougoslavie', 'Bosnie', 'Croatie'],
+};
+
+/// §regionMerge — Les lignes à afficher : chaque clé de
+/// [kHideableRegionLabels] apparaît dans UNE ligne et une seule ; une ligne
+/// vaut une clé seule ou un groupe entier de [kRegionHideGroups].
+List<List<String>> hideableRegionRows() {
+  final Map<String, String> leadOf = {
+    for (final MapEntry<String, List<String>> g in kRegionHideGroups.entries)
+      for (final String k in g.value) k: g.key,
+  };
+  final Set<String> seen = <String>{};
+  final List<List<String>> rows = <List<String>>[];
+  for (final String key in kHideableRegionLabels) {
+    final String lead = leadOf[key] ?? key;
+    if (!seen.add(lead)) continue;
+    rows.add(List<String>.unmodifiable(kRegionHideGroups[lead] ?? [key]));
+  }
+  return rows;
+}
 
 /// Revue 2026-09-11, D1A-11 — Hissées au niveau du fichier : `entryRegionLabels`
 /// est appelée pour CHAQUE entrée dès qu'un filtre de régions est actif, et

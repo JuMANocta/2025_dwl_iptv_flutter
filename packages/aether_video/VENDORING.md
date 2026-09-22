@@ -192,6 +192,20 @@ ne coûte aucune capacité ; retirer du code en coûte.
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).
 
+## patch 27 — le tampon a un plafond en OCTETS choisi par l'app, et un arrière (2026-09-21, §bufferBudget)
+
+**Le manque.** `buildPlayer` ne posait que les DURÉES (`setBufferDurationsMs`) :
+le plafond en octets restait celui que `DefaultLoadControl` calcule (~125 Mio pour
+la vidéo), prioritaire sur la durée, et alloué dans le tas Java — plus que ce
+qu'une box à 128 Mo peut donner. Aucun tampon arrière : « −10 s » retéléchargeait.
+**Le patch.** `NativeVideoPlayerAndroidBufferConfig` gagne `targetBufferBytes`
+(`<= 0` = défaut Media3) et `backBufferMs` (`0` = rien) ; `SharedPlayerManager.
+buildPlayer` les pose (`setTargetBufferBytes`, `setBackBuffer(ms, true)`) et fixe
+`setPrioritizeTimeOverSizeThresholds(false)` explicitement : le plafond gagne.
+L'app calcule les deux (`lib/feature/player/buffer_policy.dart`) : 40 % de
+`memoryClass` (sonde §deviceCaps), entre 32 Mio et le défaut Media3 ; 10 s
+d'arrière dès 30 s de tampon (Complet / Équilibré), rien en Léger.
+
 ## patch 26 — la piste vidéo se coupe écran éteint, le son continue (2026-09-16, §bgAudio)
 
 **Le manque.** Écran éteint, `VideoPlayerView` fait `clearVideoSurface` et

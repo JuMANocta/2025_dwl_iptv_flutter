@@ -204,7 +204,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get optimizationTitle => 'Optimisation';
 
   @override
-  String get regionFilterTitle => 'Langues / régions';
+  String get regionFilterTitle => 'Langues et régions';
+
+  @override
+  String get regionHideSection => 'Contenu à masquer';
 
   @override
   String get themeSettingsTitle => 'Personnalisation';
@@ -238,7 +241,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get settingsWebConsoleSub =>
-      'Comptes, sauvegarde, thème, EPG, TMDB + télécommande (QR)';
+      'Tout régler depuis ton téléphone, même la télécommande';
 
   @override
   String get settingsSectionSources => 'Sources & comptes';
@@ -247,7 +250,8 @@ class AppLocalizationsFr extends AppLocalizations {
   String get settingsAccounts => 'Comptes IPTV';
 
   @override
-  String get settingsAccountsSub => 'Providers, stats playlist & recharger';
+  String get settingsAccountsSub =>
+      'Tes abonnements, ce qu\'ils contiennent, les recharger';
 
   @override
   String get settingsTmdbKey => 'Affiches et infos TMDB';
@@ -259,30 +263,29 @@ class AppLocalizationsFr extends AppLocalizations {
   String get settingsXmltv => 'Guide des chaînes';
 
   @override
-  String get settingsXmltvSub => 'EPG XMLTV — TNT France';
+  String get settingsXmltvSub => 'Programmes des chaînes de la TNT';
 
   @override
   String get settingsSectionDisplay => 'Affichage';
 
   @override
-  String get settingsRegions => 'Langues / régions';
+  String get settingsRegions => 'Langues et régions';
 
   @override
   String get settingsRegionsSub =>
-      'Masquer le contenu étranger (réduit la mémoire)';
+      'Pistes retenues, contenu étranger à masquer';
 
   @override
   String get settingsTheme => 'Personnalisation';
 
   @override
-  String get settingsThemeSub => 'Thème, couleurs, effets cyberpunk';
+  String get settingsThemeSub => 'Thème, couleurs, clair ou sombre';
 
   @override
   String get settingsOptimization => 'Optimisation';
 
   @override
-  String get settingsOptimizationSub =>
-      'Profils performance, hero, vignettes, mémoire';
+  String get settingsOptimizationSub => 'La fluidité selon ton appareil';
 
   @override
   String get settingsSectionBackup => 'Sauvegarde & application';
@@ -722,10 +725,6 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
-  String get settingsReloadAllSub =>
-      'Retélécharger toutes tes listes depuis leurs serveurs';
-
-  @override
   String get perfProfileConfort => 'Complet';
 
   @override
@@ -942,7 +941,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get perfSectionProfiles => 'Profils';
 
   @override
-  String get perfSectionHero => 'Hero banner';
+  String get perfSectionHero => 'Bandeau d\'accueil';
 
   @override
   String get perfHeroSub =>
@@ -1014,7 +1013,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get perfSectionMemory => 'Mémoire & usage';
 
   @override
-  String get perfImageRamLabel => 'Images (RAM)';
+  String get perfImageRamLabel => 'Mémoire des images';
 
   @override
   String get perfImageRamSub =>
@@ -1613,11 +1612,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get perrCannotPlay => 'Lecture impossible.';
 
   @override
-  String perrCannotPlayWith(String detail) {
-    return 'Lecture impossible : $detail';
-  }
-
-  @override
   String get relayBatteryPluggedOk =>
       'Le téléphone est branché, parfait pour un film.';
 
@@ -1848,9 +1842,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get settingsTracksResetDone => 'Pistes automatiques rétablies';
 
   @override
-  String get settingsTracksNothing => 'Déjà automatique : rien à oublier.';
-
-  @override
   String get langFrench => 'Français';
 
   @override
@@ -1999,9 +1990,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get ctrlTracks => 'Pistes audio et sous-titres';
 
   @override
-  String get ctrlSpeed => 'Vitesse de lecture';
-
-  @override
   String get ctrlNextEpisode => 'Épisode suivant';
 
   @override
@@ -2021,12 +2009,6 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get optVideoInfo => 'Infos vidéo';
-
-  @override
-  String get optVideoInfoOn => 'Affichées · toucher pour masquer';
-
-  @override
-  String get optVideoInfoSub => 'Décodage, résolution, images/s, pertes';
 
   @override
   String get fitContainSub => 'Image entière · bandes noires possibles';
@@ -2165,9 +2147,6 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
-  String get playerOtherTrack => 'une autre piste';
-
-  @override
   String get commonOk => 'OK';
 
   @override
@@ -2289,7 +2268,7 @@ class AppLocalizationsFr extends AppLocalizations {
       'Toutes les couleurs et tous les effets reviennent aux valeurs par défaut.';
 
   @override
-  String get themeSectionPresets => 'Presets';
+  String get themeSectionPresets => 'Thèmes prêts à l\'emploi';
 
   @override
   String get themeSectionColors => 'Couleurs';
@@ -2322,7 +2301,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get themeSectionEffects => 'Effets';
 
   @override
-  String get themeGlow => 'Glow';
+  String get themeGlow => 'Halo lumineux';
 
   @override
   String get themeRadius => 'Arrondis';
@@ -3436,7 +3415,16 @@ class AppLocalizationsFr extends AppLocalizations {
   String get regOriginalNonFrench => 'VO (non-FR)';
 
   @override
-  String get regLegendado => 'Legendado (sous-titré PT)';
+  String get regLegendado => 'Brésil — VO sous-titrée';
+
+  @override
+  String get regBrazilGroup => 'Brésil (doublé, VO sous-titrée, nouveautés)';
+
+  @override
+  String get regEnglishGroup => 'Anglais (Royaume-Uni, États-Unis)';
+
+  @override
+  String get regExYugoslaviaGroup => 'Ex-Yougoslavie (Bosnie, Croatie)';
 
   @override
   String get acctChipMain => 'PRINCIPAL';
@@ -3902,11 +3890,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get themePresetMinimaliste => 'Minimaliste';
 
   @override
-  String settingsTracksResetTile(String memory) {
-    return '$memory — revenir à l\'automatique';
-  }
-
-  @override
   String dlNoticeSizeOf(String received, String total) {
     return '$received sur $total';
   }
@@ -4085,15 +4068,6 @@ class AppLocalizationsFr extends AppLocalizations {
   String get optStatsShowSub => 'Ce que votre appareil décode vraiment';
 
   @override
-  String get optStatsPermanent => 'Le garder à l’écran';
-
-  @override
-  String get optStatsPermanentSub => 'Reste visible pendant que vous regardez';
-
-  @override
-  String get optStatsRows => 'Lignes affichées';
-
-  @override
   String get detMoreBelow => 'Suite de la fiche plus bas';
 
   @override
@@ -4210,4 +4184,21 @@ class AppLocalizationsFr extends AppLocalizations {
   String themeDefaultName(int n) {
     return 'Mon thème $n';
   }
+
+  @override
+  String tvOptSpeedValue(String speed) {
+    return '$speed×';
+  }
+
+  @override
+  String get tvOptSubsOff => 'Coupés';
+
+  @override
+  String get tvOptAuto => 'Automatique';
+
+  @override
+  String get tvOptStatsShown => 'Affichées';
+
+  @override
+  String get tvOptStatsHidden => 'Masquées';
 }

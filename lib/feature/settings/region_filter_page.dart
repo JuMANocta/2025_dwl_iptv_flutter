@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import '../../core/themes/colors.dart';
 import '../../core/themes/light_palette.dart';
 import '../../core/utils/user_error.dart';
+import '../../data/models/m3u_entry.dart';
 import '../../data/services/hidden_regions_service.dart';
 import '../../data/services/parsed_playlist_service.dart';
 import '../../data/services/playlist_service.dart';
 import '../../data/services/stream_account_service.dart';
+import '../../data/services/track_preferences_service.dart';
+import '../../widgets/confirm_or_undo.dart';
+import 'track_memory_summary.dart';
 import '../search/m3u_filter.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
 import '../../l10n/app_localizations.dart';
@@ -14,6 +18,10 @@ import '../../l10n/l10n_ext.dart';
 import '../search/category_labels.dart';
 
 /// §langFilter — Réglage des langues/régions à MASQUER du catalogue.
+///
+/// §settingsTidy (2026-09-21) — La page porte aussi, EN TÊTE, la mémoire des
+/// pistes (R43) : l'ancienne tuile « Langues des pistes » des Paramètres vit
+/// ici, à côté des autres réglages de langue (demande de l'utilisateur).
 ///
 /// Les entrées dont le préfixe `|XX|` correspond à une région cochée sont
 /// **filtrées au parsing** (jamais stockées) → RAM + cache réduits. À
@@ -40,6 +48,93 @@ class _RegionFilterPageState extends State<RegionFilterPage>
   bool get _dirty =>
       _selected.length != HiddenRegionsService.hidden.length ||
       !_selected.containsAll(HiddenRegionsService.hidden);
+
+  /// R43 — « Revenir à l'automatique » pour les pistes (venu des Paramètres).
+  ///
+  /// Au doigt : on agit, puis « Annuler » 5 s ; à la télécommande : on demande
+  /// avant (§undoTv). L'instantané est pris AVANT l'appel, jamais dedans. Le
+  /// bouton n'existe que s'il y a une mémoire : pas de cas « rien à oublier ».
+  Future<void> _resetTrackMemory() async {
+    final String? oldAudio = TrackPreferencesService.audio;
+    final String? oldSub = TrackPreferencesService.subtitle;
+    await confirmOrUndo(
+      context,
+      title: context.l10n.settingsTracksResetTitle,
+      question: context.l10n.settingsTracksResetQuestion,
+      confirmLabel: context.l10n.settingsTracksResetConfirm,
+      doneMessage: context.l10n.settingsTracksResetDone,
+      // Rien n'est perdu qu'on ne puisse rechoisir au prochain titre : pas la
+      // couleur du danger.
+      destructive: false,
+      action: TrackPreferencesService.resetToAuto,
+      onUndo: () async {
+        await TrackPreferencesService.setAudio(oldAudio);
+        await TrackPreferencesService.setSubtitle(oldSub);
+      },
+    );
+  }
+
+  /// Titre de section de la page (pistes, puis contenu à masquer).
+  Widget _sectionTitle(String text) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+        child: Text(
+          text.toUpperCase(),
+          style: TextStyle(
+            color: kAccentPrimary,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.1,
+          ),
+        ),
+      );
+
+  /// R43 — Ce que l'app retient pour le PROCHAIN titre, et le geste pour
+  /// l'oublier. Suit le service par son notifieur (`version`).
+  Widget _buildTracksCard(ColorScheme cs) {
+    return ValueListenableBuilder<int>(
+      valueListenable: TrackPreferencesService.version,
+      builder: (ctx, _, _) {
+        final bool memory = TrackPreferencesService.hasMemory;
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.subtitles_outlined,
+                      color: memory ? kAccentSecondary : cs.onSurfaceVariant),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      trackMemorySummary(ctx.l10n),
+                      style: TextStyle(
+                          color: cs.onSurface, fontSize: 14, height: 1.35),
+                    ),
+                  ),
+                ],
+              ),
+              if (memory) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    onPressed: _resetTrackMemory,
+                    icon: const Icon(Icons.restart_alt),
+                    label: Text(ctx.l10n.settingsTracksResetConfirm),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   Future<void> _apply() async {
     if (_busy) return;
@@ -162,6 +257,9 @@ class _RegionFilterPageState extends State<RegionFilterPage>
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
                 children: [
+                  _sectionTitle(context.l10n.settingsTracks),
+                  _buildTracksCard(cs),
+                  _sectionTitle(context.l10n.regionHideSection),
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -177,16 +275,19 @@ class _RegionFilterPageState extends State<RegionFilterPage>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  ...kHideableRegionLabels.map((region) {
-                    final hidden = _selected.contains(region);
+                  // §regionMerge — Une case par LIGNE : une clé seule ou un groupe
+                  // de doublons. Cochée si une de ses clés est masquée ; la
+                  // (dé)cocher masque ou affiche toutes ses clés d'un coup.
+                  ...sortedRegionRows(context.l10n).map((row) {
+                    final hidden = row.any(_selected.contains);
                     return CheckboxThemeListTile(
-                      region: region,
+                      label: regionRowLabel(row, context.l10n),
                       hidden: hidden,
                       onChanged: (v) => setState(() {
                         if (v) {
-                          _selected.add(region);
+                          _selected.addAll(row);
                         } else {
-                          _selected.remove(region);
+                          _selected.removeAll(row);
                         }
                       }),
                     );
@@ -239,13 +340,28 @@ class _RegionFilterPageState extends State<RegionFilterPage>
   }
 }
 
+/// §regionMerge — Les lignes triées sur leur libellé AFFICHÉ (dans la langue de
+/// l'appareil, accents repliés), la VO toujours en dernier : un groupe
+/// (« Anglais… ») se range à son nom, pas à celui de sa première clé (`UK`).
+List<List<String>> sortedRegionRows(AppLocalizations l10n) {
+  // Le repli des accents de la recherche (§searchAccents) : « Écosse » se
+  // range avec les E, pas après le Z.
+  String fold(String s) => TitleMetadata.foldAccents(s.toLowerCase());
+  final rows = hideableRegionRows();
+  final vo = rows.where((r) => r.contains(kVoRegionLabel)).toList();
+  final rest = rows.where((r) => !r.contains(kVoRegionLabel)).toList()
+    ..sort((a, b) =>
+        fold(regionRowLabel(a, l10n)).compareTo(fold(regionRowLabel(b, l10n))));
+  return [...rest, ...vo];
+}
+
 class CheckboxThemeListTile extends StatelessWidget {
-  final String region;
+  final String label;
   final bool hidden;
   final ValueChanged<bool> onChanged;
   const CheckboxThemeListTile({
     super.key,
-    required this.region,
+    required this.label,
     required this.hidden,
     required this.onChanged,
   });
@@ -256,7 +372,7 @@ class CheckboxThemeListTile extends StatelessWidget {
       value: hidden,
       onChanged: (v) => onChanged(v ?? false),
       activeColor: kAccentPrimary,
-      title: Text(regionDisplayLabel(region, context.l10n)),
+      title: Text(label),
       secondary: Icon(
         hidden ? Icons.visibility_off_outlined : Icons.visibility_outlined,
         color:

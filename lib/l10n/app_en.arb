@@ -58,7 +58,8 @@
   "aboutTitle": "About",
   "backupTitle": "Backup",
   "optimizationTitle": "Optimization",
-  "regionFilterTitle": "Languages / regions",
+  "regionFilterTitle": "Languages and regions",
+  "regionHideSection": "Content to hide",
   "themeSettingsTitle": "Appearance",
   "tmdbKeyTitle": "TMDB posters & info",
   "xmltvTitle": "Channel guide",
@@ -75,7 +76,7 @@
   "@settingsWebConsole": {
     "description": "Settings tile title"
   },
-  "settingsWebConsoleSub": "Accounts, backup, theme, EPG, TMDB + remote (QR)",
+  "settingsWebConsoleSub": "Set everything up from your phone, remote included",
   "@settingsWebConsoleSub": {
     "description": "Settings tile subtitle"
   },
@@ -87,7 +88,7 @@
   "@settingsAccounts": {
     "description": "Settings tile title"
   },
-  "settingsAccountsSub": "Providers, playlist stats & reload",
+  "settingsAccountsSub": "Your subscriptions, what they hold, reload them",
   "@settingsAccountsSub": {
     "description": "Settings tile subtitle"
   },
@@ -103,7 +104,7 @@
   "@settingsXmltv": {
     "description": "Settings tile title"
   },
-  "settingsXmltvSub": "XMLTV EPG — French DTT",
+  "settingsXmltvSub": "What's on French free-to-air channels",
   "@settingsXmltvSub": {
     "description": "Settings tile subtitle"
   },
@@ -111,11 +112,11 @@
   "@settingsSectionDisplay": {
     "description": "Settings section header"
   },
-  "settingsRegions": "Languages / regions",
+  "settingsRegions": "Languages and regions",
   "@settingsRegions": {
     "description": "Settings tile title"
   },
-  "settingsRegionsSub": "Hide foreign content (saves memory)",
+  "settingsRegionsSub": "Remembered tracks, foreign content to hide",
   "@settingsRegionsSub": {
     "description": "Settings tile subtitle"
   },
@@ -123,7 +124,7 @@
   "@settingsTheme": {
     "description": "Settings tile title"
   },
-  "settingsThemeSub": "Theme, colors, cyberpunk effects",
+  "settingsThemeSub": "Theme, colors, light or dark",
   "@settingsThemeSub": {
     "description": "Settings tile subtitle"
   },
@@ -131,7 +132,7 @@
   "@settingsOptimization": {
     "description": "Settings tile title"
   },
-  "settingsOptimizationSub": "Performance profiles, hero, thumbnails, memory",
+  "settingsOptimizationSub": "Smoothness suited to your device",
   "@settingsOptimizationSub": {
     "description": "Settings tile subtitle"
   },
@@ -694,10 +695,6 @@
       }
     }
   },
-  "settingsReloadAllSub": "Re-download all your lists from their servers",
-  "@settingsReloadAllSub": {
-    "description": "Sous-titre de la tuile Tout recharger (TV)"
-  },
   "perfProfileConfort": "Full",
   "@perfProfileConfort": {
     "description": "§deviceCaps"
@@ -958,7 +955,7 @@
   "perfFreeMemoryNothing": "Nothing to free (only one account loaded)",
   "perfImageCacheCleared": "🧹 Image cache cleared",
   "perfSectionProfiles": "Profiles",
-  "perfSectionHero": "Hero banner",
+  "perfSectionHero": "Home banner",
   "perfHeroSub": "Stack of cards at the top of the home screen (costly on low-end boxes)",
   "perfAutoRotateTitle": "Automatic rotation",
   "perfAutoRotateSub": "Rotates the hero every 6 s (manual swipe still works)",
@@ -986,7 +983,7 @@
   },
   "perfUnloadSub": "Minutes without opening a secondary playlist before it leaves memory. “Never” (0) is the same as keeping every playlist.",
   "perfSectionMemory": "Memory & usage",
-  "perfImageRamLabel": "Images (RAM)",
+  "perfImageRamLabel": "Image memory",
   "perfImageRamSub": "RAM reserved for images already displayed. Only adjust it if memory is genuinely short.",
   "perfFreeMemoryButton": "Free memory from secondary accounts",
   "perfClearImageCacheButton": "Clear the image cache",
@@ -1433,14 +1430,6 @@
   "perrDrm": "Protected content (DRM) cannot be played.",
   "perrDecodeVideo": "Video decoding failed.",
   "perrCannotPlay": "Playback failed.",
-  "perrCannotPlayWith": "Playback failed: {detail}",
-  "@perrCannotPlayWith": {
-    "placeholders": {
-      "detail": {
-        "type": "String"
-      }
-    }
-  },
   "relayBatteryPluggedOk": "The phone is plugged in, perfect for a movie.",
   "relayBatteryPlugIfYouCan": "Plug the phone in if you can: converting uses a lot of battery.",
   "relayBatteryLow": "Battery at {percent}% — plug the phone in, casting depends on it.",
@@ -1619,7 +1608,6 @@
   "settingsTracksResetQuestion": "The next titles will pick their own audio language and subtitles.",
   "settingsTracksResetConfirm": "Back to automatic",
   "settingsTracksResetDone": "Automatic tracks restored",
-  "settingsTracksNothing": "Already automatic: nothing to forget.",
   "langFrench": "French",
   "langEnglish": "English",
   "langSpanish": "Spanish",
@@ -1710,7 +1698,6 @@
   "ctrlPip": "Shrink to a window",
   "ctrlOptions": "Playback options",
   "ctrlTracks": "Audio and subtitle tracks",
-  "ctrlSpeed": "Playback speed",
   "ctrlNextEpisode": "Next episode",
   "ctrlBadgeMovie": "MOVIE",
   "ctrlBadgeSeries": "SERIES",
@@ -1718,8 +1705,6 @@
   "optNextEpisodeSub": "Skip to the next episode",
   "optTracksSub": "Audio language · turn subtitles on",
   "optVideoInfo": "Video info",
-  "optVideoInfoOn": "Shown · tap to hide",
-  "optVideoInfoSub": "Decoding, resolution, frames/s, drops",
   "fitContainSub": "Whole picture · black bars possible",
   "fitCoverSub": "Removes black bars · crops the edges",
   "fitFill": "Full screen",
@@ -1802,7 +1787,6 @@
       }
     }
   },
-  "playerOtherTrack": "another track",
   "commonOk": "OK",
   "commonApply": "Apply",
   "commonApplying": "Applying…",
@@ -1840,7 +1824,7 @@
   "bkExportLocation": "Available in:\n/storage/emulated/0/Download/AetherStream/\n\nCopy this file to Drive, your PC, or another device to restore it later. Do not forget the password — it is stored nowhere.",
   "themeResetTitle": "Reset the theme?",
   "themeResetQuestion": "Every color and effect returns to its default value.",
-  "themeSectionPresets": "Presets",
+  "themeSectionPresets": "Ready-made themes",
   "themeSectionColors": "Colors",
   "themeColorPrimary": "Primary",
   "themeColorAccent": "Accent",
@@ -2531,7 +2515,10 @@
   "regExYugoslavia": "Former Yugoslavia",
   "regDominicanRepublic": "Dominican Republic",
   "regOriginalNonFrench": "Original (non-French)",
-  "regLegendado": "Legendado (PT subtitles)",
+  "regLegendado": "Brazil — subtitled original",
+  "regBrazilGroup": "Brazil (dubbed, subtitled, new releases)",
+  "regEnglishGroup": "English (UK, US)",
+  "regExYugoslaviaGroup": "Former Yugoslavia (Bosnia, Croatia)",
   "acctChipMain": "MAIN",
   "bootEnterManually": "Enter manually",
   "bootConfigureWebConsole": "Set up via Web console",
@@ -2918,14 +2905,6 @@
   "themePresetPhosphore": "Phosphor",
   "themePresetNordique": "Nordic",
   "themePresetMinimaliste": "Minimalist",
-  "settingsTracksResetTile": "{memory} — back to automatic",
-  "@settingsTracksResetTile": {
-    "placeholders": {
-      "memory": {
-        "type": "String"
-      }
-    }
-  },
   "dlNoticeSizeOf": "{received} of {total}",
   "@dlNoticeSizeOf": {
     "placeholders": {
@@ -3035,9 +3014,6 @@
   "optQualityFailed": "This quality could not be applied",
   "optStatsShow": "Show the panel",
   "optStatsShowSub": "What your device really decodes",
-  "optStatsPermanent": "Keep it on screen",
-  "optStatsPermanentSub": "Stays visible while you watch",
-  "optStatsRows": "Lines shown",
   "detMoreBelow": "More below",
   "detSeeMoreCast": "See more",
   "settingsSubtitles": "Online subtitles",
@@ -3074,5 +3050,11 @@
   "tracksOnlineQuota": "You have used today's searches",
   "tracksOnlineFailed": "The search could not be completed",
   "themeDefaultName": "My theme {n}",
-  "@themeDefaultName": {"placeholders": {"n": {"type": "int"}}}
+  "@themeDefaultName": {"placeholders": {"n": {"type": "int"}}},
+  "tvOptSpeedValue": "{speed}×",
+  "@tvOptSpeedValue": {"placeholders": {"speed": {"type": "String"}}},
+  "tvOptSubsOff": "Off",
+  "tvOptAuto": "Automatic",
+  "tvOptStatsShown": "Shown",
+  "tvOptStatsHidden": "Hidden"
 }

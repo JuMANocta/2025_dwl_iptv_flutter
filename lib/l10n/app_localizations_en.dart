@@ -202,7 +202,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get optimizationTitle => 'Optimization';
 
   @override
-  String get regionFilterTitle => 'Languages / regions';
+  String get regionFilterTitle => 'Languages and regions';
+
+  @override
+  String get regionHideSection => 'Content to hide';
 
   @override
   String get themeSettingsTitle => 'Appearance';
@@ -236,7 +239,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsWebConsoleSub =>
-      'Accounts, backup, theme, EPG, TMDB + remote (QR)';
+      'Set everything up from your phone, remote included';
 
   @override
   String get settingsSectionSources => 'Sources & accounts';
@@ -245,7 +248,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAccounts => 'IPTV accounts';
 
   @override
-  String get settingsAccountsSub => 'Providers, playlist stats & reload';
+  String get settingsAccountsSub =>
+      'Your subscriptions, what they hold, reload them';
 
   @override
   String get settingsTmdbKey => 'TMDB posters & info';
@@ -257,29 +261,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsXmltv => 'Channel guide';
 
   @override
-  String get settingsXmltvSub => 'XMLTV EPG — French DTT';
+  String get settingsXmltvSub => 'What\'s on French free-to-air channels';
 
   @override
   String get settingsSectionDisplay => 'Display';
 
   @override
-  String get settingsRegions => 'Languages / regions';
+  String get settingsRegions => 'Languages and regions';
 
   @override
-  String get settingsRegionsSub => 'Hide foreign content (saves memory)';
+  String get settingsRegionsSub => 'Remembered tracks, foreign content to hide';
 
   @override
   String get settingsTheme => 'Appearance';
 
   @override
-  String get settingsThemeSub => 'Theme, colors, cyberpunk effects';
+  String get settingsThemeSub => 'Theme, colors, light or dark';
 
   @override
   String get settingsOptimization => 'Performance';
 
   @override
-  String get settingsOptimizationSub =>
-      'Performance profiles, hero, thumbnails, memory';
+  String get settingsOptimizationSub => 'Smoothness suited to your device';
 
   @override
   String get settingsSectionBackup => 'Backup & app';
@@ -713,10 +716,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get settingsReloadAllSub =>
-      'Re-download all your lists from their servers';
-
-  @override
   String get perfProfileConfort => 'Full';
 
   @override
@@ -934,7 +933,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get perfSectionProfiles => 'Profiles';
 
   @override
-  String get perfSectionHero => 'Hero banner';
+  String get perfSectionHero => 'Home banner';
 
   @override
   String get perfHeroSub =>
@@ -1006,7 +1005,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get perfSectionMemory => 'Memory & usage';
 
   @override
-  String get perfImageRamLabel => 'Images (RAM)';
+  String get perfImageRamLabel => 'Image memory';
 
   @override
   String get perfImageRamSub =>
@@ -1602,11 +1601,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get perrCannotPlay => 'Playback failed.';
 
   @override
-  String perrCannotPlayWith(String detail) {
-    return 'Playback failed: $detail';
-  }
-
-  @override
   String get relayBatteryPluggedOk =>
       'The phone is plugged in, perfect for a movie.';
 
@@ -1836,9 +1830,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsTracksResetDone => 'Automatic tracks restored';
 
   @override
-  String get settingsTracksNothing => 'Already automatic: nothing to forget.';
-
-  @override
   String get langFrench => 'French';
 
   @override
@@ -1987,9 +1978,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ctrlTracks => 'Audio and subtitle tracks';
 
   @override
-  String get ctrlSpeed => 'Playback speed';
-
-  @override
   String get ctrlNextEpisode => 'Next episode';
 
   @override
@@ -2009,12 +1997,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get optVideoInfo => 'Video info';
-
-  @override
-  String get optVideoInfoOn => 'Shown · tap to hide';
-
-  @override
-  String get optVideoInfoSub => 'Decoding, resolution, frames/s, drops';
 
   @override
   String get fitContainSub => 'Whole picture · black bars possible';
@@ -2153,9 +2135,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get playerOtherTrack => 'another track';
-
-  @override
   String get commonOk => 'OK';
 
   @override
@@ -2277,7 +2256,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Every color and effect returns to its default value.';
 
   @override
-  String get themeSectionPresets => 'Presets';
+  String get themeSectionPresets => 'Ready-made themes';
 
   @override
   String get themeSectionColors => 'Colors';
@@ -3418,7 +3397,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get regOriginalNonFrench => 'Original (non-French)';
 
   @override
-  String get regLegendado => 'Legendado (PT subtitles)';
+  String get regLegendado => 'Brazil — subtitled original';
+
+  @override
+  String get regBrazilGroup => 'Brazil (dubbed, subtitled, new releases)';
+
+  @override
+  String get regEnglishGroup => 'English (UK, US)';
+
+  @override
+  String get regExYugoslaviaGroup => 'Former Yugoslavia (Bosnia, Croatia)';
 
   @override
   String get acctChipMain => 'MAIN';
@@ -3883,11 +3871,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themePresetMinimaliste => 'Minimalist';
 
   @override
-  String settingsTracksResetTile(String memory) {
-    return '$memory — back to automatic';
-  }
-
-  @override
   String dlNoticeSizeOf(String received, String total) {
     return '$received of $total';
   }
@@ -4065,15 +4048,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get optStatsShowSub => 'What your device really decodes';
 
   @override
-  String get optStatsPermanent => 'Keep it on screen';
-
-  @override
-  String get optStatsPermanentSub => 'Stays visible while you watch';
-
-  @override
-  String get optStatsRows => 'Lines shown';
-
-  @override
   String get detMoreBelow => 'More below';
 
   @override
@@ -4187,4 +4161,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String themeDefaultName(int n) {
     return 'My theme $n';
   }
+
+  @override
+  String tvOptSpeedValue(String speed) {
+    return '$speed×';
+  }
+
+  @override
+  String get tvOptSubsOff => 'Off';
+
+  @override
+  String get tvOptAuto => 'Automatic';
+
+  @override
+  String get tvOptStatsShown => 'Shown';
+
+  @override
+  String get tvOptStatsHidden => 'Hidden';
 }
