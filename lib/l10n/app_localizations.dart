@@ -7098,6 +7098,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Hidden'**
   String get tvOptStatsHidden;
+
+  /// Shown under the image RAM setting when the device's memory lets the app use more than the chosen value
+  ///
+  /// In en, this message translates to:
+  /// **'This device has memory to spare: the app uses up to {mb} MB for images.'**
+  String perfImageRamApplied(int mb);
+
+  /// Label of the TMDB keywords row in the details page Info box (TMDB keywords exist in English only)
+  ///
+  /// In en, this message translates to:
+  /// **'Keywords'**
+  String get infoKeywords;
 }
 
 class _AppLocalizationsDelegate

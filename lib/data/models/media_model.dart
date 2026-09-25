@@ -170,6 +170,11 @@ class Media {
   final String? theatricalDate;
   final String? digitalDate;
 
+  /// Lot 9 (§tmdbKeywords) — Les mots-clés TMDB (anglais seulement, cf.
+  /// [tmdbKeywordsFrom]). `null` : la réponse n'en portait pas (demande sans
+  /// `keywords`) ; vide : TMDB n'en connaît aucun.
+  final List<String>? keywords;
+
   /// Revue 2026-09-11, D1A-10 — la durée, dans la langue de l'écran
   /// (« 2h 15m », « 45m/episode »), ou `null` si TMDB ne la donne pas.
   /// Relecture : un film de moins d'une heure s'écrit « 45 min », plus
@@ -217,6 +222,7 @@ class Media {
     this.revenue,
     this.theatricalDate,
     this.digitalDate,
+    this.keywords,
   });
 
   /// [watchRegion] — pays ISO 3166-1 (« FR », « US ») dont on veut les
@@ -489,8 +495,41 @@ class Media {
       digitalDate: digital,
       releaseDateFull:
           (isMovie ? json['release_date'] : json['first_air_date']) as String?,
+      // Lot 9 (§tmdbKeywords) — `append_to_response=keywords`, zéro requête de
+      // plus. Une réponse d'avant (sans le bloc) reste lisible : `null`.
+      keywords: json.containsKey('keywords') ? tmdbKeywordsFrom(json) : null,
     );
   }
+}
+
+/// Lot 9 (§tmdbKeywords) — Les mots-clés d'une réponse `/movie/{id}` ou
+/// `/tv/{id}` demandée avec `append_to_response=keywords` : **zéro requête de
+/// plus**, ils voyagent dans la réponse que la fiche attend déjà.
+///
+/// ⚠️ Les deux formes diffèrent : un film les range sous `keywords.keywords`,
+/// une série sous `keywords.results`.
+///
+/// ⚠️ TMDB ne traduit PAS ses mots-clés : ils n'existent qu'en anglais
+/// (« time travel », « based on novel or book »), quelle que soit la langue
+/// demandée. C'est à l'affichage de décider s'ils ont leur place
+/// (`keywordsToShow`).
+///
+/// Noms nettoyés, dédoublonnés sans tenir compte de la casse, dans l'ordre
+/// TMDB. Fonction pure : c'est elle qu'on teste.
+List<String> tmdbKeywordsFrom(Map<String, dynamic> json) {
+  final Object? block = json['keywords'];
+  if (block is! Map) return const <String>[];
+  final Object? list = block['keywords'] ?? block['results'];
+  if (list is! List) return const <String>[];
+  final Set<String> seen = <String>{};
+  final List<String> out = <String>[];
+  for (final Object? k in list) {
+    if (k is! Map) continue;
+    final String name = (k['name'] ?? '').toString().trim();
+    if (name.isEmpty || !seen.add(name.toLowerCase())) continue;
+    out.add(name);
+  }
+  return out;
 }
 
 /// **Lot 9 (§tmdbPlus)** — Le pays dont il faut demander les plateformes, tiré

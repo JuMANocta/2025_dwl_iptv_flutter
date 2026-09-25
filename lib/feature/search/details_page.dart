@@ -197,13 +197,6 @@ class DetailsPage extends StatefulWidget {
   State<DetailsPage> createState() => _DetailsPageState();
 }
 
-class _EpGroup {
-  final int episodeNumber;
-  final List<M3uEntry> versions;
-  M3uEntry get best => versions.first;
-  _EpGroup(this.episodeNumber, this.versions);
-}
-
 class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   Media? _tmdbData;
   Map<String, dynamic>? _episodeData;
@@ -225,7 +218,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// suivant, ou quand la sélection initiale est une vraie reprise / un épisode
   /// explicitement demandé.
   bool _autoDefaultSelection = false;
-  Map<int, List<_EpGroup>> _seasonEpisodes = {};
+  Map<int, List<EpisodeGroup>> _seasonEpisodes = {};
   int? _selectedSeason;
   /// §seriesFlow — Vrai tant que le fetch lazy des épisodes (API Xtream) tourne.
   /// Pilote l'état du navigateur série : spinner pendant le chargement, liste
@@ -248,6 +241,17 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// pour que chaque épisode porte les versions de TOUTES les listes qui ont
   /// la série (et pas juste le compte d'origine de la vignette).
   List<M3uEntry> _apiSeriesStubs = const [];
+
+  /// §22.1 — L'ordre des listes pour ce titre (celle de la vignette en tête) :
+  /// les versions d'un épisode le suivent, comme celles d'un film.
+  List<String> _accountOrder = const [];
+
+  /// §22.1 — Vrai tant que l'épisode sélectionné l'a été PAR LA FICHE
+  /// (`_autoSelectInitialEpisode`) et que la personne n'a rien touché. Les
+  /// épisodes d'une autre liste arrivent APRÈS l'affichage : si l'un d'eux
+  /// porte la reprise en cours, la fiche doit pouvoir s'y placer — mais jamais
+  /// défaire un choix de la personne.
+  bool _autoPicked = false;
 
   /// §detailsLive — Empreinte de ce que la MÉMOIRE contient pour ce titre.
   /// Comparée à chaque bump de `ParsedPlaylistService.version` pour ne rien
@@ -354,7 +358,7 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     final epNum  = _currentEpisode.title.episodeNumber!;
     // Prochain épisode (numéro > courant, le plus petit) dans la même saison.
     final eps = _seasonEpisodes[season] ?? const [];
-    _EpGroup? nextInSeason;
+    EpisodeGroup? nextInSeason;
     for (final g in eps) {
       if (g.episodeNumber <= epNum) continue;
       if (nextInSeason == null || g.episodeNumber < nextInSeason.episodeNumber) {
@@ -439,7 +443,17 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
       // D4A-10 — la collecte faite en tête d'`initState`.
       _uniqueVersions = _deduplicateVersions(
           fromMemory.isEmpty ? widget.versions : fromMemory);
-      _selectedEntry  = _uniqueVersions.isNotEmpty ? _uniqueVersions.first : widget.entry;
+      // R52 — Un film reprend sur la version qui PORTE sa reprise, comme un
+      // épisode (§22.1, `_pickEpisode`). La première version peut venir d'une
+      // autre liste, donc d'un autre abonnement : « Reprendre à 00:34 »
+      // repartait sur un flux qui n'était pas celui de la reprise. Sans
+      // reprise, `keepSelection(…, '')` rend la première : rien ne change.
+      final String resumedUrl = WatchProgressService.getProgressForAny(
+                  _uniqueVersions.map((v) => v.url))
+              ?.url ??
+          '';
+      _selectedEntry =
+          keepSelection(_uniqueVersions, resumedUrl) ?? widget.entry;
     }
 
     _loadData();
@@ -560,21 +574,26 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// lazy fetch de la JSON API). Factorisé pour pouvoir être appelé depuis
   /// initState ET depuis `_fetchAllEpisodes`.
   void _applyInitialEpisodeSelection() {
-    final season = widget.entry.title.seasonNumber;
-    final epNum  = widget.entry.title.episodeNumber;
-    if (season != null && epNum != null) {
+    // §22.1 — `widget.entry` n'est une DEMANDE que s'il est seul de son
+    // épisode parmi `widget.versions` : l'accueil passe la tête d'un groupe
+    // (`versions.first`), un épisode quelconque pour une liste M3U, et la
+    // reprise en cours n'était alors jamais proposée (cf. `requestedEpisodeOf`).
+    final asked = requestedEpisodeOf(widget.entry, widget.versions);
+    if (asked != null) {
+      final season = asked.season;
       final group = _seasonEpisodes[season]
-          ?.where((g) => g.episodeNumber == epNum)
+          ?.where((g) => g.episodeNumber == asked.episode)
           .firstOrNull;
       if (group != null) {
         _episodeSelected = true;
         _autoDefaultSelection = false; // épisode explicitement demandé
+        _autoPicked      = false;
         _selectedSeason  = season;
         _currentEpisode  = group.best;
         _uniqueVersions  = _deduplicateVersions(group.versions);
-        _selectedEntry   = _uniqueVersions.isNotEmpty
-            ? _uniqueVersions.first
-            : group.best;
+        // La version demandée elle-même, si elle est là.
+        _selectedEntry   =
+            keepSelection(_uniqueVersions, widget.entry.url) ?? group.best;
         return;
       }
     }
@@ -585,85 +604,140 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
 
   /// §xtreamEpisodes — Récupère les épisodes via la JSON API Xtream à la
   /// demande (séries listées en stubs au boot, épisodes chargés à l'ouverture).
-  /// §seriesMultiList — Fetch les épisodes de TOUS les stubs (un par compte qui
-  /// a la série) en parallèle, puis merge avec les épisodes déjà présents (M3U)
+  /// §seriesMultiList — Fetch les épisodes de TOUS les stubs (un ou plusieurs
+  /// par liste, `seriesStubsToFetch`) en parallèle, puis merge avec les
+  /// épisodes déjà présents (M3U)
   /// → chaque épisode porte les versions de toutes les listes. Remplace
   /// l'ancien fetch mono-compte qui ne montrait qu'un seul provider.
+  ///
+  /// §22.1 — Chaque stub est fusionné DÈS qu'il répond, sans attendre les
+  /// autres : une liste peut désormais en compter plusieurs (versions 4K,
+  /// VOSTFR… rangées en séries distinctes, `seriesStubsToFetch`), et le panel
+  /// les sert un par un (§hostGate). Attendre le dernier aurait retardé
+  /// l'affichage de tous.
   Future<void> _fetchAllEpisodes() async {
-    // Revue 2026-09-11, D4A-06 — chaque stub rend AUSSI l'échec constaté par
-    // la fiche elle-même (identifiant illisible, compte introuvable) : la
-    // `LoadFailureKind` seule ne distingue pas ces deux cas. Les motifs
-    // français restent ceux du JOURNAL (`episodesFailureReason`).
-    final futures = _apiSeriesStubs.map<Future<_StubOutcome>>((stub) async {
-      final sid = _extractSeriesIdFromUrl(stub.url);
-      if (sid == null) {
-        return (
-          r: (
-            episodes: null,
-            error: 'identifiant de série illisible',
-            kind: LoadFailureKind.badAccount,
-          ),
-          local: EpisodesFailure.badSeriesId,
-        );
-      }
-      final acc = await StreamAccountService.getAccount(stub.accountId);
-      if (acc == null) {
-        return (
-          r: (
-            episodes: null,
-            error: 'compte introuvable',
-            kind: LoadFailureKind.badAccount,
-          ),
-          local: EpisodesFailure.noAccount,
-        );
-      }
-      return (r: await XtreamApiService.fetchEpisodes(acc, sid), local: null);
-    }).toList();
-
-    final outcomes = await Future.wait(futures);
+    final List<M3uEntry> stubs = _apiSeriesStubs;
+    int received = 0;
+    final outcomes = await Future.wait(
+      stubs.map<Future<_StubOutcome>>((stub) async {
+        final _StubOutcome o = await _fetchStubEpisodes(stub);
+        final List<M3uEntry>? eps = o.r.episodes;
+        if (mounted && eps != null && eps.isNotEmpty) {
+          received += eps.length;
+          _mergeApiEpisodes(eps);
+        }
+        return o;
+      }),
+    );
     if (!mounted) return;
-    final results = <XtreamEpisodesResult>[for (final o in outcomes) o.r];
-    final apiEpisodes =
-        results.expand((r) => r.episodes ?? const <M3uEntry>[]).toList();
+    // Une ligne par ouverture de fiche (geste de l'utilisateur), sans URL.
+    final int lists = stubs.map((s) => s.accountId).toSet().length;
+    debugPrint('📺 §22.1 épisodes "${widget.entry.displayName}" : ${stubs.length} stub(s) sur $lists liste(s), $received reçu(s), ${_seasonEpisodes.length} saison(s) affichée(s)');
+    if (received > 0) return;
 
     // §episodeTruth — Une liste vide ne veut plus dire la même chose selon
     // qu'AUCUN stub n'a répondu ou que tous ont répondu « rien ». On ne
     // signale une panne que si **aucun** compte n'a rendu de résultat
     // exploitable : qu'une liste secondaire soit injoignable pendant qu'une
     // autre rend les épisodes n'est pas une panne pour l'utilisateur.
-    if (apiEpisodes.isEmpty) {
-      final String? reason = episodesFailureReason(results);
-      if (reason != null) debugPrint('⚠️ Épisodes non chargés : $reason');
-      return _finishEpisodesLoading(
-        failure: episodesFailureOf(
-          results,
-          local: <EpisodesFailure?>[for (final o in outcomes) o.local],
+    final results = <XtreamEpisodesResult>[for (final o in outcomes) o.r];
+    final String? reason = episodesFailureReason(results);
+    if (reason != null) debugPrint('⚠️ Épisodes non chargés : $reason');
+    return _finishEpisodesLoading(
+      failure: episodesFailureOf(
+        results,
+        local: <EpisodesFailure?>[for (final o in outcomes) o.local],
+      ),
+    );
+  }
+
+  /// Revue 2026-09-11, D4A-06 — chaque stub rend AUSSI l'échec constaté par la
+  /// fiche elle-même (identifiant illisible, compte introuvable) : la
+  /// `LoadFailureKind` seule ne distingue pas ces deux cas. Les motifs
+  /// français restent ceux du JOURNAL (`episodesFailureReason`).
+  Future<_StubOutcome> _fetchStubEpisodes(M3uEntry stub) async {
+    final sid = _extractSeriesIdFromUrl(stub.url);
+    if (sid == null) {
+      return (
+        r: (
+          episodes: null,
+          error: 'identifiant de série illisible',
+          kind: LoadFailureKind.badAccount,
         ),
+        local: EpisodesFailure.badSeriesId,
       );
     }
+    final acc = await StreamAccountService.getAccount(stub.accountId);
+    if (acc == null) {
+      return (
+        r: (
+          episodes: null,
+          error: 'compte introuvable',
+          kind: LoadFailureKind.badAccount,
+        ),
+        local: EpisodesFailure.noAccount,
+      );
+    }
+    // §22.1 — le titre du stub : ses étiquettes (4K, VOSTFR…) passent sur les
+    // épisodes, sinon deux séries d'une même liste auraient la même pastille.
+    return (
+      r: await XtreamApiService.fetchEpisodes(acc, sid, seriesTitle: stub.title),
+      local: null,
+    );
+  }
 
-    // Merge épisodes M3U déjà groupés + nouveaux épisodes API → regroupe tout.
-    final merged = <M3uEntry>[..._flattenSeasonEpisodes(), ...apiEpisodes];
-    final regrouped = _regroupEpisodes(merged);
-
+  /// §22.1 — Fusionne les épisodes d'UN stub avec ce qui est déjà affiché (M3U
+  /// en mémoire, autres stubs) : même saison + même numéro = une ligne, les
+  /// versions réunies (`mergeSeasonEpisodes`).
+  void _mergeApiEpisodes(List<M3uEntry> apiEpisodes) {
+    final merged =
+        _regroupEpisodes(<M3uEntry>[..._flattenSeasonEpisodes(), ...apiEpisodes]);
     final wasSelected = _episodeSelected;
+    bool reload = false;
     setState(() {
-      _seasonEpisodes = regrouped;
+      _seasonEpisodes = merged;
       _episodesLoading = false;
+      _episodesFailure = null;
       // Ne ré-applique la sélection auto que si l'utilisateur n'a pas déjà
       // navigué pendant le (bref) chargement.
       if (!_episodeSelected && _selectedSeason == null) {
         _applyInitialEpisodeSelection();
         _autoSelectInitialEpisode();
+        reload = !wasSelected && _episodeSelected;
+      } else if (_episodeSelected && _autoPicked) {
+        reload = _reconsiderAutoPick();
       } else if (_episodeSelected) {
         // §seriesMultiList — l'épisode courant gagne les versions des autres
         // listes maintenant qu'elles sont mergées.
         _refreshSelectedEpisodeVersions();
       }
     });
-    // Si on vient d'auto-sélectionner un épisode (TMDB pas encore chargé pour
-    // lui), on (re)charge ses métadonnées.
-    if (!wasSelected && _episodeSelected) _loadData();
+    // Un épisode vient d'être choisi (ou a changé) : ses métadonnées TMDB.
+    if (reload) _loadData();
+  }
+
+  /// §22.1 — La fiche avait choisi l'épisode d'elle-même, avant que toutes les
+  /// listes aient répondu. Si une version arrivée depuis porte une reprise PLUS
+  /// AVANCÉE, on s'y place : c'est ce que `_autoSelectInitialEpisode` aurait
+  /// choisi avec tout sous les yeux. Sans reprise nouvelle, on ne bouge pas —
+  /// une saison 0 arrivée tard ne doit pas faire sauter la fiche sur les
+  /// épisodes spéciaux. Rend `true` si l'épisode a changé.
+  bool _reconsiderAutoPick() {
+    final inProgress = _mostAdvancedInProgress();
+    if (inProgress == null) {
+      _refreshSelectedEpisodeVersions();
+      return false;
+    }
+    final bool sameEpisode =
+        inProgress.$1 == _currentEpisode.title.seasonNumber &&
+            inProgress.$2.episodeNumber == _currentEpisode.title.episodeNumber;
+    // Même épisode : on se remet sur la version de la reprise, sans recharger.
+    _pickEpisode(inProgress.$1, inProgress.$2, resumed: true);
+    if (sameEpisode) return false;
+    _isLoading = true;
+    _episodeData = null;
+    _castExpanded = false;
+    return true;
   }
 
   /// Aplatit `_seasonEpisodes` en liste d'épisodes bruts (pour re-merger).
@@ -674,26 +748,13 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
 
   /// Regroupe une liste plate d'épisodes en `saison → [épisodes triés]`, chaque
   /// épisode portant ses versions dédupliquées (cross-comptes = plusieurs
-  /// listes pour le même S/E).
-  Map<int, List<_EpGroup>> _regroupEpisodes(List<M3uEntry> episodes) {
-    final tmp = <int, Map<int, List<M3uEntry>>>{};
-    for (final ep in episodes) {
-      final s = ep.title.seasonNumber;
-      final e = ep.title.episodeNumber;
-      if (s == null || e == null) continue;
-      tmp.putIfAbsent(s, () => {}).putIfAbsent(e, () => []).add(ep);
-    }
-    final result = <int, List<_EpGroup>>{};
-    for (final entry in tmp.entries) {
-      final groups = entry.value.entries
-          .map((e) => _EpGroup(e.key, _deduplicateVersions(e.value)))
-          .toList()
-        ..sort((a, b) => a.episodeNumber.compareTo(b.episodeNumber));
-      result[entry.key] = groups;
-    }
-    final sortedSeasons = result.keys.toList()..sort();
-    return {for (final s in sortedSeasons) s: result[s]!};
-  }
+  /// listes pour le même S/E). §22.1 — la règle vit dans `mergeSeasonEpisodes`.
+  Map<int, List<EpisodeGroup>> _regroupEpisodes(List<M3uEntry> episodes) =>
+      mergeSeasonEpisodes(
+        episodes,
+        dedupe: _deduplicateVersions,
+        accountOrder: _accountOrder,
+      );
 
   /// §seriesFlow — Termine l'état de chargement des épisodes (échec/série
   /// introuvable/aucun épisode). Le navigateur série bascule alors sur le
@@ -741,19 +802,33 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     if (target == null) return;
 
     final (season, group) = target;
+    _pickEpisode(season, group, resumed: inProgress != null);
+  }
+
+  /// §22.1 — La fiche se place sur [group] D'ELLE-MÊME (ce n'est pas un geste
+  /// de la personne : `_autoPicked`).
+  void _pickEpisode(int season, EpisodeGroup group, {required bool resumed}) {
     _selectedSeason  = season;
     _episodeSelected = true;
+    _autoPicked      = true;
     // E01 par défaut (pas de reprise) → on reste en contexte SÉRIE pour le
     // header/synopsis ; une vraie reprise bascule en contexte épisode.
-    _autoDefaultSelection = inProgress == null;
+    _autoDefaultSelection = !resumed;
     _currentEpisode  = group.best;
     _uniqueVersions  = _deduplicateVersions(group.versions);
-    _selectedEntry =
-        _uniqueVersions.isNotEmpty ? _uniqueVersions.first : group.best;
+    // §22.1 — Une reprise se fait sur la version où elle a été commencée : un
+    // épisode réuni de deux listes ne doit pas « reprendre » sur l'autre.
+    final String resumedUrl = resumed
+        ? (WatchProgressService.getProgressForAny(
+                    group.versions.map((v) => v.url))
+                ?.url ??
+            '')
+        : '';
+    _selectedEntry = keepSelection(_uniqueVersions, resumedUrl) ?? group.best;
   }
 
   /// Premier épisode disponible (plus petite saison, plus petit n°).
-  (int, _EpGroup)? _firstEpisodeGroup() {
+  (int, EpisodeGroup)? _firstEpisodeGroup() {
     final seasons = _seasonEpisodes.keys.toList()..sort();
     for (final s in seasons) {
       final eps = _seasonEpisodes[s];
@@ -767,8 +842,8 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
   /// confondues via [WatchProgressService.getProgressForAny]). La reprise étant
   /// auto-effacée à >95 % (épisode vu en entier), seul un épisode réellement en
   /// cours ressort ici.
-  (int, _EpGroup)? _mostAdvancedInProgress() {
-    (int, _EpGroup)? best;
+  (int, EpisodeGroup)? _mostAdvancedInProgress() {
+    (int, EpisodeGroup)? best;
     for (final s in _seasonEpisodes.keys) {
       for (final g in _seasonEpisodes[s]!) {
         final p = WatchProgressService.getProgressForAny(
@@ -838,38 +913,36 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         );
 
     // §seriesMultiList — On sépare : (a) épisodes M3U réels (SxxExx présents)
-    // → groupés tout de suite ; (b) stubs série (un par compte, URL
-    // `/series/.../id` sans épisode) → à fetcher via la JSON API pour récupérer
-    // leurs épisodes. Un stub par compte (dédup accountId).
-    final m3uEpisodes = <M3uEntry>[];
-    final stubsByAccount = <String, M3uEntry>{};
-    for (final e in all) {
-      final hasEp =
-          e.title.seasonNumber != null && e.title.episodeNumber != null;
-      if (hasEp) {
-        m3uEpisodes.add(e);
-      } else if (_extractSeriesIdFromUrl(e.url) != null) {
-        stubsByAccount.putIfAbsent(e.accountId, () => e);
-      }
-    }
-
-    _apiSeriesStubs = stubsByAccount.values.toList();
+    // → groupés tout de suite ; (b) stubs série (URL `/series/.../id` sans
+    // épisode) → à fetcher via la JSON API pour récupérer leurs épisodes.
+    // §22.1 — Plus seulement UN stub par compte : `seriesStubsToFetch` garde
+    // aussi les versions qu'une liste range en séries distinctes (4K, VOSTFR).
+    final m3uEpisodes = <M3uEntry>[
+      for (final e in all)
+        if (e.title.seasonNumber != null && e.title.episodeNumber != null) e,
+    ];
+    _accountOrder = <String>{for (final e in all) e.accountId}.toList();
+    _apiSeriesStubs = seriesStubsToFetch(all);
     _seasonEpisodes = _regroupEpisodes(m3uEpisodes);
     _selectedSeason = null;
   }
 
   void _selectSeason(int season) {
     final episodes = _seasonEpisodes[season] ?? [];
-    setState(() => _selectedSeason = season);
+    setState(() {
+      _selectedSeason = season;
+      _autoPicked = false; // geste de la personne
+    });
     if (episodes.isNotEmpty) _selectEpisode(episodes.first);
   }
 
-  void _selectEpisode(_EpGroup group) {
+  void _selectEpisode(EpisodeGroup group) {
     final versions = _deduplicateVersions(group.versions);
     setState(() {
       _currentEpisode  = group.best;
       _episodeSelected = true;
       _autoDefaultSelection = false; // tap manuel → contexte épisode
+      _autoPicked      = false;
       _uniqueVersions  = versions;
       _selectedEntry   = versions.isNotEmpty ? versions.first : group.best;
       _isLoading       = true;
@@ -2524,7 +2597,10 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         // §3c Phase 1 — FocusableChip : la version FHD/HD devient sélectionnable
         // au D-pad (avant : GestureDetector tap-only).
         return FocusableChip(
-          onTap: () => setState(() => _selectedEntry = v),
+          onTap: () => setState(() {
+            _selectedEntry = v;
+            _autoPicked = false; // §22.1 — un choix de la personne
+          }),
           borderRadius: BorderRadius.circular(8),
           onFocusChange: (f) {
             if (f) {
@@ -2534,7 +2610,10 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
             }
           },
           child: GestureDetector(
-          onTap: () => setState(() => _selectedEntry = v),
+          onTap: () => setState(() {
+            _selectedEntry = v;
+            _autoPicked = false; // §22.1 — un choix de la personne
+          }),
           child: ValueListenableBuilder<int?>(
           valueListenable: _focusedVersion,
           builder: (context, focusedIdx, _) {
@@ -2792,6 +2871,12 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         // §episodeMeta — Le player ne pousse plus de nouvelle route pour changer
         // d'épisode : il demande le contenu suivant et bascule en place.
         onRequestNext: hasNext ? _prepareNextEpisode : null,
+        // §notifAudit P8 — « un épisode après celui qu'on lit ? », relu après
+        // chaque bascule : le bouton de la notification disparaît au DERNIER
+        // épisode au lieu d'attendre un appui qui répondrait « plus rien ».
+        hasNextEpisode: hasNext
+            ? () => mounted && _isEpisode && _nextEpisode != null
+            : null,
       ),
     );
   }
@@ -2818,15 +2903,19 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
         .firstOrNull;
     if (group == null) return null;
 
+    // §22.1 — L'épisode suivant PROLONGE la version en cours (même liste, mêmes
+    // étiquettes) : prendre la première du groupe changeait de fournisseur, de
+    // langue ou de qualité en plein visionnage (`continuationVersion`).
+    final M3uEntry playing = _selectedEntry;
     setState(() {
       _selectedSeason = season;
       _episodeSelected = true;
       _autoDefaultSelection = false; // enchaînement épisode suivant
+      _autoPicked = false;
       _currentEpisode = group.best;
       _uniqueVersions = _deduplicateVersions(group.versions);
-      _selectedEntry = _uniqueVersions.isNotEmpty
-          ? _uniqueVersions.first
-          : group.best;
+      _selectedEntry =
+          continuationVersion(_uniqueVersions, playing) ?? group.best;
       _isLoading = true;
       // LA correction : sans ça, `_playerTitle`/`_playerSynopsis` reliraient les
       // données TMDB de l'épisode précédent. `_selectEpisode` le faisait déjà,
@@ -3313,6 +3402,16 @@ class _DetailsPageState extends State<DetailsPage> with WidgetsBindingObserver {
     // « Infos », ce qui en faisait un bloc orphelin sans libellé.
     if (genres.isNotEmpty) {
       rows.add((l10n.infoGenre, genres.take(4).join(', '), null));
+    }
+    // Lot 9 (§tmdbKeywords) — Les mots-clés TMDB, venus dans la MÊME réponse
+    // (`append_to_response=keywords`). Du texte, pas des pastilles : rien de
+    // plus à parcourir à la télécommande. TMDB ne les traduit pas, d'où la
+    // règle de `keywordsToShow`.
+    final List<String> keywords = keywordsToShow(
+        m?.keywords ?? const <String>[],
+        lang: l10n.localeName);
+    if (keywords.isNotEmpty) {
+      rows.add((l10n.infoKeywords, keywords.join(', '), null));
     }
 
     final d = m?.director;

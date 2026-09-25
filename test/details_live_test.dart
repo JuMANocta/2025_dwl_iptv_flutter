@@ -123,5 +123,15 @@ void main() {
     test('rend null s il ne reste RIEN — la fiche garde son affichage', () {
       expect(keepSelection(const [], 'http://x/1'), isNull);
     });
+
+    test('R52 — un film s ouvre sur la version qui PORTE la reprise', () {
+      // Reprise née sur la liste b : « Reprendre » doit relancer SON flux,
+      // pas la première version (une autre liste, un autre abonnement).
+      final a = _entry('Heat (1995) FHD', account: 'a');
+      final b = _entry('Heat (1995) HD', account: 'b');
+      expect(keepSelection([a, b], b.url), b);
+      // Sans reprise (`''`), rien ne change : la première.
+      expect(keepSelection([a, b], ''), a);
+    });
   });
 }

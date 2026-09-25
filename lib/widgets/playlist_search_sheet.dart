@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/themes/colors.dart';
 import '../data/models/m3u_entry.dart';
 import '../data/services/parsed_playlist_service.dart';
+import '../feature/home/search_groups.dart';
 import '../feature/search/m3u_filter.dart';
 import 'tv/tv_adaptive_modal.dart';
 import 'sheet_close_tile.dart';
@@ -115,31 +116,27 @@ class _PlaylistSearchSheetState extends State<PlaylistSearchSheet> {
     // `entries.where(type)`, même ordre, donc mêmes groupes et même
     // troncature à 40), sans copier tout le catalogue de tous les comptes.
     final Stopwatch sw = Stopwatch()..start();
-    final byGroup = <String, List<M3uEntry>>{};
-    for (final e in ParsedPlaylistService.entriesOfType(widget.type)) {
-      if (!e.displayName.toLowerCase().contains(q) &&
-          !e.rawTitle.toLowerCase().contains(q)) {
-        continue;
-      }
-      final key = widget.type == M3uContentType.tv
-          ? tvGroupKey(e.displayName)
-          : contentGroupKey(e);
-      byGroup.putIfAbsent(key, () => []).add(e);
-    }
-
-    if (widget.type == M3uContentType.tv) {
-      for (final k in byGroup.keys.toList()) {
-        byGroup[k] = dedupeTvVersions(byGroup[k]!);
-      }
-    }
-
-    final groups = byGroup.values.toList();
+    final bool tv = widget.type == M3uContentType.tv;
+    // §searchAllNames — le groupe choisi porte TOUTES les versions du titre
+    // réuni, même celles dont le nom ne correspond pas à la frappe (titre
+    // anglais d'un film réuni avec sa version française).
+    final hits = searchHitGroups(
+      ParsedPlaylistService.entriesOfType(widget.type),
+      matches: (M3uEntry e) =>
+          e.displayName.toLowerCase().contains(q) ||
+          e.rawTitle.toLowerCase().contains(q),
+      keyOf: (M3uEntry e) =>
+          tv ? tvGroupKey(e.displayName) : contentGroupKey(e),
+      complete: !tv,
+    );
+    final int found = hits.length;
+    final groups = tv ? [for (final g in hits) dedupeTvVersions(g)] : hits;
     if (groups.length > 40) groups.length = 40;
     // Sonde D4B-12 : une ligne par balayage réel (jamais par frappe avalée
     // par l'anti-rebond).
     if (!kReleaseMode) {
       debugPrint('⏱️ §searchSheet : balayage ${sw.elapsedMilliseconds} ms '
-          '(${q.length} car., ${byGroup.length} groupes)');
+          '(${q.length} car., $found groupes)');
     }
     setState(() => _groups = groups);
   }

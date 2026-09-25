@@ -38,6 +38,7 @@ import 'package:aetherStream/feature/search/details_page.dart';
 // R44 — `home_card.dart` en est une `part` : le noyau partagé du stub de série
 // s'importe ici.
 import 'package:aetherStream/feature/search/series_stub.dart';
+import 'package:aetherStream/feature/player/group_resume.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/widgets/aether_image.dart';
@@ -52,6 +53,9 @@ import 'package:aetherStream/data/services/inferred_category_service.dart';
 import 'package:aetherStream/feature/home/inferred_delta.dart';
 import 'package:aetherStream/feature/home/home_row_index.dart';
 import 'package:aetherStream/feature/home/deferred_refresh.dart';
+import 'package:aetherStream/feature/home/home_vertical_nav.dart';
+import 'package:aetherStream/feature/home/home_resume_actions.dart';
+import 'package:aetherStream/feature/home/search_groups.dart';
 import 'package:aetherStream/widgets/empty_state.dart';
 import 'package:aetherStream/widgets/tv/focusable_card.dart';
 import 'package:aetherStream/widgets/tv/tv_initial_focus.dart';
@@ -158,6 +162,13 @@ class _HomePageState extends State<HomePage> with RouteAware {
   /// `DeferredRefresh`). Objet stable : il n'entre pas dans la clé de
   /// `_typePages`.
   final ValueNotifier<int> _contentTick = ValueNotifier<int>(0);
+
+  /// §homeVertical (R2) — Un registre d'emplacements verticaux par page
+  /// (Séries, Films, Chaînes), dans l'ordre de la `PageView`. Objets stables :
+  /// ils n'entrent pas dans la clé de `_typePages`. R51 s'en sert aussi pour
+  /// retrouver l'onglet de la page qu'on vient d'ouvrir.
+  final List<HomeVerticalNav> _verticalNavs =
+      List<HomeVerticalNav>.generate(3, (_) => HomeVerticalNav());
 
   late final PageController _pageController;
   int get _currentIndex => _tabIndex.value;
@@ -516,7 +527,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
       // l'utilisateur ait rien demandé. Sur TV, seul `_goToPage` est un
       // changement d'onglet VOULU — c'est donc ici, et nulle part ailleurs.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
+        if (mounted) _focusTabAfterSwitch(i);
         // Une frame de plus : la reconstruction déclenchée par le setState
         // ci-dessus se termine dans celle-ci.
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -538,6 +549,45 @@ class _HomePageState extends State<HomePage> with RouteAware {
       _logTabMeter(from, i);
       JankMeter.endSpan();
     });
+  }
+
+  /// R51 (2026-09-25) — TV : après OK sur un onglet, le focus se pose sur
+  /// L'ONGLET CHOISI, dans la page qu'on vient d'ouvrir.
+  ///
+  /// **Le défaut, reproduit 2× sur l'AVD TV** : la page changeait, mais le
+  /// focus partait dans le rail (« Downloads » au 1er essai, « Settings » au
+  /// 2e). Deux mécanismes s'enchaînaient, lus dans Flutter :
+  ///   1. L'onglet focalisé vit dans l'ANCIENNE page, que `_pageFocusWrap`
+  ///      passe en `ExcludeFocus`. Flutter le défocalise avec
+  ///      `UnfocusDisposition.previouslyFocusedChild` : le focus revient au
+  ///      dernier nœud ENCORE focalisable de l'historique du scope — les
+  ///      cartes de l'ancienne page en sortent toutes, il reste le rail.
+  ///   2. Puis `FocusScope.nextFocus()` (l'ancienne ré-acquisition) avançait
+  ///      d'un cran dans l'ordre de lecture, DEPUIS ce nœud du rail : d'où
+  ///      « Downloads », puis « Settings » la fois suivante (le 1er essai
+  ///      laissait « Downloads » en tête d'historique).
+  ///
+  /// Ici, on vise explicitement l'onglet de la nouvelle page. Appelé en
+  /// post-frame, AVANT la micro-tâche où Flutter applique les changements de
+  /// focus : la demande remplace celle du point 1, le rail n'est jamais
+  /// focalisé, même une frame.
+  void _focusTabAfterSwitch(int i) {
+    final HomeVerticalNav nav = _verticalNavs[i];
+    final FocusNode? target = nav.entryNodeOf(HomeSlotKind.tabs) ??
+        nav.entryNodeOf(HomeSlotKind.row);
+    if (target == null) {
+      // Page sans onglets ni rangée construits : l'ancien repli, faute de mieux.
+      DiagnosticLog.trace('📄 R51 : page $i sans onglet construit, repli nextFocus');
+      FocusScope.of(context).nextFocus();
+      return;
+    }
+    final DpadController? dpad = Dpad.maybeOf(context);
+    if (dpad != null) {
+      dpad.requestFocus(target);
+    } else {
+      target.requestFocus();
+    }
+    DiagnosticLog.trace('📄 R51 : onglet $i, focus vise ${DiagnosticLog.describeFocusNode(target)}');
   }
 
   /// §dpadNav — TV : repince la PageView sur la page courante dès qu'un
@@ -663,6 +713,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
         topInset: liftedTopInset,
         tabsBuilder: _buildTabs,
         contentTick: _contentTick,
+        nav: _verticalNavs[0],
       ),
       _TypePage(
         key: ValueKey('movie_$_activeAccountId'),
@@ -671,6 +722,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
         topInset: liftedTopInset,
         tabsBuilder: _buildTabs,
         contentTick: _contentTick,
+        nav: _verticalNavs[1],
       ),
       _TypePage(
         key: ValueKey('tv_$_activeAccountId'),
@@ -681,6 +733,7 @@ class _HomePageState extends State<HomePage> with RouteAware {
         topInset: liftedTopInset,
         tabsBuilder: _buildTabs,
         contentTick: _contentTick,
+        nav: _verticalNavs[2],
       ),
     ];
     _pagesCache = pages;
@@ -1437,6 +1490,10 @@ class _TypePage extends StatefulWidget {
   /// §pageTick — Signal de contenu émis par la HomePage (cf. `_contentTick`).
   final ValueListenable<int> contentTick;
 
+  /// §homeVertical (R2) — Registre des emplacements verticaux de CETTE page
+  /// (TV seulement ; `null` = pas de navigation verticale maison).
+  final HomeVerticalNav? nav;
+
   const _TypePage({
     super.key,
     required this.type,
@@ -1444,7 +1501,16 @@ class _TypePage extends StatefulWidget {
     required this.contentTick,
     this.topInset = 0,
     this.tabsBuilder,
+    this.nav,
   });
+
+  /// §homeVertical — Rang de l'onglet de cette page dans la barre (même ordre
+  /// que `_typePages` et `_AnimatedTabIndicator`).
+  int get tabRank => switch (type) {
+        M3uContentType.series => 0,
+        M3uContentType.movie => 1,
+        M3uContentType.tv => 2,
+      };
 
   @override
   State<_TypePage> createState() => _TypePageState();
@@ -2816,6 +2882,9 @@ class _TypePageState extends State<_TypePage>
     final tabsOffset = hasTabs ? 1 : 0;
     final lastWatchedOffset = showLastWatchedSlot ? 1 : 0;
     final headerCount = heroOffset + tabsOffset + lastWatchedOffset;
+    // §homeVertical — ↓ sous la dernière rangée : le focus reste (avant,
+    // `dpad` pouvait filer dans le rail, seul candidat restant).
+    widget.nav?.lastIndex = headerCount + categories.length - 1;
 
     // §jankMeter — Sonde de fluidité du défilement VERTICAL de l'accueil.
     //
@@ -2884,6 +2953,23 @@ class _TypePageState extends State<_TypePage>
       cacheExtent: 800,
       itemCount: headerCount + categories.length,
       itemBuilder: (ctx, i) {
+        // §homeVertical (R2) — Sur TV, chaque emplacement vertical est inscrit
+        // auprès du registre de la page : ↑/↓ y vont d'emplacement en
+        // emplacement et arrivent sur l'élément le plus à gauche. Téléphone :
+        // rien n'est enveloppé.
+        Widget slot(HomeSlotKind kind, Widget child, {Key? key}) {
+          final HomeVerticalNav? nav = widget.nav;
+          if (nav == null || !PlatformTv.isTv) return child;
+          return HomeNavSlot(
+            key: key,
+            nav: nav,
+            index: i,
+            kind: kind,
+            preferred: widget.tabRank,
+            child: child,
+          );
+        }
+
         var cursor = 0;
         if (hasHero) {
           if (i == cursor) {
@@ -2899,9 +2985,12 @@ class _TypePageState extends State<_TypePage>
             // « Paramètres ». En petite région, le scroll est borné (échec
             // immédiat) → edge leave → cross-région → cible in-beam correcte
             // (tabs / 1re rangée) avec entry/mémoire.
-            return DpadRegion(
-              memoryKey: 'hero_${widget.type.name}',
-              child: _HeroFanBanner(featured: featured, type: widget.type),
+            return slot(
+              HomeSlotKind.hero,
+              DpadRegion(
+                memoryKey: 'hero_${widget.type.name}',
+                child: _HeroFanBanner(featured: featured, type: widget.type),
+              ),
             );
           }
           cursor += 1;
@@ -2909,18 +2998,24 @@ class _TypePageState extends State<_TypePage>
         if (hasTabs) {
           if (i == cursor) {
             // §dpadHeroDown — même isolement que le hero (cf. ci-dessus).
-            return DpadRegion(
-              memoryKey: 'home_tabs',
-              child: widget.tabsBuilder!(ctx),
+            return slot(
+              HomeSlotKind.tabs,
+              DpadRegion(
+                memoryKey: 'home_tabs',
+                child: widget.tabsBuilder!(ctx),
+              ),
             );
           }
           cursor += 1;
         }
         if (showLastWatchedSlot) {
           if (i == cursor) {
-            return DpadRegion(
-              memoryKey: 'home_last_watched',
-              child: _LastWatchedTvTile(entries: widget.entries),
+            return slot(
+              HomeSlotKind.lastWatched,
+              DpadRegion(
+                memoryKey: 'home_last_watched',
+                child: _LastWatchedTvTile(entries: widget.entries),
+              ),
             );
           }
           cursor += 1;
@@ -2936,7 +3031,12 @@ class _TypePageState extends State<_TypePage>
         final visibleGroups = hasMore
             ? allGroups.take(perf.maxItemsPerRow).toList()
             : allGroups;
-        return _CategoryRow(
+        // §homeVertical — L'enveloppe porte la même identité de contenu que
+        // la rangée (§tvExitPage) : la liste apparie ses enfants comme avant.
+        return slot(
+          HomeSlotKind.row,
+          key: ValueKey('slot_${widget.type.name}_$cat'),
+          _CategoryRow(
           // §tvExitPage — Clé de CONTENU, pas de position.
           //
           // ⚠️ Sans elle, Flutter apparie les éléments par INDEX : lancer une
@@ -2959,6 +3059,7 @@ class _TypePageState extends State<_TypePage>
           // que le carrousel et cette rangée-ci (l'utilisateur les a choisis,
           // ce sont les seules qu'il regarde vraiment).
           tmdbFirst: isFav && perf.tmdbPostersFirst,
+          ),
         );
       },
       ),
@@ -2993,10 +3094,25 @@ class _TypePageState extends State<_TypePage>
     );
     final tabs = widget.tabsBuilder;
     if (tabs == null) return empty;
+    // R51 — Les onglets de l'état vide sont inscrits aussi : c'est là que le
+    // focus doit se poser quand on ouvre cet onglet. `lastIndex` inconnu :
+    // ↓ reste à `dpad` (qui mène au bouton « Gérer les comptes »).
+    final HomeVerticalNav? nav = widget.nav;
+    nav?.lastIndex = null;
+    final Widget bar = tabs(context);
     return Column(
       children: [
         SizedBox(height: widget.topInset + kToolbarHeight),
-        tabs(context),
+        if (nav != null && PlatformTv.isTv)
+          HomeNavSlot(
+            nav: nav,
+            index: 0,
+            kind: HomeSlotKind.tabs,
+            preferred: widget.tabRank,
+            child: bar,
+          )
+        else
+          bar,
         Expanded(child: empty),
       ],
     );

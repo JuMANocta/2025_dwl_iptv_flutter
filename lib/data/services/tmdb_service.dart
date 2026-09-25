@@ -340,7 +340,7 @@ class TmdbService {
           // « où puis-je le regarder », y compris pour un FILM, qui n'a
           // jamais de `networks`. Toujours zéro requête de plus.
           'append_to_response':
-              'credits,videos,recommendations,release_dates,content_ratings,watch/providers',
+              'credits,videos,recommendations,release_dates,content_ratings,watch/providers,keywords',
         },
       );
       return Media.fromJson(detailResponse.data,
@@ -462,7 +462,7 @@ class TmdbService {
             // chemins doivent porter les MÊMES champs, sinon la fiche perd
             // « Disponible sur » dès qu'aucun `tmdb_id` fournisseur n'existe.
             'append_to_response':
-                'credits,videos,recommendations,release_dates,content_ratings,watch/providers',
+                'credits,videos,recommendations,release_dates,content_ratings,watch/providers,keywords',
           }
       );
 

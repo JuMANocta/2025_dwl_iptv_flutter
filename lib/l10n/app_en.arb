@@ -3045,5 +3045,18 @@
   "tvOptSubsOff": "Off",
   "tvOptAuto": "Automatic",
   "tvOptStatsShown": "Shown",
-  "tvOptStatsHidden": "Hidden"
+  "tvOptStatsHidden": "Hidden",
+  "perfImageRamApplied": "This device has memory to spare: the app uses up to {mb} MB for images.",
+  "@perfImageRamApplied": {
+    "description": "Shown under the image RAM setting when the device's memory lets the app use more than the chosen value",
+    "placeholders": {
+      "mb": {
+        "type": "int"
+      }
+    }
+  },
+  "infoKeywords": "Keywords",
+  "@infoKeywords": {
+    "description": "Label of the TMDB keywords row in the details page Info box (TMDB keywords exist in English only)"
+  }
 }

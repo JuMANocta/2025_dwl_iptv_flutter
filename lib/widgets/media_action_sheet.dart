@@ -13,6 +13,8 @@ import 'package:aetherStream/data/services/watch_progress_service.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 import 'package:aetherStream/feature/player/player_page.dart';
 import 'package:aetherStream/feature/player/launch_playback.dart';
+// R52 — la reprise d'un titre à plusieurs versions reprend sur SA version.
+import 'package:aetherStream/feature/player/group_resume.dart';
 import 'package:aetherStream/feature/search/details_page.dart';
 // R39 — `isSeriesStubEntry` : le stub d'une série, la seule source possible
 // d'une clé de série au moment du téléchargement.
@@ -520,8 +522,17 @@ List<M3uEntry> _siblingEntriesOf(M3uEntry entry) => entriesOfTitle(
       entry,
     ).toList();
 
+/// R52 — Les versions du MÊME objet que [entry] ([entry] en tête) : pour un
+/// épisode, les « frères » du titre sont TOUS les épisodes de la série — les
+/// prendre pour des versions ferait reprendre un autre épisode, effacer à la
+/// fin la reprise de toute la série (§endOfMovie), ou lire hors ligne le
+/// fichier d'un autre épisode (§dlPlayLocal). Pour un film : toutes ses
+/// versions, comme avant.
+List<M3uEntry> _versionsOf(M3uEntry entry) =>
+    sameItemVersions(entry, _siblingEntriesOf(entry));
+
 List<String> _siblingUrlsOf(M3uEntry entry) =>
-    <String>[for (final e in _siblingEntriesOf(entry)) e.url];
+    <String>[for (final e in _versionsOf(entry)) e.url];
 
 Future<void> _launchPlayer(BuildContext context, M3uEntry entry, {Duration? startPosition}) async {
   final BuildContext root = navigatorKey.currentContext ?? context;
@@ -573,14 +584,23 @@ class _PlayResumeTiles extends StatelessWidget {
     return ValueListenableBuilder<int>(
       valueListenable: WatchProgressService.version,
       builder: (ctx, _, __) {
-        final p = WatchProgressService.getProgress(entry.url);
-        final hasResume = p != null && p.position.inSeconds > 5;
-        if (!hasResume) {
+        // R52 — La reprise se lit sur TOUTES les versions de l'objet (qualités,
+        // listes), comme la fiche et l'accueil : la feuille ne regardait que
+        // l'URL de l'entrée reçue, et taisait une reprise née sur une autre
+        // liste. Et elle se RELANCE sur la version qui la porte (`target`),
+        // jamais sur une autre liste — donc jamais sur un autre abonnement.
+        final List<M3uEntry> versions = _versionsOf(entry);
+        final GroupResume? resume = groupResumeOf(
+          versions,
+          progressOf: WatchProgressService.getProgress,
+        );
+        final M3uEntry? target = resume?.entry;
+        if (resume == null || target == null) {
           // §dlPlayLocal — la feuille dit ce qui va se passer : ce titre est
           // sur l'appareil, il se lira sans réseau.
           final bool hasLocal = hasLocalFileFor(
             networkPath: entry.url,
-            groupUrls: _siblingUrlsOf(entry),
+            groupUrls: <String>[for (final v in versions) v.url],
           );
           return ListTile(
             leading: const Icon(Icons.play_arrow),
@@ -588,6 +608,7 @@ class _PlayResumeTiles extends StatelessWidget {
             onTap: () => _launchPlayer(context, entry),
           );
         }
+        final p = resume.progress;
         return Column(
           children: [
             ListTile(
@@ -605,7 +626,8 @@ class _PlayResumeTiles extends StatelessWidget {
                 backgroundColor: Colors.white12,
                 valueColor: AlwaysStoppedAnimation(kAccentSecondary),
               ),
-              onTap: () => _launchPlayer(context, entry, startPosition: p.position),
+              onTap: () =>
+                  _launchPlayer(context, target, startPosition: p.position),
             ),
             ListTile(
               leading: const Icon(Icons.restart_alt),
@@ -618,8 +640,13 @@ class _PlayResumeTiles extends StatelessWidget {
               ),
               dense: true,
               onTap: () {
-                WatchProgressService.clearProgress(entry.url);
-                _launchPlayer(context, entry);
+                // §resumeUnify — la reprise vaut pour toutes les versions : les
+                // effacer toutes, sinon l'autre ressortirait aussitôt.
+                for (final v in versions) {
+                  WatchProgressService.clearProgress(v.url);
+                }
+                // R52 — sur la même version que la reprise (même abonnement).
+                _launchPlayer(context, target);
               },
             ),
             // §forgetResume — Permet à l'utilisateur de retirer la reprise
@@ -637,21 +664,26 @@ class _PlayResumeTiles extends StatelessWidget {
               // bien eu lieu — un « Annuler » au D-pad ramène l'utilisateur là
               // où il était, sans le renvoyer à la liste.
               onTap: () async {
-                final snapshot = p;
+                // R46 / R52 — capturé AVANT l'effacement, pour TOUTES les
+                // versions : l'oubli les efface toutes, l'annulation doit
+                // toutes les rendre.
+                final List<WatchProgress> avant = WatchProgressService.snapshotFor(
+                  <String>[for (final v in versions) v.url],
+                );
                 final done = await confirmOrUndo(
                   context,
                   title: context.l10n.cardForgetResumeTitle,
                   question: context.l10n.cardForgetResumeQuestion,
                   confirmLabel: context.l10n.cardForgetConfirm,
                   doneMessage: context.l10n.cardResumeForgotten,
-                  action: () => WatchProgressService.clearProgress(entry.url),
-                  onUndo: () {
-                    WatchProgressService.saveProgress(
-                      entry.url,
-                      snapshot.position,
-                      snapshot.duration,
-                    );
+                  action: () async {
+                    for (final v in versions) {
+                      await WatchProgressService.clearProgress(v.url);
+                    }
                   },
+                  onUndo: () => WatchProgressService.restoreAll(
+                    avant.isEmpty ? <WatchProgress>[p] : avant,
+                  ),
                 );
                 if (done && context.mounted) Navigator.pop(context);
               },

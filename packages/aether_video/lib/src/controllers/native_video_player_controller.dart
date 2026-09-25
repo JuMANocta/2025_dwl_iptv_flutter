@@ -444,6 +444,16 @@ class NativeVideoPlayerController {
   final StreamController<NativeVideoPlayerVideoSize> _videoSizeController =
       StreamController<NativeVideoPlayerVideoSize>.broadcast();
 
+  /// AetherStream patch 29 (§notifAudit P8) — Appuis sur les boutons de la
+  /// notification de lecture (événement natif `mediaAction`).
+  final StreamController<String> _mediaActionController =
+      StreamController<String>.broadcast();
+
+  /// AetherStream patch 28 (R50) — Marge basse demandée pour les sous-titres
+  /// (pixels logiques), lue par la surcouche des sous-titres « sidecar » et
+  /// renvoyée au natif à chaque remontage de vue.
+  final ValueNotifier<double> _subtitleBottomInset = ValueNotifier<double>(0);
+
   /// Platform-view IDs that are actually texture-rendered backends (no
   /// Android/iOS view exists for them). Drives the Dart-fullscreen fallback.
   final Set<int> _textureViewIds = <int>{};
@@ -1165,6 +1175,16 @@ class NativeVideoPlayerController {
   Stream<NativeVideoPlayerVideoSize> get videoSizeStream =>
       _videoSizeController.stream;
 
+  /// AetherStream patch 29 (§notifAudit P8) — Boutons de la notification de
+  /// lecture appuyés : `seekBack`, `seekForward`, `playPause`, `next`. Le
+  /// natif ne fait RIEN d'autre que les signaler : c'est l'app qui sait si
+  /// une diffusion est en cours ou quel est l'épisode suivant.
+  Stream<String> get mediaActionStream => _mediaActionController.stream;
+
+  /// AetherStream patch 28 (R50) — Marge basse courante des sous-titres
+  /// (pixels logiques), cf. [setSubtitleBottomInset].
+  ValueListenable<double> get subtitleBottomInset => _subtitleBottomInset;
+
   /// Marks [platformViewId] as texture-rendered. Called by the widget right
   /// before [onPlatformViewCreated] for texture backends — these have no
   /// native view, so fullscreen falls back to the Dart path.
@@ -1301,6 +1321,12 @@ class NativeVideoPlayerController {
       // builds its SubtitleView with the platform default size.
       if (_embeddedTextScale != 1.0 && _methodChannel != null) {
         await _methodChannel!.setEmbeddedTextScale(_embeddedTextScale);
+      }
+
+      // AetherStream patch 28 (R50) — même raison : la vue recréée repart
+      // avec des sous-titres à leur place, contrôles affichés ou non.
+      if (_subtitleBottomInset.value > 0 && _methodChannel != null) {
+        await _methodChannel!.setSubtitleBottomInset(_subtitleBottomInset.value);
       }
 
       // Re-fetch availability flags from native side FIRST (wait for it to complete)
@@ -1863,6 +1889,42 @@ class NativeVideoPlayerController {
   Future<bool> setVideoTrackEnabled(bool enabled) =>
       _methodChannel?.setVideoTrackEnabled(enabled) ??
       Future<bool>.value(false);
+
+  /// AetherStream patch 28 (R50) — Les contrôles de l'app recouvrent le bas
+  /// de l'image sur [inset] pixels logiques : les sous-titres (la
+  /// `SubtitleView` native comme la surcouche « sidecar ») remontent de la
+  /// part qui mord sur le cadre de l'image, et redescendent à 0. Mémorisé :
+  /// une vue recréée le reçoit à son inscription.
+  Future<void> setSubtitleBottomInset(double inset) async {
+    if (_isDisposed) return;
+    final double value = inset.isFinite && inset > 0 ? inset : 0;
+    _subtitleBottomInset.value = value;
+    await _methodChannel?.setSubtitleBottomInset(value);
+  }
+
+  /// AetherStream patch 29 (§notifAudit P8) — Boutons de la notification de
+  /// lecture en plus de lecture/pause. [seek] : reculer / avancer (le natif
+  /// ne les montre que si le flux se laisse parcourir) ; [next] : épisode
+  /// suivant. [labels] : libellés dans la langue de l'app (`seekBack`,
+  /// `seekForward`, `next`, `play`, `pause`). Sans notification (téléviseur,
+  /// `mediaInfo` nul), sans effet visible.
+  ///
+  /// AetherStream patch 31 — [keys] : les touches « suivant / précédent »
+  /// remises à la session (casque, montre, autoradio) sont signalées comme
+  /// `seekForward` / `seekBack` au lieu de passer à ExoPlayer.
+  Future<void> setMediaActions({
+    required bool seek,
+    required bool next,
+    bool keys = false,
+    Map<String, String> labels = const <String, String>{},
+  }) async {
+    await _methodChannel?.setMediaActions(
+      seek: seek,
+      next: next,
+      keys: keys,
+      labels: labels,
+    );
+  }
 
   /// §engineVendor patch 6 — Rapidité du saut dans le flux.
   ///
@@ -2880,6 +2942,8 @@ class NativeVideoPlayerController {
     await _isOverlayLockedController.close();
     await _videoSizeController.close();
     await _surfaceSwapRequests.close();
+    await _mediaActionController.close(); // patch 29
+    _subtitleBottomInset.dispose(); // patch 28
 
     // Clear platform view references
     _platformViewIds.clear();

@@ -442,6 +442,24 @@ class _OptimizationSettingsPageState extends State<OptimizationSettingsPage> wit
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
               ),
+              // §imgRightSize — Le budget APPLIQUÉ peut dépasser le réglage
+              // (appareil à mémoire large) : le dire, sinon l'écran afficherait
+              // 120 Mo quand l'app en utilise 144.
+              ValueListenableBuilder<int>(
+                valueListenable: PerformanceSettingsService.appliedImageCacheMb,
+                builder: (context, applied, _) {
+                  if (applied <= _config.imageCacheMb) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Text(
+                      context.l10n.perfImageRamApplied(applied),
+                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                    ),
+                  );
+                },
+              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: MemoryStatsCard(key: ValueKey(_memCardEpoch)),

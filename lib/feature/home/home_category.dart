@@ -253,19 +253,16 @@ class _CategoryRow extends StatelessWidget {
                       // (10 → 16) pour aérer le carrousel sans toucher au style.
                       separatorBuilder: (_, __) => const SizedBox(width: 16),
                       itemBuilder: (ctx, i) {
-                        // §seeAllReach — Sur TÉLÉVISEUR, « Voir tout » passe en
-                        // TÊTE de carrousel. En queue, il fallait 15 à 25
-                        // appuis sur → pour l'atteindre, et l'en-tête de
-                        // catégorie est volontairement hors traversée sur TV
-                        // (elle « sélectionnait le compteur ») : c'était donc
-                        // la seule porte, et elle était au bout du couloir.
-                        //
-                        // ⚠️ Le point d'entrée de la rangée reste le PREMIER
-                        // POSTER, jamais cette tuile : descendre depuis la
-                        // rangée du dessus doit tomber sur du contenu, pas sur
-                        // un raccourci. « Voir tout » est alors à un ← .
-                        final bool seeAllFirst = hasMore && PlatformTv.isTv;
-                        if (seeAllFirst && i == 0) {
+                        // R2 (2026-09-25, décision utilisateur) — « Voir tout »
+                        // repasse EN BOUT de carrousel sur TV, comme au
+                        // téléphone. §seeAllReach l'avait mis en TÊTE le
+                        // 2026-09-04 (en queue, 15 à 25 appuis sur →) ; retour
+                        // assumé : en tête, il poussait la 1re affiche hors du
+                        // faisceau d'une rangée voisine à une seule carte, qui
+                        // devenait inatteignable à la verticale. Depuis
+                        // §homeVertical, ↑/↓ arrivent sur l'élément le plus à
+                        // gauche — il DOIT être la 1re affiche.
+                        if (hasMore && i == groups.length) {
                           return _SeeAllTile(
                             type: type,
                             remaining: totalCount - groups.length,
@@ -273,24 +270,15 @@ class _CategoryRow extends StatelessWidget {
                             onTap: () => _openCategoryListPage(context),
                           );
                         }
-                        if (hasMore && !seeAllFirst && i == groups.length) {
-                          return _SeeAllTile(
-                            type: type,
-                            remaining: totalCount - groups.length,
-                            width: cardW,
-                            onTap: () => _openCategoryListPage(context),
-                          );
-                        }
-                        final int g = seeAllFirst ? i - 1 : i;
                         return _HomeCard(
                           // §tvExitPage — Clé de CONTENU (cf. _CategoryRow).
-                          key: ValueKey(FavoritesService.keyFor(groups[g].first)),
-                          versions: groups[g],
+                          key: ValueKey(FavoritesService.keyFor(groups[i].first)),
+                          versions: groups[i],
                           type: type,
                           width: cardW,
                           // §dpadRowEntry — 1re carte = point d'entrée de la
                           // rangée (↓ se cale à gauche, pas à droite).
-                          isEntry: g == 0,
+                          isEntry: i == 0,
                           tmdbFirst: tmdbFirst,
                         );
                       },

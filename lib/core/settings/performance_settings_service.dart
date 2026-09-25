@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/image_cache_config.dart';
 import 'perf_config.dart';
 
 /// §perfNotify (2026-09-05) — Le notifieur des réglages compare par IDENTITÉ,
@@ -73,20 +74,51 @@ class PerformanceSettingsService {
     } catch (_) {}
   }
 
+  /// §imgRightSize — Mémoire de l'appareil, posée par la sonde
+  /// (`DeviceCapsService`) : `null` tant qu'elle n'a rien mesuré.
+  static int? _memoryClassMb;
+  static bool _lowRamDevice = false;
+
+  /// §imgRightSize — Budget RÉELLEMENT appliqué au cache d'images décodées,
+  /// en Mo : le réglage, relevé sur un appareil qui a de la mémoire
+  /// (`imageCacheBudgetMb`). À afficher à côté du réglage quand il diffère.
+  static final ValueNotifier<int> appliedImageCacheMb =
+      ValueNotifier<int>(PerfConfig.defaults.imageCacheMb);
+
+  /// §imgRightSize — Reçoit la mémoire mesurée et réapplique le budget.
+  static void setDeviceMemory({int? memoryClassMb, bool lowRamDevice = false}) {
+    if (_memoryClassMb == memoryClassMb && _lowRamDevice == lowRamDevice) {
+      return;
+    }
+    _memoryClassMb = memoryClassMb;
+    _lowRamDevice = lowRamDevice;
+    applyImageCacheLimit();
+  }
+
   /// §imgMemCache — Applique le plafond du cache image EN MÉMOIRE
   /// (`PaintingBinding.instance.imageCache`), dont le défaut Flutter est de
-  /// 100 Mo — beaucoup trop sur une box TV où la RAM est le goulot.
+  /// 100 Mo.
   ///
   /// Réglage rendu possible par §imgDiskCache : une image évincée de la RAM se
   /// relit désormais sur disque au lieu de repartir en réseau. Le plafond en
   /// NOMBRE d'images est aligné proportionnellement (défaut Flutter : 1000).
+  ///
+  /// §imgRightSize — Le réglage est un PLANCHER : un appareil qui a de la
+  /// mémoire le relève (`imageCacheBudgetMb`, jamais plus de 256 Mo, jamais
+  /// en dessous du réglage).
   static void applyImageCacheLimit() {
     try {
-      final mb = config.value.imageCacheMb;
+      final int configured = config.value.imageCacheMb;
+      final int mb = imageCacheBudgetMb(
+        configuredMb: configured,
+        memoryClassMb: _memoryClassMb,
+        lowRamDevice: _lowRamDevice,
+      );
       final cache = PaintingBinding.instance.imageCache;
       cache.maximumSizeBytes = mb * 1024 * 1024;
       cache.maximumSize = (mb * 10).clamp(200, 1000);
-      debugPrint('🖼️ §imgMemCache : cache image mémoire plafonné à $mb Mo');
+      appliedImageCacheMb.value = mb;
+      debugPrint('🖼️ §imgMemCache : cache image mémoire plafonné à $mb Mo (réglage $configured Mo, classe mémoire ${_memoryClassMb ?? '?'} Mo, lowRam=$_lowRamDevice)');
     } catch (e) {
       debugPrint('⚠️ §imgMemCache : application du plafond échouée — $e');
     }

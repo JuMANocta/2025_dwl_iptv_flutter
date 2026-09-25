@@ -8,6 +8,7 @@ import 'package:aetherStream/core/utils/platform_tv.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
 import 'package:aetherStream/feature/home/home_page.dart';
 import 'package:aetherStream/feature/downloads/downloads_page.dart';
+import 'package:aetherStream/feature/downloads/logic/downloads_open_request.dart';
 import 'package:aetherStream/feature/settings/settings_page.dart';
 import 'package:aetherStream/core/navigation/focus_route_memory.dart';
 import 'package:aetherStream/core/navigation/playlist_visibility.dart';
@@ -76,6 +77,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   void dispose() {
+    DownloadsOpenRequest.requests.removeListener(_onDownloadsOpenRequest);
     _idleUnloadTimer?.cancel();
     super.dispose();
   }
@@ -83,6 +85,11 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   void initState() {
     super.initState();
+    // §notifAudit P5 — « appuyer pour ouvrir » une notification de
+    // téléchargement : onglet Téléchargements. Post-frame : au démarrage à
+    // froid, la demande est arrivée AVANT cet écran.
+    DownloadsOpenRequest.requests.addListener(_onDownloadsOpenRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onDownloadsOpenRequest());
     // §updateDelay — Délai long avant le check MAJ (laisse la home se stabiliser,
     // évite que le dialog MAJ s'affiche pendant que le focus TV se met en place
     // → user ne pouvait plus sélectionner / fermer le dialog).
@@ -197,6 +204,16 @@ class _MainNavigationState extends State<MainNavigation> {
     // (§lazyUnload, profil Léger) ne se déclenchait donc jamais, et une box à
     // 1 Go gardait des dizaines de milliers d'entrées en mémoire pour rien.
     PlaylistVisibility.setTabVisible(i == 0);
+  }
+
+  /// §notifAudit P5 — Une notification de téléchargement touchée : on revient
+  /// à la racine (fiche, réglages…) et on montre l'onglet Téléchargements. La
+  /// page met elle-même la tâche en vue. Jamais pendant un film : le pont
+  /// n'émet pas de demande quand un lecteur est ouvert.
+  void _onDownloadsOpenRequest() {
+    if (!mounted || !DownloadsOpenRequest.takeTabRequest()) return;
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    _onTap(2); // 2 = Téléchargements (barre et rail)
   }
 
   /// Ouvre le hub Settings natif. §18 — Depuis que la navigation D-pad du hub

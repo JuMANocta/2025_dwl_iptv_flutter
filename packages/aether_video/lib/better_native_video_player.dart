@@ -28,6 +28,8 @@ export 'src/models/native_video_player_subtitle_track.dart';
 export 'src/models/native_video_player_video_size.dart';
 export 'src/subtitles/storyboard_thumbnails.dart';
 export 'src/subtitles/subtitle_cue.dart';
+// AetherStream patch 28 (R50) — la règle de remontée, testée côté app.
+export 'src/subtitles/subtitle_lift.dart';
 export 'src/subtitles/subtitle_parser.dart' show SubtitleFormat;
 export 'src/native_video_player_widget.dart';
 export 'src/platform/platform_utils.dart';

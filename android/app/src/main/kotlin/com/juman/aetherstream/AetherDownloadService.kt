@@ -69,8 +69,9 @@ class AetherDownloadService : Service() {
         /**
          * §notifAudit P5 — Extra posé sur l'`Intent` de lancement : « appuyer
          * pour ouvrir » doit tomber sur l'onglet Téléchargements, pas sur
-         * l'accueil. ⚠️ Inerte tant que `MainActivity` ne le relaie pas à Dart
-         * (l'app s'ouvre alors comme avant, sans régression).
+         * l'accueil. Relayé à Dart par `MainActivity` (`takeOpenRoute` au
+         * démarrage à froid, `openRoute` app ouverte), avec [EXTRA_TASK_ID]
+         * quand la notification désigne une tâche.
          */
         const val EXTRA_OPEN_ROUTE = "aether_open_route"
         const val ROUTE_DOWNLOADS = "downloads"
@@ -171,7 +172,8 @@ class AetherDownloadService : Service() {
             text: String? = null,
             restartTaskId: String? = null,
             restartLabel: String? = null,
-            doneChannelName: String? = null
+            doneChannelName: String? = null,
+            openTaskId: String? = null
         ) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -196,6 +198,8 @@ class AetherDownloadService : Service() {
             val contentIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
                 putExtra(EXTRA_OPEN_ROUTE, ROUTE_DOWNLOADS)
+                // §notifAudit P5 (second volet) — la tâche à montrer.
+                openTaskId?.let { putExtra(EXTRA_TASK_ID, it) }
             }
             val contentPending = PendingIntent.getActivity(
                 context, id, contentIntent,
@@ -363,11 +367,19 @@ class AetherDownloadService : Service() {
         cancelTaskId: String?,
         cancelLabel: String?
     ): Notification {
+        // §notifAudit P5 — un transfert en cours s'ouvre lui aussi sur l'onglet
+        // Téléchargements.
         val contentIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+            putExtra(EXTRA_OPEN_ROUTE, ROUTE_DOWNLOADS)
         }
+        // ⚠️ Code de requête PROPRE (pas 0) : les extras ne comptent pas dans
+        // l'identité d'un `PendingIntent`. Sur le code 0, partagé avec les
+        // notifications de lecture et de diffusion (même Intent de
+        // lancement), `FLAG_UPDATE_CURRENT` leur aurait collé la route : les
+        // toucher aurait ouvert l'onglet Téléchargements.
         val contentPending = PendingIntent.getActivity(
-            this, 0, contentIntent,
+            this, ONGOING_NOTIFICATION_ID, contentIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
