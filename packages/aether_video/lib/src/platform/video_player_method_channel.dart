@@ -254,6 +254,48 @@ class VideoPlayerMethodChannel {
     }
   }
 
+  /// AetherStream patch 28 (R50) — Hauteur (pixels logiques) du bas de la vue
+  /// recouverte par les contrôles de l'app : la `SubtitleView` native remonte
+  /// d'autant qu'ils mordent sur le cadre de l'image. 0 = à sa place.
+  /// Un moteur qui ne connaît pas la méthode (rendu texture) : sans objet.
+  Future<void> setSubtitleBottomInset(double inset) async {
+    try {
+      await _methodChannel.invokeMethod<void>(
+        'setSubtitleBottomInset',
+        <String, Object>{'viewId': primaryPlatformViewId, 'inset': inset},
+      );
+    } catch (e) {
+      debugPrint('Error calling setSubtitleBottomInset: $e');
+    }
+  }
+
+  /// AetherStream patch 29 (§notifAudit P8) — Boutons de la notification de
+  /// lecture en plus de lecture/pause : sauts [seek] et épisode suivant
+  /// [next], avec leurs libellés traduits par l'app ([labels] : `seekBack`,
+  /// `seekForward`, `next`, `play`, `pause`). Patch 31 : [keys] — les touches
+  /// « suivant / précédent » (casque, montre) deviennent ±30 s.
+  Future<void> setMediaActions({
+    required bool seek,
+    required bool next,
+    required Map<String, String> labels,
+    bool keys = false,
+  }) async {
+    try {
+      await _methodChannel.invokeMethod<void>(
+        'setMediaActions',
+        <String, Object>{
+          'viewId': primaryPlatformViewId,
+          'seek': seek,
+          'next': next,
+          'keys': keys,
+          'labels': labels,
+        },
+      );
+    } catch (e) {
+      debugPrint('Error calling setMediaActions: $e');
+    }
+  }
+
   /// §engineVendor patch 26 (§bgAudio) — Active ou coupe la piste VIDÉO du
   /// lecteur (`setTrackTypeDisabled(VIDEO)`), le son continuant. Écran
   /// éteint, le rendu vidéo décodait sur une surface de substitution pour

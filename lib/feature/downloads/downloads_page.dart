@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'logic/downloads_open_request.dart';
 import 'widgets/download_task_tile.dart';
 import 'package:aetherStream/core/utils/formatters.dart';
 import 'package:aetherStream/data/models/download_task.dart';
@@ -127,6 +131,84 @@ class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
   final _searchCtrl = TextEditingController();
   bool _searching = false;
 
+  // ── §notifAudit P5 — la tâche désignée par une notification ─────────────
+  /// La liste des tâches : il faut pouvoir y amener la tâche demandée.
+  final ScrollController _listCtrl = ScrollController();
+
+  /// Tâche désignée par la dernière notification touchée. Reste posée après
+  /// le soulignement : la clé ne change pas de tuile pendant qu'il s'éteint.
+  String? _focusId;
+
+  /// Le soulignement est-il allumé ? (s'éteint en fondu au bout de 3 s)
+  bool _focusGlow = false;
+  final GlobalKey _focusKey = GlobalKey();
+  Timer? _focusTimer;
+
+  /// Hauteur approchée d'une tuile, pour s'APPROCHER d'une tuile pas encore
+  /// construite (liste paresseuse) avant de la montrer exactement.
+  static const double _approxTileHeight = 76;
+
+  @override
+  void initState() {
+    super.initState();
+    DownloadsOpenRequest.focusTask.addListener(_onFocusRequest);
+    // Démarrage à froid : la demande est arrivée avant la page.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onFocusRequest());
+  }
+
+  /// §notifAudit P5 — Une notification désigne une tâche : filtres levés
+  /// (sinon « En cours » ou une recherche pourraient la cacher), tâche amenée
+  /// à l'écran et soulignée un instant.
+  void _onFocusRequest() {
+    if (!mounted) return;
+    final String? id = DownloadsOpenRequest.takeFocusTask();
+    if (id == null) return;
+    setState(() {
+      _filter = DownloadFilter.all;
+      if (_searching) {
+        _searching = false;
+        _searchCtrl.clear();
+      }
+      _focusId = id;
+      _focusGlow = true;
+    });
+    _focusTimer?.cancel();
+    _focusTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _focusGlow = false);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revealFocused(0));
+  }
+
+  void _revealFocused(int attempt) {
+    if (!mounted || _focusId == null) return;
+    final BuildContext? tile = _focusKey.currentContext;
+    if (tile != null) {
+      Scrollable.ensureVisible(
+        tile,
+        alignment: 0.3,
+        duration: const Duration(milliseconds: 300),
+      );
+      return;
+    }
+    // Pas encore construite (plus bas que l'écran) : on s'en approche une
+    // fois, puis on la montre exactement à l'image suivante.
+    if (attempt > 0 || !_listCtrl.hasClients) return;
+    final List<DownloadTask> visible =
+        _apply(_downloadManager.tasksNotifier.value);
+    final int index = downloadsListIndexOf(
+      <String>[for (final t in visible) t.id],
+      _focusId!,
+      hasDeviceSection: DeviceLibraryService.videos.value.isNotEmpty,
+    );
+    if (index < 0) {
+      debugPrint('⚠️ §notifAudit P5 — tâche désignée absente de la liste : $_focusId');
+      return;
+    }
+    _listCtrl.jumpTo(math.min(
+        index * _approxTileHeight, _listCtrl.position.maxScrollExtent));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revealFocused(1));
+  }
+
   /// §12-c — Pull-to-refresh : recharge les tâches depuis disque + réconcilie
   /// les statuts (utile si une tâche s'est figée en `downloading` après crash).
   // D3A-05 — `refreshFromDisk` épargne les transferts en vol : `init()` les
@@ -154,6 +236,9 @@ class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
 
   @override
   void dispose() {
+    DownloadsOpenRequest.focusTask.removeListener(_onFocusRequest);
+    _focusTimer?.cancel();
+    _listCtrl.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -273,6 +358,7 @@ class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
           child: RefreshIndicator(
             onRefresh: _refresh,
             child: ListView.builder(
+              controller: _listCtrl, // §notifAudit P5
               physics: const AlwaysScrollableScrollPhysics(),
               itemCount: (orphanSection == null ? 0 : 1) +
                   (visible.isEmpty && tasks.isNotEmpty ? 1 : visible.length),
@@ -298,7 +384,19 @@ class _DownloadsPageState extends State<DownloadsPage> with TvInitialFocus {
                     ),
                   );
                 }
-                return DownloadTaskTile(task: visible[i]);
+                // §notifAudit P5 — la tâche d'une notification touchée est
+                // soulignée, puis le soulignement s'éteint en fondu.
+                final DownloadTask task = visible[i];
+                final bool focused = task.id == _focusId;
+                return AnimatedContainer(
+                  key: focused ? _focusKey : null,
+                  duration: const Duration(milliseconds: 600),
+                  decoration: BoxDecoration(
+                    color: kAccentPrimary.withAlpha(focused && _focusGlow ? 48 : 0),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: DownloadTaskTile(task: task),
+                );
               },
             ),
           ),

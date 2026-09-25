@@ -37,6 +37,9 @@ import 'player_action_handlers.dart';
 import 'player_progress_policy.dart';
 import 'playback_error_message.dart';
 import 'next_resolver.dart';
+import 'now_playing_actions.dart';
+import 'player_presence.dart';
+import 'subtitle_inset.dart';
 import 'package:dpad/dpad.dart';
 import '../../core/navigation/focus_route_memory.dart';
 import '../../core/utils/platform_tv.dart';
@@ -141,6 +144,14 @@ class PlayerPage extends StatefulWidget {
   /// fonction, sinon on sauterait un épisode.
   final Future<PlayerMedia?> Function()? onRequestNext;
 
+  /// §notifAudit P8 — « Y a-t-il un épisode après celui qu'on lit ? », SANS
+  /// rien faire avancer (contrairement à [onRequestNext]). Sert à ne proposer
+  /// « Épisode suivant » dans la notification de lecture que s'il existe.
+  /// ⚠️ Relu après chaque bascule : l'appelant doit répondre pour l'épisode
+  /// COURANT. `null` = l'appelant ne sait pas répondre → le bouton suit
+  /// [onRequestNext] (et disparaît quand la fiche a répondu « plus rien »).
+  final bool Function()? hasNextEpisode;
+
   /// §autoNextEp — Saison du contenu lancé (séries), pour détecter le
   /// franchissement de saison. `null` hors séries.
   final int? seasonNumber;
@@ -187,6 +198,7 @@ class PlayerPage extends StatefulWidget {
     this.siblingResumeKeys = const [],
     this.seriesResumeKey,
     this.onRequestNext,
+    this.hasNextEpisode,
     this.seasonNumber,
     this.openCastOnStart = false,
   });
@@ -238,6 +250,19 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   /// plus deux requêtes (deux avancées de la fiche = un épisode sauté, et
   /// l'encart de fin affiché sur l'épisode qui vient de démarrer).
   final NextResolver<PlayerMedia?> _nextResolver = NextResolver<PlayerMedia?>();
+
+  /// §notifAudit P8 — La fiche a répondu « plus rien après » pour le contenu
+  /// COURANT : la notification ne propose plus « Épisode suivant ». Remis à
+  /// faux à chaque bascule d'épisode.
+  bool _nextExhausted = false;
+
+  /// §notifAudit P8 — Boutons de notification déjà envoyés au moteur (pas de
+  /// renvoi identique) et appuis reçus de la notification.
+  AetherNowPlayingActions? _sentNowPlayingActions;
+  StreamSubscription<AetherNowPlayingCommand>? _nowPlayingSub;
+
+  /// R50 — Marge basse des sous-titres déjà envoyée au moteur.
+  double? _sentSubtitleInset;
 
   /// §castSend / revue 2026-09-11, D2L-01 — Le téléviseur a cessé de lire CE
   /// contenu (fin, arrêt depuis la télé, connexion perdue) et le lecteur local
@@ -459,6 +484,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
+    // §notifAudit P5 — une notification de téléchargement ne coupe pas ce
+    // film (`shouldOpenDownloads`).
+    PlayerPresence.enter();
     _media = widget.initialMedia;
     _currentPath = _media.path;
     // §dualEngine — Sur Windows Desktop, on utilise MpvPlaybackEngine (libmpv
@@ -472,6 +500,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _listenPlaybackForWakelock();
     _listenVideoParamsForQuality();
     _listenCompleted();
+    // §notifAudit P8 — les boutons de la notification passent par les MÊMES
+    // chemins que les gestes du lecteur.
+    _nowPlayingSub = _ctrl.nowPlayingCommands.listen(_onNowPlayingCommand);
     WidgetsBinding.instance.addObserver(this);
     _openMedia();
     _startHideTimer();
@@ -638,6 +669,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     }
     _castHandedBack = handedBack;
     _syncAutoPip(); // §pipPhone — pas de fenêtre flottante pendant une diffusion
+    _syncNowPlayingActions(); // §notifAudit P8 — rien de local pendant une diffusion
   }
 
   /// Lot 6b / §castLocal — La feuille Cast s'est-elle déjà ouverte seule pour
@@ -1332,7 +1364,15 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (mounted) setState(() => _loadingNext = true);
     try {
       final next = await request();
-      if (identical(_media, origin)) _pendingNext = next;
+      if (identical(_media, origin)) {
+        _pendingNext = next;
+        // §notifAudit P8 — « plus rien après » : le bouton de la notification
+        // disparaît pour ce contenu.
+        if (next == null && !_nextExhausted) {
+          _nextExhausted = true;
+          _syncNowPlayingActions();
+        }
+      }
       return next;
     } catch (e) {
       debugPrint('⚠️ §episodeMeta onRequestNext : $e');
@@ -1374,6 +1414,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       _finished = false; // §endOfMovie — nouvel épisode, nouvelle progression
       _pendingNext = null;
       _nextResolver.reset(); // D2A-13 — la suite de N ne vaut pas pour N+1
+      _nextExhausted = false; // §notifAudit P8 — idem pour « plus rien après »
       // D2L-01 — la position locale du nouvel épisode n'est pas « périmée ».
       _castHandedBack = false;
       _endOfPlayback = null;
@@ -1543,6 +1584,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       // page) : le téléviseur a l'image, le lecteur local ne joue pas
       // par-dessus. Le panneau propose d'envoyer CE contenu à son tour.
       if (CastService.isActive && mounted) await _ctrl.pause();
+      // §notifAudit P8 — les boutons de CE contenu (±30 s, épisode suivant).
+      // Renvoyés à chaque chargement : le natif les garde d'un contenu à
+      // l'autre, ce n'est pas lui qui sait ce qu'on lit.
+      _syncNowPlayingActions(force: true);
     } catch (e) {
       // §userError / revue 2026-09-11 — le texte brut reste au journal
       // (rédigé au puits) ; l'écran reçoit une phrase, jamais
@@ -2104,6 +2149,93 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _startHideTimer();
   }
 
+  /// §playerPanel / R50 — Les contrôles sont-ils À L'ÉCRAN ? En PiP ou
+  /// pendant une diffusion, `_controlsVisible` peut rester vrai alors que
+  /// rien n'est affiché. Lu par `PlayerControls`, l'encart des stats et la
+  /// marge des sous-titres.
+  bool get _controlsOnScreen => _controlsVisible && !_inPip && _cast == null;
+
+  /// R50 — Envoie au moteur la marge basse des sous-titres, si elle a changé.
+  void _syncSubtitleInset() {
+    if (!mounted) return;
+    final double inset = subtitleBottomInsetFor(
+      controlsOnScreen: _controlsOnScreen,
+      locked: _isLocked,
+      bottomBlockHeight: _bottomBarHeight,
+    );
+    final double? sent = _sentSubtitleInset;
+    if (sent != null && (sent - inset).abs() < 0.5) return;
+    _sentSubtitleInset = inset;
+    debugPrint('💬 R50 — marge basse des sous-titres : ${inset.round()} dp');
+    unawaited(_ctrl.setSubtitleBottomInset(inset));
+  }
+
+  /// §notifAudit P8 — Envoie au moteur les boutons de la notification pour
+  /// le contenu courant. [force] : renvoyer même inchangé (nouveau
+  /// chargement). Téléviseur : pas de notification (§nowPlaying), rien.
+  void _syncNowPlayingActions({bool force = false}) {
+    if (!mounted || PlatformTv.isTv) return;
+    final AetherNowPlayingActions actions = _currentNowPlayingActions();
+    if (!force && actions == _sentNowPlayingActions) return;
+    _sentNowPlayingActions = actions;
+    unawaited(_ctrl.setNowPlayingActions(actions));
+  }
+
+  /// §notifAudit P8 — Les boutons de la notification et le sens des touches
+  /// suivant/précédent (patch 31) pour le contenu COURANT.
+  AetherNowPlayingActions _currentNowPlayingActions() => nowPlayingActionsFor(
+        badge: _media.badgeType,
+        source: _media.sourceType,
+        casting: _cast != null,
+        canRequestNext: widget.onRequestNext != null,
+        nextExists: widget.hasNextEpisode?.call(),
+        nextExhausted: _nextExhausted,
+      );
+
+  /// Patch 31 — Touches « piste suivante / précédente » reçues par l'app au
+  /// premier plan (casque, clavier) : ±30 s au téléphone, comme la même touche
+  /// app en arrière-plan (session média). ⚠️ Posé AU-DESSUS de la vidéo : sans
+  /// lui, la touche remontait jusqu'aux raccourcis §mediaKeys de la racine
+  /// (« suivant » = épisode suivant). Sur TV et en direct : laissée passer,
+  /// rien ne change.
+  KeyEventResult _onMediaTrackKey(FocusNode node, KeyEvent event) {
+    final Duration? step = mediaTrackKeySeek(
+      event.logicalKey,
+      isTv: PlatformTv.isTv,
+      actions: _currentNowPlayingActions(),
+    );
+    if (step == null) return KeyEventResult.ignored;
+    // L'appui seul fait le saut ; répétition et relâchement sont absorbés,
+    // pour que la racine n'en fasse rien non plus.
+    if (event is KeyDownEvent) {
+      debugPrint('🎧 P8 — touche ${step.isNegative ? 'précédent' : 'suivant'} : ${step.inSeconds} s');
+      _handleSeek(step);
+    }
+    return KeyEventResult.handled;
+  }
+
+  /// §notifAudit P8 — Un bouton de la notification (ou de l'écran
+  /// verrouillé), exécuté par les MÊMES chemins que les gestes : un saut
+  /// pendant une diffusion commande le téléviseur, et reste amnistié du
+  /// compteur de blocages (§stallCount).
+  void _onNowPlayingCommand(AetherNowPlayingCommand command) {
+    if (!mounted) return;
+    debugPrint('🔔 P8 — bouton de la notification : ${command.name}');
+    switch (command) {
+      case AetherNowPlayingCommand.seekBack:
+        _handleSeek(-kNowPlayingSeekStep);
+      case AetherNowPlayingCommand.seekForward:
+        _handleSeek(kNowPlayingSeekStep);
+      case AetherNowPlayingCommand.playPause:
+        _togglePlayPause();
+      case AetherNowPlayingCommand.next:
+        // Un bouton resté affiché (notification reposée plus tard) ne doit
+        // pas enchaîner ce que la règle refuse : diffusion, direct, replay.
+        if (_sentNowPlayingActions?.next != true) return;
+        unawaited(_requestNextEpisode());
+    }
+  }
+
   /// §ctrlBlink (2026-09-09) — Délai avant que les contrôles ne se masquent.
   ///
   /// **Le défaut corrigé** (signalé pendant la recette) : « il clignote quand
@@ -2283,6 +2415,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // c'est là que vivent la transition de route, la rotation et le
     // repeint de la page du dessous.
     final Stopwatch swAll = Stopwatch()..start();
+    PlayerPresence.leave(); // §notifAudit P5 — ne lève jamais
     HardwareKeyboard.instance.removeHandler(_trackArrowHold);
     _options
       ..removeListener(_onOptionsChanged)
@@ -2332,6 +2465,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _playingSub?.cancel();
     _videoParamsSub?.cancel();
     _errorSub?.cancel();
+    _nowPlayingSub?.cancel(); // §notifAudit P8
     _completedSub?.cancel();
     _autoNextTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -2400,7 +2534,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     // lue par `PlayerControls` et par les bornes de l'encart des stats : en
     // PiP ou pendant une diffusion, `_controlsVisible` peut rester vrai alors
     // que rien n'est affiché — l'encart n'a alors rien à éviter.
-    final bool controlsShown = _controlsVisible && !_inPip && _cast == null;
+    final bool controlsShown = _controlsOnScreen;
+    // R50 — les sous-titres suivent les contrôles (après l'image : un appel au
+    // moteur n'a rien à faire pendant `build`).
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncSubtitleInset());
     // §exitRotate (2026-09-06) — Sur TÉLÉPHONE, la rotation vers le portrait
     // était demandée dans `dispose()`, c'est-à-dire à la FIN de la transition
     // de sortie. Mesuré sur le Galaxy S25 : 1,4 s après Retour, l'écran
@@ -2445,7 +2582,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       // rangée d'options, ←/→=seek ±10 s. `effects: []` → aucun halo autour
       // de la vidéo. Le retour de focus après une feuille (Diffuser) est géré
       // par `dpad` (restoreFocus). Remplace l'ancien `TvPlayerShortcuts`.
-      body: DpadFocusable(
+      // Patch 31 — casque / clavier : ⏭ ⏮ = ±30 s au téléphone (cf.
+      // `_onMediaTrackKey`). Non focusable : ne change rien à la traversée.
+      body: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: _onMediaTrackKey,
+        child: DpadFocusable(
         autofocus: true,
         tapToSelect: false,
         effects: const [],
@@ -2612,6 +2755,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
                 if (!mounted || (_bottomBarHeight - h).abs() < 0.5) return;
                 _bottomBarHeight = h;
                 if (_statsEnabled) setState(() {});
+                // R50 — et les sous-titres, au-dessus du bloc RÉEL.
+                _syncSubtitleInset();
               },
               // §castSend — Téléphone uniquement : sur TV, on EST le
               // téléviseur. Le verrou ne le masque pas (diffuser n'est pas
@@ -2787,6 +2932,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
           ],
         ),
+      ),
       ),
       ),
     );

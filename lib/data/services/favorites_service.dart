@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aetherStream/data/models/m3u_entry.dart';
 import 'package:aetherStream/data/models/parsed_playlist.dart';
 import 'package:aetherStream/data/services/parsed_playlist_service.dart';
+import 'package:aetherStream/data/services/tmdb_group_alias_service.dart';
 import 'package:aetherStream/feature/search/m3u_filter.dart';
 
 /// Service de gestion des favoris (§1d).
@@ -90,6 +92,100 @@ class FavoritesService {
       }
     }
     return '$type|${TitleMetadata.computeGroupKey(body)}$yearSuffix';
+  }
+
+  // ── R53 + §aliasByPoster — Les favoris suivent la table d'alias ──────────
+  //
+  // La clé d'un favori de film ou de série passe par `contentGroupKey`, donc
+  // par la table d'alias (`TmdbGroupAliasService`). Cette table est refaite à
+  // CHAQUE chargement et déchargement de liste (§lazyUnload) : qu'un alias
+  // apparaisse, et la clé de la variante devient celle de la canonique ; qu'il
+  // disparaisse, et c'est l'inverse. Le favori restait stocké sous l'ancienne
+  // clé et plus rien ne le retrouvait (R53, prouvé par
+  // `test/favorites_alias_test.dart`). La réconciliation §favReconcile ne
+  // tourne qu'une fois par schéma : elle ne pouvait pas le voir.
+  //
+  // Le correctif : après chaque reconstruction de la table, chaque favori est
+  // COMPLÉTÉ par ses équivalents (la canonique et toutes ses variantes, même
+  // type, même année). On ajoute, on ne remplace jamais : la clé d'une
+  // variante doit survivre au jour où l'alias disparaît. Pur, idempotent, sans
+  // bump de schéma.
+
+  /// Le suffixe d'année d'une clé stockée : chiffres (ou rien) après le
+  /// DERNIER `|` — même convention que [normalizeStoredKey].
+  static final RegExp _reYearTail = RegExp(r'^\d{0,4}$');
+
+  /// (type, clé de groupe, suffixe d'année — `|2023`, `|` ou `''` pour une clé
+  /// héritée) d'une clé de film ou de série ; `null` pour une chaîne.
+  static (String, String, String)? _splitKey(String key) {
+    if (!key.startsWith('movie|') && !key.startsWith('series|')) return null;
+    final int first = key.indexOf('|');
+    final String type = key.substring(0, first);
+    String body = key.substring(first + 1);
+    String suffix = '';
+    final int last = body.lastIndexOf('|');
+    if (last >= 0 && _reYearTail.hasMatch(body.substring(last + 1))) {
+      suffix = body.substring(last);
+      body = body.substring(0, last);
+    }
+    return (type, body, suffix);
+  }
+
+  static Map<String, Set<String>> _variantsOf(Map<String, String> alias) {
+    final Map<String, Set<String>> out = <String, Set<String>>{};
+    alias.forEach((v, c) => (out[c] ??= <String>{}).add(v));
+    return out;
+  }
+
+  /// Les clés équivalentes à [key] sous [alias] ([key] compris) : la
+  /// canonique et toutes ses variantes, même type, même suffixe d'année.
+  static Set<String> _equivalents(String key, Map<String, String> alias,
+      Map<String, Set<String>> variantsOf) {
+    final (String, String, String)? parts = _splitKey(key);
+    if (parts == null) return <String>{key};
+    final (String type, String body, String suffix) = parts;
+    final String c = alias[body] ?? body;
+    return <String>{
+      key,
+      '$type|$c$suffix',
+      for (final String v in variantsOf[c] ?? const <String>{})
+        '$type|$v$suffix',
+    };
+  }
+
+  /// R53 — Les clés à AJOUTER à [stored] pour qu'aucun favori ne s'éteigne
+  /// sous la table [alias] : pour chaque favori, sa canonique et toutes ses
+  /// variantes. Vide quand rien ne manque — donc idempotent.
+  ///
+  /// Fonction PURE : c'est elle qu'on teste.
+  @visibleForTesting
+  static Set<String> aliasClosureAdditions(
+      Iterable<String> stored, Map<String, String> alias) {
+    if (alias.isEmpty) return const <String>{};
+    final Map<String, Set<String>> variantsOf = _variantsOf(alias);
+    final Set<String> have =
+        stored is Set<String> ? stored : stored.toSet();
+    final Set<String> out = <String>{};
+    for (final String k in have) {
+      for (final String e in _equivalents(k, alias, variantsOf)) {
+        if (!have.contains(e)) out.add(e);
+      }
+    }
+    return out;
+  }
+
+  static bool _aliasListening = false;
+
+  /// R53 — Appelé à chaque reconstruction de la table d'alias.
+  static void _applyAliasClosure() {
+    if (!_loaded) return;
+    final Set<String> add =
+        aliasClosureAdditions(_cache, TmdbGroupAliasService.aliases);
+    if (add.isEmpty) return;
+    _cache.addAll(add);
+    version.value++;
+    unawaited(_persist());
+    debugPrint('⭐ FavoritesService R53 : ${add.length} clé(s) équivalente(s) ajoutée(s) (titres réunis par alias TMDB)');
   }
 
   // ── §favReconcile — Réconciliation post-changement de parsing ────────────
@@ -224,13 +320,23 @@ class FavoritesService {
         final type = stored.substring(0, stored.indexOf('|'));
         body = stored.substring(type.length + 1);
         bucket = type; // legacy sans année par défaut
+        var yearSuffix = '';
         final lastSep = body.lastIndexOf('|');
         if (lastSep >= 0) {
           final tail = body.substring(lastSep + 1);
           if (RegExp(r'^\d{0,4}$').hasMatch(tail)) {
             bucket = '$type#$tail';
+            yearSuffix = '|$tail';
             body = body.substring(0, lastSep);
           }
+        }
+        // R53 — Une VARIANTE d'alias (clé ajoutée par [aliasClosureAdditions])
+        // n'est pas une orpheline : sa canonique est valide. La « réparer » par
+        // le fuzzy la remplacerait par un autre titre et effacerait la clé qui
+        // garde le favori le jour où l'alias disparaît.
+        final String canon = TmdbGroupAliasService.canonical(body);
+        if (canon != body && validKeys.contains('$type|$canon$yearSuffix')) {
+          continue;
         }
       } else {
         continue; // clé inconnue → intouchée
@@ -416,6 +522,13 @@ class FavoritesService {
       debugPrint('❌ FavoritesService: erreur chargement — $e');
     }
     _loaded = true;
+    // R53 — La table a pu être construite avant le chargement des favoris ;
+    // ensuite, chaque reconstruction complète les favoris.
+    if (!_aliasListening) {
+      _aliasListening = true;
+      TmdbGroupAliasService.version.addListener(_applyAliasClosure);
+    }
+    _applyAliasClosure();
   }
 
   /// Sauvegarde le cache dans `SharedPreferences` (fire & forget côté UI).
@@ -469,10 +582,19 @@ class FavoritesService {
   static Future<void> _removeEntry(M3uEntry e) async {
     await _ensureLoaded();
     // Retire la clé courante ET la legacy (films/séries) en une notification.
-    final removed = _cache.remove(keyFor(e));
-    final removedLegacy =
-        e.type != M3uContentType.tv && _cache.remove(_legacyKey(e));
-    if (removed || removedLegacy) {
+    // R53 — et tous leurs équivalents d'alias : sinon une variante gardée
+    // rallumerait le cœur de la vignette réunie qu'on vient d'éteindre.
+    final Map<String, String> alias = TmdbGroupAliasService.aliases;
+    final Map<String, Set<String>> variantsOf = _variantsOf(alias);
+    final Set<String> keys = _equivalents(keyFor(e), alias, variantsOf);
+    if (e.type != M3uContentType.tv) {
+      keys.addAll(_equivalents(_legacyKey(e), alias, variantsOf));
+    }
+    var removed = false;
+    for (final String k in keys) {
+      if (_cache.remove(k)) removed = true;
+    }
+    if (removed) {
       version.value++;
       await _persist();
     }
@@ -482,6 +604,10 @@ class FavoritesService {
   static Future<void> add(String key) async {
     await _ensureLoaded();
     if (_cache.add(key)) {
+      // R53 — complété tout de suite : si l'alias disparaît avant la
+      // prochaine reconstruction, la variante garde le favori.
+      _cache.addAll(
+          aliasClosureAdditions(<String>[key], TmdbGroupAliasService.aliases));
       version.value++;
       await _persist();
       debugPrint('⭐ FavoritesService: ajout — $key');
@@ -504,6 +630,8 @@ class FavoritesService {
     _cache
       ..clear()
       ..addAll(keys);
+    // R53 — une sauvegarde d'avant la réunion des titres : complétée aussi.
+    _cache.addAll(aliasClosureAdditions(_cache, TmdbGroupAliasService.aliases));
     version.value++;
     await _persist();
     // §favReconcile — Un backup .aether peut contenir des clés générées par

@@ -8,6 +8,7 @@ import '../../core/settings/performance_settings_service.dart';
 import '../../data/services/device_caps_service.dart';
 import '../../data/services/track_preferences_service.dart';
 import 'buffer_policy.dart';
+import 'now_playing_actions.dart';
 import 'playback_engine.dart';
 import 'playback_error_message.dart';
 import 'player_error.dart';
@@ -59,7 +60,16 @@ class Media3Engine implements AetherPlaybackEngine {
   final _completed = StreamController<bool>.broadcast();
   final _error = StreamController<String>.broadcast();
   final _videoParams = StreamController<AetherVideoSize>.broadcast();
+  final _nowPlayingCommands =
+      StreamController<AetherNowPlayingCommand>.broadcast();
   final _subs = <StreamSubscription<dynamic>>[];
+
+  /// §iptvUaCompat — Les panels Xtream rejettent les UA navigateur par un 500
+  /// muet : le profil de requête doit être identique à celui de Dio. Le flux
+  /// ET l'affiche de la notification (§notifAudit P10, patch 30) le portent.
+  static const Map<String, String> _iptvHeaders = {
+    'User-Agent': 'IPTVSmartersPro',
+  };
 
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -344,6 +354,14 @@ class Media3Engine implements AetherPlaybackEngine {
       _currentQuality = _mapQuality(q);
       _qualitiesCtrl.add(_qualities);
     }));
+    // §notifAudit P8 (patch 29) — un bouton de la notification : relayé au
+    // lecteur, qui l'exécute. Un nom inconnu est ignoré.
+    _subs.add(_c.mediaActionStream.listen((action) {
+      final AetherNowPlayingCommand? cmd = nowPlayingCommandFromWire(action);
+      if (cmd != null && !_nowPlayingCommands.isClosed) {
+        _nowPlayingCommands.add(cmd);
+      }
+    }));
     _subs.add(_c.videoSizeStream.listen((s) {
       // ⚠️ `0` signifie « pas encore décodé » → on publie `null`, jamais zéro :
       // §qualityTruth enregistrerait sinon une définition de 0×0 comme une
@@ -467,6 +485,9 @@ class Media3Engine implements AetherPlaybackEngine {
       title: n.title,
       subtitle: n.subtitle,
       artworkUrl: n.artworkUrl,
+      // §notifAudit P10 (patch 30) — le logo d'une chaîne vient souvent de
+      // l'hôte du panel, qui filtre l'agent comme pour le flux.
+      artworkHeaders: n.artworkUrl == null ? null : _iptvHeaders,
     );
   }
 
@@ -492,9 +513,8 @@ class Media3Engine implements AetherPlaybackEngine {
       url: url,
       // §nowPlaying — par chargement, pas par contrôleur (§engineVendor patch 9).
       mediaInfo: _mediaInfoFor(nowPlaying),
-      // §iptvUaCompat — Les panels Xtream rejettent les UA navigateur par un
-      // 500 muet : le profil de requête doit être identique à celui de Dio.
-      headers: const {'User-Agent': 'IPTVSmartersPro'},
+      // §iptvUaCompat — cf. `_iptvHeaders`.
+      headers: _iptvHeaders,
       // §resumeStart — Position passée NATIVEMENT : un `seek` après ouverture
       // est parfois avalé pendant le buffering initial.
       startAt: start,
@@ -816,6 +836,50 @@ class Media3Engine implements AetherPlaybackEngine {
     return NativeVideoPlayer(controller: _c);
   }
 
+  /// R50 (patch 28) — cf. `AetherPlaybackEngine.setSubtitleBottomInset`.
+  /// Mémorisé par le contrôleur même sans vue native : la vue le reçoit à son
+  /// inscription.
+  @override
+  Future<void> setSubtitleBottomInset(double logicalPixels) async {
+    try {
+      await _c.setSubtitleBottomInset(logicalPixels);
+    } catch (e) {
+      debugPrint('⚠️ R50 — marge des sous-titres refusée : $e');
+    }
+  }
+
+  // ── Notification de lecture (§notifAudit P8, patch 29) ─────────────────────
+
+  @override
+  Stream<AetherNowPlayingCommand> get nowPlayingCommands =>
+      _nowPlayingCommands.stream;
+
+  /// P8 — Les libellés partent avec les boutons, dans la langue de l'écran
+  /// (§l10nAll) : ce sont ceux des mêmes gestes pendant une diffusion.
+  @override
+  Future<void> setNowPlayingActions(AetherNowPlayingActions actions) async {
+    if (!_hasNativePlayer) return;
+    final l10n = L10n.current;
+    try {
+      await _c.setMediaActions(
+        seek: actions.seek,
+        next: actions.next,
+        // Patch 31 — touches suivant/précédent (casque, montre) = ±30 s.
+        keys: actions.seekKeys,
+        labels: {
+          'seekBack': l10n.castOverlayBack30,
+          'seekForward': l10n.castOverlayForward30,
+          'next': l10n.ctrlNextEpisode,
+          'play': l10n.castOverlayPlay,
+          'pause': l10n.castOverlayPause,
+        },
+      );
+      debugPrint('🔔 P8 — boutons de la notification : $actions');
+    } catch (e) {
+      debugPrint('⚠️ P8 — boutons de la notification refusés : $e');
+    }
+  }
+
   // ── Diagnostic ─────────────────────────────────────────────────────────────
 
   @override
@@ -924,6 +988,7 @@ class Media3Engine implements AetherPlaybackEngine {
     _qualitiesCtrl.close();
     _error.close();
     _videoParams.close();
+    _nowPlayingCommands.close();
     _c.dispose();
   }
 }

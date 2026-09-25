@@ -57,6 +57,17 @@ class AetherCastService : Service() {
 
     companion object {
         private const val TAG = "AetherCastService"
+
+        /**
+         * §iptvUaCompat — Même agent que les autres requêtes IPTV de l'app
+         * (Dio `NetworkUtils`, `AetherCastRelay`, `Media3Engine`) : les hôtes
+         * de logos des panels filtrent l'agent comme les flux. Avec l'agent
+         * par défaut d'Android, l'affiche d'une chaîne ne venait pas.
+         */
+        private const val IPTV_USER_AGENT = "IPTVSmartersPro"
+
+        /** Redirections suivies à la main (HTTP ↔ HTTPS compris). */
+        private const val POSTER_MAX_REDIRECTS = 4
         private const val CHANNEL_ID = "aether_cast"
         private const val ONGOING_NOTIFICATION_ID = 2002
         const val ACTION_TOGGLE = "com.juman.aetherstream.action.CAST_TOGGLE"
@@ -391,19 +402,48 @@ class AetherCastService : Service() {
         }.apply { isDaemon = true }.start()
     }
 
+    /**
+     * Affiche de la notification de diffusion.
+     *
+     * Même correctif que le patch 30 du paquet vendoré (affiche de la
+     * notification de lecture, §notifAudit P10) : agent IPTV, redirections
+     * suivies à la main — `HttpURLConnection` refuse de passer seul de HTTP à
+     * HTTPS —, code HTTP vérifié. Échec silencieux pour la diffusion ; au
+     * journal (build débogable), le code ou le NOM de l'exception, jamais
+     * l'URL (§tvLogs : le message d'une 404 EST l'URL).
+     */
     private fun downloadBitmap(url: String): Bitmap? {
-        var conn: HttpURLConnection? = null
-        return try {
-            conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 8000
-                readTimeout = 8000
-                instanceFollowRedirects = true
+        try {
+            var current = URL(url)
+            var redirects = 0
+            while (true) {
+                val conn = current.openConnection() as HttpURLConnection
+                try {
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 8000
+                    conn.instanceFollowRedirects = false
+                    conn.setRequestProperty("User-Agent", IPTV_USER_AGENT)
+                    val code = conn.responseCode
+                    if (code in 300..399) {
+                        val location = conn.getHeaderField("Location") ?: return null
+                        if (++redirects > POSTER_MAX_REDIRECTS) return null
+                        val next = URL(current, location)
+                        if (next.protocol != "http" && next.protocol != "https") return null
+                        current = next
+                        continue
+                    }
+                    if (code !in 200..299) {
+                        AetherLog.w(TAG, "affiche refusée (HTTP $code)")
+                        return null
+                    }
+                    return conn.inputStream.use { BitmapFactory.decodeStream(it) }
+                } finally {
+                    conn.disconnect()
+                }
             }
-            conn.inputStream.use { BitmapFactory.decodeStream(it) }
         } catch (e: Exception) {
-            null
-        } finally {
-            conn?.disconnect()
+            AetherLog.w(TAG, "affiche indisponible (${e.javaClass.simpleName})")
+            return null
         }
     }
 

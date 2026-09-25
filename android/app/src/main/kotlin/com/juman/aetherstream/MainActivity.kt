@@ -41,6 +41,11 @@ class MainActivity : FlutterActivity() {
     // de la notification de diffusion arrivent par BroadcastReceiver.
     private var castChannel: MethodChannel? = null
 
+    // §notifAudit P5 — Route demandee par une notification de telechargement
+    // (« appuyer pour ouvrir »), en attente que Dart la prenne : au demarrage
+    // a froid, le moteur Dart n'ecoute pas encore quand l'Intent arrive.
+    private var pendingOpenRoute: Map<String, String>? = null
+
     // §castRelay — Créé à la première demande : la conversion est un cas rare
     // et coûteux, rien ne doit exister tant qu'elle n'est pas acceptée.
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -158,6 +163,14 @@ class MainActivity : FlutterActivity() {
                     result.success(AetherDeviceCaps.probe(applicationContext))
                 } catch (e: Exception) {
                     result.error("CAPS_ERROR", e.message, null)
+                }
+            } else if (call.method == "resources") {
+                // §imgRightSize — espace libre et classe mémoire, à chaque
+                // démarrage : quotas du cache d'images selon l'appareil.
+                try {
+                    result.success(AetherDeviceCaps.resources(applicationContext))
+                } catch (e: Exception) {
+                    result.error("RESOURCES_ERROR", e.message, null)
                 }
             } else if (call.method == "network") {
                 // §dlWifi — Le réseau ACTIF selon Android : transport et
@@ -322,6 +335,11 @@ class MainActivity : FlutterActivity() {
                     AetherDownloadService.stop(this)
                     result.success(null)
                 }
+                // §notifAudit P5 — Dart demande la route du lancement (une fois).
+                "takeOpenRoute" -> {
+                    result.success(pendingOpenRoute)
+                    pendingOpenRoute = null
+                }
                 "postFinished" -> {
                     val id = call.argument<Int>("id") ?: 0
                     val title = call.argument<String>("title")
@@ -339,7 +357,8 @@ class MainActivity : FlutterActivity() {
                         text,
                         call.argument<String>("restartTaskId"),
                         call.argument<String>("restartLabel"),
-                        call.argument<String>("doneChannelName")
+                        call.argument<String>("doneChannelName"),
+                        call.argument<String>("openTaskId")
                     )
                     result.success(null)
                 }
@@ -619,6 +638,37 @@ class MainActivity : FlutterActivity() {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(castActionReceiver, castFilter)
         }
+        // §notifAudit P5 — Ouverte PAR une notification : la route attend que
+        // Dart la demande. Pas sur une recréation (l'Intent d'origine serait
+        // rejoué à chaque rotation ou retour de processus).
+        if (savedInstanceState == null) takeOpenRouteFrom(intent)
+    }
+
+    // §notifAudit P5 — Notification touchee, app deja ouverte : Dart navigue
+    // tout de suite. S'il n'ecoute pas encore (demarrage en cours), la route
+    // reste en attente de `takeOpenRoute`.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val route = takeOpenRouteFrom(intent) ?: return
+        transferChannel?.invokeMethod("openRoute", route, object : MethodChannel.Result {
+            override fun success(result: Any?) {
+                if (pendingOpenRoute === route) pendingOpenRoute = null
+            }
+            override fun error(code: String, message: String?, details: Any?) {}
+            override fun notImplemented() {}
+        })
+    }
+
+    /// §notifAudit P5 — Lit (et RETIRE de l'Intent) la route d'une notification.
+    private fun takeOpenRouteFrom(intent: Intent?): Map<String, String>? {
+        val route = intent?.getStringExtra(AetherDownloadService.EXTRA_OPEN_ROUTE) ?: return null
+        val out = HashMap<String, String>()
+        out["route"] = route
+        intent.getStringExtra(AetherDownloadService.EXTRA_TASK_ID)?.let { out["taskId"] = it }
+        intent.removeExtra(AetherDownloadService.EXTRA_OPEN_ROUTE)
+        intent.removeExtra(AetherDownloadService.EXTRA_TASK_ID)
+        pendingOpenRoute = out
+        return out
     }
 
     // §dlOrphans — Les vidéos indexées sous `relativePath` (Movies/AetherStream/).

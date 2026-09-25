@@ -73,6 +73,172 @@ String? episodesFieldError(Object? episodes) {
   return 'le serveur n\'a pas renvoyé de liste d\'épisodes';
 }
 
+/// §22.5 — L'URL de lecture (et de téléchargement) d'un épisode Xtream :
+/// `{host}/series/{user}/{pass}/{id}.{ext}`.
+///
+/// C'est la forme que le panel écrit LUI-MÊME dans son `get.php` : vérifié sur
+/// les deux M3U réels (`lib/iptv_exemple/`), 126 965 + 104 287 URL d'épisode,
+/// toutes `…/series/…/<id>.<ext>`. Côté films, l'extension que le JSON annonce
+/// (`container_extension`) est celle du `get.php` du même panel pour 26 097
+/// films sur 26 097 (VOD).
+///
+/// ⚠️ L'extension est `container_extension` tel quel, `mp4` s'il manque. Une
+/// valeur VIDE donnerait `…/<id>.` : jamais vue (0 sur 119 362 films des
+/// quatre catalogues ; les épisodes ne sont pas dans les dumps). La corriger
+/// changerait l'URL, donc la clé de reprise et de téléchargement, d'épisodes
+/// déjà vus : décision à part, pas un correctif en passant.
+///
+/// Fonction pure : c'est elle qu'on teste.
+String xtreamEpisodeUrl({
+  required String host,
+  required String username,
+  required String password,
+  required Object episodeId,
+  Object? extension,
+}) =>
+    '$host/series/${Uri.encodeComponent(username)}/'
+    '${Uri.encodeComponent(password)}/$episodeId.${extension ?? 'mp4'}';
+
+/// §xtreamEpisodes — Les épisodes d'une réponse `get_series_info` dont le champ
+/// `episodes` est une `Map` saison → épisodes, prêts pour la fiche (mêmes
+/// champs qu'une entrée du parseur M3U).
+///
+/// §22.1 — Les ÉTIQUETTES de la série (qualité, langues, libellé de version,
+/// marqueur) passent sur chaque épisode, prises sur [seriesTitle] (le stub du
+/// catalogue) ou, à défaut, sur le nom que rend le panel. Sans elles, les
+/// épisodes de « Game of Thrones (4K) HDR » et de « Game of Thrones (MULTI)
+/// FHD », deux séries d'une même liste, portaient la même pastille par défaut
+/// (« FHD ») et la fiche n'en gardait qu'un (`dedupeVersions`) ; le lecteur
+/// n'annonçait aucune qualité, et la porte 4K (§deviceCaps) laissait passer un
+/// épisode 4K qu'un appareil ne sait pas décoder.
+///
+/// ⚠️ Nom, clé de groupe et année restent ceux du nom rendu par le panel
+/// (§favSeries) : la clé des favoris ne bouge pas.
+///
+/// Fonction pure : c'est elle qu'on teste.
+List<M3uEntry> episodesFromSeriesInfo(
+  Map<String, dynamic> info, {
+  required ({String host, String username, String password}) creds,
+  required String accountId,
+  TitleMetadata? seriesTitle,
+}) {
+  final Object? episodes = info['episodes'];
+  if (episodes is! Map) return const <M3uEntry>[];
+  final seriesName = ((info['info'] is Map
+              ? (info['info'] as Map)['name']
+              : null) ??
+          '')
+      .toString();
+  // §favSeries — On PARSE le nom de série une fois (baseTitle + groupKey +
+  // année cohérents) au lieu de prendre le nom brut. Sinon les épisodes
+  // avaient un `groupKey` vide → recalculé sur le nom brut (avec année/
+  // préfixe) ≠ celui du stub série → la clé favori ne matchait JAMAIS la
+  // vignette (favoris séries cassés). Mêmes baseTitle/groupKey/year que le
+  // stub → favoris + regroupement cohérents.
+  final seriesMeta = TitleMetadata.parse(seriesName);
+  final TitleMetadata tags = seriesTitle ?? seriesMeta;
+  // §epSynopsis — tmdb_id de la SÉRIE (champ `info.tmdb`), propagé sur
+  // chaque épisode → l'action sheet épisode et `_providerTmdbId()` accèdent
+  // à l'id exact (getEpisodeDetails saute la recherche floue).
+  final seriesTmdb = (info['info'] is Map
+          ? ((info['info'] as Map)['tmdb'] ?? '')
+          : '')
+      .toString();
+
+  // §epSynopsis — helper : première valeur non vide parmi des clés du bloc
+  // `info` d'un épisode (les panels varient : plot / overview / description).
+  String? epInfoStr(Map e, List<String> keys) {
+    final i = e['info'];
+    if (i is! Map) return null;
+    for (final k in keys) {
+      final v = (i[k] ?? '').toString().trim();
+      if (v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
+  // §epTitleProvider — Titre d'épisode du panel, nettoyé. Formats réels :
+  // "Pilot", "Breaking Bad S01E01 - Pilot", "S01 E01"… On garde la partie
+  // APRÈS le marqueur SxxExx s'il est présent (séparateurs de tête strippés),
+  // et on rejette ce qui ne porte aucune info (vide / == nom de série).
+  final seriesKey = TitleMetadata.computeGroupKey(seriesName);
+  String? cleanEpisodeTitle(Object? raw) {
+    var t = (raw ?? '').toString().trim();
+    if (t.isEmpty) return null;
+    final m = RegExp(r's\s*\d{1,2}\s*e\s*\d{1,2}', caseSensitive: false)
+        .firstMatch(t);
+    if (m != null) t = t.substring(m.end);
+    t = t.replaceFirst(RegExp(r'^[\s\-–—:._]+'), '').trim();
+    if (t.isEmpty) return null;
+    final key = TitleMetadata.computeGroupKey(t);
+    if (key.isEmpty || key == seriesKey) return null;
+    return t;
+  }
+
+  final out = <M3uEntry>[];
+  episodes.forEach((seasonKey, eps) {
+    if (eps is! List) return;
+    final seasonNum = int.tryParse(seasonKey.toString());
+    if (seasonNum == null) return;
+    for (final e in eps) {
+      if (e is! Map) continue;
+      final epId = e['id'];
+      if (epId == null) continue;
+      final epNum = int.tryParse((e['episode_num'] ?? '').toString());
+      if (epNum == null) continue;
+      final url = xtreamEpisodeUrl(
+        host: creds.host,
+        username: creds.username,
+        password: creds.password,
+        episodeId: epId,
+        extension: e['container_extension'],
+      );
+      final logo = ((e['info'] is Map
+                  ? (e['info'] as Map)['movie_image']
+                  : null) ??
+              (info['info'] is Map
+                  ? (info['info'] as Map)['cover']
+                  : null) ??
+              '')
+          .toString();
+      // §epSynopsis — synopsis/note/date de l'ÉPISODE fournis par le panel :
+      // fallback provider quand TMDB échoue (avant : jamais mappés → aucun
+      // résumé d'épisode possible sans TMDB).
+      final plot = epInfoStr(e, const ['plot', 'overview', 'description']);
+      final rating = double.tryParse(
+          (e['info'] is Map ? ((e['info'] as Map)['rating'] ?? '') : '')
+              .toString());
+      final releaseDate =
+          epInfoStr(e, const ['air_date', 'releasedate', 'release_date']);
+      out.add(M3uEntry(
+        url: url,
+        type: M3uContentType.series,
+        title: TitleMetadata(
+          rawTitle: seriesName,
+          baseTitle: seriesMeta.baseTitle,
+          groupKey: seriesMeta.groupKey,
+          year: seriesMeta.year,
+          seasonNumber: seasonNum,
+          episodeNumber: epNum,
+          quality: tags.quality,
+          languages: tags.languages,
+          versionLabel: tags.versionLabel,
+          providerTag: tags.providerTag,
+        ),
+        accountId: accountId,
+        logoUrl: logo.isEmpty ? null : logo,
+        streamId: int.tryParse(epId.toString()),
+        tmdbId: seriesTmdb.isEmpty ? null : seriesTmdb,
+        plot: plot,
+        episodeTitle: cleanEpisodeTitle(e['title']),
+        rating: (rating != null && rating > 0) ? rating : null,
+        releaseDate: releaseDate,
+      ));
+    }
+  });
+  return out;
+}
+
 /// §episodeTruth — Verdict d'un fetch d'épisodes réparti sur PLUSIEURS comptes.
 ///
 /// Rend `null` quand il n'y a **pas** de panne à signaler, sinon le motif à
@@ -437,10 +603,15 @@ class XtreamApiService {
   /// §episodeTruth — `episodes == null` signifie **échec** (et [error] dit
   /// lequel) ; une liste vide signifie « le panel n'a pas d'épisode pour cette
   /// série ». Les deux s'écrivaient `const []` avant.
+  ///
+  /// §22.1 — [seriesTitle] : le titre du STUB tel que le catalogue l'écrit.
+  /// Ses étiquettes (qualité, langues, libellé, marqueur) passent sur chaque
+  /// épisode — cf. [episodesFromSeriesInfo].
   static Future<XtreamEpisodesResult> fetchEpisodes(
     StreamAccount account,
-    int seriesId,
-  ) async {
+    int seriesId, {
+    TitleMetadata? seriesTitle,
+  }) async {
     // §xtreamEpisodesCache — cache LRU lookup
     final key = _cacheKey(account.id, seriesId);
     final cached = _episodesCache[key];
@@ -466,25 +637,6 @@ class XtreamApiService {
       );
     }
 
-    final seriesName = ((info['info'] is Map
-                ? (info['info'] as Map)['name']
-                : null) ??
-            '')
-        .toString();
-    // §favSeries — On PARSE le nom de série une fois (baseTitle + groupKey +
-    // année cohérents) au lieu de prendre le nom brut. Sinon les épisodes
-    // avaient un `groupKey` vide → recalculé sur le nom brut (avec année/
-    // préfixe) ≠ celui du stub série → la clé favori ne matchait JAMAIS la
-    // vignette (favoris séries cassés). Mêmes baseTitle/groupKey/year que le
-    // stub → favoris + regroupement cohérents.
-    final seriesMeta = TitleMetadata.parse(seriesName);
-    // §epSynopsis — tmdb_id de la SÉRIE (champ `info.tmdb`), propagé sur
-    // chaque épisode → l'action sheet épisode et `_providerTmdbId()` accèdent
-    // à l'id exact (getEpisodeDetails saute la recherche floue).
-    final seriesTmdb = (info['info'] is Map
-            ? ((info['info'] as Map)['tmdb'] ?? '')
-            : '')
-        .toString();
     final episodes = info['episodes'];
     if (episodes is! Map) {
       // §episodeTruth — Un panel sain rend `{}` (ou une liste vide) pour une
@@ -501,90 +653,12 @@ class XtreamApiService {
       );
     }
 
-    // §epSynopsis — helper : première valeur non vide parmi des clés du bloc
-    // `info` d'un épisode (les panels varient : plot / overview / description).
-    String? epInfoStr(Map e, List<String> keys) {
-      final i = e['info'];
-      if (i is! Map) return null;
-      for (final k in keys) {
-        final v = (i[k] ?? '').toString().trim();
-        if (v.isNotEmpty) return v;
-      }
-      return null;
-    }
-
-    // §epTitleProvider — Titre d'épisode du panel, nettoyé. Formats réels :
-    // "Pilot", "Breaking Bad S01E01 - Pilot", "S01 E01"… On garde la partie
-    // APRÈS le marqueur SxxExx s'il est présent (séparateurs de tête strippés),
-    // et on rejette ce qui ne porte aucune info (vide / == nom de série).
-    final seriesKey = TitleMetadata.computeGroupKey(seriesName);
-    String? cleanEpisodeTitle(Object? raw) {
-      var t = (raw ?? '').toString().trim();
-      if (t.isEmpty) return null;
-      final m = RegExp(r's\s*\d{1,2}\s*e\s*\d{1,2}', caseSensitive: false)
-          .firstMatch(t);
-      if (m != null) t = t.substring(m.end);
-      t = t.replaceFirst(RegExp(r'^[\s\-–—:._]+'), '').trim();
-      if (t.isEmpty) return null;
-      final key = TitleMetadata.computeGroupKey(t);
-      if (key.isEmpty || key == seriesKey) return null;
-      return t;
-    }
-
-    final out = <M3uEntry>[];
-    episodes.forEach((seasonKey, eps) {
-      if (eps is! List) return;
-      final seasonNum = int.tryParse(seasonKey.toString());
-      if (seasonNum == null) return;
-      for (final e in eps) {
-        if (e is! Map) continue;
-        final epId = e['id'];
-        if (epId == null) continue;
-        final epNum = int.tryParse((e['episode_num'] ?? '').toString());
-        if (epNum == null) continue;
-        final ext = (e['container_extension'] ?? 'mp4').toString();
-        final url =
-            '${creds.host}/series/${Uri.encodeComponent(creds.username)}/'
-            '${Uri.encodeComponent(creds.password)}/$epId.$ext';
-        final logo = ((e['info'] is Map
-                    ? (e['info'] as Map)['movie_image']
-                    : null) ??
-                (info['info'] is Map
-                    ? (info['info'] as Map)['cover']
-                    : null) ??
-                '')
-            .toString();
-        // §epSynopsis — synopsis/note/date de l'ÉPISODE fournis par le panel :
-        // fallback provider quand TMDB échoue (avant : jamais mappés → aucun
-        // résumé d'épisode possible sans TMDB).
-        final plot = epInfoStr(e, const ['plot', 'overview', 'description']);
-        final rating = double.tryParse(
-            (e['info'] is Map ? ((e['info'] as Map)['rating'] ?? '') : '')
-                .toString());
-        final releaseDate =
-            epInfoStr(e, const ['air_date', 'releasedate', 'release_date']);
-        out.add(M3uEntry(
-          url: url,
-          type: M3uContentType.series,
-          title: TitleMetadata(
-            rawTitle: seriesName,
-            baseTitle: seriesMeta.baseTitle,
-            groupKey: seriesMeta.groupKey,
-            year: seriesMeta.year,
-            seasonNumber: seasonNum,
-            episodeNumber: epNum,
-          ),
-          accountId: account.id,
-          logoUrl: logo.isEmpty ? null : logo,
-          streamId: int.tryParse(epId.toString()),
-          tmdbId: seriesTmdb.isEmpty ? null : seriesTmdb,
-          plot: plot,
-          episodeTitle: cleanEpisodeTitle(e['title']),
-          rating: (rating != null && rating > 0) ? rating : null,
-          releaseDate: releaseDate,
-        ));
-      }
-    });
+    final out = episodesFromSeriesInfo(
+      info,
+      creds: creds,
+      accountId: account.id,
+      seriesTitle: seriesTitle,
+    );
 
     // §xtreamEpisodesCache — Store : éviction LRU si capacité atteinte
     // (LinkedHashMap garde l'ordre d'insertion ; on retire le 1er élément

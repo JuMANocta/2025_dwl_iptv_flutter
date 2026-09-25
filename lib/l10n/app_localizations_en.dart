@@ -4145,4 +4145,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tvOptStatsHidden => 'Hidden';
+
+  @override
+  String perfImageRamApplied(int mb) {
+    return 'This device has memory to spare: the app uses up to $mb MB for images.';
+  }
+
+  @override
+  String get infoKeywords => 'Keywords';
 }

@@ -3,7 +3,7 @@
 [Setup]
 AppId={{com.juman.aetherstream}}
 AppName=AetherStream
-AppVersion=1.20.3
+AppVersion=1.20.4
 AppPublisher=JuMAN
 DefaultDirName={autopf}\AetherStream
 DefaultGroupName=AetherStream

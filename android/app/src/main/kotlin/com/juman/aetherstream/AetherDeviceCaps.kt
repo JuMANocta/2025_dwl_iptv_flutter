@@ -6,6 +6,7 @@ import android.hardware.display.DisplayManager
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.os.Build
+import android.os.StatFs
 import android.view.Display
 
 /**
@@ -43,6 +44,32 @@ object AetherDeviceCaps {
         out["memory"] = probeMemory(context)
         out["display"] = probeDisplay(context)
         out["decoders"] = probeDecoders()
+        return out
+    }
+
+    /**
+     * §imgRightSize (2026-09-25) — Ce que l'app peut se PERMETTRE à ce
+     * démarrage : espace libre du stockage qui porte le cache (là où vivent
+     * les images), et classe mémoire.
+     *
+     * Mesure LÉGÈRE (un `statvfs`, deux lectures d'ActivityManager), appelée à
+     * chaque démarrage — contrairement à [probe], qui énumère les décodeurs et
+     * ne tourne qu'une fois. ⚠️ Pas de `StorageManager.getCacheSizeBytes` :
+     * annoté `@WorkerThread`, il peut parcourir le disque sur un appareil sans
+     * quotas, et ce canal répond sur le thread principal.
+     */
+    fun resources(context: Context): Map<String, Any?> {
+        val out = HashMap<String, Any?>()
+        try {
+            val stat = StatFs(context.cacheDir.path)
+            out["freeMb"] = stat.availableBytes / (1024L * 1024L)
+            out["totalMb"] = stat.totalBytes / (1024L * 1024L)
+        } catch (_: Exception) {
+            // Stockage illisible : le Dart garde les quotas d'un appareil non mesuré.
+        }
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        out["memoryClassMb"] = am.memoryClass
+        out["lowRamDevice"] = am.isLowRamDevice
         return out
     }
 

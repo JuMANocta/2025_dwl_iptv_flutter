@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../models/native_video_player_subtitle_style.dart';
+import 'subtitle_lift.dart';
 
 /// Subtitle layer rendering the active sidecar cue lines at the position
 /// configured in [NativeVideoPlayerSubtitleStyle] (bottom-center by
@@ -16,6 +17,7 @@ class SubtitleOverlay extends StatelessWidget {
     required this.cueLines,
     required this.style,
     this.videoAspectRatio,
+    this.bottomInset,
     super.key,
   });
 
@@ -29,6 +31,15 @@ class SubtitleOverlay extends StatelessWidget {
   /// video in portrait fullscreen, not at the bottom of the screen. Null
   /// falls back to aligning against the whole widget.
   final double? videoAspectRatio;
+
+  /// AetherStream patch 28 (R50) — Hauteur (pixels logiques) du bas du widget
+  /// recouverte par les contrôles de l'app. Les répliques remontent de la
+  /// part qui mord sur le cadre de l'image ([subtitleLiftInBox]), en douceur,
+  /// et redescendent quand les contrôles disparaissent. `null` ou 0 = rien.
+  final ValueListenable<double>? bottomInset;
+
+  /// Durée de la montée / descente : celle du fondu des contrôles de l'app.
+  static const Duration liftDuration = Duration(milliseconds: 250);
 
   @override
   Widget build(BuildContext context) {
@@ -62,18 +73,59 @@ class SubtitleOverlay extends StatelessWidget {
                 ),
               );
 
-              final double? aspectRatio = videoAspectRatio;
-              if (aspectRatio == null || aspectRatio <= 0) {
-                return cueBlock;
-              }
+              final double? known = videoAspectRatio;
+              final double aspectRatio =
+                  known != null && known > 0 ? known : 0;
+              final bool hasAspect = aspectRatio > 0;
 
               // Pin the cue block to the video's content rect so the
               // alignment/padding are measured against the video, not the
               // letterbox bars (mirrors the texture path's letterbox fit).
-              return Center(
-                child: AspectRatio(
-                  aspectRatio: aspectRatio,
-                  child: cueBlock,
+              Widget inVideoRect(Widget child) => hasAspect
+                  ? Center(
+                      child: AspectRatio(
+                        aspectRatio: aspectRatio,
+                        child: child,
+                      ),
+                    )
+                  : child;
+
+              // Patch 28 (R50) — sans marge demandée, le rendu d'origine.
+              final ValueListenable<double>? inset = bottomInset;
+              if (inset == null) return inVideoRect(cueBlock);
+
+              // La marge se mesure contre le widget ENTIER (les contrôles
+              // sont posés au bas de l'écran), le décalage s'applique DANS le
+              // cadre de l'image : d'où le `LayoutBuilder` au-dessus du cadre.
+              return LayoutBuilder(
+                builder: (context, constraints) =>
+                    ValueListenableBuilder<double>(
+                  valueListenable: inset,
+                  builder: (context, value, _) {
+                    final double h = constraints.maxHeight;
+                    final double w = constraints.maxWidth;
+                    // Hauteur du cadre : celle que `Center` + `AspectRatio`
+                    // lui donnent dans `inVideoRect`.
+                    final double boxHeight =
+                        hasAspect && w.isFinite && w / aspectRatio < h
+                            ? w / aspectRatio
+                            : h;
+                    final double lift = h.isFinite
+                        ? subtitleLiftInBox(
+                            inset: value,
+                            gapBelowBox: (h - boxHeight) / 2,
+                            boxHeight: boxHeight,
+                          )
+                        : 0;
+                    return inVideoRect(
+                      AnimatedPadding(
+                        padding: EdgeInsets.only(bottom: lift),
+                        duration: liftDuration,
+                        curve: Curves.easeOut,
+                        child: cueBlock,
+                      ),
+                    );
+                  },
                 ),
               );
             },

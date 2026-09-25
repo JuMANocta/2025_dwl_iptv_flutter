@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.accessibility.CaptioningManager
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
 import androidx.core.view.WindowCompat
@@ -41,6 +42,19 @@ class VideoPlayerView(
 
     companion object {
         private const val TAG = "VideoPlayerView"
+
+        /** AetherStream patch 28 (R50) — durée de la montée / descente des
+         *  sous-titres : celle du fondu des contrôles de l'app (250 ms). */
+        private const val SUBTITLE_LIFT_MS = 250L
+
+        /** Patch 28 — part maximale du cadre dont les sous-titres remontent
+         *  (même borne que `kSubtitleMaxLiftFraction`, côté Dart). */
+        private const val SUBTITLE_MAX_LIFT_FRACTION = 0.5f
+
+        /** Patch 28 — une vue tombée sous 60 % de sa hauteur depuis que la
+         *  marge a été posée, c'est une entrée en PiP : la marge ne vaut plus
+         *  (les contrôles n'y sont pas), en attendant que l'app renvoie 0. */
+        private const val SUBTITLE_STALE_HEIGHT_RATIO = 0.6f
     }
 
     override val backendViewId: Long get() = viewId
@@ -84,6 +98,25 @@ class VideoPlayerView(
 
     // Track disposal state to prevent events after disposal
     private var isDisposed: Boolean = false
+
+    // AetherStream patch 28 (R50) — Hauteur (px) du bas de la vue recouverte
+    // par les contrôles de l'app. 0 = sous-titres à leur place.
+    private var subtitleInsetPx: Float = 0f
+
+    // Patch 28 — Hauteur de la vue quand la marge a été posée (0 = pas
+    // encore mesurée), cf. SUBTITLE_STALE_HEIGHT_RATIO.
+    private var subtitleInsetViewHeight: Int = 0
+
+    // Patch 28 — Dernière translation VISÉE par vue de sous-titres : une mise
+    // en page qui redonne la même cible ne relance pas l'animation en cours.
+    private val subtitleLiftTargets = HashMap<SubtitleView, Float>()
+
+    // Patch 28 — Toute mise en page qui déplace le cadre de l'image (taille
+    // de la vidéo, format d'image, rotation, PiP) recalcule la remontée.
+    private val subtitleLayoutListener =
+        View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            applySubtitleLift(animate = false)
+        }
 
     // Fullscreen dialog
     private var fullscreenDialog: Dialog? = null
@@ -231,6 +264,14 @@ class VideoPlayerView(
             ))
         }
 
+        // AetherStream patch 28 (R50) — suivre les mises en page du conteneur,
+        // du cadre de l'image et des sous-titres eux-mêmes.
+        containerView.addOnLayoutChangeListener(subtitleLayoutListener)
+        for (subtitleView in subtitleViews()) {
+            subtitleView.addOnLayoutChangeListener(subtitleLayoutListener)
+            (subtitleView.parent as? View)?.addOnLayoutChangeListener(subtitleLayoutListener)
+        }
+
         // For shared players, also reconnect when this view is attached to a window.
         // Surface may not be ready in init; attaching ensures we rebind once the view is in the hierarchy.
         if (session.isSharedPlayer) {
@@ -333,6 +374,18 @@ class VideoPlayerView(
                 val scale = (call.argument<Number>("scale"))?.toFloat() ?: 1f
                 session.setEmbeddedTextScale(scale)
                 applyEmbeddedTextScale()
+                result.success(null)
+            }
+            // AetherStream patch 28 (R50) — Les contrôles de l'app recouvrent
+            // le bas de l'image sur `inset` pixels LOGIQUES (= dp : Flutter
+            // prend la densité d'Android pour ratio). Sur TV, le sous-titre
+            // se dessinait par-dessus la barre de progression.
+            "setSubtitleBottomInset" -> {
+                val inset = (call.argument<Number>("inset"))?.toFloat() ?: 0f
+                val px = inset * context.resources.displayMetrics.density
+                subtitleInsetPx = if (px.isFinite() && px > 0f) px else 0f
+                subtitleInsetViewHeight = 0 // mesurée au prochain calcul
+                applySubtitleLift(animate = true)
                 result.success(null)
             }
             else -> {
@@ -666,6 +719,75 @@ class VideoPlayerView(
         frame.setAspectRatio(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height)
     }
 
+    /** Les `SubtitleView` des deux chemins d'affichage (une seule existe). */
+    private fun subtitleViews(): List<SubtitleView> =
+        listOfNotNull(lightSubtitleView, playerView?.subtitleView)
+
+    /**
+     * AetherStream patch 28 (R50) — Remonte les sous-titres au-dessus des
+     * contrôles de l'app, ou les rend à leur place ([subtitleInsetPx] = 0).
+     *
+     * Par TRANSLATION de la `SubtitleView`, pas par une marge : une marge
+     * rétrécit la vue, et Media3 calcule la taille du texte (et celle des
+     * sous-titres en image, DVB/PGS) en fraction de sa hauteur — les
+     * sous-titres auraient rapetissé à chaque apparition des contrôles. Et
+     * pas par `setBottomPaddingFraction` : elle ignore les répliques
+     * positionnées (SSA, DVB, PGS), qui seraient restées sous la barre.
+     */
+    private fun applySubtitleLift(animate: Boolean) {
+        if (isDisposed) return
+        for (subtitleView in subtitleViews()) {
+            val target = -subtitleLiftFor(subtitleView)
+            if (subtitleLiftTargets[subtitleView] == target) continue
+            subtitleLiftTargets[subtitleView] = target
+            NpLog.d(TAG, "R50 subtitles lift ${-target}px (inset ${subtitleInsetPx}px, view $viewId)")
+            subtitleView.animate().cancel()
+            if (animate && subtitleView.isAttachedToWindow) {
+                subtitleView.animate()
+                    .translationY(target)
+                    .setDuration(SUBTITLE_LIFT_MS)
+                    .setInterpolator(DecelerateInterpolator())
+                    .start()
+            } else {
+                subtitleView.translationY = target
+            }
+        }
+    }
+
+    /**
+     * Patch 28 — De combien (px) remonter [subtitleView] : la part de
+     * [subtitleInsetPx] qui mord sur le CADRE de l'image. Les bandes noires
+     * d'un film 2,39:1 en absorbent une partie ; en format « zoom », le cadre
+     * déborde de l'écran et la remontée dépasse la marge. Même règle que
+     * `subtitleLiftInBox` côté Dart.
+     */
+    private fun subtitleLiftFor(subtitleView: SubtitleView): Float {
+        val height = subtitleView.height
+        if (subtitleInsetPx <= 0f || height <= 0) return 0f
+        // Bas du cadre dans le repère de la racine (le conteneur que Flutter
+        // affiche ; la fenêtre du plein écran natif sinon). Sa propre
+        // translation est exclue : c'est elle qu'on calcule.
+        var bottom = subtitleView.bottom.toFloat()
+        var ancestor = subtitleView.parent as? View ?: return 0f
+        while (ancestor !== containerView && ancestor.parent is View) {
+            bottom += ancestor.top + ancestor.translationY
+            ancestor = ancestor.parent as View
+        }
+        val rootHeight = ancestor.height
+        // La marge vaut pour la vue telle qu'elle était quand l'app l'a posée :
+        // une chute brutale de hauteur (PiP automatique, geste Accueil) la rend
+        // caduque avant que l'app n'ait eu le temps de renvoyer 0.
+        if (subtitleInsetViewHeight <= 0) {
+            subtitleInsetViewHeight = rootHeight
+        } else if (rootHeight < subtitleInsetViewHeight * SUBTITLE_STALE_HEIGHT_RATIO) {
+            return 0f
+        }
+        val gapBelow = rootHeight - bottom
+        val lift = subtitleInsetPx - gapBelow
+        if (lift <= 0f) return 0f
+        return minOf(lift, height * SUBTITLE_MAX_LIFT_FRACTION)
+    }
+
     /**
      * Applies the session's embedded-caption text scale to both display
      * paths' SubtitleViews (issue #43). Scales relative to the user's system
@@ -739,6 +861,15 @@ class VideoPlayerView(
         // Remove the light display path's own listener before the common dispose
         lightListener?.let { player.removeListener(it) }
         player.removeListener(videoSizeListener)
+
+        // AetherStream patch 28 (R50) — plus de recalcul ni d'animation.
+        containerView.removeOnLayoutChangeListener(subtitleLayoutListener)
+        for (subtitleView in subtitleViews()) {
+            subtitleView.removeOnLayoutChangeListener(subtitleLayoutListener)
+            (subtitleView.parent as? View)?.removeOnLayoutChangeListener(subtitleLayoutListener)
+            subtitleView.animate().cancel()
+        }
+        subtitleLiftTargets.clear()
 
         session.disposeCommon(detachOutput = {
             // IMPORTANT: For shared players, detach the player from this view's display

@@ -326,6 +326,18 @@ extension _ControllerEventPlumbing on NativeVideoPlayerController {
               return;
             }
 
+            // AetherStream patch 29 (§notifAudit P8) — un bouton de la
+            // notification de lecture : relayé tel quel à l'app, qui décide.
+            // Intercepté ici : sinon il deviendrait un `PlayerControlEvent`
+            // « none » diffusé à tous les écouteurs de contrôle.
+            if (eventName == 'mediaAction') {
+              final String? action = map['action'] as String?;
+              if (action != null && !_mediaActionController.isClosed) {
+                _mediaActionController.add(action);
+              }
+              return;
+            }
+
             // Texture-mode aspect ratio: there is no native
             // AspectRatioFrameLayout for texture-rendered views, so the
             // widget letterboxes the Texture from this event.

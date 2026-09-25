@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../core/utils/image_cache_config.dart';
@@ -24,6 +25,148 @@ int decodeWidthFor(
 }) {
   final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
   return (logicalWidth * dpr).round().clamp(80, max);
+}
+
+/// §imgRightSize — Largeurs que le serveur d'images TMDB accepte dans
+/// `/t/p/w<N>/`, de la plus petite à la plus grande.
+///
+/// Vérifié le 2026-09-25 sur `image.tmdb.org` : les sept rendent 200 aussi bien
+/// sur une AFFICHE que sur un FOND (le serveur ne distingue pas les types
+/// d'image), alors qu'une largeur hors liste (`w999`) rend 400. On s'en tient
+/// donc à cette échelle : une taille inventée coûterait un aller-retour raté
+/// avant le repli.
+const List<int> kTmdbWidths = [92, 154, 185, 342, 500, 780, 1280];
+
+/// §imgRightSize — En dessous de cette part du besoin, une image est « trop
+/// petite » et on la demande plus grande. Au-dessus, l'agrandissement ne se
+/// voit pas : monter coûterait des octets sans rien montrer de plus (une
+/// affiche 600 px pour un décodage à 640 px reste nette).
+const double kTmdbUpscaleTolerance = 0.85;
+
+/// §imgRightSize — Part du besoin qu'une largeur RÉÉCRITE doit couvrir : on
+/// demande la plus petite largeur ≥ 90 % du décodage, pas ≥ 100 %.
+///
+/// Mesuré le 2026-09-25 sur l'AVD téléphone (1080×2400, 420 dpi) : les
+/// vignettes s'y décodent à 360 px. Couvrir 100 % choisissait `w500`
+/// (~110 Ko) alors que `w342` ne manque que de 5 % — gain réel ~25 % au lieu
+/// de ~60 % (71 affiches `w500` dans le cache TMDB). Un agrandissement de
+/// 11 % au plus ne se voit pas sur une vignette ; au-delà, on prend la
+/// largeur suivante. ⚠️ Toujours ≥ [kTmdbUpscaleTolerance] : une image
+/// « assez grande » ne doit jamais être remplacée par une plus petite qu'elle
+/// sous ce seuil.
+const double kTmdbDownscaleTolerance = 0.9;
+
+final RegExp _tmdbSizedPath =
+    RegExp(r'^(https?://image\.tmdb\.org/t/p/)([^/?#]+)(/[^?#]+)$');
+final RegExp _tmdbWidthToken = RegExp(r'^w(\d+)$');
+final RegExp _tmdbBestToken = RegExp(r'^w(\d+)_and_h\d+_bestv2$');
+
+/// Largeur que porte un segment de taille TMDB, `null` si on ne sait pas la
+/// lire SANS changer le cadrage.
+///
+/// `w600_and_h900_bestv2` fait TENIR l'image dans une boîte, sans la rogner :
+/// c'est la même image que `w600`. Les variantes `_face` / `_multi_faces`
+/// ROGNENT (sur le visage), et `h632` se règle en hauteur : les réécrire
+/// changerait le cadrage, on n'y touche pas.
+int? _tmdbTokenWidth(String token) {
+  if (token == 'original') return 1 << 30;
+  final m = _tmdbWidthToken.firstMatch(token) ?? _tmdbBestToken.firstMatch(token);
+  return m == null ? null : int.tryParse(m.group(1)!);
+}
+
+/// §imgRightSize (2026-09-25) — L'adresse TMDB à la taille dont l'écran a
+/// BESOIN : [neededPx] est la largeur de décodage (`cacheWidth`), en pixels
+/// physiques. **Pure** — testée (`test/tmdb_sized_url_test.dart`).
+///
+/// **Le constat, mesuré le 2026-09-22.** Les images « du fournisseur » sont en
+/// majorité des adresses TMDB choisies par le panel, en grand format :
+/// PremiumV2 en sert 16 104 en `w600_and_h900_bestv2` et 9 047 en `w1280`.
+/// Une vignette de rangée se décode à ~290 px : on téléchargeait (et stockait
+/// sur disque) 3 à 10 fois trop d'octets — une affiche de 145 Ko quand 61 Ko
+/// donnent exactement les mêmes pixels à l'écran, puisque le DÉCODAGE était
+/// déjà borné à la taille affichée (§imgThrash).
+///
+/// **La règle.**
+///   - On DESCEND vers la plus petite largeur de [kTmdbWidths] qui couvre
+///     90 % de [neededPx] ([kTmdbDownscaleTolerance]) — jamais en dessous :
+///     un décodage à 360 px prend `w342` (5 % d'écart, invisible), un
+///     décodage à 400 px prend `w500`.
+///   - On MONTE une image trop petite (le `w185` de certaines listes pour une
+///     vignette de 290 px, flou) — seulement si elle manque de plus de 15 %
+///     ([kTmdbUpscaleTolerance]), et vers la même cible.
+///   - Une image entre 85 et 90 % du besoin est gardée telle quelle : la cible
+///     serait plus grande qu'elle, jamais plus petite.
+///   - Inchangé : sans largeur connue, hôte non TMDB, adresse avec paramètres,
+///     segment dont le cadrage changerait (`_face`, `h632`), ou quand la
+///     réécriture ne ferait rien gagner.
+/// Le schéma (`http`/`https`) est gardé tel quel : il décide du cache disque
+/// qui range l'image (`AetherImageCache.forUrl`).
+///
+/// ⚠️ L'adresse d'origine reste le REPLI (voir [AetherImage.candidates]) : si
+/// la taille réécrite échoue, l'image d'origine est essayée juste après.
+String tmdbSizedUrl(String url, int? neededPx) {
+  if (neededPx == null || neededPx <= 0) return url;
+  final m = _tmdbSizedPath.firstMatch(url);
+  if (m == null) return url;
+  final int? current = _tmdbTokenWidth(m.group(2)!);
+  if (current == null) return url;
+
+  int? target;
+  for (final int w in kTmdbWidths) {
+    if (w >= neededPx * kTmdbDownscaleTolerance) {
+      target = w;
+      break;
+    }
+  }
+  if (current >= neededPx * kTmdbUpscaleTolerance) {
+    // Assez grande : on ne fait que descendre, et seulement si ça allège.
+    if (target == null || target >= current) return url;
+  } else {
+    // Nettement trop petite : on monte (au plus haut de l'échelle).
+    target ??= kTmdbWidths.last;
+    if (target <= current) return url;
+  }
+  return '${m.group(1)}w$target${m.group(3)}';
+}
+
+/// §imgRightSize — Compteurs de recette : combien d'adresses TMDB ont été
+/// demandées à la taille d'affichage, et combien de fois la taille réécrite a
+/// échoué (repli sur l'adresse d'origine).
+///
+/// Une ligne au journal pour les premières réécritures, puis toutes les 200 :
+/// assez pour prouver en recette que la taille réécrite est servie et que le
+/// repli ne tourne pas en boucle, sans noyer le journal (une rangée recyclée
+/// recompte ses cartes). Les noms de fichier TMDB sont publics : aucune
+/// adresse de fournisseur n'est journalisée.
+abstract final class TmdbResizeStats {
+  static int down = 0;
+  static int up = 0;
+  static int fallbacks = 0;
+
+  static String _describe(String url) {
+    final m = _tmdbSizedPath.firstMatch(url);
+    if (m == null) return '?';
+    final String path = m.group(3)!;
+    return '${m.group(2)} ${path.substring(path.lastIndexOf('/') + 1)}';
+  }
+
+  static void noteRewrite(String from, String to, int neededPx) {
+    final int? a = _tmdbTokenWidth(_tmdbSizedPath.firstMatch(from)?.group(2) ?? '');
+    final int? b = _tmdbTokenWidth(_tmdbSizedPath.firstMatch(to)?.group(2) ?? '');
+    final bool upward = a != null && b != null && b > a;
+    upward ? up++ : down++;
+    final int total = down + up;
+    if (total <= 3 || total % 200 == 0) {
+      debugPrint('🖼️ §imgRightSize : ${_describe(from)} → ${_describe(to).split(' ').first} (décodage $neededPx px) — $total réécrites (↓ $down · ↑ $up), $fallbacks repli(s)');
+    }
+  }
+
+  static void noteFallback(String failed) {
+    fallbacks++;
+    if (fallbacks <= 20 || fallbacks % 50 == 0) {
+      debugPrint('⚠️ §imgRightSize : taille réécrite en échec (${_describe(failed)}) → adresse d\'origine — $fallbacks repli(s) sur ${down + up} réécrites');
+    }
+  }
 }
 
 /// §imgDiskCache — Image réseau **avec cache disque**, partagée par toute l'app.
@@ -117,10 +260,17 @@ class AetherImage extends StatefulWidget {
   });
 
   /// Adresses à essayer, dans l'ordre, sans doublon ni valeur vide.
+  ///
+  /// §imgRightSize — Chaque adresse TMDB est d'abord essayée à la taille dont
+  /// l'écran a besoin ([tmdbSizedUrl] sur [cacheWidth]), puis TELLE QU'ELLE
+  /// avant de passer au repli suivant : si le serveur refuse la taille
+  /// réécrite, on retombe sur l'image d'origine, pas sur une autre image.
   List<String> get candidates {
     final out = <String>[];
     for (final u in [url, ...alternates]) {
       if (u == null || u.isEmpty) continue;
+      final sized = tmdbSizedUrl(u, cacheWidth);
+      if (!out.contains(sized)) out.add(sized);
       if (!out.contains(u)) out.add(u);
     }
     return out;
@@ -145,15 +295,49 @@ class _AetherImageState extends State<AetherImage> {
   /// seule fois par jeu d'adresses.
   bool _notifiedFailure = false;
 
+  /// §imgRightSize — [AetherImage.candidates] calculés une fois par jeu
+  /// d'adresses (le build d'une rangée en relit des dizaines à chaque frame).
+  late List<String> _candidates;
+
+  /// §imgRightSize — Adresses RÉÉCRITES à la taille d'affichage : un échec sur
+  /// l'une d'elles est un repli vers l'adresse d'origine, compté au journal.
+  final Set<String> _sized = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _candidates = _computeCandidates();
+  }
+
+  List<String> _computeCandidates() {
+    final List<String> out = widget.candidates;
+    _sized.clear();
+    final int? need = widget.cacheWidth;
+    for (final u in [widget.url, ...widget.alternates]) {
+      if (u == null || u.isEmpty || need == null) continue;
+      final String sized = tmdbSizedUrl(u, need);
+      if (sized != u && _sized.add(sized)) {
+        TmdbResizeStats.noteRewrite(u, sized, need);
+      }
+    }
+    return out;
+  }
+
   @override
   void didUpdateWidget(covariant AetherImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Les listes recyclent leurs cartes : un nouveau jeu d'adresses doit
     // repartir du premier candidat, pas hériter des échecs du précédent.
-    final before = oldWidget.candidates;
-    final now = widget.candidates;
-    if (before.length != now.length ||
-        !List.generate(now.length, (i) => before[i] == now[i]).every((e) => e)) {
+    // §imgRightSize — `cacheWidth` compte aussi : il décide de la taille TMDB.
+    if (oldWidget.url == widget.url &&
+        oldWidget.cacheWidth == widget.cacheWidth &&
+        listEquals(oldWidget.alternates, widget.alternates)) {
+      return;
+    }
+    final before = _candidates;
+    final now = _computeCandidates();
+    _candidates = now;
+    if (!listEquals(before, now)) {
       _index = 0;
       _failed.clear();
       _notifiedFailure = false;
@@ -167,6 +351,7 @@ class _AetherImageState extends State<AetherImage> {
   void _advanceAfter(String failedUrl, List<String> candidates) {
     if (_failed.contains(failedUrl)) return;
     _failed.add(failedUrl);
+    if (_sized.contains(failedUrl)) TmdbResizeStats.noteFallback(failedUrl);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_index + 1 < candidates.length) {
@@ -183,7 +368,7 @@ class _AetherImageState extends State<AetherImage> {
 
   @override
   Widget build(BuildContext context) {
-    final candidates = widget.candidates;
+    final candidates = _candidates;
     Widget child;
 
     if (candidates.isEmpty) {

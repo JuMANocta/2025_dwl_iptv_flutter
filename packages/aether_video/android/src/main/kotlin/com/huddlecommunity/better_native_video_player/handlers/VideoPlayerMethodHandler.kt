@@ -670,6 +670,22 @@ class VideoPlayerMethodHandler(
                     result.success(false)
                 }
             }
+            // AetherStream patch 29 (§notifAudit P8) — boutons de la
+            // notification de lecture en plus de lecture/pause : ±30 s
+            // (`seek`) et episode suivant (`next`), libelles traduits par
+            // l'app. Le natif ne fait que les SIGNALER (`mediaAction`).
+            "setMediaActions" -> {
+                val seek = call.argument<Boolean>("seek") ?: false
+                val next = call.argument<Boolean>("next") ?: false
+                // AetherStream patch 31 — touches suivant/precedent = ±30 s.
+                val keys = call.argument<Boolean>("keys") ?: false
+                val labels = (call.argument<Map<*, *>>("labels"))
+                    ?.mapNotNull { (k, v) -> if (k is String && v is String) k to v else null }
+                    ?.toMap()
+                    ?: emptyMap()
+                notificationHandler.setMediaActions(seek, next, labels, keys)
+                result.success(null)
+            }
             // §engineVendor patch 6 — bascule precision/rapidite du seek.
             "setFastSeek" -> {
                 fastSeek = call.argument<Boolean>("enabled") ?: true

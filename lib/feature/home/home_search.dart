@@ -206,37 +206,16 @@ class _SearchView extends StatelessWidget {
     String q,
     M3uContentType type,
   ) {
-    // §searchAccents — La requête est repliée une seule fois, et confrontée à
-    // `groupKey`, qui est PRÉ-CALCULÉ et désormais lui aussi sans accents.
-    // Replier les 320 000 titres à chaque frappe était exclu ; ici le repli ne
-    // coûte rien à l'exécution.
-    final qFolded = TitleMetadata.foldAccents(q);
-    bool match(M3uEntry e) =>
-        e.title.groupKey.contains(qFolded) ||
-        e.displayName.toLowerCase().contains(q) ||
-        e.rawTitle.toLowerCase().contains(q);
-
-    // §23 — contentGroupKey est insensible à la casse (fusion cross-listes).
-    String key(M3uEntry e) =>
-        type == M3uContentType.tv ? tvGroupKey(e.displayName) : contentGroupKey(e);
-
-    final byGroup = <String, List<M3uEntry>>{};
-    for (final e in entries) {
-      if (!match(e)) continue;
-      byGroup.putIfAbsent(key(e), () => []).add(e);
-    }
-
-    // §URGENT — dédup qualité dans les groupes TV (cohérent avec _TypePage)
-    if (type == M3uContentType.tv) {
-      for (final k in byGroup.keys.toList()) {
-        byGroup[k] = dedupeTvVersions(byGroup[k]!);
-      }
-    }
+    // §searchAccents (requête repliée, confrontée à `groupKey`), §23 (clé de
+    // fusion cross-listes), §URGENT (dédup qualité des chaînes) : dans
+    // `homeSearchGroups`. §searchAllNames — un titre réuni se trouve par le
+    // nom de N'IMPORTE LAQUELLE de ses versions, et remonte ENTIER.
+    final hits = homeSearchGroups(entries, q, type);
 
     // §homonymYear — FILMS et SÉRIES : même split par année que la home.
     final groups = type != M3uContentType.tv
-        ? _TypePageState._splitGroupsByYear(byGroup.values)
-        : byGroup.values.toList();
+        ? _TypePageState._splitGroupsByYear(hits)
+        : hits;
     // §searchMore — Plus de troncature ICI : la liste complète remonte, et
     // c'est `_ResultSection` qui décide combien en montrer. Sans ça, il n'y
     // avait aucun moyen d'accéder au-delà des 30 premiers, et le compteur ne

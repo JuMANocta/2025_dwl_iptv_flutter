@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 
 import '../../core/utils/notification_permission.dart';
 import '../../core/utils/platform_tv.dart';
+import '../../feature/downloads/logic/downloads_open_request.dart';
+import '../../feature/player/player_presence.dart';
 import '../../l10n/l10n_ext.dart';
 import '../models/download_task.dart';
 import 'download_manager_service.dart';
@@ -62,6 +64,31 @@ abstract final class TransferNotificationBridge {
     // précédente, à chaque redémarrage de l'app.
     _previous = notifier.value;
     notifier.addListener(() => _onTasksChanged(notifier.value));
+    // §notifAudit P5 — L'app a peut-être été OUVERTE par une notification
+    // (démarrage à froid) : la route attend côté natif que Dart la demande.
+    unawaited(_takeLaunchRoute());
+  }
+
+  /// §notifAudit P5 — La route posée sur l'`Intent` de lancement, s'il y en a.
+  static Future<void> _takeLaunchRoute() async {
+    try {
+      _openRoute(await _channel.invokeMethod<Object?>('takeOpenRoute'));
+    } catch (e) {
+      debugPrint('⚠️ §notifAudit P5 — route de lancement illisible : $e');
+    }
+  }
+
+  /// §notifAudit P5 — « Appuyer pour ouvrir » : l'onglet Téléchargements, la
+  /// tâche en vue — jamais par-dessus un film en cours.
+  static void _openRoute(Object? args) {
+    final ({String? taskId})? route = downloadsRouteFrom(args);
+    if (route == null) return;
+    if (!shouldOpenDownloads(playerOpen: PlayerPresence.isOpen)) {
+      debugPrint('🔔 §notifAudit P5 — notification touchée pendant un film : on ne le coupe pas');
+      return;
+    }
+    debugPrint('🔔 §notifAudit P5 — ouverture de l\'onglet Téléchargements (tâche ${route.taskId ?? '-'})');
+    DownloadsOpenRequest.request(taskId: route.taskId);
   }
 
   static Future<void> _onTasksChanged(List<DownloadTask> current) async {
@@ -156,6 +183,8 @@ abstract final class TransferNotificationBridge {
         // reste. Android met à jour le nom d'un canal existant, il suit donc
         // la langue de l'appareil (D2B-17).
         'doneChannelName': L10n.current.dlNotifChannelDone,
+        // §notifAudit P5 — « appuyer pour ouvrir » montre CETTE tâche.
+        'openTaskId': f.task.id,
       });
     } catch (e) {
       debugPrint('⚠️ TransferNotificationBridge.postFinished : $e');
@@ -163,6 +192,11 @@ abstract final class TransferNotificationBridge {
   }
 
   static Future<void> _onNativeCall(MethodCall call) async {
+    // §notifAudit P5 — notification touchée, app déjà ouverte.
+    if (call.method == 'openRoute') {
+      _openRoute(call.arguments);
+      return;
+    }
     if (call.method != 'onDownloadAction') return;
     final args = (call.arguments as Map?) ?? const {};
     final String? id = args['taskId'] as String?;

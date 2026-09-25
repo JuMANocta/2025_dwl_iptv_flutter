@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/settings/perf_config.dart';
 import '../../core/settings/performance_settings_service.dart';
+import '../../core/utils/image_cache_config.dart';
 import '../models/device_caps.dart';
 
 /// §deviceCaps (2026-09-06) — La sonde des capacités de l'appareil.
@@ -30,7 +31,9 @@ abstract final class DeviceCapsService {
   static final ValueNotifier<SuggestedProfile?> autoProfile =
       ValueNotifier<SuggestedProfile?>(null);
 
-  /// Relit la dernière mesure persistée. À appeler au boot, avant `runApp`.
+  /// Relit la dernière mesure persistée, puis mesure les ressources du
+  /// moment ([measureResources]). Appelé par `_initServices`, APRÈS `runApp`
+  /// (§bootFast) et avant l'accueil.
   static Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -52,6 +55,44 @@ abstract final class DeviceCapsService {
     } catch (e) {
       debugPrint('⚠️ §deviceCaps init : $e');
     }
+    await measureResources();
+  }
+
+  /// §imgRightSize (2026-09-25) — Mesure LÉGÈRE, à chaque démarrage : espace
+  /// libre du stockage interne (`StatFs` du cache) et classe mémoire, par le
+  /// canal `aetherstream/device` → `resources`.
+  ///
+  /// Distincte de [probe] : la sonde complète (décodeurs, écran) ne tourne
+  /// qu'une fois dans la vie de l'app, alors que l'espace libre change d'un
+  /// jour à l'autre. Et la classe mémoire arrive ici même si la sonde complète
+  /// n'a jamais tourné (profil déjà choisi à la main → pas de sonde).
+  ///
+  /// Pose les quotas du cache disque des images (`AetherImageCache.configure`,
+  /// avant la première image) et le budget du cache d'images décodées
+  /// (`PerformanceSettingsService.setDeviceMemory`). Jamais bloquante : une
+  /// réponse absente ou lente laisse les valeurs d'un appareil non mesuré.
+  static Future<void> measureResources() async {
+    int? freeMb;
+    int? memoryClassMb = caps.value?.memory?.memoryClassMb;
+    bool lowRam = caps.value?.memory?.lowRamDevice ?? false;
+    try {
+      final Map<Object?, Object?>? m = await _channel
+          .invokeMethod<Map<Object?, Object?>>('resources')
+          .timeout(const Duration(seconds: 2));
+      if (m != null) {
+        freeMb = (m['freeMb'] as num?)?.toInt();
+        memoryClassMb = (m['memoryClassMb'] as num?)?.toInt() ?? memoryClassMb;
+        if (m['lowRamDevice'] is bool) lowRam = m['lowRamDevice'] as bool;
+        debugPrint('💾 §imgRightSize : stockage ${freeMb ?? '?'} / ${m['totalMb'] ?? '?'} Mo libres, classe mémoire ${memoryClassMb ?? '?'} Mo, lowRam=$lowRam');
+      }
+    } catch (e) {
+      debugPrint('⚠️ §imgRightSize : ressources non mesurées — $e');
+    }
+    AetherImageCache.configure(freeMb: freeMb);
+    PerformanceSettingsService.setDeviceMemory(
+      memoryClassMb: memoryClassMb,
+      lowRamDevice: lowRam,
+    );
   }
 
   /// Mesure (ou re-mesure) l'appareil. Rend `null` si le natif ne répond pas.
@@ -69,6 +110,11 @@ abstract final class DeviceCapsService {
       final now = DateTime.now();
       final measured = DeviceCaps.fromMap(m, measuredAt: now);
       caps.value = measured;
+      // §imgRightSize — sans effet si `measureResources` a déjà posé la même.
+      PerformanceSettingsService.setDeviceMemory(
+        memoryClassMb: measured.memory?.memoryClassMb,
+        lowRamDevice: measured.memory?.lowRamDevice ?? false,
+      );
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kCaps, jsonEncode(measured.toMap()));
       await prefs.setInt(_kMeasuredAt, now.millisecondsSinceEpoch);

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:aetherStream/data/services/tmdb_group_alias_service.dart';
 import 'package:aetherStream/feature/home/inferred_delta.dart';
 
 /// §inferredCat — Catégorie DÉDUITE d'un titre, pour les listes qui n'en
@@ -94,9 +95,24 @@ abstract final class InferredCategoryService {
   }
 
   /// Catégorie connue pour cette clé de groupe, ou `null`.
+  ///
+  /// §aliasByPoster — À défaut, celle apprise sous une VARIANTE réunie sous
+  /// cette clé. La clé d'une vignette change quand deux titres sont réunis
+  /// (table d'alias refaite à chaque chargement de liste), et une catégorie
+  /// ne se réapprend PAS toute seule : l'apprentissage n'a lieu que sur une
+  /// recherche TMDB réseau, jamais sur une affiche déjà en cache
+  /// (`TmdbPosterCache.isResolved`). Sans ce repli, la vignette réunie
+  /// retombait dans « Autres ». Mesuré : 1 111 vignettes réunies par
+  /// l'affiche n'ont aucune catégorie fournisseur.
   static String? get(String? groupKey) {
     if (groupKey == null || groupKey.isEmpty) return null;
-    return _cache[groupKey];
+    final String? direct = _cache[groupKey];
+    if (direct != null) return direct;
+    for (final String v in TmdbGroupAliasService.variantsOf(groupKey)) {
+      final String? c = _cache[v];
+      if (c != null) return c;
+    }
+    return null;
   }
 
   /// Enregistre la catégorie apprise pour une clé de groupe.

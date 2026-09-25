@@ -192,6 +192,115 @@ ne coûte aucune capacité ; retirer du code en coûte.
   l'identique**, vérifiée : build natif OK et duel au comportement inchangé
   (mêmes verdicts sur les mêmes titres).
 
+## patch 31 — casque et montre : « suivant » = +30 s, « précédent » = −30 s (2026-09-25, suite de §notifAudit P8)
+
+**Décision utilisateur** : les touches « piste suivante / précédente » d'un casque,
+d'une montre ou d'un autoradio avancent / reculent de 30 s, PARTOUT SAUF EN DIRECT
+(films, séries, replay, fichier local), diffusion Cast comprise (elles commandent
+alors le téléviseur).
+**Le manque.** Depuis le patch 29, un contrôleur de notification est connecté : Media3
+lui confie les touches média (`MediaSessionImpl.applyMediaButtonKeyEvent`), et
+« précédent / suivant » d'ExoPlayer lui sont retirés — elles ne faisaient plus rien.
+Les lui rendre aurait ramené « précédent » = retour au début du film.
+**Le patch.** `MediaSession.Callback.onMediaButtonEvent` : `KEYCODE_MEDIA_NEXT` /
+`SKIP_FORWARD` → événement `mediaAction` `seekForward`, `PREVIOUS` / `SKIP_BACKWARD`
+→ `seekBack`, quand l'app l'a demandé (`setMediaActions(keys: true)`) ; sinon (direct)
+Media3 garde la main, comme avant. Media3 ne passe que les appuis ; une répétition
+(touche maintenue) est absorbée sans nouveau saut. La carte média du système ne
+change pas (pas de « précédent / suivant » remis).
+⚠️ App au PREMIER PLAN, la touche va d'abord à Flutter : le lecteur l'intercepte
+(`PlayerPage._onMediaTrackKey`, règle `mediaTrackKeySeek`) avant les raccourcis
+§mediaKeys de la racine — au téléphone seulement : sur TV, ⏭ reste « épisode
+suivant ». Double appui du bouton unique d'un casque : non traité (il ne faisait
+déjà rien sur un film seul). Tests : `test/now_playing_actions_test.dart`.
+
+## patch 30 — l'affiche de la notification part avec l'agent IPTV et suit les redirections (2026-09-25, §notifAudit P10)
+
+**Le manque.** `downloadArtwork` (patch 18) ouvrait l'URL avec l'agent par défaut
+d'Android (« Dalvik/… ») et laissait `HttpURLConnection` gérer les redirections —
+qu'il refuse de franchir entre HTTP et HTTPS. Les logos de chaînes (`tvg-logo`)
+vivent souvent sur l'hôte du panel, qui filtre l'agent comme pour le flux
+(§iptvUaCompat) : la notification d'une chaîne restait sans image. Et en cas
+d'échec, `NpLog.e` écrivait `e.message` — pour une `FileNotFoundException`
+(404, 500 d'un panel), c'est l'URL, **y compris en release**.
+**Le patch.** `NativeVideoPlayerMediaInfo.artworkHeaders` (Dart) → `mediaInfo
+["artworkHeaders"]` ; l'app y met le MÊME profil que le flux (`Media3Engine.
+_iptvHeaders`, un seul endroit). Redirections suivies à la main (4 au plus,
+HTTP/HTTPS seulement), code HTTP vérifié avant de lire. Échec : `NpLog.w` avec le
+seul NOM de l'exception (ou le code HTTP) ; plus aucune URL au journal, même en
+débogage (les deux `NpLog.d` qui la citaient).
+⚠️ Hypothèse de la cause, pas mesure : l'audit l'avait posée sans la revérifier.
+Si une chaîne reste sans vignette après ce patch, regarder le journal
+(`Artwork refused (HTTP …)` / `Artwork unavailable (…)`) : un certificat invalide
+sur l'hôte du logo n'est volontairement PAS toléré ici (le bypass reste scopé aux
+flux, patch 2).
+
+## patch 29 — ±30 s et « épisode suivant » dans la notification de lecture (2026-09-25, §notifAudit P8)
+
+**Le manque.** La notification n'avait que lecture/pause — et encore : avant
+Android 13, elle n'avait AUCUN bouton (pas un seul `addAction`, le système
+n'affiche que ceux de la notification) ; à partir d'Android 13, le système lit
+l'état de la SESSION, où ExoPlayer exposait « précédent », qui relance un film
+seul depuis le début d'un appui.
+**Le patch** (`VideoPlayerNotificationHandler`, `VideoPlayerMethodHandler`,
+canal + contrôleur Dart) :
+- méthode `setMediaActions(seek, next, labels)` : ce que l'app demande en plus
+  de lecture/pause, avec les libellés traduits par l'app (§l10nAll) ;
+- **Android 13+** : commandes de session maison (`aether.media.SEEK_BACK`,
+  `SEEK_FORWARD`, `NEXT`) posées en `MediaButtonPreferences` (icônes Media3
+  `ICON_SKIP_BACK_30` / `ICON_SKIP_FORWARD_30` / `ICON_NEXT`) ; « précédent /
+  suivant » d'ExoPlayer retirés des commandes que voit le système QUAND nos
+  boutons sont là (sinon il leur donne les deux places principales) ;
+- ⚠️ **Le piège** (lu dans le bytecode de media3-session 1.5.0,
+  `MediaSessionImpl.onConnectOnHandler` + `PlayerWrapper.createPlaybackStateCompat`) :
+  les commandes que la session du SYSTÈME expose ne sont fixées QUE par le
+  « contrôleur de notification » de Media3 (un `MediaController` de l'app
+  connecté avec l'indice `androidx.media3.session.MediaNotificationManager`).
+  Sans `MediaSessionService`, personne ne le crée : les boutons de session
+  n'apparaissaient nulle part. Le gestionnaire le crée lui-même
+  (`connectNotificationController`), et le libère AVANT la session. À
+  revérifier à chaque montée de Media3 (clé privée).
+- **Avant Android 13** : les mêmes boutons en `addAction` (−30 s · lecture/pause ·
+  +30 s en vue compacte, puis suivant), sur des `PendingIntent` de diffusion
+  reçus par un récepteur non exporté (même garde que `MainActivity`), enregistré
+  et retiré avec la session.
+- Le natif N'EXÉCUTE rien : il envoie l'événement `mediaAction` (`seekBack`,
+  `seekForward`, `playPause`, `next`) ; l'app passe par les mêmes chemins que ses
+  gestes (diffusion en cours → le téléviseur, amnistie §stallCount, épisode
+  suivant). Les sauts n'apparaissent que si le flux se laisse parcourir
+  (`COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM`, suivi par `onAvailableCommandsChanged`).
+- Aucun service démarré ou arrêté par ce patch (§fgsSafeStart, patch 13) : une
+  notification DÉJÀ affichée est reposée par `notify()`, jamais ressuscitée.
+Libellés : ceux de l'app ; à défaut, la ressource de l'app par son NOM (méthode
+du patch 21 : `notif_play`, `notif_pause` existent) ; à défaut, celle de Media3.
+Tests : `test/now_playing_actions_test.dart` (la règle, côté app).
+
+## patch 28 — les sous-titres remontent au-dessus des contrôles (2026-09-25, R50)
+
+**Le manque.** Sur TV (recette §tvPlayerPanel), rangée d'options et barre
+affichées, le sous-titre rendu par la `SubtitleView` NATIVE (sous la couche
+Flutter) se dessinait sur la barre de progression ; au téléphone, même bloc bas
+(§playerPanel), même recouvrement.
+**Le patch.** Méthode `setSubtitleBottomInset(inset)` (pixels logiques = dp) :
+`VideoPlayerView` TRANSLATE la `SubtitleView` des deux chemins d'affichage de la
+part des contrôles qui mord sur le CADRE de l'image (les bandes noires d'un
+2,39:1 en absorbent une partie ; en « zoom » le cadre déborde), bornée à la
+moitié du cadre, en 250 ms (le fondu des contrôles). Recalculée à toute mise en
+page du conteneur, du cadre ou de la vue (taille de vidéo, format, rotation,
+PiP). ⚠️ Une vue tombée sous 60 % de sa hauteur depuis la pose de la marge
+(entrée en PiP par le geste Accueil, que l'app apprend APRÈS coup) remet les
+sous-titres en place sans attendre l'app : sinon ils sautaient au milieu de la
+fenêtre flottante le temps que l'app renvoie 0. Côté Dart, la surcouche des sous-titres « sidecar » (sous-titres en ligne,
+dessinés par Flutter) suit la même marge (`AnimatedPadding`), avec la MÊME règle
+(`subtitleLiftInBox`, exportée et testée : `test/subtitle_inset_test.dart`). Le
+contrôleur mémorise la marge et la renvoie à une vue recréée.
+⚠️ Pourquoi pas une marge (`padding`) : Media3 calcule la taille du texte — et
+celle des sous-titres en image, DVB/PGS — en fraction de la hauteur de la vue :
+les sous-titres rapetissaient à chaque apparition des contrôles. Et pas
+`setBottomPaddingFraction` : elle ignore les répliques positionnées (SSA, DVB,
+PGS). Contrepartie assumée de la translation : une réplique placée tout en HAUT
+(rare : panneaux SSA) peut être rognée tant que les contrôles sont affichés.
+
 ## patch 27 — le tampon a un plafond en OCTETS choisi par l'app, et un arrière (2026-09-21, §bufferBudget)
 
 **Le manque.** `buildPlayer` ne posait que les DURÉES (`setBufferDurationsMs`) :
@@ -454,4 +563,4 @@ pleine résolution et ne s'annulait jamais. Même patron que
 `AetherCastService.downloadBitmap` : délais de 8 s, `use {}` + `disconnect()`,
 décodage sous-échantillonné vers ~512 px, tâche annulée par `release()` et par
 une affiche plus récente. ⚠️ L'UA de cette requête (§notifAudit P10) n'est PAS
-traité ici.
+traité ici → **patch 30** (2026-09-25).

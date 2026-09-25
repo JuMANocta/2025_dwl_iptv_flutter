@@ -306,6 +306,26 @@ abstract class AetherPlaybackEngine {
   /// pas à la connaître.
   Widget buildSurface(BoxFit fit);
 
+  /// R50 — Les contrôles recouvrent le bas de l'écran sur [logicalPixels] :
+  /// les sous-titres de la vidéo remontent d'autant qu'ils mordent sur le
+  /// cadre de l'image, en douceur, et redescendent à 0. La décision « quand »
+  /// vit dans `subtitle_inset.dart`.
+  Future<void> setSubtitleBottomInset(double logicalPixels);
+
+  // ── Notification de lecture (§notifAudit P8) ───────────────────────────────
+
+  /// P8 — Les boutons que la notification de lecture et l'écran verrouillé
+  /// proposent EN PLUS de lecture/pause. Sans notification (téléviseur,
+  /// `nowPlaying == null`), sans effet visible. La décision vit dans
+  /// `now_playing_actions.dart`.
+  Future<void> setNowPlayingActions(AetherNowPlayingActions actions);
+
+  /// P8 — Les appuis sur ces boutons (et sur lecture/pause quand Android les
+  /// passe par la notification elle-même, avant Android 13). Le moteur ne les
+  /// exécute PAS : c'est le lecteur qui sait si une diffusion est en cours,
+  /// quel est l'épisode suivant, et qu'un saut n'est pas un blocage.
+  Stream<AetherNowPlayingCommand> get nowPlayingCommands;
+
   // ── Diagnostic ─────────────────────────────────────────────────────────────
 
   /// §videoStats — Instantané de diagnostic.
@@ -436,4 +456,44 @@ class AetherNowPlaying {
   @override
   String toString() =>
       'AetherNowPlaying($title · ${subtitle ?? "—"} · ${artworkUrl ?? "sans image"})';
+}
+
+/// §notifAudit P8 — Un bouton de la notification de lecture, appuyé.
+enum AetherNowPlayingCommand { seekBack, seekForward, playPause, next }
+
+/// §notifAudit P8 — Les boutons de la notification de lecture en plus de
+/// lecture/pause : les sauts ([seek], ±30 s) et l'épisode suivant ([next]).
+///
+/// Patch 31 — [seekKeys] : les touches « suivant / précédent » d'un casque,
+/// d'une montre ou d'un clavier font ±30 s (décision utilisateur du
+/// 2026-09-25). Distinct de [seek] : pendant une diffusion, la notification
+/// locale n'a pas de sauts, mais les touches commandent le téléviseur.
+@immutable
+class AetherNowPlayingActions {
+  const AetherNowPlayingActions({
+    this.seek = false,
+    this.next = false,
+    this.seekKeys = false,
+  });
+
+  /// Lecture/pause seulement.
+  static const AetherNowPlayingActions none = AetherNowPlayingActions();
+
+  final bool seek;
+  final bool next;
+  final bool seekKeys;
+
+  @override
+  bool operator ==(Object other) =>
+      other is AetherNowPlayingActions &&
+      other.seek == seek &&
+      other.next == next &&
+      other.seekKeys == seekKeys;
+
+  @override
+  int get hashCode => Object.hash(seek, next, seekKeys);
+
+  @override
+  String toString() =>
+      'AetherNowPlayingActions(sauts: $seek, suivant: $next, touches: $seekKeys)';
 }

@@ -231,12 +231,15 @@ class _HomeCardState extends State<_HomeCard> {
               valueListenable: WatchProgressService.version,
               builder: (_, __, ___) {
                 // Reprise impossible sur TV live → on garde le simple "Lire".
-                final progress = widget.type == M3uContentType.tv
+                // R52 — la reprise la plus récente du groupe ET la version qui
+                // la porte (`resume.entry`, null si c'est le stub de la série).
+                // Même seuil (> 5 s) que l'ancien `hasResume`.
+                final GroupResume? resume = widget.type == M3uContentType.tv
                     ? null
-                    : WatchProgressService.getProgressForAny(
-                        widget.versions.map((e) => e.url),
-                      );
-                final hasResume = progress != null && progress.position.inSeconds > 5;
+                    : groupResumeOf(widget.versions,
+                        progressOf: WatchProgressService.getProgress);
+                final progress = resume?.progress;
+                final hasResume = progress != null;
 
                 // R38 — ⛔ Le stub d'une série ne se lit pas : l'appui long
                 // mène au choix saison/épisode, comme le tap simple. La barre
@@ -278,37 +281,46 @@ class _HomeCardState extends State<_HomeCard> {
                   M3uContentType.tv     => PlayerBadgeType.live,
                 };
 
-                Future<void> play({Duration? from}) async {
+                Future<void> play({Duration? from, M3uEntry? target}) async {
+                  // R52 — la version qui porte la reprise, sinon `playTarget`.
+                  final M3uEntry t = target ?? playTarget;
+                  // Pour un épisode, les « versions » du groupe sont TOUS les
+                  // épisodes : ne garder que le même (sinon §endOfMovie efface la
+                  // reprise de toute la série, §dlPlayLocal peut lire le fichier
+                  // d'un autre épisode).
+                  final List<String> urls = <String>[
+                    for (final v in sameItemVersions(t, widget.versions)) v.url,
+                  ];
                   Navigator.pop(sheetCtx);
                   // R45 — On lit `playTarget`, pas la tête du groupe : dans un
                   // groupe mixte, la tête peut être le stub d'API d'un compte
                   // Xtream, dont l'URL n'aboutit jamais.
                   // §deviceCaps — la porte, même règle que la fiche.
-                  if (!await PlaybackGate.allow(context, playTarget)) return;
+                  if (!await PlaybackGate.allow(context, t)) return;
                   if (!mounted) return;
                   FavoritesService.addEntry(entry);
                   // §dlPlayLocal — la carte de l'accueil aussi : un titre
                   // téléchargé se lit depuis le disque, avec la même reprise.
                   await launchPlayback(
                     context,
-                    networkPath: playTarget.url,
-                    groupUrls: [for (final v in widget.versions) v.url],
+                    networkPath: t.url,
+                    groupUrls: urls,
                     // R23 — avertir quand l'abonnement est saturé.
-                    accountId: playTarget.accountId,
+                    accountId: t.accountId,
                     build: (src) => PlayerPage(
                     path: src.path,
                     progressKey: src.progressKey,
-                    title: playTarget.displayName,
+                    title: t.displayName,
                     // §stallCount — rattache les blocages au fournisseur.
-                    accountId: playTarget.accountId,
+                    accountId: t.accountId,
                     // §watchContext a/b — badges qualité + saison/épisode.
-                    qualityTag: playTarget.title.qualityOrDefault,
-                    episodeTag: playTarget.title.seasonEpisodeLabel,
+                    qualityTag: t.title.qualityOrDefault,
+                    episodeTag: t.title.seasonEpisodeLabel,
                     sourceType: src.sourceType,
                     badgeType: badge,
                     startPosition: from,
                     // §endOfMovie — toutes les versions du titre s'effacent à la fin.
-                    siblingResumeKeys: [for (final v in widget.versions) v.url],
+                    siblingResumeKeys: urls,
                     // §nowPlaying — la même image que la vignette.
                     posterUrl: _tmdbPoster ??
                         (_logoCandidates.isEmpty ? null : _logoCandidates.first),
@@ -356,18 +368,29 @@ class _HomeCardState extends State<_HomeCard> {
                         backgroundColor: kOnImageFaint, // D4A-16 (= white12)
                         valueColor: AlwaysStoppedAnimation(kAccentSecondary),
                       ),
-                      onTap: () => play(from: progress.position),
+                      onTap: resume!.entry == null
+                          // Reprise portée par le stub de la série : seule la
+                          // fiche sait retrouver l'épisode (§22.1).
+                          ? () {
+                              Navigator.pop(sheetCtx);
+                              _onTap();
+                            }
+                          : () => play(from: progress.position, target: resume.entry),
                     ),
                     ListTile(
                       leading: const Icon(Icons.restart_alt),
                       title: Text(sheetCtx.l10n.cardPlayFromStart),
                       dense: true,
                       onTap: () {
-                        // §resumeUnify — clear sur toutes les versions.
-                        for (final v in widget.versions) {
-                          WatchProgressService.clearProgress(v.url);
+                        // R52 — seulement la reprise du MÊME élément (toutes
+                        // ses versions), jamais celle des autres épisodes du
+                        // groupe (cf. `restartClearUrls`).
+                        for (final u in restartClearUrls(
+                            resume.entry ?? playTarget, widget.versions,
+                            resumeOnStub: resume.entry == null)) {
+                          WatchProgressService.clearProgress(u);
                         }
-                        play();
+                        play(target: resume.entry);
                       },
                     ),
                     _forgetResumeTile(sheetCtx, progress, isSeries: false),

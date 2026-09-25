@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.20.3+159-blue?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-1.20.4+160-blue?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android"/>
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter"/>
   <img src="https://img.shields.io/badge/minSdk-24-orange?style=flat-square"/>
@@ -160,7 +160,7 @@ flutter build apk --release --target-platform android-arm,android-arm64
 flutter build apk --release -Pabi-x86=true
 ```
 
-Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 1930 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
+Chaque envoi de code sur `master` ou `newSkin`, et chaque pull request, passe par `.github/workflows/ci.yml` (analyse + suite de tests, bloquantes). Les releases sont produites par `.github/workflows/release.yml` à chaque tag `v*.*.*` : le tag doit correspondre exactement à la version de `pubspec.yaml`, analyse et 2151 tests en parallèle du build, compilation **R8 + obfuscation**, un APK universel et un APK par processeur, signature, empreinte SHA-256 publiée pour chacun (les tables de désobfuscation restent dans un artefact privé, jamais dans la release) — et **pas de release si un test échoue**.
 
 ---
 
@@ -267,6 +267,13 @@ lib/
 ## Roadmap
 
 ### ✅ Terminé
+- [x] **Les affiches se chargent plus vite et prennent moins de place** (2026-09-25) — chaque image est demandée à la taille où elle s'affiche (deux à trois fois plus légère), et le cache d'images s'adapte à l'espace libre et à la mémoire de l'appareil ; Optimisation dit combien de mémoire les images utilisent vraiment.
+- [x] **Sur téléviseur, haut et bas passent d'une rangée à l'autre** (2026-09-25) — on arrive toujours sur la première affiche, même quand une rangée n'a qu'une carte (elle était sautée) ; « Voir tout » est au bout de chaque rangée ; choisir un onglet (Séries, Films, Chaînes) y laisse le focus au lieu de l'envoyer dans le menu de gauche.
+- [x] **Les sous-titres ne passent plus sous les commandes** (2026-09-25) — quand la barre et les boutons s'affichent, les sous-titres remontent au-dessus, puis redescendent quand ils disparaissent.
+- [x] **La notification de lecture a ses boutons** (2026-09-25, téléphone) — reculer ou avancer de 30 s, et « Épisode suivant » quand il y en a un ; les touches suivant / précédent d'un casque ou d'une montre avancent ou reculent de 30 s (sauf en direct) ; la vignette des chaînes s'affiche ; toucher la notification de fin de téléchargement ouvre l'onglet Téléchargements.
+- [x] **La reprise repart sur la bonne liste** (2026-09-25) — la fiche d'une série réunit toutes les versions d'un épisode, même celles qu'un fournisseur range en séries séparées (4K, VOSTFR) ; « Reprendre », depuis la fiche ou un appui long, relance la version où l'on s'était arrêté, l'épisode suivant reste sur la même source, et « Lire depuis le début » n'efface plus la reprise des autres épisodes.
+- [x] **Un même film n'apparaît plus deux fois, et un favori ne disparaît plus** (2026-09-25) — deux vignettes d'un même film sous deux titres (français, anglais, portugais…) sont réunies quand vos listes utilisent la même affiche, et la recherche le trouve sous chacun de ses noms ; un favori reste en place quand une liste arrive, se recharge ou repart (avant, il pouvait s'éteindre).
+- [x] **Les mots-clés TMDB sur la fiche** (2026-09-25) — une ligne « Mots-clés » dans les infos d'un film ou d'une série (en anglais : TMDB ne les traduit pas).
 - [x] **Au téléphone aussi, les réglages de lecture se font dans l'image** (2026-09-22) — le vieux menu du bas disparaît : le téléphone a la même rangée de boutons que la télévision (Épisode suivant, Audio, Sous-titres, Vitesse, Format, Qualité, Infos vidéo) ; on touche un bouton, sa liste s'ouvre juste au-dessus, on touche un choix et c'est appliqué. Les boutons ont tous la même taille, des angles arrondis même avec un thème anguleux, et la rangée est centrée. Sur TV, le cadenas (inutile sans écran tactile) disparaît, l'heure visée s'affiche à côté du repère sans cacher les boutons, et un film sans sous-titres ne propose plus de « couper » des sous-titres qu'il n'a pas. Les infos vidéo ne recouvrent plus les boutons.
 - [x] **La sauvegarde garde vraiment tous tes choix** (2026-09-22) — la clé des sous-titres en ligne, les langues de pistes retenues, le format d'image et l'affichage des infos vidéo partent maintenant dans le fichier `.aether` et reviennent à la restauration ; une vieille sauvegarde qui ne les contient pas ne change rien.
 - [x] **Sur téléviseur, les réglages de lecture se font dans l'image** (2026-09-22) — plus de fenêtre qui cache le film : la barre du lecteur porte des boutons Audio, Sous-titres, Vitesse, Format, Qualité et Infos vidéo, atteignables à la télécommande, et chaque liste s'ouvre juste au-dessus de son bouton ; Retour revient d'un cran sans jamais quitter le film. La barre de progression se sélectionne aussi : on déplace un repère (de plus en plus vite en gardant la touche enfoncée) et OK saute à ce moment du film. « Infos vidéo » est maintenant affiché ou masqué, tout simplement. Une piste audio que l'appareil ne sait pas lire fait revenir à la piste précédente au lieu d'arrêter le film.
@@ -482,12 +489,12 @@ lib/
 - [x] **Sous-titres externes** (2026-09-17) — ✅ fait : depuis le lecteur, « Chercher des sous-titres en ligne » trouve et charge des sous-titres pour le titre en cours, avec ta propre clé gratuite du service
 - [x] **File d'attente DL + WiFi-only** — ✅ fait le 2026-09-06 (une file par abonnement, pas un simple sémaphore ; voir « Terminé »)
 - [x] **Background audio** — ✅ déjà en place (vérifié dans le code le 2026-09-05) : le lecteur tient un verrou CPU / WiFi pendant la lecture et le service de premier plan de §nowPlaying garde l'app vivante ; le son continue écran éteint tant que le lecteur est ouvert. Reste à mesurer sur l'appareil (voir §bgAudio)
-- [ ] **PIN / contrôle parental** — verrouillage app + masquage contenus adultes
+- [ ] **PIN / contrôle parental** — verrouillage app + masquage contenus adultes *(mis de côté, pour plus tard)*
 - [x] **Empty states + Pull-to-refresh** — ✅ fait (§12, v1.7.0)
 - [x] **Mode hors-ligne** — ✅ fait le 2026-09-06 (§offlineBoot) : bandeau, fichiers téléchargés au démarrage sans réseau, reprise seule au retour de la connexion
 - [x] **Parsing M3U en isolate** — ✅ fait : catalogue JSON parsé en isolate (§23) et lecture M3U en flux (§ramDiet) ; le `compute()` d'origine n'a plus d'objet
 - ⛔ ~~**Téléchargement différentiel** — HEAD + Range requests pour économiser la bande passante~~ — écarté le 2026-09-05 : depuis le catalogue JSON, il n'y a plus de fichier M3U distant à comparer
-- [ ] **Hardening sécurité v2** — tâches de téléchargement dans le stockage chiffré, caches de listes dans le dossier privé (déjà faits : plus aucun journal envoyé au système en version publiée, console web et serveurs Chromecast verrouillés par la revue du 2026-09-11)
+- [ ] **Hardening sécurité v2** — tâches de téléchargement dans le stockage chiffré, caches de listes dans le dossier privé (déjà faits : plus aucun journal envoyé au système en version publiée, console web et serveurs Chromecast verrouillés par la revue du 2026-09-11) *(mis de côté, pour plus tard)*
 - [ ] **Cleanup perfs** — Image.network avec cacheWidth/cacheHeight, memoization _HomeCard.build, helper launchPlayer factorisé
 - [x] **Tests unitaires** — ✅ une suite complète et bloquante : elle tourne à chaque envoi de code, et aucune version n'est publiée si un test échoue
 - [x] **Nouveau moteur vidéo — HDR natif sur téléviseur** *(✅ validé sur appareil le 2026-09-02, §engineVendor — détail dans « Terminé »)* — le lecteur actuel compose l'image dans une texture, ce qui **impose une conversion en SDR** : un téléviseur compatible HDR n'affiche jamais de HDR, et le calcul de conversion faisait jeter une image sur trois en 4K. Le nouveau moteur dessine directement sur une surface d'affichage, ce qui rend le **HDR réel** possible (vérifié : la télé affiche enfin ses témoins HDR et Dolby) et **allège l'application d'environ 40 Mo**. La compatibilité des formats a été comparée fichier par fichier sur un téléviseur **et** un téléphone réels : aucune perte

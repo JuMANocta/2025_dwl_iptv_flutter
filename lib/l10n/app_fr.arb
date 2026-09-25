@@ -2769,5 +2769,7 @@
   "tvOptSubsOff": "Coupés",
   "tvOptAuto": "Automatique",
   "tvOptStatsShown": "Affichées",
-  "tvOptStatsHidden": "Masquées"
+  "tvOptStatsHidden": "Masquées",
+  "perfImageRamApplied": "Cet appareil a de la mémoire en réserve : l'app en utilise jusqu'à {mb} Mo pour les images.",
+  "infoKeywords": "Mots-clés"
 }

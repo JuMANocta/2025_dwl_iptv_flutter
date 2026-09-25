@@ -413,6 +413,26 @@ class MpvPlaybackEngine implements AetherPlaybackEngine {
     );
   }
 
+  @override
+  Future<void> setSubtitleBottomInset(double logicalPixels) async {
+    try {
+      if (player.platform is NativePlayer) {
+        final np = player.platform as NativePlayer;
+        final margin = (22 + logicalPixels).round().clamp(22, 300);
+        await np.setProperty('sub-margin-y', '$margin');
+      }
+    } catch (_) {}
+  }
+
+  // ── Notification de lecture (§notifAudit P8) ───────────────────────────────
+
+  @override
+  Future<void> setNowPlayingActions(AetherNowPlayingActions actions) async {}
+
+  @override
+  Stream<AetherNowPlayingCommand> get nowPlayingCommands =>
+      const Stream<AetherNowPlayingCommand>.empty();
+
   // ── Diagnostic ─────────────────────────────────────────────────────────────
 
   @override

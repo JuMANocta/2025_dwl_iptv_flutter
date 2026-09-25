@@ -64,3 +64,40 @@ String _two(int v) => v < 10 ? '0$v' : '$v';
 String _grouped(int n, [String sep = ' ']) => n
     .toString()
     .replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]}$sep');
+
+/// Lot 9 (§tmdbKeywords) — Les mots-clés TMDB que montre la ligne « Mots-clés »
+/// de l'encadré « Infos ».
+///
+/// ⚠️ **TMDB ne les traduit pas** : ils n'existent qu'en anglais, quelle que
+/// soit la langue demandée. Qui les voit se décide en UN endroit :
+/// [showTmdbKeywords].
+///
+/// ⚠️ Deux mots-clés ne décrivent pas l'œuvre mais une mécanique de générique
+/// (`duringcreditsstinger`, `aftercreditsstinger`) : illisibles tels quels,
+/// écartés.
+///
+/// Au plus [max] : TMDB en rend parfois plus de trente, et la ligne doit
+/// rester lisible à la télécommande.
+List<String> keywordsToShow(
+  List<String> keywords, {
+  required String lang,
+  int max = 8,
+}) {
+  if (!showTmdbKeywords(lang)) return const <String>[];
+  return keywords
+      .where((k) => !_creditsStingers.contains(k.toLowerCase()))
+      .take(max)
+      .toList();
+}
+
+const Set<String> _creditsStingers = <String>{
+  'duringcreditsstinger',
+  'aftercreditsstinger',
+};
+
+/// Lot 9 (§tmdbKeywords) — La SEULE condition qui décide si un écran montre les
+/// mots-clés TMDB. **Décision de l'utilisateur (2026-09-25)** : partout, en
+/// anglais — TMDB ne les traduit pas, et une information en anglais vaut mieux
+/// que pas d'information. [lang] reste en paramètre : c'est ici qu'une règle de
+/// langue se remettrait (par ex. une traduction maison des plus courants).
+bool showTmdbKeywords(String lang) => true;

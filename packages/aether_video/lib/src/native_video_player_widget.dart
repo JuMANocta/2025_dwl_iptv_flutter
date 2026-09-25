@@ -611,6 +611,8 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
               cueLines: widget.controller.activeSidecarCueLines,
               style: effectiveSubtitleStyle,
               videoAspectRatio: videoAspectRatio,
+              // AetherStream patch 28 (R50) — au-dessus des contrôles.
+              bottomInset: widget.controller.subtitleBottomInset,
             );
           },
         );
